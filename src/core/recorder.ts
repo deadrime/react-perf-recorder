@@ -36,7 +36,7 @@ import {
 } from './fiber';
 import { inspectHooks } from './hook-names';
 import type { CauseEvent, PluginHost } from './plugins';
-import { hookTypeAt, reasonsOf, snapshotOf, type Snapshot } from './reasons';
+import { didRender, hookTypeAt, parentReason, reasonsOf, snapshotOf, type Reason, type Snapshot } from './reasons';
 import { ScopeTracker, type ScopeHandle, type ScopeResolution } from './scope';
 
 export interface EngineConfig {
@@ -98,6 +98,14 @@ interface RootAgg {
   latest: WeakRef<Fiber> | null;
 }
 
+interface ComponentAgg {
+  renders: number;
+  withoutDom: number;
+  byParent: number;
+  memo: boolean;
+  reasons: Map<string, number>;
+}
+
 interface CommitState {
   t: number;
   renders: number;
@@ -143,7 +151,7 @@ export class Recorder {
   private readonly rootsByKey = new Map<string, RootAgg>();
   private readonly rootList: RootAgg[] = [];
   private readonly reasonIds = new Map<string, number>();
-  private readonly components = new Map<string, { renders: number; withoutDom: number }>();
+  private readonly components = new Map<string, ComponentAgg>();
   private readonly watch = new Map<string, { mounted: number; renders: number; byRoot: Map<RootAgg | null, number> }>();
   private readonly zoneNodes = new Map<Element, string>();
   private readonly zones = new Map<string, { renders: number; mounted: number; found: boolean }>();
@@ -209,6 +217,10 @@ export class Recorder {
 
   now() {
     return performance.now() - this.t0;
+  }
+
+  get startConditions(): Conditions {
+    return this.conditions;
   }
 
   get scopeInfo() {
@@ -306,7 +318,7 @@ export class Recorder {
   private visitChain(f: Fiber, prevs: Array<Snapshot | undefined>) {
     const prev = this.prevOf(f);
     prevs.push(prev);
-    const rendered = Boolean(prev) && (prev!.props !== f.memoizedProps || prev!.state !== f.memoizedState);
+    const rendered = didRender(prev, f);
     this.remember(f);
     return { rendered };
   }
@@ -327,7 +339,7 @@ export class Recorder {
       let j = top;
       while (j < n - 1 && !nameOf(fibers[j])) j++;
       if (j < n - 1 && prevs[j]) {
-        const agg = this.hitRoot(fibers[j], nameOf(fibers[j])!, this.chainPath(fibers, j), prevs[j]!, c, true);
+        const { agg } = this.hitRoot(fibers[j], nameOf(fibers[j])!, this.chainPath(fibers, j), prevs[j]!, c, true);
         c.outside = agg;
         rootKey = agg.key;
       }
@@ -357,7 +369,7 @@ export class Recorder {
     while (stack.length) {
       const [f, parentDid, currentPath, currentKey, pending, zoneTag] = stack.pop()!;
       const prev = this.prevOf(f);
-      const rendered = Boolean(prev) && (prev!.props !== f.memoizedProps || prev!.state !== f.memoizedState);
+      const rendered = didRender(prev, f);
       const name = nameOf(f);
       let key = currentKey;
       let nextPending = pending;
@@ -367,7 +379,11 @@ export class Recorder {
         c.renders++;
         this.totals.renders++;
         const wasted = !c.touched.has(f);
-        const comp = this.components.get(name) ?? { renders: 0, withoutDom: 0 };
+        let comp = this.components.get(name);
+        if (!comp) {
+          comp = { renders: 0, withoutDom: 0, byParent: 0, memo: f.tag === Tag.MemoComponent || f.tag === Tag.SimpleMemoComponent, reasons: new Map() };
+          this.components.set(name, comp);
+        }
         comp.renders++;
         if (wasted) {
           comp.withoutDom++;
@@ -375,8 +391,16 @@ export class Recorder {
           this.totals.rendersWithoutDom++;
           c.withoutDom.add(f);
         }
-        this.components.set(name, comp);
-        if (!parentDid) key = this.hitRoot(f, name, currentPath, prev!, c, false).key;
+        let reasons: Reason[] | null = null;
+        if (!parentDid) {
+          const hit = this.hitRoot(f, name, currentPath, prev!, c, false);
+          key = hit.agg.key;
+          reasons = hit.reasons;
+        } else if (isComposite(f) && !isProvider(name)) {
+          comp.byParent++;
+          reasons = parentReason(prev!, f, this.deps.plugins);
+        }
+        for (const reason of reasons ?? []) comp.reasons.set(reason.text, (comp.reasons.get(reason.text) ?? 0) + 1);
         const agg = key ? this.rootsByKey.get(key) : undefined;
         if (agg) {
           agg.cascade++;
@@ -409,7 +433,7 @@ export class Recorder {
     }
   }
 
-  private hitRoot(f: Fiber, name: string, path: string, prev: Snapshot, c: CommitState, outside: boolean): RootAgg {
+  private hitRoot(f: Fiber, name: string, path: string, prev: Snapshot, c: CommitState, outside: boolean): { agg: RootAgg; reasons: Reason[] } {
     const source = sourceOf(f, this.config.projectRoot);
     const key = `${outside ? 'outside|' : ''}${name}|${source}|${path}`;
     let agg = this.rootsByKey.get(key);
@@ -449,7 +473,8 @@ export class Recorder {
     agg.instances = Math.max(agg.instances, agg.inCommit);
     agg.latest = new WeakRef(f);
     const ids = c.reasons.get(agg) ?? new Set<number>();
-    for (const reason of reasonsOf(prev, f, this.deps.plugins)) {
+    const reasons = reasonsOf(prev, f, this.deps.plugins);
+    for (const reason of reasons) {
       agg.reasons.set(reason.text, (agg.reasons.get(reason.text) ?? 0) + 1);
       if (reason.hook !== undefined) agg.hookIdx.add(reason.hook);
       ids.add(this.reasonId(reason.text));
@@ -461,7 +486,7 @@ export class Recorder {
       c.renderMs += f.actualDuration!;
     }
     if (!outside) c.cascade.set(agg, c.cascade.get(agg) ?? 0);
-    return agg;
+    return { agg, reasons };
   }
 
   private finishCommit(c: CommitState, causes: CauseEvent[], lane: string | undefined, event: string | undefined) {
@@ -737,7 +762,14 @@ export class Recorder {
       components: [...this.components]
         .sort((a, b) => b[1].renders - a[1].renders)
         .slice(0, 150)
-        .map(([name, s]) => ({ name, ...s })),
+        .map(([name, s]) => ({
+          name,
+          renders: s.renders,
+          withoutDom: s.withoutDom,
+          byParent: s.byParent,
+          ...(s.memo ? { memo: true as const } : {}),
+          reasons: topEntries(s.reasons, 4),
+        })),
       ...(this.watch.size
         ? {
             watch: Object.fromEntries(

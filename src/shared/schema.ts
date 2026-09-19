@@ -190,7 +190,8 @@ export interface RecordingV1 {
   totals: Totals;
   roots: RootStat[];
   outsideRoots: RootStat[];
-  components: Array<{ name: string; renders: number; withoutDom: number }>;
+  /** Every rendered component; `reasons` covers renders caused by a parent too (`parent: props …`). */
+  components: Array<{ name: string; renders: number; withoutDom: number; byParent: number; memo?: true; reasons: Array<[string, number]> }>;
   watch?: Record<string, { mounted: number; renders: number; byRoot: Array<[number | null, number]> }>;
   zones?: Record<string, { renders: number; mounted: number; found: boolean }>;
   causes: CauseStat[];

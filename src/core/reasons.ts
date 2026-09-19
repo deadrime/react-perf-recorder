@@ -20,9 +20,20 @@ export interface Describer {
 }
 
 const same = (a: unknown, b: unknown) => sameContent(a, b, 20_000) === true;
+// Runs for every render caused by a parent, so the budget is smaller than for cascade roots.
+const sameCheap = (a: unknown, b: unknown) => sameContent(a, b, 2_000) === true;
 
 export function snapshotOf(f: Fiber): Snapshot {
   return { props: f.memoizedProps, state: f.memoizedState, ctx: f.dependencies?.firstContext ?? null };
+}
+
+/**
+ * A render gives a function with hooks a new hook list and any context reader a new dependency list; a memo component
+ * that only reads a context keeps its props and state objects, so the context list is what shows its render.
+ * Bailouts copy the list pointer, so skipped fibers compare equal.
+ */
+export function didRender(prev: Snapshot | undefined, f: Fiber): boolean {
+  return Boolean(prev) && (prev!.props !== f.memoizedProps || prev!.state !== f.memoizedState || prev!.ctx !== (f.dependencies?.firstContext ?? null));
 }
 
 function propsReason(before: unknown, after: unknown): Reason {
@@ -80,6 +91,28 @@ export function reasonsOf(prev: Snapshot, f: Fiber, describe: Describer): Reason
     }
   }
   return out.length ? out : [{ text: 'unknown' }];
+}
+
+/**
+ * Why a component rendered together with its parent: which props really changed, which are new references with the
+ * same content (inline objects and callbacks), or none at all — then `memo` would have skipped the render.
+ */
+export function parentReason(prev: Snapshot, f: Fiber, describe: Describer): Reason[] {
+  if (prev.props === f.memoizedProps) return reasonsOf(prev, f, describe);
+  const a = (prev.props || {}) as Record<string, unknown>;
+  const b = (f.memoizedProps || {}) as Record<string, unknown>;
+  const changed: string[] = [];
+  const sameShape: string[] = [];
+  let children = false;
+  for (const key of new Set([...Object.keys(a), ...Object.keys(b)])) {
+    if (a[key] === b[key]) continue;
+    // Element trees are too costly to compare deeply on every render: children count by reference.
+    if (key === 'children') children = true;
+    else (key in a && key in b && sameCheap(a[key], b[key]) ? sameShape : changed).push(key);
+  }
+  if (!changed.length && !sameShape.length) return [{ text: children ? 'parent: children' : 'parent: props equal' }];
+  const parts = [changed.length ? changed.slice(0, 5).join(', ') : '', sameShape.length ? `same: ${sameShape.slice(0, 5).join(', ')}` : ''];
+  return [{ text: `parent: props ${parts.filter(Boolean).join(' | ')}${children ? ' +children' : ''}` }];
 }
 
 /** `_debugHookTypes` lists every hook call, `useContext` and `useDebugValue` included; the hook list skips those two. */
