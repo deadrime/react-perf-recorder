@@ -1,6 +1,8 @@
 import { Engine } from '../core/engine';
+import { captureRenderers } from '../core/fiber';
 import { PluginHost } from '../core/plugins';
 import { GLOBAL_KEY } from '../shared/schema';
+import { actionText, hookText, reasonLine, summarize } from '../shared/summary';
 
 declare const __VERSION__: string;
 
@@ -20,5 +22,6 @@ if (!target[GLOBAL_KEY]) {
     },
     new PluginHost([])
   );
-  target[GLOBAL_KEY] = { version: engine.version, engine, panel: null };
+  captureRenderers();
+  target[GLOBAL_KEY] = { version: engine.version, engine, panel: null, format: { summarize, reasonLine, hookText, actionText } };
 }

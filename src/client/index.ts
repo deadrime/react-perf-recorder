@@ -4,7 +4,10 @@ import { PluginHost, type PluginEntry } from '../core/plugins';
 import { SessionWriter } from '../core/transport';
 import { Highlighter } from '../overlay/highlight';
 import { GLOBAL_KEY } from '../shared/schema';
+import { actionText, hookText, reasonLine, summarize } from '../shared/summary';
 import { Panel } from '../ui/panel';
+
+const format = { summarize, reasonLine, hookText, actionText };
 import type { Corner } from '../ui/storage';
 
 export interface ClientConfig extends BootConfig {
@@ -19,6 +22,8 @@ export interface RecorderGlobal {
   version: string;
   engine: Engine;
   panel: Panel | null;
+  /** The same formatting as the panel and the MCP server, for scripts that print their own answer. */
+  format: typeof format;
 }
 
 declare global {
@@ -52,7 +57,7 @@ export function boot(config: ClientConfig, plugins: PluginEntry[], hot?: HotCont
   );
   hot?.on('vite:beforeFullReload', () => engine.interrupt());
   window.addEventListener('pagehide', () => engine.interrupt());
-  const api: RecorderGlobal = { version: config.version, engine, panel };
+  const api: RecorderGlobal = { version: config.version, engine, panel, format };
   window[GLOBAL_KEY] = api;
   return api;
 }

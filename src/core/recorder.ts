@@ -59,6 +59,8 @@ export interface RecordOptions {
   actions?: boolean;
   hookNames?: boolean;
   prune?: boolean;
+  /** Count animation frames for a rough fps; the commit scan itself costs frame time, so trust long frames more. */
+  frames?: boolean;
   bigCommit?: number;
   timeline?: number;
   meta?: Record<string, Primitive>;
@@ -175,6 +177,8 @@ export class Recorder {
   private truncated = false;
   private stopped = false;
   private overlayMs = 0;
+  private frameCount = 0;
+  private counting = false;
   private readonly totals = {
     commits: 0,
     commitsInScope: 0,
@@ -242,6 +246,15 @@ export class Recorder {
     this.dom.start();
     this.hook = hookCommits(this.roots, this.options.source ?? 'panel', (info) => this.onCommit(info));
     this.frames.start();
+    if (this.options.frames) {
+      this.counting = true;
+      const tick = () => {
+        if (!this.counting) return;
+        this.frameCount++;
+        requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    }
     this.actions?.start();
     this.stopHistory = trackHistory(
       () => this.now(),
@@ -279,6 +292,7 @@ export class Recorder {
     this.errors.push(...hookErrors);
     this.dom.stop();
     this.frames.stop();
+    this.counting = false;
     this.actions?.stop();
     this.stopHistory?.();
     const sections = this.deps.plugins.stop({ scope: this.scopeInfo, findFibers: (pred, limit) => this.findFibers(pred, limit) });
@@ -830,7 +844,11 @@ export class Recorder {
         truncated: this.truncated,
       },
       bigCommits: this.bigCommits,
-      frames: { longTasks: this.frames.longTasks, loaf: this.frames.loaf },
+      frames: {
+        longTasks: this.frames.longTasks,
+        loaf: this.frames.loaf,
+        ...(this.options.frames && durationMs ? { fps: +((this.frameCount * 1000) / durationMs).toFixed(1) } : {}),
+      },
       dom: { ...this.dom.counts },
       navigations: this.navigations,
       hmr: this.hmr,
