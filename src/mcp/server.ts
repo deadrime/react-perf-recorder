@@ -30,7 +30,7 @@ const SECTIONS = [
 
 const json = (value: unknown) => ({ content: [{ type: 'text' as const, text: JSON.stringify(value, null, 1) }] });
 
-function section(rec: RecordingV1 & { id?: string; status?: string }, name: string, top: number, offset: number) {
+export function section(rec: RecordingV1 & { id?: string; status?: string }, name: string, top: number, offset: number) {
   const page = <T>(list: T[]) => ({ total: list.length, offset, items: list.slice(offset, offset + top) });
   const ms = rec.durationMs;
   switch (name) {

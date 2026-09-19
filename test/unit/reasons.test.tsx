@@ -1,4 +1,4 @@
-import { createContext, memo, useContext, useState } from 'react';
+import { createContext, memo, useContext, useReducer, useState } from 'react';
 import { flush, makeRecorder, mount } from './helpers';
 
 type Setter = (n: number) => void;
@@ -63,5 +63,21 @@ describe('render reasons', () => {
     const rec = recorder.stop();
     const badge = rec.components.find((c) => c.name === 'Badge')!;
     expect(badge.reasons.map(([text]) => text).sort()).toEqual(['context Theme', 'context Theme SAME-CONTENT']);
+  });
+
+  it('calls a render that set a state to its current value a bailout', () => {
+    let dispatch!: (value: number) => void;
+    const Radio = () => {
+      // useReducer has no eager bailout in React 18: the component renders, then React finds the same state.
+      const [focused, set] = useReducer((_: number, next: number) => next, 0);
+      dispatch = set;
+      return <i>{focused}</i>;
+    };
+    mount(<Radio />);
+    const { recorder } = makeRecorder();
+    recorder.start();
+    flush(() => dispatch(0));
+    const rec = recorder.stop();
+    expect(rec.components.find((c) => c.name === 'Radio')?.reasons).toEqual([['bailout: state set to the same value', 1]]);
   });
 });

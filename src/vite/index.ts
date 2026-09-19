@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { TraceMap, originalPositionFor } from '@jridgewell/trace-mapping';
 import type { Plugin, ViteDevServer } from 'vite';
+import type { VitePluginLike } from './plugin-api';
 import { ENDPOINT, type JsonValue } from '../shared/schema';
 import { addComponentNames, DEFAULT_WRAPPERS, type ComponentNamesOptions } from './component-names';
 import { ENTRY_ID, entryCode, RESOLVED_ENTRY_ID, runtimeSpecifier } from './entry';
@@ -53,7 +54,7 @@ async function mapSite(server: ViteDevServer, root: string, url: string, line: n
  * Records React re-renders from the page: injects the recorder into the dev page, names memo components and
  * contexts, runs the plugins' build halves and stores sessions for the MCP server. Returns several Vite plugins.
  */
-export function perfRecorder(options: PerfRecorderOptions = {}): Plugin[] {
+export function perfRecorder(options: PerfRecorderOptions = {}): VitePluginLike[] {
   let root = process.cwd();
   let base = '/';
   const plugins = options.plugins ?? [];
@@ -133,10 +134,10 @@ export function perfRecorder(options: PerfRecorderOptions = {}): Plugin[] {
       ...(p.vite!.transform ? { transform: (code, id) => p.vite!.transform!(code, id) ?? null } : {}),
     }));
 
-  return [core, ...wrapped];
+  return [core, ...wrapped] as unknown as VitePluginLike[];
 }
 
-export { definePerfRecorderPlugin, type BuildContext, type PerfRecorderPlugin } from './plugin-api';
+export { definePerfRecorderPlugin, type BuildContext, type PerfRecorderPlugin, type VitePluginLike } from './plugin-api';
 export { proxyModule, combineProxies, type ProxyModuleOptions } from './helpers/proxy-module';
 export { findDeclarations, appendLines } from './helpers/name-declarations';
 export { createFilter } from './helpers/filter';

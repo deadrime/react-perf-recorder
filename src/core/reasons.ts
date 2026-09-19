@@ -92,6 +92,9 @@ export function reasonsOf(prev: Snapshot, f: Fiber, describe: Describer): Reason
       out.push({ text: `context ${d.context.displayName || '(unnamed)'}${mark}` });
     }
   }
+  // The function ran (new hook list) yet no state, store value, prop or context differs: React rendered it for an
+  // update that set a value it already had, then bailed out.
+  if (!out.length && hasHooks(f) && prev.state !== f.memoizedState) return [{ text: 'bailout: state set to the same value' }];
   return out.length ? out : [{ text: 'unknown' }];
 }
 
