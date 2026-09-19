@@ -99,7 +99,9 @@ export function actionText(action: ActionRecord): string {
   const where = t?.component ? ` in ${t.component}` : '';
   switch (action.kind) {
     case 'typing':
-      return `typing ${action.chars ?? 0} chars into «${field}»${where}${action.secret ? ' (secret)' : action.value !== undefined ? ` = ${JSON.stringify(action.value)}` : ''}`;
+      return `typing ${action.chars ?? 0} chars into «${field}»${where}${
+        action.secret ? ' (secret)' : action.value !== undefined ? ` = ${JSON.stringify(action.value)}` : ''
+      }`;
     case 'key':
       return `${action.key} on «${field}»${where}`;
     case 'scroll':
@@ -177,7 +179,10 @@ export function summarize(rec: RecordingV1 & { id?: string; status?: string }, t
     })),
     actions,
     plugins: Object.fromEntries(
-      Object.entries(rec.plugins).map(([name, section]: [string, PluginSection]) => [name, { version: section.version, highlights: (section.highlights ?? []).slice(0, 3) }])
+      Object.entries(rec.plugins).map(([name, section]: [string, PluginSection]) => [
+        name,
+        { version: section.version, highlights: (section.highlights ?? []).slice(0, 3) },
+      ])
     ),
     frames: {
       longTasks: rec.frames.longTasks.count,

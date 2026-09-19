@@ -10,7 +10,12 @@ export function trackHistory(now: () => number, onNavigation: (nav: Navigation) 
       const before = here();
       const result = original[method].apply(this, args);
       const url = here();
-      onNavigation({ type: method === 'pushState' ? 'push' : 'replace', atMs: Math.round(now()), url, ...(url === before ? { sameUrl: true as const } : {}) });
+      onNavigation({
+        type: method === 'pushState' ? 'push' : 'replace',
+        atMs: Math.round(now()),
+        url,
+        ...(url === before ? { sameUrl: true as const } : {}),
+      });
       return result;
     };
     wrapped[method] = fn;

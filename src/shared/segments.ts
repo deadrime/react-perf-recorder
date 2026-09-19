@@ -97,7 +97,9 @@ export function buildSegments(
     }
     const types = LATENCY_TYPES[action.kind];
     if (types) {
-      const matched = latency.filter((e) => types.includes(e.type) && e.atMs >= action.atMs - 50 && e.atMs <= Math.max(action.endMs, action.atMs) + 50);
+      const matched = latency.filter(
+        (e) => types.includes(e.type) && e.atMs >= action.atMs - 50 && e.atMs <= Math.max(action.endMs, action.atMs) + 50
+      );
       if (matched.length) segment.latency = matched.reduce((worst, e) => (e.duration > worst.duration ? e : worst));
     }
     for (const frame of frames) {

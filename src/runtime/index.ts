@@ -15,8 +15,8 @@ export interface CauseInput {
 
 export interface PluginContext {
   readonly recording: boolean;
-  /** Queues a cause for the next commit. A no-op outside a recording. */
-  emitCause(event: CauseInput): void;
+  /** Queues a cause for the next commit and returns it, so a later hook can refine `type`; null outside a recording. */
+  emitCause(event: CauseInput): { type: string } | null;
   /** Milliseconds since the recording started. */
   now(): number;
   warn(message: string): void;

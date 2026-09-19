@@ -64,7 +64,10 @@ describe('Recorder', () => {
   it('counts a render that changed nothing in the DOM', () => {
     const store = createStore(() => ({ a: 1, b: 1 }));
     const View = () => {
-      useStore(store, useShallow((s) => ({ a: s.a, b: s.b })));
+      useStore(
+        store,
+        useShallow((s) => ({ a: s.a, b: s.b }))
+      );
       return <p>static</p>;
     };
     mount(<View />);
@@ -287,7 +290,11 @@ describe('Recorder', () => {
     });
     host.emit('store', { type: 'dropped' });
     const rec = recorder.stop();
-    expect(rec.causes.find((c) => c.key === 'store:v/set')).toMatchObject({ events: 1, commits: 1, keys: { v: { changed: 1, sameContent: 0, unknown: 0 } } });
+    expect(rec.causes.find((c) => c.key === 'store:v/set')).toMatchObject({
+      events: 1,
+      commits: 1,
+      keys: { v: { changed: 1, sameContent: 0, unknown: 0 } },
+    });
     expect(rec.roots[0].causes[0][0]).toBe('store:v/set');
   });
 

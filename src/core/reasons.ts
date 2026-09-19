@@ -33,7 +33,9 @@ export function snapshotOf(f: Fiber): Snapshot {
  * Bailouts copy the list pointer, so skipped fibers compare equal.
  */
 export function didRender(prev: Snapshot | undefined, f: Fiber): boolean {
-  return Boolean(prev) && (prev!.props !== f.memoizedProps || prev!.state !== f.memoizedState || prev!.ctx !== (f.dependencies?.firstContext ?? null));
+  return (
+    Boolean(prev) && (prev!.props !== f.memoizedProps || prev!.state !== f.memoizedState || prev!.ctx !== (f.dependencies?.firstContext ?? null))
+  );
 }
 
 function propsReason(before: unknown, after: unknown): Reason {

@@ -62,9 +62,11 @@ export class PluginHost implements Describer {
     };
   }
 
-  emit(plugin: string, event: CauseInput) {
-    if (!this.recording || this.buffer.length >= MAX_BUFFER) return;
-    this.buffer.push({ plugin, type: event.type, atMs: Math.round(this.now()), changes: event.changes, data: event.data });
+  emit(plugin: string, event: CauseInput): CauseEvent | null {
+    if (!this.recording || this.buffer.length >= MAX_BUFFER) return null;
+    const cause: CauseEvent = { plugin, type: event.type, atMs: Math.round(this.now()), changes: event.changes, data: event.data };
+    this.buffer.push(cause);
+    return cause;
   }
 
   drain(): CauseEvent[] {

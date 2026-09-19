@@ -35,7 +35,10 @@ export function makeRecorder(options: RecordOptions = {}, plugins: PluginEntry[]
   const host = new PluginHost(plugins);
   host.setupAll();
   const events: SessionEvent[] = [];
-  const recorder = new Recorder({ config, plugins: host, ownHost: null, highlight: null, onEvent: (e) => events.push(e) }, { source: 'test', ...options });
+  const recorder = new Recorder(
+    { config, plugins: host, ownHost: null, highlight: null, onEvent: (e) => events.push(e) },
+    { source: 'test', ...options }
+  );
   return { recorder, events, host };
 }
 

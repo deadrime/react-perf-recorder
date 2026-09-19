@@ -235,7 +235,18 @@ export interface SessionMeta {
 export type SessionEvent =
   | { k: 'root'; i: number; key: string; name: string; source: string; path: string; outside?: true }
   | { k: 'reason'; i: number; text: string }
-  | { k: 'commit'; t: number; n: number; ms?: number; lane?: string; event?: string; roots?: Array<[number, number, number[]]>; causes?: string[]; outside?: number; noDom?: number }
+  | {
+      k: 'commit';
+      t: number;
+      n: number;
+      ms?: number;
+      lane?: string;
+      event?: string;
+      roots?: Array<[number, number, number[]]>;
+      causes?: string[];
+      outside?: number;
+      noDom?: number;
+    }
   | { k: 'action'; action: ActionRecord }
   | { k: 'latency'; entry: LatencyEntry }
   | { k: 'frame'; frame: LongFrame }

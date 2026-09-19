@@ -41,8 +41,19 @@ export class Engine {
   private listeners = new Set<(state: 'started' | 'stopped') => void>();
   private readonly wrapperRe: RegExp;
 
-  constructor(readonly config: BootConfig, readonly plugins: PluginHost, private highlight: HighlightSink | null = null, private ownHost: Element | null = null) {
+  constructor(
+    readonly config: BootConfig,
+    readonly plugins: PluginHost,
+    private highlight: HighlightSink | null = null,
+    private ownHost: Element | null = null
+  ) {
     this.wrapperRe = new RegExp(config.wrapperPattern || '^$');
+  }
+
+  /** The panel and its highlight canvas: events inside the panel are not user actions. */
+  attachUi(highlight: HighlightSink | null, ownHost: Element | null) {
+    this.highlight = highlight;
+    this.ownHost = ownHost;
   }
 
   get version() {
@@ -92,7 +103,13 @@ export class Engine {
       writerRef.current = this.writer = new SessionWriter(this.config.endpoint, {
         source: options.source ?? 'api',
         label: options.label,
-        page: { url: location.href, title: document.title, viewport: `${innerWidth}×${innerHeight}`, dpr: devicePixelRatio, userAgent: navigator.userAgent },
+        page: {
+          url: location.href,
+          title: document.title,
+          viewport: `${innerWidth}×${innerHeight}`,
+          dpr: devicePixelRatio,
+          userAgent: navigator.userAgent,
+        },
         scope: recorder.scopeInfo,
         conditions: recorder.startConditions,
         plugins: this.plugins.info(),
@@ -205,4 +222,3 @@ export class Engine {
     return this.scopeFromElement(el, spec.level ?? 0);
   }
 }
-

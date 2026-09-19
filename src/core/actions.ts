@@ -17,7 +17,8 @@ const SECRET_AUTOCOMPLETE = /(password|one-time-code|cc-number|cc-csc|cc-exp)/;
 const TEXT_INPUT = /^(text|search|email|tel|url|number|password|)$/;
 const TYPING_GAP_MS = 1500;
 const SCROLL_GAP_MS = 300;
-const INTERACTIVE = 'button, a, [role="button"], [role="tab"], [role="menuitem"], [role="option"], [role="checkbox"], [role="switch"], label, input, select, textarea, summary, [data-testid]';
+const INTERACTIVE =
+  'button, a, [role="button"], [role="tab"], [role="menuitem"], [role="option"], [role="checkbox"], [role="switch"], label, input, select, textarea, summary, [data-testid]';
 
 export function isSecretField(el: Element, secretSelector: string): boolean {
   if (secretSelector && el.matches(secretSelector)) return true;
@@ -140,7 +141,10 @@ export class ActionTracker {
       return;
     }
     this.flushTyping();
-    this.typing = { el, action: { id: this.nextId++, kind: 'typing', atMs: now, endMs: now, target: this.describe(el), chars: 1, ...this.valueFields(el) } };
+    this.typing = {
+      el,
+      action: { id: this.nextId++, kind: 'typing', atMs: now, endMs: now, target: this.describe(el), chars: 1, ...this.valueFields(el) },
+    };
   }
 
   private onChange(event: Event) {
@@ -150,7 +154,12 @@ export class ActionTracker {
     const extra: Partial<ActionRecord> = isSecretField(el, this.options.secretSelector)
       ? { secret: true }
       : this.options.values
-      ? { value: el instanceof HTMLInputElement && /checkbox|radio/.test(el.type) ? String(el.checked) : String((el as HTMLSelectElement).value ?? '').slice(0, 200) }
+      ? {
+          value:
+            el instanceof HTMLInputElement && /checkbox|radio/.test(el.type)
+              ? String(el.checked)
+              : String((el as HTMLSelectElement).value ?? '').slice(0, 200),
+        }
       : {};
     this.push('change', el, extra);
   }
@@ -181,7 +190,14 @@ export class ActionTracker {
       pending.action.endMs = now;
     }
     const entry = pending ?? {
-      action: { id: this.nextId++, kind: 'scroll' as const, atMs: now, endMs: now, target: this.describe(el), scroll: { from: top, to: top, pixels: 0 } },
+      action: {
+        id: this.nextId++,
+        kind: 'scroll' as const,
+        atMs: now,
+        endMs: now,
+        target: this.describe(el),
+        scroll: { from: top, to: top, pixels: 0 },
+      },
       timer: 0 as unknown as ReturnType<typeof setTimeout>,
     };
     entry.timer = setTimeout(() => {

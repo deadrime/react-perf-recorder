@@ -59,7 +59,11 @@ export class Highlighter implements HighlightSink {
       this.counts.set(fiber, count);
       if (fiber.alternate) this.counts.set(fiber.alternate, count);
       const known = this.pending.get(el);
-      this.pending.set(el, { name: known?.name ?? name, count: Math.max(count, known?.count ?? 0), wasted: withoutDom.has(fiber) && (known?.wasted ?? true) });
+      this.pending.set(el, {
+        name: known?.name ?? name,
+        count: Math.max(count, known?.count ?? 0),
+        wasted: withoutDom.has(fiber) && (known?.wasted ?? true),
+      });
     }
     if (!this.frameRequested) {
       this.frameRequested = true;

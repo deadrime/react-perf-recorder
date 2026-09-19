@@ -258,11 +258,18 @@ export class Recorder {
     const entry = { atMs: Math.round(this.now()), type, paths: paths.slice(0, 10) };
     this.hmr.push(entry);
     this.emit({ k: 'hmr', ...entry });
-    if (!this.warnings.some((w) => w.startsWith('HMR'))) this.warnings.push('HMR update during the recording: commits around it include react-refresh work');
+    if (!this.warnings.some((w) => w.startsWith('HMR')))
+      this.warnings.push('HMR update during the recording: commits around it include react-refresh work');
   }
 
   live() {
-    return { commits: this.totals.commits, commitsInScope: this.totals.commitsInScope, renders: this.totals.renders, elapsedMs: Math.round(this.now()), scopeState: this.scope?.state ?? null };
+    return {
+      commits: this.totals.commits,
+      commitsInScope: this.totals.commitsInScope,
+      renders: this.totals.renders,
+      elapsedMs: Math.round(this.now()),
+      scopeState: this.scope?.state ?? null,
+    };
   }
 
   stop(): RecordingV1 {
@@ -381,7 +388,13 @@ export class Recorder {
         const wasted = !c.touched.has(f);
         let comp = this.components.get(name);
         if (!comp) {
-          comp = { renders: 0, withoutDom: 0, byParent: 0, memo: f.tag === Tag.MemoComponent || f.tag === Tag.SimpleMemoComponent, reasons: new Map() };
+          comp = {
+            renders: 0,
+            withoutDom: 0,
+            byParent: 0,
+            memo: f.tag === Tag.MemoComponent || f.tag === Tag.SimpleMemoComponent,
+            reasons: new Map(),
+          };
           this.components.set(name, comp);
         }
         comp.renders++;
@@ -427,7 +440,10 @@ export class Recorder {
       if (!(isolate && f === start) && f.sibling) stack.push([f.sibling, parentDid, currentPath, currentKey, pending, zoneTag]);
       const untouched = this.prune && f.alternate !== null && f.child === f.alternate.child;
       if (f.child && !untouched) {
-        const childPath = name && !this.wrapperRe.test(name) && !isProvider(name) ? [name, ...currentPath.split(' < ').filter(Boolean)].slice(0, 4).join(' < ') : currentPath;
+        const childPath =
+          name && !this.wrapperRe.test(name) && !isProvider(name)
+            ? [name, ...currentPath.split(' < ').filter(Boolean)].slice(0, 4).join(' < ')
+            : currentPath;
         stack.push([f.child, rendered, childPath, rendered ? key : currentKey, nextPending, zone]);
       }
     }
@@ -735,14 +751,27 @@ export class Recorder {
       createdAt: new Date().toISOString(),
       ...(this.options.label ? { label: this.options.label } : {}),
       tool: { version: this.config.version, source: this.options.source ?? 'panel', plugins: this.deps.plugins.info() },
-      page: { url: location.href, title: document.title, viewport: `${innerWidth}×${innerHeight}`, dpr: devicePixelRatio, userAgent: navigator.userAgent },
+      page: {
+        url: location.href,
+        title: document.title,
+        viewport: `${innerWidth}×${innerHeight}`,
+        dpr: devicePixelRatio,
+        userAgent: navigator.userAgent,
+      },
       react: { version: reactVersion(), roots: this.roots.length, profileTimings: this.rootList.some((r) => r.renderMs > 0) },
       ...(this.options.meta ? { meta: this.options.meta } : {}),
       options: optionsJson(this.options),
       startedAt: this.startedAt.toISOString(),
       durationMs,
       scope: this.scope
-        ? { name: this.scope.name, source: this.scope.source, path: this.scope.ancestorNames().slice(-6), state: this.scope.state, remounts: this.scope.remounts, lostAtMs: this.scope.lostAtMs }
+        ? {
+            name: this.scope.name,
+            source: this.scope.source,
+            path: this.scope.ancestorNames().slice(-6),
+            state: this.scope.state,
+            remounts: this.scope.remounts,
+            lostAtMs: this.scope.lostAtMs,
+          }
         : null,
       totals: {
         commits,
@@ -793,7 +822,11 @@ export class Recorder {
       segments,
       latency: this.frames.latency,
       timeline: {
-        entries: this.timeline.map((e) => ({ ...e, ...(e.roots ? { roots: mapRoots(e.roots) } : {}), ...(e.outside !== undefined ? { outside: remap.get(e.outside) } : {}) })),
+        entries: this.timeline.map((e) => ({
+          ...e,
+          ...(e.roots ? { roots: mapRoots(e.roots) } : {}),
+          ...(e.outside !== undefined ? { outside: remap.get(e.outside) } : {}),
+        })),
         truncated: this.truncated,
       },
       bigCommits: this.bigCommits,

@@ -74,7 +74,18 @@ export function createMemoInstrumentation(): MemoInstrumentation {
       if (typeof fn !== 'function') return factory.apply(this, args);
       const options = args[index + 1];
       const size = options && typeof options === 'object' && typeof options.size === 'number' ? options.size : 1;
-      const rec: MemoRecord = { name: '', file: '', kind, size, calls: 0, recomputes: 0, nestedCalls: 0, recomputesOnArgSwitch: 0, distinct: new Set(), lastKey: null };
+      const rec: MemoRecord = {
+        name: '',
+        file: '',
+        kind,
+        size,
+        calls: 0,
+        recomputes: 0,
+        nestedCalls: 0,
+        recomputesOnArgSwitch: 0,
+        distinct: new Set(),
+        lastKey: null,
+      };
       const inner = function (this: unknown, ...innerArgs: unknown[]) {
         if (state.on) rec.recomputes++;
         return fn.apply(this, innerArgs);
@@ -132,7 +143,8 @@ export function createMemoInstrumentation(): MemoInstrumentation {
       return byFn.get(fn)?.name || null;
     },
     start() {
-      for (const rec of records()) Object.assign(rec, { calls: 0, recomputes: 0, nestedCalls: 0, recomputesOnArgSwitch: 0, distinct: new Set(), lastKey: null });
+      for (const rec of records())
+        Object.assign(rec, { calls: 0, recomputes: 0, nestedCalls: 0, recomputesOnArgSwitch: 0, distinct: new Set(), lastKey: null });
       state.on = true;
       state.depth = 0;
     },
@@ -144,7 +156,19 @@ export function createMemoInstrumentation(): MemoInstrumentation {
         if (!rec.calls) continue;
         const name = rec.name || `${rec.kind}@${rec.site ?? 'unknown'}`;
         const key = `${name}|${rec.file}`;
-        const stat = merged.get(key) ?? { name, file: rec.file, kind: rec.kind, size: rec.size, calls: 0, recomputes: 0, hitRate: 0, nestedCalls: 0, recomputesOnArgSwitch: 0, distinctArgs: 0, thrash: false };
+        const stat = merged.get(key) ?? {
+          name,
+          file: rec.file,
+          kind: rec.kind,
+          size: rec.size,
+          calls: 0,
+          recomputes: 0,
+          hitRate: 0,
+          nestedCalls: 0,
+          recomputesOnArgSwitch: 0,
+          distinctArgs: 0,
+          thrash: false,
+        };
         stat.calls += rec.calls;
         stat.recomputes += rec.recomputes;
         stat.nestedCalls += rec.nestedCalls;
