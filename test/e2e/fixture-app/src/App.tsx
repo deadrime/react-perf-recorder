@@ -53,13 +53,19 @@ export const Panel = () => (
   </section>
 );
 
-export const App = () => (
-  <main>
-    <Panel />
-    <AmountForm />
-    <Status />
-    <button type="button" data-testid="tick" onClick={() => useCounterStore.getState().tick()}>
-      tick
-    </button>
-  </main>
-);
+export const App = () => {
+  const [renders, setRenders] = useState(0);
+  return (
+    <main data-renders={renders}>
+      <Panel />
+      <AmountForm />
+      <Status />
+      <button type="button" data-testid="tick" onClick={() => useCounterStore.getState().tick()}>
+        tick
+      </button>
+      <button type="button" data-testid="rerender-app" onClick={() => setRenders((n) => n + 1)}>
+        rerender
+      </button>
+    </main>
+  );
+};

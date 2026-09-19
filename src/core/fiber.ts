@@ -150,20 +150,74 @@ export function compositeChain(f: Fiber): Fiber[] {
   return chain.reverse();
 }
 
-export function reactVersion(): string | null {
-  const hook = (globalThis as { __REACT_DEVTOOLS_GLOBAL_HOOK__?: { renderers?: Map<number, { version?: string }> } }).__REACT_DEVTOOLS_GLOBAL_HOOK__;
-  for (const renderer of hook?.renderers?.values() ?? []) if (renderer.version) return renderer.version;
-  return null;
-}
-
 export interface Renderer {
   version?: string;
   currentDispatcherRef?: { current: unknown } | { H: unknown };
   getLaneLabelMap?: () => Map<number, string>;
 }
 
+type InjectFn = ((renderer: Renderer) => number) & { rprCaptured?: boolean };
+
+interface DevtoolsHook {
+  renderers?: Map<number, Renderer>;
+  inject?: InjectFn;
+}
+
+const captured = new Set<Renderer>();
+
+/**
+ * Remembers every renderer React injects into the DevTools hook. The hook's own `renderers` map is not reliable: the
+ * React Refresh hook (Vite's react plugins) counts injections without storing them. Must run before react-dom loads;
+ * installs a minimal hook when there is none, otherwise wraps the existing `inject` and keeps its behaviour.
+ */
+export function captureRenderers() {
+  const target = globalThis as { __REACT_DEVTOOLS_GLOBAL_HOOK__?: DevtoolsHook & Record<string, unknown> };
+  let hook = target.__REACT_DEVTOOLS_GLOBAL_HOOK__;
+  if (!hook) {
+    const renderers = new Map<number, Renderer>();
+    const noop = () => {};
+    hook = {
+      renderers,
+      supportsFiber: true,
+      isDisabled: false,
+      inject(renderer: Renderer) {
+        const id = renderers.size + 1;
+        renderers.set(id, renderer);
+        return id;
+      },
+      onCommitFiberRoot: noop,
+      onCommitFiberUnmount: noop,
+      onPostCommitFiberRoot: noop,
+      onScheduleFiberRoot: noop,
+      checkDCE: noop,
+      on: noop,
+      off: noop,
+      emit: noop,
+      sub: () => noop,
+    };
+    target.__REACT_DEVTOOLS_GLOBAL_HOOK__ = hook;
+  }
+  for (const renderer of hook.renderers?.values() ?? []) captured.add(renderer);
+  const original = hook.inject;
+  if (typeof original === 'function' && !original.rprCaptured) {
+    const inject: InjectFn = function (this: unknown, renderer: Renderer) {
+      captured.add(renderer);
+      return original.call(this, renderer);
+    };
+    inject.rprCaptured = true;
+    hook.inject = inject;
+  }
+}
+
+function knownRenderers(): Renderer[] {
+  const hook = (globalThis as { __REACT_DEVTOOLS_GLOBAL_HOOK__?: DevtoolsHook }).__REACT_DEVTOOLS_GLOBAL_HOOK__;
+  return [...captured, ...(hook?.renderers?.values() ?? [])];
+}
+
+export function reactVersion(): string | null {
+  return knownRenderers().find((r) => r.version)?.version ?? null;
+}
+
 export function renderer(): Renderer | null {
-  const hook = (globalThis as { __REACT_DEVTOOLS_GLOBAL_HOOK__?: { renderers?: Map<number, Renderer> } }).__REACT_DEVTOOLS_GLOBAL_HOOK__;
-  for (const r of hook?.renderers?.values() ?? []) if (r.currentDispatcherRef) return r;
-  return null;
+  return knownRenderers().find((r) => r.currentDispatcherRef) ?? null;
 }

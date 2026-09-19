@@ -31,7 +31,9 @@ export default defineConfig([
     target: 'node18',
     // The MCP server runs from a file: link too, where npm does not install the package's dependencies.
     noExternal: [/.*/],
-    banner: { js: "#!/usr/bin/env node\nimport { createRequire as __rprCreateRequire } from 'node:module';\nconst require = __rprCreateRequire(import.meta.url);" },
+    banner: {
+      js: "#!/usr/bin/env node\nimport { createRequire as __rprCreateRequire } from 'node:module';\nconst require = __rprCreateRequire(import.meta.url);",
+    },
     define,
   },
   {

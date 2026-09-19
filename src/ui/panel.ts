@@ -268,7 +268,7 @@ export class Panel {
     owners.forEach((owner, i) => {
       const item = h(
         'li',
-        { 'data-active': String(i === active), 'data-wrapper': String(owner.wrapper) },
+        { 'data-active': String(i === active), 'data-wrapper': String(owner.wrapper), 'data-name': owner.name },
         h('span', {}, owner.name),
         h('span', { class: 'src' }, owner.source)
       );

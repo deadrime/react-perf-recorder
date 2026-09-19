@@ -1,4 +1,5 @@
 import { Engine, type BootConfig } from '../core/engine';
+import { captureRenderers } from '../core/fiber';
 import { PluginHost, type PluginEntry } from '../core/plugins';
 import { SessionWriter } from '../core/transport';
 import { Highlighter } from '../overlay/highlight';
@@ -30,6 +31,7 @@ declare global {
 export function boot(config: ClientConfig, plugins: PluginEntry[], hot?: HotContext): RecorderGlobal {
   const existing = window[GLOBAL_KEY];
   if (existing) return existing;
+  captureRenderers();
   const host = new PluginHost(plugins);
   host.setupAll();
   const engine = new Engine(config, host);
