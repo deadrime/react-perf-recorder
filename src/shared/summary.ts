@@ -69,10 +69,19 @@ export function hookText(hook: HookInfo | undefined): string {
   return `${path}${site}`;
 }
 
+/** Key of a context reason in `RootStat.hooks`: `ctx:Location` for `context Location SAME-CONTENT`. */
+export const contextKey = (text: string) => `ctx:${text.replace(/^context /, '').replace(/ SAME-CONTENT$/, '')}`;
+
+/** The hooks entry behind a reason: `#N` for state and stores, `ctx:<name>` for contexts. */
+export function hookOf(root: RootStat, text: string) {
+  if (text.startsWith('context ')) return root.hooks?.[contextKey(text)];
+  const index = /#(\d+)/.exec(text)?.[1];
+  return index !== undefined ? root.hooks?.[index] : undefined;
+}
+
 /** `12× state #2 SAME-CONTENT · useController › useFormState › State @ src/Field.tsx:48 const { fieldState } = …` */
 export function reasonLine(root: RootStat, [text, n]: [string, number]): string {
-  const index = /#(\d+)/.exec(text)?.[1];
-  const hook = index !== undefined ? hookText(root.hooks?.[index]) : '';
+  const hook = hookText(hookOf(root, text));
   return `${n}× ${text}${hook ? ` · ${hook}` : ''}`;
 }
 

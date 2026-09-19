@@ -1,4 +1,5 @@
 import { createContext, memo, useContext, useReducer, useState } from 'react';
+import { reasonLine } from '../../src/shared/summary';
 import { flush, makeRecorder, mount } from './helpers';
 
 type Setter = (n: number) => void;
@@ -79,5 +80,32 @@ describe('render reasons', () => {
     flush(() => dispatch(0));
     const rec = recorder.stop();
     expect(rec.components.find((c) => c.name === 'Radio')?.reasons).toEqual([['bailout: state set to the same value', 1]]);
+  });
+
+  it('names the custom hooks that read a changed context', () => {
+    const Theme = createContext({ dark: false });
+    Theme.displayName = 'Theme';
+    const useTheme = () => useContext(Theme);
+    const Badge = () => <b>{String(useTheme().dark)}</b>;
+    // A memo boundary that does not re-render: the context change alone starts the cascade at Badge.
+    const Middle = memo(() => <Badge />);
+    let toggle!: (n: number) => void;
+    const App = () => {
+      const [dark, setDark] = useState(0);
+      toggle = setDark;
+      return (
+        <Theme.Provider value={{ dark: dark > 0 }}>
+          <Middle />
+        </Theme.Provider>
+      );
+    };
+    mount(<App />);
+    const { recorder } = makeRecorder();
+    recorder.start();
+    flush(() => toggle(1));
+    const rec = recorder.stop();
+    const badge = rec.roots.find((r) => r.name === 'Badge')!;
+    expect(badge.hooks?.['ctx:Theme']?.path).toEqual(['useTheme', 'Context']);
+    expect(reasonLine(badge, badge.reasons[0])).toMatch(/^1× context Theme · useTheme › Context/);
   });
 });

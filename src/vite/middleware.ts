@@ -111,21 +111,23 @@ export class SessionStore {
     writeAtomic(path.join(dir, 'session.json'), JSON.stringify(meta, null, 2));
   }
 
-  async finish(id: string, recording: RecordingV1): Promise<{ id: string; dir: string }> {
+  async finish(id: string, recording: RecordingV1): Promise<{ id: string; dir: string; sites: Record<string, { site: string; code?: string }> }> {
     const dir = this.sessionDir(id);
     const meta = this.readMeta(dir);
-    await this.mapHookSites(recording);
+    const sites = await this.mapHookSites(recording);
     writeAtomic(path.join(dir, 'recording.json'), JSON.stringify({ ...recording, id }, null, 1));
     meta.status = 'done';
     meta.updatedAt = new Date().toISOString();
     writeAtomic(path.join(dir, 'session.json'), JSON.stringify(meta, null, 2));
     this.tokens.delete(id);
-    return { id, dir };
+    // The page keeps its own copy of the recording: it gets the mapped call sites back to show them too.
+    return { id, dir, sites };
   }
 
-  private async mapHookSites(recording: RecordingV1) {
+  private async mapHookSites(recording: RecordingV1): Promise<Record<string, { site: string; code?: string }>> {
+    const sites: Record<string, { site: string; code?: string }> = {};
     const mapSite = this.options.mapSite;
-    if (!mapSite) return;
+    if (!mapSite) return sites;
     const cache = new Map<string, Promise<{ site: string; code?: string } | null>>();
     for (const root of [...recording.roots, ...recording.outsideRoots]) {
       for (const hook of Object.values(root.hooks ?? {})) {
@@ -139,12 +141,14 @@ export class SessionStore {
           );
         const mapped = await cache.get(key)!;
         if (mapped) {
+          sites[key] = mapped;
           hook.site = mapped.site;
           if (mapped.code) hook.code = mapped.code;
           delete hook.generated;
         }
       }
     }
+    return sites;
   }
 
   private sessionDir(id: string) {

@@ -12,6 +12,8 @@ export interface Reason {
   text: string;
   /** Index `#N` in the hook list, for external store and state reasons. */
   hook?: number;
+  /** The context object of a `context X` reason, to name the hooks that read it. */
+  context?: object;
 }
 
 export interface Describer {
@@ -89,7 +91,7 @@ export function reasonsOf(prev: Snapshot, f: Fiber, describe: Describer): Reason
     for (let d: ContextDependency | null = current; d; d = d.next) {
       if (!old.has(d.context) || old.get(d.context) === d.memoizedValue) continue;
       const mark = same(old.get(d.context), d.memoizedValue) ? ' SAME-CONTENT' : '';
-      out.push({ text: `context ${d.context.displayName || '(unnamed)'}${mark}` });
+      out.push({ text: `context ${d.context.displayName || '(unnamed)'}${mark}`, context: d.context });
     }
   }
   // The function ran (new hook list) yet no state, store value, prop or context differs: React rendered it for an

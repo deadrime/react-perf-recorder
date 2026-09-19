@@ -32,6 +32,19 @@ export interface Saved extends RecordingV1 {
   saveError?: string;
 }
 
+function applySites(recording: RecordingV1, sites: Record<string, { site: string; code?: string }>) {
+  for (const root of [...recording.roots, ...recording.outsideRoots]) {
+    for (const hook of Object.values(root.hooks ?? {})) {
+      const g = hook.generated;
+      const mapped = g && sites[`${g.url}:${g.line}:${g.column}`];
+      if (!mapped) continue;
+      hook.site = mapped.site;
+      if (mapped.code) hook.code = mapped.code;
+      delete hook.generated;
+    }
+  }
+}
+
 /** The page-side API: `window.__REACT_PERF_RECORDER__.engine`. */
 export class Engine {
   last: Saved | null = null;
@@ -136,8 +149,10 @@ export class Engine {
     }
     if (writer) {
       const saved: SavedSession | null = await writer.finish(recording);
-      if (saved) Object.assign(recording, { id: saved.id, dir: saved.dir });
-      else recording.saveError = writer.failed ?? 'not saved';
+      if (saved) {
+        Object.assign(recording, { id: saved.id, dir: saved.dir });
+        applySites(recording, saved.sites ?? {});
+      } else recording.saveError = writer.failed ?? 'not saved';
     }
     this.last = recording;
     return recording;

@@ -12,6 +12,8 @@ export interface OpenMeta {
 export interface SavedSession {
   id: string;
   dir: string;
+  /** `url:line:column` of a generated call site → its line in the source. */
+  sites?: Record<string, { site: string; code?: string }>;
 }
 
 const FLUSH_MS = 2000;

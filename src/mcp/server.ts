@@ -3,7 +3,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
 import { z } from 'zod';
 import { compareRecordings } from '../shared/compare';
-import { hookText, rootLine, summarize } from '../shared/summary';
+import { hookOf, hookText, rootLine, summarize } from '../shared/summary';
 import type { RecordingV1 } from '../shared/schema';
 import { findSession, listSessions, readRecording, waitForSession } from './store';
 
@@ -43,12 +43,11 @@ export function section(rec: RecordingV1 & { id?: string; status?: string }, nam
         rec.segments.map((s) => ({
           ...s,
           action: actions.get(s.action),
-          topRoots: s.topRoots.map(([i, n]) => ({
-            root: roots[i]?.name,
-            renders: n,
-            reason: roots[i]?.reasons[0]?.[0],
-            hook: roots[i] ? hookText(roots[i].hooks?.[/#(\d+)/.exec(roots[i].reasons[0]?.[0] ?? '')?.[1] ?? '']) : '',
-          })),
+          topRoots: s.topRoots.map(([i, n]) => {
+            const root = roots[i];
+            const reason = root?.reasons[0]?.[0];
+            return { root: root?.name, renders: n, reason, hook: root && reason ? hookText(hookOf(root, reason)) : '' };
+          }),
         }))
       );
     }

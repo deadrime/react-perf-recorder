@@ -11,6 +11,8 @@ interface Frame {
 
 interface LoggedHook {
   primitive: string;
+  /** The context a `useContext` call read: context reasons get the same custom-hook path. */
+  context?: object;
   /** Index of the first hook object the call consumed: the same `#N` the reasons use. */
   index: number | null;
   stack: string;
@@ -36,7 +38,12 @@ export function parseStack(stack: string): Frame[] {
  * Re-runs a function component with a stand-in dispatcher, like React DevTools does when a component is selected, and
  * reads which custom hooks each primitive hook was called from. Never call it inside a commit.
  */
-export function inspectHooks(fiber: Fiber): Map<number, HookInfo> | null {
+export interface InspectedHooks {
+  hooks: Map<number, HookInfo>;
+  contexts: Map<object, HookInfo>;
+}
+
+export function inspectHooks(fiber: Fiber): InspectedHooks | null {
   const render = renderFunctionOf(fiber);
   const ref = renderer()?.currentDispatcherRef as { current?: unknown; H?: unknown } | undefined;
   if (!render || !ref) return null;
@@ -49,7 +56,8 @@ export function inspectHooks(fiber: Fiber): Map<number, HookInfo> | null {
     index++;
     return current;
   };
-  const logged = (primitive: string, first: number | null) => log.push({ primitive, index: first, stack: new Error().stack ?? '' });
+  const logged = (primitive: string, first: number | null, context?: object) =>
+    log.push({ primitive, index: first, context, stack: new Error().stack ?? '' });
   const stateHook = (primitive: string, count = 1) => {
     const first = index;
     const current = next();
@@ -64,7 +72,7 @@ export function inspectHooks(fiber: Fiber): Map<number, HookInfo> | null {
   const dispatcher: Record<string, Function> = {
     readContext,
     useContext: function __rpr_useContext(context: { _currentValue?: unknown }) {
-      logged('Context', null);
+      logged('Context', null, context);
       return readContext(context);
     },
     useState: function __rpr_useState() {
@@ -178,10 +186,11 @@ function setupContexts(fiber: Fiber): () => void {
 
 const reactExport = (primitive: string) => `use${primitive}`;
 
-function buildInfo(fiber: Fiber, log: LoggedHook[]): Map<number, HookInfo> {
-  const out = new Map<number, HookInfo>();
+function buildInfo(fiber: Fiber, log: LoggedHook[]): InspectedHooks {
+  const hooks = new Map<number, HookInfo>();
+  const contexts = new Map<object, HookInfo>();
   for (const entry of log) {
-    if (entry.index === null) continue;
+    if (entry.index === null && !entry.context) continue;
     const frames = parseStack(entry.stack);
     const renderAt = frames.findIndex((f) => f.fn.includes(RENDER_MARK));
     const dispatcherAt = frames.findIndex((f) => f.fn.includes(DISPATCHER_MARK));
@@ -196,11 +205,13 @@ function buildInfo(fiber: Fiber, log: LoggedHook[]): Map<number, HookInfo> {
       .filter(Boolean)
       .reverse();
     const site = frames[component];
-    out.set(entry.index, {
-      type: hookTypeAt(fiber, entry.index),
+    const info: HookInfo = {
+      ...(entry.index !== null ? { type: hookTypeAt(fiber, entry.index) } : {}),
       path: [...custom, entry.primitive],
       ...(site ? { generated: { url: site.url, line: site.line, column: site.column } } : {}),
-    });
+    };
+    if (entry.index !== null) hooks.set(entry.index, info);
+    else if (entry.context && !contexts.has(entry.context)) contexts.set(entry.context, info);
   }
-  return out;
+  return { hooks, contexts };
 }

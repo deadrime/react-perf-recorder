@@ -34,7 +34,8 @@ import {
   type Fiber,
   type FiberRoot,
 } from './fiber';
-import { inspectHooks } from './hook-names';
+import { contextKey } from '../shared/summary';
+import { inspectHooks, type InspectedHooks } from './hook-names';
 import type { CauseEvent, PluginHost } from './plugins';
 import { didRender, hookTypeAt, parentReason, reasonsOf, snapshotOf, type Reason, type Snapshot } from './reasons';
 import { ScopeTracker, type ScopeHandle, type ScopeResolution } from './scope';
@@ -97,6 +98,7 @@ interface RootAgg {
   noDomChange: number;
   renderMs: number;
   hookIdx: Set<number>;
+  contexts: Map<string, object>;
   latest: WeakRef<Fiber> | null;
 }
 
@@ -487,6 +489,7 @@ export class Recorder {
         noDomChange: 0,
         renderMs: 0,
         hookIdx: new Set(),
+        contexts: new Map(),
         latest: null,
       };
       this.rootsByKey.set(key, agg);
@@ -507,6 +510,7 @@ export class Recorder {
     for (const reason of reasons) {
       agg.reasons.set(reason.text, (agg.reasons.get(reason.text) ?? 0) + 1);
       if (reason.hook !== undefined) agg.hookIdx.add(reason.hook);
+      if (reason.context) agg.contexts.set(contextKey(reason.text), reason.context);
       ids.add(this.reasonId(reason.text));
     }
     c.reasons.set(agg, ids);
@@ -693,11 +697,11 @@ export class Recorder {
   // ---- result ----------------------------------------------------------------------------------------------------
 
   private hookInfo(agg: RootAgg): Record<string, HookInfo> | undefined {
-    if (!agg.hookIdx.size) return undefined;
+    if (!agg.hookIdx.size && !agg.contexts.size) return undefined;
     const fiber = agg.latest?.deref();
     if (!fiber) return undefined;
     const out: Record<string, HookInfo> = {};
-    let names: Map<number, HookInfo> | null = null;
+    let names: InspectedHooks | null = null;
     if (this.options.hookNames !== false && isMounted(fiber)) {
       try {
         names = inspectHooks(fiber);
@@ -705,7 +709,11 @@ export class Recorder {
         this.warnings.push(`hook names for ${agg.name}: ${String((error as Error)?.message ?? error).slice(0, 120)}`);
       }
     }
-    for (const index of agg.hookIdx) out[index] = names?.get(index) ?? { type: hookTypeAt(fiber, index) };
+    for (const index of agg.hookIdx) out[index] = names?.hooks.get(index) ?? { type: hookTypeAt(fiber, index) };
+    for (const [key, context] of agg.contexts) {
+      const info = names?.contexts.get(context);
+      if (info) out[key] = info;
+    }
     return out;
   }
 
