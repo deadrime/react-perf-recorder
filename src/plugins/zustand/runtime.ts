@@ -81,7 +81,8 @@ export default definePlugin((options: { devtools?: boolean } | null) => {
         if (!ctx?.recording || !state || typeof state !== 'object') return;
         const event = eventByState.get(state as object);
         const type = typeof action === 'string' ? action : (action as { type?: string } | null)?.type;
-        if (event && type) {
+        // `set()` without a name reaches devtools as `anonymous`: keep `<store>.setState`, its keys say more.
+        if (event && type && type !== 'anonymous') {
           event.type = type;
           actions++;
         }

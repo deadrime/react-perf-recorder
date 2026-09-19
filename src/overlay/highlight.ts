@@ -35,6 +35,7 @@ export class Highlighter implements HighlightSink {
   private flashes: Flash[] = [];
   private frameRequested = false;
   private drawing = false;
+  private costMs = 0;
 
   constructor(parent: ShadowRoot | Element) {
     this.canvas = document.createElement('canvas');
@@ -44,6 +45,12 @@ export class Highlighter implements HighlightSink {
     this.ctx = this.canvas.getContext('2d');
     this.resize();
     window.addEventListener('resize', () => this.resize());
+  }
+
+  takeCostMs() {
+    const cost = this.costMs;
+    this.costMs = 0;
+    return cost;
   }
 
   reset() {
@@ -72,6 +79,7 @@ export class Highlighter implements HighlightSink {
   }
 
   private measure() {
+    const started = performance.now();
     this.frameRequested = false;
     const batch = this.pending;
     this.pending = new Map();
@@ -93,11 +101,13 @@ export class Highlighter implements HighlightSink {
       }
     });
     targets.forEach((el) => observer.observe(el));
+    this.costMs += performance.now() - started;
   }
 
   private draw() {
     const ctx = this.ctx;
     if (!ctx) return;
+    const started = performance.now();
     const now = performance.now();
     this.flashes = this.flashes.filter((f) => now - f.start < FADE_MS);
     this.clear();
@@ -121,6 +131,7 @@ export class Highlighter implements HighlightSink {
         ctx.fillText(label, f.x + 3, y + 11);
       }
     }
+    this.costMs += performance.now() - started;
     if (this.flashes.length) requestAnimationFrame(() => this.draw());
     else this.drawing = false;
   }

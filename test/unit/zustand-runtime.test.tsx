@@ -29,6 +29,8 @@ describe('zustand plugin runtime', () => {
     expect(events[0]).toMatchObject({ plugin: 'zustand', type: 'counter/inc', data: { store: 'useStore' } });
     expect(events[0].changes?.map((c) => c.key)).toEqual(['n']);
     expect(sent).toEqual([{ type: 'counter/inc' }]);
+    useStore.setState({ n: 5 });
+    expect(host.drain()[0]).toMatchObject({ type: 'useStore.setState', changes: [{ key: 'n' }] });
     host.stop({ scope: null, findFibers: () => [] });
   });
 

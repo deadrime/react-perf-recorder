@@ -69,6 +69,8 @@ export interface RecordOptions {
 
 export interface HighlightSink {
   flash(pairs: Array<[Element, string, Fiber]>, withoutDom: Set<Fiber>): void;
+  /** Time spent measuring and drawing outside commits since the last call. */
+  takeCostMs?(): number;
 }
 
 export interface RecorderDeps {
@@ -300,6 +302,7 @@ export class Recorder {
     const sections = this.deps.plugins.stop({ scope: this.scopeInfo, findFibers: (pred, limit) => this.findFibers(pred, limit) });
     this.warnings.push(...this.deps.plugins.warnings.splice(0));
     const conditionsAfter = this.readConditions();
+    this.overlayMs += this.deps.highlight?.takeCostMs?.() ?? 0;
     const durationMs = Math.round(this.now());
     this.emit({ k: 'end', atMs: durationMs });
     return this.build(durationMs, sections, conditionsAfter);
