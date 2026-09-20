@@ -1,13 +1,9 @@
 import type { HookInfo } from '../shared/schema';
 import { Tag, renderer, type Fiber, type Hook } from './fiber';
 import { hookTypeAt } from './reasons';
+import { libraryOf, parseStack } from './stack';
 
-interface Frame {
-  fn: string;
-  url: string;
-  line: number;
-  column: number;
-}
+export { parseStack } from './stack';
 
 interface LoggedHook {
   primitive: string;
@@ -20,19 +16,6 @@ interface LoggedHook {
 
 const RENDER_MARK = '__rprInspectRender';
 const DISPATCHER_MARK = '__rpr_';
-
-const V8_FRAME = /^\s*at (?:(?:async )?(.+?) \()?(.+?):(\d+):(\d+)\)?\s*$/;
-const GECKO_FRAME = /^\s*(.*?)@(.+?):(\d+):(\d+)\s*$/;
-
-export function parseStack(stack: string): Frame[] {
-  const frames: Frame[] = [];
-  for (const line of stack.split('\n')) {
-    const m = V8_FRAME.exec(line) ?? GECKO_FRAME.exec(line);
-    if (!m) continue;
-    frames.push({ fn: (m[1] ?? '').replace(/^Object\./, '').replace(/ \[as .+\]$/, ''), url: m[2], line: Number(m[3]), column: Number(m[4]) });
-  }
-  return frames;
-}
 
 /**
  * Re-runs a function component with a stand-in dispatcher, like React DevTools does when a component is selected, and
@@ -199,15 +182,20 @@ function buildInfo(fiber: Fiber, log: LoggedHook[]): InspectedHooks {
     // React's export (`useState` in react.development.js) only forwards to the dispatcher.
     if (start < renderAt && frames[start].fn.split('.').pop() === reactExport(entry.primitive)) start++;
     const component = renderAt - 1;
-    const custom = frames
+    const steps = frames
       .slice(start, component)
-      .map((f) => f.fn.split('.').pop() || '')
-      .filter(Boolean)
+      .map((f) => ({ name: f.fn.split('.').pop() || '', library: libraryOf(f.url) }))
+      // The recorder's own wrappers (zustand, proxy-memoize) are not part of the app's chain.
+      .filter((step) => step.name && step.library !== 'react-perf-recorder')
       .reverse();
     const site = frames[component];
+    // Where the app hands over to a package: the edit is on the app side of it, the rest is how the package works.
+    const at = steps.findIndex((step) => step.library !== null);
+    const library = at >= 0 ? steps.slice(at).find((step) => step.library)?.library || 'deps' : undefined;
     const info: HookInfo = {
       ...(entry.index !== null ? { type: hookTypeAt(fiber, entry.index) } : {}),
-      path: [...custom, entry.primitive],
+      path: [...steps.map((step) => step.name), entry.primitive],
+      ...(library ? { library, libraryAt: at } : {}),
       ...(site ? { generated: { url: site.url, line: site.line, column: site.column } } : {}),
     };
     if (entry.index !== null) hooks.set(entry.index, info);

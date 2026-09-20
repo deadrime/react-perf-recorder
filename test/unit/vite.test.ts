@@ -46,7 +46,7 @@ describe('perfRecorder vite plugin', () => {
   });
 
   it('proxies store and memoizer modules for app code only', async () => {
-    const app = path.join(fixture, 'src/store.ts');
+    const app = path.join(fixture, 'src/store/selectors.ts');
     expect((await server.pluginContainer.resolveId('proxy-memoize', app))?.id).toBe('\0react-perf-recorder:proxy-memoize:proxy-memoize');
     expect((await server.pluginContainer.resolveId('zustand', app))?.id).toBe('\0react-perf-recorder:zustand:zustand');
     const fromLib = await server.pluginContainer.resolveId('zustand', path.resolve(__dirname, '../../node_modules/zustand/esm/middleware.mjs'));
@@ -54,37 +54,53 @@ describe('perfRecorder vite plugin', () => {
   });
 
   it('names selectors, stores and memo components', async () => {
-    const store = await server.transformRequest('/src/store.ts');
-    expect(store?.code).toContain('__rprNameMemoized(selectCount, "selectCount", "src/store.ts")');
-    expect(store?.code).toContain('__rprNameMemoized(selectRow, "selectRow", "src/store.ts")');
-    expect(store?.code).toContain('__rprNameStore(useCounterStore, "useCounterStore")');
-    const app = await server.transformRequest('/src/App.tsx');
-    expect(app?.code).toContain('Row.displayName = "Row"');
+    const selectors = await server.transformRequest('/src/store/selectors.ts');
+    expect(selectors?.code).toContain('__rprNameMemoized(selectPositionIds, "selectPositionIds", "src/store/selectors.ts")');
+    expect(selectors?.code).toContain('__rprNameMemoized(selectPositionInfo, "selectPositionInfo", "src/store/selectors.ts")');
+    const store = await server.transformRequest('/src/store/terminal.ts');
+    expect(store?.code).toContain('__rprNameStore(useTerminalStore, "useTerminalStore")');
+    expect(store?.code).toContain('__rprNameStore(priceStore, "priceStore")');
+    const rows = await server.transformRequest('/src/components/Positions.tsx');
+    expect(rows?.code).toContain('PositionRow.displayName = "PositionRow"');
   });
 
   it('writes a session: open, events, finish, with hook sites mapped to the source', async () => {
     const opened = await (
       await post('sessions', {
         source: 'panel',
-        scope: { name: 'Panel', source: 'src/App.tsx:1' },
+        scope: { name: 'Panel', source: 'src/components/Header.tsx:1' },
         page: { url: 'x', title: '', viewport: '1×1', dpr: 1, userAgent: '' },
       })
     ).json();
     expect(opened.id).toMatch(/^\d{8}-\d{6}-Panel-panel-[0-9a-f]{4}$/);
     expect((await post(`sessions/${opened.id}/events`, { events: [{ k: 'commit', t: 1, n: 2 }] })).status).toBe(200);
 
-    const app = (await server.transformRequest('/src/App.tsx'))!;
-    const lines = app.code.split('\n');
-    const line = lines.findIndex((l) => l.includes('useCounterStore(selectCount)')) + 1;
-    const column = lines[line - 1].indexOf('useCounterStore(selectCount)') + 1;
+    const call = 'useTerminalStore(selectBalance)';
+    const header = (await server.transformRequest('/src/components/Header.tsx'))!;
+    const lines = header.code.split('\n');
+    const line = lines.findIndex((l) => l.includes(call)) + 1;
+    const column = lines[line - 1].indexOf(call) + 1;
+    const sourceLine =
+      fs
+        .readFileSync(path.join(fixture, 'src/components/Header.tsx'), 'utf8')
+        .split('\n')
+        .findIndex((l) => l.includes(call)) + 1;
     const recording = {
       schema: 'react-perf-recorder/recording',
-      roots: [{ name: 'Counter', hooks: { 0: { path: ['useCount', 'useCounterStore'], generated: { url: `${base}/src/App.tsx`, line, column } } } }],
+      roots: [
+        {
+          name: 'Balance',
+          hooks: { 0: { path: ['useBalance', 'useBoundStore'], generated: { url: `${base}/src/components/Header.tsx`, line, column } } },
+        },
+      ],
       outsideRoots: [],
     };
     const finished = await (await post(`sessions/${opened.id}/finish`, { recording })).json();
     const saved = JSON.parse(fs.readFileSync(path.join(finished.dir, 'recording.json'), 'utf8'));
-    expect(saved.roots[0].hooks[0]).toMatchObject({ site: 'src/App.tsx:5', code: 'const useCount = () => useCounterStore(selectCount);' });
+    expect(saved.roots[0].hooks[0]).toMatchObject({
+      site: `src/components/Header.tsx:${sourceLine}`,
+      code: 'return useTerminalStore(selectBalance);',
+    });
     const meta = JSON.parse(fs.readFileSync(path.join(finished.dir, 'session.json'), 'utf8'));
     expect(meta).toMatchObject({ status: 'done', events: 1 });
   });

@@ -1,24 +1,50 @@
-import { nearestHosts } from '../core/fiber';
+import { nearestHosts, type Fiber } from '../core/fiber';
 import type { Engine, Owner } from '../core/engine';
 
+export interface TreeRow {
+  owner: Owner;
+  depth: number;
+  /** `null`: opened and nothing below. */
+  toggle: 'open' | 'closed' | null;
+}
+
+export interface TreeActions {
+  select(index: number): void;
+  hover(index: number): void;
+  toggle(index: number): void;
+  leave(): void;
+}
+
 export interface PickerCallbacks {
-  /** Renders the owner list inside the panel; `select` confirms an item. */
-  showOwners(owners: Owner[], active: number, select: (index: number) => void, hover: (index: number) => void): void;
+  /** Renders the component tree inside the panel. */
+  showTree(rows: TreeRow[], active: number, actions: TreeActions): void;
   done(owner: Owner | null): void;
 }
 
+interface Node {
+  owner: Owner;
+  parent: Node | null;
+  children: Node[];
+  /** Children are all listed; a path node starts with only the next step of the path. */
+  full: boolean;
+  open: boolean;
+}
+
 const BLOCKED = ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click', 'dblclick', 'contextmenu'];
+const KEYS = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Enter'];
+const sameFiber = (a: Fiber, b: Fiber) => a === b || a.alternate === b;
 
 /**
- * Picks the area to record, like the react-scan inspector: hover highlights the element and its component, a click
- * freezes it and lists the composite owners, ↑/↓ choose the level, Enter confirms, Esc cancels.
+ * Picks the area to record, like the react-scan inspector: hover outlines the element and its component, a click
+ * freezes it and shows the path from the app root down to it. ↑/↓ move, → opens the components inside, ← closes
+ * or goes to the parent, Enter confirms, Esc cancels; a click elsewhere on the page picks again.
  */
 export class Picker {
   active = false;
   private box: HTMLDivElement;
   private tag: HTMLDivElement;
-  private owners: Owner[] = [];
-  private index = 0;
+  private root: Node | null = null;
+  private current: Node | null = null;
   private frozen = false;
   private listeners: Array<[string, EventListener]> = [];
 
@@ -38,6 +64,10 @@ export class Picker {
     this.shadow.appendChild(this.box);
   }
 
+  get activeOwner(): Owner | null {
+    return this.current?.owner ?? null;
+  }
+
   start() {
     if (this.active) return;
     this.active = true;
@@ -52,12 +82,31 @@ export class Picker {
     on('keydown', (e) => this.onKey(e as KeyboardEvent));
   }
 
+  /** Opens the tree on a component, e.g. the current area, to move from it instead of picking anew. */
+  startAt(fiber: Fiber) {
+    this.start();
+    this.build(this.engine.ownersOfFiber(fiber), fiber);
+  }
+
   cancel() {
     this.finish(null);
   }
 
+  /** Wrappers were shown or hidden: rebuild the path around the active component. */
   refresh() {
-    if (this.frozen) this.render();
+    if (this.frozen && this.current) this.build(this.engine.ownersOfFiber(this.current.owner.fiber), this.current.owner.fiber);
+  }
+
+  outline(fiber: Fiber, label: string) {
+    this.drawBox(
+      nearestHosts(fiber, 200).map((el) => el.getBoundingClientRect()),
+      label
+    );
+  }
+
+  hideOutline() {
+    if (this.active && this.current) this.outline(this.current.owner.fiber, this.current.owner.name);
+    else this.box.hidden = true;
   }
 
   private finish(owner: Owner | null) {
@@ -66,6 +115,7 @@ export class Picker {
     for (const [type, listener] of this.listeners) window.removeEventListener(type, listener, { capture: true });
     this.listeners = [];
     this.box.hidden = true;
+    this.root = this.current = null;
     this.callbacks.done(owner);
   }
 
@@ -89,18 +139,10 @@ export class Picker {
     if (this.isOwn(event)) return;
     event.preventDefault();
     event.stopImmediatePropagation();
-    if (event.type !== 'click' || this.frozen) return;
+    if (event.type !== 'click') return;
     const el = this.elementAt(event.clientX, event.clientY);
-    if (!el) return;
-    const owners = this.engine.owners(el);
-    if (!owners.length) return;
-    this.owners = owners;
-    this.frozen = true;
-    this.index = Math.max(
-      0,
-      this.visible().findIndex((o) => !o.wrapper)
-    );
-    this.render();
+    const owners = el ? this.engine.owners(el) : [];
+    if (owners.length) this.build(owners, null);
   }
 
   private onKey(event: KeyboardEvent) {
@@ -110,42 +152,96 @@ export class Picker {
       this.finish(null);
       return;
     }
-    if (!this.frozen) return;
-    if (['ArrowUp', 'ArrowDown', 'Enter'].includes(event.key)) {
-      event.preventDefault();
-      event.stopImmediatePropagation();
-    }
-    const list = this.visible();
-    if (event.key === 'ArrowDown') this.index = Math.min(list.length - 1, this.index + 1);
-    else if (event.key === 'ArrowUp') this.index = Math.max(0, this.index - 1);
-    else if (event.key === 'Enter') return this.finish(list[this.index] ?? null);
-    else return;
+    if (!this.frozen || !this.current || !KEYS.includes(event.key)) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    const rows = this.rows();
+    const at = rows.findIndex((r) => r.node === this.current);
+    const node = this.current;
+    if (event.key === 'Enter') return this.finish(node.owner);
+    if (event.key === 'ArrowDown') this.current = rows[Math.min(rows.length - 1, at + 1)].node;
+    else if (event.key === 'ArrowUp') this.current = rows[Math.max(0, at - 1)].node;
+    else if (event.key === 'ArrowRight') {
+      if (!node.open || !node.full) this.expand(node);
+      else if (node.children.length) this.current = node.children[0];
+    } else if (node.open && node.children.length) node.open = false;
+    else if (node.parent) this.current = node.parent;
     this.render();
   }
 
-  private visible() {
-    return this.showWrappers() ? this.owners : this.owners.filter((o) => !o.wrapper);
+  /** `owners` nearest first; the tree shows them from the app root down, the focus (or the nearest component) active. */
+  private build(owners: Owner[], focus: Fiber | null) {
+    const withWrappers = this.showWrappers();
+    const path = owners.filter((o) => withWrappers || !o.wrapper || (focus && sameFiber(o.fiber, focus))).reverse();
+    if (!path.length) return;
+    let parent: Node | null = null;
+    this.root = null;
+    const nodes: Node[] = [];
+    for (const owner of path) {
+      const node: Node = { owner, parent, children: [], full: false, open: true };
+      if (parent) parent.children.push(node);
+      else this.root = node;
+      nodes.push(node);
+      parent = node;
+    }
+    nodes[nodes.length - 1].open = false;
+    const target = focus ? nodes.find((n) => sameFiber(n.owner.fiber, focus)) : [...nodes].reverse().find((n) => !n.owner.wrapper);
+    this.current = target ?? nodes[nodes.length - 1];
+    this.frozen = true;
+    this.render();
+  }
+
+  private expand(node: Node) {
+    if (!node.full) {
+      const kept = node.children;
+      node.children = this.engine
+        .childOwners(node.owner.fiber, this.showWrappers())
+        .map((owner) => kept.find((k) => sameFiber(k.owner.fiber, owner.fiber)) ?? { owner, parent: node, children: [], full: false, open: false });
+      // The next step of the path can sit under a wrapper that the walk passed: keep it listed.
+      for (const k of kept) if (!node.children.includes(k)) node.children.push(k);
+      node.full = true;
+    }
+    node.open = true;
+  }
+
+  private rows(): Array<{ node: Node; depth: number }> {
+    const out: Array<{ node: Node; depth: number }> = [];
+    const walk = (node: Node, depth: number) => {
+      out.push({ node, depth });
+      if (node.open) for (const child of node.children) walk(child, depth + 1);
+    };
+    if (this.root) walk(this.root, 0);
+    return out;
   }
 
   private render() {
-    const list = this.visible();
-    this.index = Math.min(this.index, Math.max(0, list.length - 1));
-    this.callbacks.showOwners(
-      list,
-      this.index,
-      (i) => this.finish(list[i] ?? null),
-      (i) => {
-        this.index = i;
-        this.highlightOwner(list[i]);
+    const rows = this.rows();
+    const active = Math.max(
+      0,
+      rows.findIndex((r) => r.node === this.current)
+    );
+    this.callbacks.showTree(
+      rows.map(({ node, depth }) => ({
+        owner: node.owner,
+        depth,
+        toggle: node.open ? (node.children.length ? 'open' : null) : 'closed',
+      })),
+      active,
+      {
+        select: (i) => this.finish(rows[i]?.node.owner ?? null),
+        hover: (i) => rows[i] && this.outline(rows[i].node.owner.fiber, rows[i].node.owner.name),
+        toggle: (i) => {
+          const node = rows[i]?.node;
+          if (!node) return;
+          if (node.open && node.children.length) node.open = false;
+          else this.expand(node);
+          this.current = node;
+          this.render();
+        },
+        leave: () => this.hideOutline(),
       }
     );
-    this.highlightOwner(list[this.index]);
-  }
-
-  private highlightOwner(owner: Owner | undefined) {
-    if (!owner) return;
-    const rects = nearestHosts(owner.fiber, 200).map((el) => el.getBoundingClientRect());
-    this.drawBox(rects, owner.name);
+    if (this.current) this.outline(this.current.owner.fiber, this.current.owner.name);
   }
 
   private drawBox(rects: DOMRect[], label: string) {

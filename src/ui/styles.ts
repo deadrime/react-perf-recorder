@@ -34,11 +34,22 @@ input[type="text"] { width: 100%; font: inherit; color: inherit; background: #1b
 .line .n { color: #ffd60a; }
 .line .why { color: #9fb7ff; }
 .line button { padding: 0 6px; margin-left: 4px; }
-.picker ul { list-style: none; margin: 4px 0; padding: 0; max-height: 240px; overflow: auto; }
-.picker li { padding: 2px 6px; border-radius: 4px; cursor: pointer; display: flex; gap: 6px; }
+.picker ul { list-style: none; margin: 4px 0; padding: 0; max-height: 280px; overflow: auto; }
+.picker li { padding: 2px 6px; border-radius: 4px; cursor: pointer; display: flex; gap: 4px; align-items: baseline; }
+.picker li:hover { background: #2a2f3a; }
 .picker li[data-active="true"] { background: #33415c; }
-.picker li .src { color: #8c8c96; margin-left: auto; }
+.picker li .toggle { width: 12px; flex: none; color: #9a9aa4; text-align: center; }
+.picker li .toggle:hover { color: #fff; }
+.picker li .name { white-space: nowrap; }
+.picker li .src { color: #8c8c96; margin-left: auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; }
+.picker li .copy { flex: none; color: #8c8c96; visibility: hidden; }
+.picker li:hover .copy, .picker li[data-active="true"] .copy { visibility: visible; }
+.picker li .copy:hover { color: #fff; }
 .picker li[data-wrapper="true"] { color: #8c8c96; }
+.note { flex-wrap: nowrap; }
+.note input { flex: 1; }
+button.scope { border: none; cursor: pointer; }
+button.scope:disabled { cursor: default; }
 .box { position: fixed; pointer-events: none; border: 2px solid #0a84ff; background: rgba(10,132,255,.08); z-index: 2147483646; border-radius: 3px; }
 .box .tag { position: absolute; left: -2px; top: -18px; background: #0a84ff; color: #fff; padding: 0 5px; border-radius: 3px 3px 0 0; font-size: 11px; white-space: nowrap; }
 `;

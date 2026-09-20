@@ -3,7 +3,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
 import { z } from 'zod';
 import { compareRecordings } from '../shared/compare';
-import { hookOf, hookText, rootLine, summarize } from '../shared/summary';
+import { hookOf, hookText, rootLine, summarize, type HookMode } from '../shared/summary';
 import type { RecordingV1 } from '../shared/schema';
 import { findSession, listSessions, readRecording, waitForSession } from './store';
 
@@ -30,12 +30,12 @@ const SECTIONS = [
 
 const json = (value: unknown) => ({ content: [{ type: 'text' as const, text: JSON.stringify(value, null, 1) }] });
 
-export function section(rec: RecordingV1 & { id?: string; status?: string }, name: string, top: number, offset: number) {
+export function section(rec: RecordingV1 & { id?: string; status?: string }, name: string, top: number, offset: number, hooks: HookMode = 'full') {
   const page = <T>(list: T[]) => ({ total: list.length, offset, items: list.slice(offset, offset + top) });
   const ms = rec.durationMs;
   switch (name) {
     case 'summary':
-      return summarize(rec, top);
+      return summarize(rec, top, hooks);
     case 'actions': {
       const actions = new Map(rec.actions.map((a) => [a.id, a]));
       const roots = [...rec.roots, ...rec.outsideRoots];
@@ -46,15 +46,15 @@ export function section(rec: RecordingV1 & { id?: string; status?: string }, nam
           topRoots: s.topRoots.map(([i, n]) => {
             const root = roots[i];
             const reason = root?.reasons[0]?.[0];
-            return { root: root?.name, renders: n, reason, hook: root && reason ? hookText(hookOf(root, reason)) : '' };
+            return { root: root?.name, renders: n, reason, hook: root && reason ? hookText(hookOf(root, reason), hooks) : '' };
           }),
         }))
       );
     }
     case 'roots':
-      return page(rec.roots.map((r) => ({ ...rootLine(r, ms), hooks: r.hooks })));
+      return page(rec.roots.map((r) => ({ ...rootLine(r, ms, hooks), hooks: r.hooks })));
     case 'outside':
-      return page(rec.outsideRoots.map((r) => ({ ...rootLine(r, ms), scopeRenders: r.scopeRenders })));
+      return page(rec.outsideRoots.map((r) => ({ ...rootLine(r, ms, hooks), hooks: r.hooks, scopeRenders: r.scopeRenders })));
     case 'causes':
       return page(rec.causes);
     case 'components':
@@ -156,9 +156,15 @@ export function createServer(dir: string) {
         section: z.string().optional(),
         top: z.number().int().min(1).max(100).optional(),
         offset: z.number().int().min(0).optional(),
+        hooks: z
+          .enum(['full', 'short'])
+          .optional()
+          .describe(
+            'Hook chains in reason lines. full (default): every hook down to the primitive, with [package] where app code hands over. short: app hooks and the package API they call. Raw chains stay in section roots either way.'
+          ),
       },
     },
-    async ({ id, section: name = 'summary', top = 10, offset = 0 }) => {
+    async ({ id, section: name = 'summary', top = 10, offset = 0, hooks = 'full' }) => {
       const entry = findSession(dir, id);
       const rec = readRecording(entry);
       return json({
@@ -166,7 +172,7 @@ export function createServer(dir: string) {
         status: entry.status,
         dir: entry.dir,
         ...(rec.partial ? { partial: true } : {}),
-        [name]: section(rec, name, top, offset),
+        [name]: section(rec, name, top, offset, hooks),
       });
     }
   );

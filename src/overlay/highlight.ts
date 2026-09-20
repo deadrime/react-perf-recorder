@@ -31,7 +31,8 @@ export class Highlighter implements HighlightSink {
   private readonly canvas: HTMLCanvasElement;
   private readonly ctx: CanvasRenderingContext2D | null;
   private pending = new Map<Element, { name: string; count: number; wasted: boolean }>();
-  private readonly counts = new WeakMap<Fiber, number>();
+  /** Renders in a row with less than a fade between them: a steady ticker keeps counting up and turns red. */
+  private counts = new WeakMap<Fiber, { n: number; at: number }>();
   private flashes: Flash[] = [];
   private frameRequested = false;
   private drawing = false;
@@ -40,7 +41,7 @@ export class Highlighter implements HighlightSink {
   constructor(parent: ShadowRoot | Element) {
     this.canvas = document.createElement('canvas');
     Object.assign(this.canvas.style, { position: 'fixed', inset: '0', width: '100vw', height: '100vh', pointerEvents: 'none', zIndex: '2147483646' });
-    this.canvas.setAttribute('data-rpr', 'highlight');
+    this.canvas.setAttribute('data-rpr', 'overlay');
     parent.appendChild(this.canvas);
     this.ctx = this.canvas.getContext('2d');
     this.resize();
@@ -54,6 +55,7 @@ export class Highlighter implements HighlightSink {
   }
 
   reset() {
+    this.counts = new WeakMap();
     this.pending.clear();
     this.flashes = [];
     this.clear();
@@ -61,10 +63,13 @@ export class Highlighter implements HighlightSink {
 
   flash(pairs: Array<[Element, string, Fiber]>, withoutDom: Set<Fiber>) {
     if (!this.enabled || !this.ctx) return;
+    const now = performance.now();
     for (const [el, name, fiber] of pairs) {
-      const count = Math.max(this.counts.get(fiber) ?? 0, fiber.alternate ? this.counts.get(fiber.alternate) ?? 0 : 0) + 1;
-      this.counts.set(fiber, count);
-      if (fiber.alternate) this.counts.set(fiber.alternate, count);
+      const prev = this.counts.get(fiber) ?? (fiber.alternate ? this.counts.get(fiber.alternate) : undefined);
+      const entry = { n: prev && now - prev.at < FADE_MS ? prev.n + 1 : 1, at: now };
+      const count = entry.n;
+      this.counts.set(fiber, entry);
+      if (fiber.alternate) this.counts.set(fiber.alternate, entry);
       const known = this.pending.get(el);
       this.pending.set(el, {
         name: known?.name ?? name,

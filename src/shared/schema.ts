@@ -27,6 +27,10 @@ export interface HookInfo {
   type?: string;
   /** Custom hooks from the component down to the primitive, e.g. `['useActivePositionsList', 'useSelector', 'SyncExternalStore']`. */
   path?: string[];
+  /** npm package the chain enters, e.g. `zustand`; absent when every custom hook is app code. */
+  library?: string;
+  /** Index in `path` of the first hook of `library`: the package API the app called, e.g. `useStore`. */
+  libraryAt?: number;
   /** Call site in the generated code; the dev server maps it to `site` and `code`. */
   generated?: { url: string; line: number; column: number };
   site?: string;
@@ -51,6 +55,8 @@ export interface RootStat {
   /** Hits in which nothing in the root's DOM changed: the render was wasted. */
   noDomChange: number;
   renderMs?: number;
+  /** Components mounted under the root in its hits: a component declared in render or an unstable key remounts. */
+  mounts?: number;
   hooks?: Record<string, HookInfo>;
   /** Only for outside roots: renders inside the scope this root caused. */
   scopeRenders?: number;
@@ -191,7 +197,15 @@ export interface RecordingV1 {
   roots: RootStat[];
   outsideRoots: RootStat[];
   /** Every rendered component; `reasons` covers renders caused by a parent too (`parent: props …`). */
-  components: Array<{ name: string; renders: number; withoutDom: number; byParent: number; memo?: true; reasons: Array<[string, number]> }>;
+  components: Array<{
+    name: string;
+    renders: number;
+    mounts?: number;
+    withoutDom: number;
+    byParent: number;
+    memo?: true;
+    reasons: Array<[string, number]>;
+  }>;
   watch?: Record<string, { mounted: number; renders: number; byRoot: Array<[number | null, number]> }>;
   zones?: Record<string, { renders: number; mounted: number; found: boolean }>;
   causes: CauseStat[];
@@ -207,7 +221,8 @@ export interface RecordingV1 {
   conditions: Conditions;
   conditionsChanged?: Record<string, [Primitive, Primitive]>;
   plugins: Record<string, PluginSection>;
-  overhead: { commitMs: number; maxCommitMs: number; overlayMs: number };
+  /** `highlight`: outlines were drawn during the recording, which adds to frame and long-task times. */
+  overhead: { commitMs: number; maxCommitMs: number; overlayMs: number; highlight?: boolean };
   warnings: string[];
   errors: string[];
 }

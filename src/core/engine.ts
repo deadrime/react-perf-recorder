@@ -1,6 +1,18 @@
 import type { RecordingV1, SessionEvent } from '../shared/schema';
 import { hookOwner, RecorderError } from './commit-hook';
-import { compositeChain, fiberFromNode, findRoots, isProvider, nameOf, reactVersion, sourceOf, type Fiber } from './fiber';
+import {
+  compositeChain,
+  compositeChildren,
+  currentOf,
+  fiberFromNode,
+  findRoots,
+  isProvider,
+  nameOf,
+  reactVersion,
+  sourceOf,
+  type Fiber,
+} from './fiber';
+import { LiveHighlight } from './live-highlight';
 import type { PluginHost } from './plugins';
 import { Recorder, type EngineConfig, type HighlightSink, type RecordOptions } from './recorder';
 import { scopeFromFiber, type ScopeHandle } from './scope';
@@ -53,6 +65,9 @@ export class Engine {
   private timer: ReturnType<typeof setTimeout> | null = null;
   private listeners = new Set<(state: 'started' | 'stopped') => void>();
   private readonly wrapperRe: RegExp;
+  private idle: { scope: ScopeSpec } | null = null;
+  private idleHighlight: LiveHighlight | null = null;
+  private idleRetry: ReturnType<typeof setTimeout> | null = null;
 
   constructor(
     readonly config: BootConfig,
@@ -96,9 +111,40 @@ export class Engine {
     };
   }
 
+  /**
+   * Outlines renders in the area while nothing is recorded. A recording takes the commit hook over and, with
+   * `highlight` on, keeps drawing; this resumes after it stops.
+   */
+  highlightWhenIdle(on: boolean, scope: ScopeSpec = null) {
+    this.idle = on ? { scope } : null;
+    this.syncIdleHighlight();
+  }
+
+  get idleHighlighting() {
+    return Boolean(this.idleHighlight);
+  }
+
+  private syncIdleHighlight() {
+    this.idleHighlight?.stop();
+    this.idleHighlight = null;
+    if (this.idleRetry) clearTimeout(this.idleRetry);
+    this.idleRetry = null;
+    if (!this.idle || this.recorder || !this.highlight) return;
+    try {
+      const live = new LiveHighlight(this.highlight, this.resolveScope(this.idle.scope));
+      if (live.start()) this.idleHighlight = live;
+    } catch {
+      // Handled below: the area is not mounted yet.
+    }
+    // The panel boots before the app renders, and another script may hold the commit hook for a while.
+    if (!this.idleHighlight) this.idleRetry = setTimeout(() => this.syncIdleHighlight(), 1000);
+  }
+
   start(options: StartOptions = {}) {
     if (this.recorder) throw new RecorderError('ALREADY', 'a recording is already running');
     const scope = this.resolveScope(options.scope ?? null);
+    this.idleHighlight?.stop();
+    this.idleHighlight = null;
     const writerRef: { current: SessionWriter | null } = { current: null };
     const recorder = new Recorder(
       {
@@ -110,7 +156,12 @@ export class Engine {
       },
       { ...options, scope }
     );
-    recorder.start();
+    try {
+      recorder.start();
+    } catch (error) {
+      this.syncIdleHighlight();
+      throw error;
+    }
     this.recorder = recorder;
     if (this.config.endpoint && options.save !== false) {
       writerRef.current = this.writer = new SessionWriter(this.config.endpoint, {
@@ -145,6 +196,7 @@ export class Engine {
     try {
       recording = recorder.stop();
     } finally {
+      this.syncIdleHighlight();
       this.listeners.forEach((l) => l('stopped'));
     }
     if (writer) {
@@ -181,13 +233,24 @@ export class Engine {
   /** Composite ancestors of an element, nearest first. */
   owners(el: Element): Owner[] {
     const host = fiberFromNode(el);
-    if (!host) return [];
-    return compositeChain(host)
+    return host ? this.ownersOfFiber(host) : [];
+  }
+
+  /** The fiber itself when it is a component, then its composite ancestors, nearest first. */
+  ownersOfFiber(fiber: Fiber): Owner[] {
+    return compositeChain(currentOf(fiber))
       .reverse()
-      .map((fiber) => {
-        const name = nameOf(fiber) ?? 'Anonymous';
-        return { name, source: sourceOf(fiber, this.config.projectRoot), wrapper: this.wrapperRe.test(name) || isProvider(name), fiber };
-      });
+      .map((f) => this.ownerOf(f));
+  }
+
+  ownerOf(fiber: Fiber): Owner {
+    const name = nameOf(fiber) ?? 'Anonymous';
+    return { name, source: sourceOf(fiber, this.config.projectRoot), wrapper: this.wrapperRe.test(name) || isProvider(name), fiber };
+  }
+
+  /** Nearest components below one; without wrappers the walk goes through them. */
+  childOwners(fiber: Fiber, withWrappers: boolean): Owner[] {
+    return compositeChildren(fiber, (f) => !withWrappers && this.ownerOf(f).wrapper).map((f) => this.ownerOf(f));
   }
 
   scopeFromFiber(fiber: Fiber): ScopeHandle {

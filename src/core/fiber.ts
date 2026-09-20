@@ -25,6 +25,9 @@ export interface Fiber {
   memoizedState: any;
   dependencies: { firstContext: ContextDependency | null } | null;
   mode: number;
+  flags: number;
+  lanes?: number;
+  childLanes?: number;
   actualDuration?: number;
   _debugSource?: { fileName: string; lineNumber: number; columnNumber?: number } | null;
   _debugHookTypes?: string[] | null;
@@ -34,6 +37,7 @@ export interface FiberRoot {
   current: Fiber;
   containerInfo: Element;
   finishedLanes?: number;
+  pendingLanes?: number;
 }
 
 export const Tag = {
@@ -220,4 +224,30 @@ export function reactVersion(): string | null {
 
 export function renderer(): Renderer | null {
   return knownRenderers().find((r) => r.currentDispatcherRef) ?? null;
+}
+
+/**
+ * The committed fiber of an alternate pair. A stale half still points up to the HostRoot fiber of its own render;
+ * only the committed tree ends at `root.current`.
+ */
+export function currentOf(f: Fiber): Fiber {
+  let top = f;
+  while (top.return) top = top.return;
+  if (top.tag !== Tag.HostRoot || (top.stateNode as FiberRoot | null)?.current === top) return f;
+  return f.alternate ?? f;
+}
+
+/** Nearest composite descendants on every branch; `skip` lets the walk pass through wrappers. */
+export function compositeChildren(f: Fiber, skip: (f: Fiber) => boolean, limit = 100): Fiber[] {
+  const out: Fiber[] = [];
+  const stack: Fiber[] = [];
+  const first = currentOf(f).child;
+  if (first) stack.push(first);
+  while (stack.length && out.length < limit) {
+    const node = stack.pop()!;
+    if (node.sibling) stack.push(node.sibling);
+    if (isComposite(node) && !skip(node)) out.push(node);
+    else if (node.child) stack.push(node.child);
+  }
+  return out;
 }

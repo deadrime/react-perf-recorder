@@ -1,5 +1,6 @@
 import type { CauseInput, DescribeKind, PluginContext, RuntimePlugin, RuntimePluginFactory, SessionContext } from '../runtime';
 import type { Conditions, PluginInfo, PluginSection, Primitive } from '../shared/schema';
+import type { Fiber } from './fiber';
 import { fallbackSelectorLabel, type Describer } from './reasons';
 
 export interface CauseEvent {
@@ -8,6 +9,8 @@ export interface CauseEvent {
   atMs: number;
   changes?: Array<{ key: string; prev: unknown; next: unknown }>;
   data?: Record<string, Primitive>;
+  /** Components the event scheduled updates on, when the core knows them: the cause goes to those roots only. */
+  fibers?: Set<Fiber>;
 }
 
 export type PluginEntry = [RuntimePluginFactory | RuntimePlugin, unknown];
@@ -23,6 +26,8 @@ const MAX_BUFFER = 5000;
 export class PluginHost implements Describer {
   readonly loaded: Loaded[] = [];
   recording = false;
+  /** Set by the recorder: components that got updates since the last commit, to aim a cause at their roots. */
+  targets: (() => Set<Fiber>) | null = null;
   private buffer: CauseEvent[] = [];
   private t0 = 0;
   readonly warnings: string[] = [];
@@ -62,9 +67,17 @@ export class PluginHost implements Describer {
     };
   }
 
-  emit(plugin: string, event: CauseInput): CauseEvent | null {
+  emit(plugin: string, event: CauseInput, fibers?: Set<Fiber>): CauseEvent | null {
     if (!this.recording || this.buffer.length >= MAX_BUFFER) return null;
-    const cause: CauseEvent = { plugin, type: event.type, atMs: Math.round(this.now()), changes: event.changes, data: event.data };
+    const aimed = fibers ?? this.targets?.();
+    const cause: CauseEvent = {
+      plugin,
+      type: event.type,
+      atMs: Math.round(this.now()),
+      changes: event.changes,
+      data: event.data,
+      fibers: aimed?.size ? aimed : undefined,
+    };
     this.buffer.push(cause);
     return cause;
   }

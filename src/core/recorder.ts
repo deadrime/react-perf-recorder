@@ -39,6 +39,7 @@ import { inspectHooks, type InspectedHooks } from './hook-names';
 import type { CauseEvent, PluginHost } from './plugins';
 import { didRender, hookTypeAt, parentReason, reasonsOf, snapshotOf, type Reason, type Snapshot } from './reasons';
 import { ScopeTracker, type ScopeHandle, type ScopeResolution } from './scope';
+import { runningTimer, setTimerSink } from './env/timers';
 
 export interface EngineConfig {
   version: string;
@@ -48,6 +49,8 @@ export interface EngineConfig {
   maxDurationMs: number;
   bigCommit: number;
   timelineLimit: number;
+  /** Timers are wrapped at boot; off leaves the page's timers alone and timer causes out. */
+  timers?: boolean;
 }
 
 export interface RecordOptions {
@@ -68,6 +71,8 @@ export interface RecordOptions {
 }
 
 export interface HighlightSink {
+  /** The panel's toggle; a recording draws and counts as highlighted only while it is on. */
+  enabled?: boolean;
   flash(pairs: Array<[Element, string, Fiber]>, withoutDom: Set<Fiber>): void;
   /** Time spent measuring and drawing outside commits since the last call. */
   takeCostMs?(): number;
@@ -99,6 +104,7 @@ interface RootAgg {
   lanes: Map<string, number>;
   noDomChange: number;
   renderMs: number;
+  mounts: number;
   hookIdx: Set<number>;
   contexts: Map<string, object>;
   latest: WeakRef<Fiber> | null;
@@ -106,6 +112,7 @@ interface RootAgg {
 
 interface ComponentAgg {
   renders: number;
+  mounts: number;
   withoutDom: number;
   byParent: number;
   memo: boolean;
@@ -133,6 +140,23 @@ const MAX_SEGMENT_COMMITS = 20_000;
 const currentEventType = (): string | undefined => {
   const event = (globalThis as { event?: Event }).event;
   return event && typeof event.type === 'string' ? event.type : undefined;
+};
+
+/** Constructor of a socket, worker or channel whose message is being handled; the scheduler's own MessagePort is not a cause. */
+const messageSource = (): string | undefined => {
+  const event = (globalThis as { event?: Event }).event;
+  const target = event?.type === 'message' ? event.target : null;
+  if (!target || target === globalThis || (typeof MessagePort !== 'undefined' && target instanceof MessagePort)) return undefined;
+  return (target as object).constructor?.name || undefined;
+};
+
+const shallowEqual = (x: unknown, y: unknown) => {
+  const a = x as Record<string, unknown> | null;
+  const b = y as Record<string, unknown> | null;
+  if (a === b) return true;
+  if (!a || !b) return false;
+  const keys = Object.keys(a);
+  return keys.length === Object.keys(b).length && keys.every((key) => Object.is(a[key], b[key]));
 };
 
 const median = (xs: number[]) => {
@@ -181,6 +205,9 @@ export class Recorder {
   private truncated = false;
   private stopped = false;
   private overlayMs = 0;
+  private highlighted = false;
+  /** Fibers a timer cause already names since the last commit. */
+  private claimed = new WeakSet<Fiber>();
   private frameCount = 0;
   private counting = false;
   private readonly totals = {
@@ -249,6 +276,15 @@ export class Recorder {
     if (this.scope) this.dom.setScopeHosts(this.scopeHosts());
     this.dom.start();
     this.hook = hookCommits(this.roots, this.options.source ?? 'panel', (info) => this.onCommit(info));
+    // A store or query notifies its subscribers before the recorder hears about it, so the fibers React just
+    // marked are the ones this event updated.
+    this.deps.plugins.targets = () => this.freshUpdates();
+    setTimerSink({
+      after: (text) => {
+        const fresh = this.freshUpdates();
+        if (fresh.size) this.deps.plugins.emit('core', { type: text() }, fresh);
+      },
+    });
     this.frames.start();
     if (this.options.frames) {
       this.counting = true;
@@ -292,6 +328,8 @@ export class Recorder {
   stop(): RecordingV1 {
     if (this.stopped) throw new RecorderError('NOT_RECORDING', 'recording already stopped');
     this.stopped = true;
+    setTimerSink(null);
+    this.deps.plugins.targets = null;
     const hookErrors = this.hook?.stop() ?? [];
     this.errors.push(...hookErrors);
     this.dom.stop();
@@ -317,6 +355,10 @@ export class Recorder {
     if (this.commitTimes.length < MAX_SEGMENT_COMMITS) this.commitTimes.push(t);
     const lane = laneLabel(lanes);
     const event = currentEventType();
+    const source = event === 'message' ? messageSource() : undefined;
+    this.claimed = new WeakSet();
+    const timer = runningTimer();
+    if (timer) this.deps.plugins.emit('core', { type: timer });
     const causes = this.deps.plugins.drain();
     const c: CommitState = {
       t,
@@ -338,7 +380,7 @@ export class Recorder {
     } else {
       this.scan(fiber, false, '', null, c, false);
     }
-    this.finishCommit(c, causes, lane, event);
+    this.finishCommit(c, causes, lane, event, source);
   }
 
   private visitChain(f: Fiber, prevs: Array<Snapshot | undefined>) {
@@ -390,7 +432,8 @@ export class Recorder {
   }
 
   private scan(start: Fiber, parentRendered: boolean, path: string, rootKey: string | null, c: CommitState, isolate: boolean) {
-    const highlight = Boolean(this.deps.highlight) && this.options.highlight !== false;
+    const highlight = Boolean(this.deps.highlight) && this.deps.highlight!.enabled !== false && this.options.highlight !== false;
+    if (highlight) this.highlighted = true;
     const stack: StackItem[] = [[start, parentRendered, path, rootKey, null, null]];
     while (stack.length) {
       const [f, parentDid, currentPath, currentKey, pending, zoneTag] = stack.pop()!;
@@ -400,22 +443,17 @@ export class Recorder {
       let key = currentKey;
       let nextPending = pending;
       const zone = isHost(f) && this.zoneNodes.size ? this.zoneNodes.get(f.stateNode) ?? zoneTag : zoneTag;
-      if (name && !prev) this.totals.mounts++;
+      if (name && !prev && isComposite(f)) {
+        this.totals.mounts++;
+        this.componentOf(name, f).mounts++;
+        const agg = currentKey ? this.rootsByKey.get(currentKey) : undefined;
+        if (agg) agg.mounts++;
+      }
       if (name && rendered) {
         c.renders++;
         this.totals.renders++;
         const wasted = !c.touched.has(f);
-        let comp = this.components.get(name);
-        if (!comp) {
-          comp = {
-            renders: 0,
-            withoutDom: 0,
-            byParent: 0,
-            memo: f.tag === Tag.MemoComponent || f.tag === Tag.SimpleMemoComponent,
-            reasons: new Map(),
-          };
-          this.components.set(name, comp);
-        }
+        const comp = this.componentOf(name, f);
         comp.renders++;
         if (wasted) {
           comp.withoutDom++;
@@ -424,7 +462,15 @@ export class Recorder {
           c.withoutDom.add(f);
         }
         let reasons: Reason[] | null = null;
-        if (!parentDid) {
+        // The parent rendered but handed the same props (children passed through, or equal props to memo): the
+        // parent did not cause this render, the component's own state, store or context did.
+        const ownWork =
+          parentDid &&
+          isComposite(f) &&
+          prev !== undefined &&
+          (prev.props === f.memoizedProps ||
+            ((f.tag === Tag.MemoComponent || f.tag === Tag.SimpleMemoComponent) && shallowEqual(prev.props, f.memoizedProps)));
+        if (!parentDid || ownWork) {
           const hit = this.hitRoot(f, name, currentPath, prev!, c, false);
           key = hit.agg.key;
           reasons = hit.reasons;
@@ -468,6 +514,22 @@ export class Recorder {
     }
   }
 
+  private componentOf(name: string, f: Fiber): ComponentAgg {
+    let comp = this.components.get(name);
+    if (!comp) {
+      comp = {
+        renders: 0,
+        mounts: 0,
+        withoutDom: 0,
+        byParent: 0,
+        memo: f.tag === Tag.MemoComponent || f.tag === Tag.SimpleMemoComponent,
+        reasons: new Map(),
+      };
+      this.components.set(name, comp);
+    }
+    return comp;
+  }
+
   private hitRoot(f: Fiber, name: string, path: string, prev: Snapshot, c: CommitState, outside: boolean): { agg: RootAgg; reasons: Reason[] } {
     const source = sourceOf(f, this.config.projectRoot);
     const key = `${outside ? 'outside|' : ''}${name}|${source}|${path}`;
@@ -491,6 +553,7 @@ export class Recorder {
         lanes: new Map(),
         noDomChange: 0,
         renderMs: 0,
+        mounts: 0,
         hookIdx: new Set(),
         contexts: new Map(),
         latest: null,
@@ -526,7 +589,7 @@ export class Recorder {
     return { agg, reasons };
   }
 
-  private finishCommit(c: CommitState, causes: CauseEvent[], lane: string | undefined, event: string | undefined) {
+  private finishCommit(c: CommitState, causes: CauseEvent[], lane: string | undefined, event: string | undefined, source?: string) {
     if (lane) this.totals.lanes[lane] = (this.totals.lanes[lane] ?? 0) + 1;
     if (!c.renders) {
       this.totals.causesDropped += causes.length;
@@ -534,13 +597,30 @@ export class Recorder {
     }
     this.totals.commitsInScope++;
     const keys = new Set<string>();
-    for (const cause of causes) keys.add(this.attachCause(cause));
+    const targets = new Map<string, Set<Fiber>>();
+    for (const cause of causes) {
+      const key = this.attachCause(cause);
+      keys.add(key);
+      if (cause.fibers?.size) targets.set(key, new Set([...(targets.get(key) ?? []), ...cause.fibers]));
+    }
     if (event && USER_EVENTS.has(event)) keys.add(this.attachCause({ plugin: 'core', type: `input ${event}`, atMs: c.t }));
+    else if (source) keys.add(this.attachCause({ plugin: 'core', type: `message ${source}`, atMs: c.t }));
     if (!keys.size) keys.add(this.attachCause({ plugin: 'core', type: 'none', atMs: c.t }));
     for (const key of keys) this.causeStats.get(key)!.commits++;
     const involved = new Set<RootAgg>([...c.cascade.keys(), ...(c.outside ? [c.outside] : [])]);
+    const fiberOf = (agg: RootAgg) => agg.latest?.deref();
+    // A cause that knows its components goes only to their roots, unless none of them started a cascade here.
+    const hits = (key: string, agg: RootAgg) => {
+      const set = targets.get(key);
+      if (!set) return true;
+      const f = fiberOf(agg);
+      return (f !== undefined && set.has(f)) || ![...involved].some((other) => set.has(fiberOf(other)!));
+    };
     for (const agg of involved) {
-      for (const key of keys) agg.causes.set(key, (agg.causes.get(key) ?? 0) + 1);
+      const own = [...keys].filter((key) => hits(key, agg));
+      // Aimed causes that missed every root here would leave it without any: a late subscriber, or an event the
+      // recorder could not follow. Then the root takes the commit's causes as they are.
+      for (const key of own.length ? own : keys) agg.causes.set(key, (agg.causes.get(key) ?? 0) + 1);
       if (lane && agg.lastCommit === this.totals.commits) agg.lanes.set(lane, (agg.lanes.get(lane) ?? 0) + 1);
     }
     const ranked = [...c.cascade].sort((a, b) => b[1] - a[1]);
@@ -599,6 +679,31 @@ export class Recorder {
       }
     }
     return key;
+  }
+
+  /**
+   * Components that got updates since the last commit and were not claimed by an earlier timer: a second timer
+   * that updates another component in an already pending lane adds no lane bits, only a fiber. React marks the
+   * path to updated fibers with childLanes, so the walk stays narrow.
+   */
+  private freshUpdates(): Set<Fiber> {
+    const out = new Set<Fiber>();
+    const lanes = this.roots.reduce((all, root) => all | (root.pendingLanes ?? 0), 0);
+    if (!lanes) return out;
+    const stack = this.roots.map((root) => root.current);
+    for (let visits = 0; stack.length && visits < 2000; visits++) {
+      const f = stack.pop()!;
+      if ((f.lanes ?? 0) & lanes && !this.claimed.has(f)) {
+        out.add(f);
+        this.claimed.add(f);
+        if (f.alternate) {
+          out.add(f.alternate);
+          this.claimed.add(f.alternate);
+        }
+      }
+      for (let child = f.child; child; child = child.sibling) if (((child.lanes ?? 0) | (child.childLanes ?? 0)) & lanes) stack.push(child);
+    }
+    return out;
   }
 
   // ---- snapshots and helpers ------------------------------------------------------------------------------------
@@ -738,6 +843,7 @@ export class Recorder {
       lanes: topEntries(agg.lanes, 5),
       noDomChange: agg.noDomChange,
       ...(agg.renderMs ? { renderMs: +agg.renderMs.toFixed(1) } : {}),
+      ...(agg.mounts ? { mounts: agg.mounts } : {}),
       ...(withHooks ? { hooks: this.hookInfo(agg) } : {}),
       ...(agg.outside ? { scopeRenders: agg.cascade } : {}),
     };
@@ -814,11 +920,12 @@ export class Recorder {
       roots: rootsOrdered.slice(0, orderedInside.length),
       outsideRoots: rootsOrdered.slice(orderedInside.length),
       components: [...this.components]
-        .sort((a, b) => b[1].renders - a[1].renders)
+        .sort((a, b) => b[1].renders + b[1].mounts - (a[1].renders + a[1].mounts))
         .slice(0, 150)
         .map(([name, s]) => ({
           name,
           renders: s.renders,
+          ...(s.mounts ? { mounts: s.mounts } : {}),
           withoutDom: s.withoutDom,
           byParent: s.byParent,
           ...(s.memo ? { memo: true as const } : {}),
@@ -870,8 +977,11 @@ export class Recorder {
         commitMs: +(this.hook?.overhead.commitMs ?? 0).toFixed(1),
         maxCommitMs: +(this.hook?.overhead.maxCommitMs ?? 0).toFixed(1),
         overlayMs: +this.overlayMs.toFixed(1),
+        highlight: this.highlighted,
       },
-      warnings: this.warnings,
+      warnings: this.highlighted
+        ? [...this.warnings, 'highlight was on: drawing the outlines costs main-thread time, so timings and long frames read high']
+        : this.warnings,
       errors: this.errors,
     };
   }

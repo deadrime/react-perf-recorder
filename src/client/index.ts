@@ -1,6 +1,7 @@
 import { Engine, type BootConfig } from '../core/engine';
 import { captureRenderers } from '../core/fiber';
 import { PluginHost, type PluginEntry } from '../core/plugins';
+import { installTimers } from '../core/env/timers';
 import { SessionWriter } from '../core/transport';
 import { Highlighter } from '../overlay/highlight';
 import { GLOBAL_KEY } from '../shared/schema';
@@ -37,6 +38,7 @@ export function boot(config: ClientConfig, plugins: PluginEntry[], hot?: HotCont
   const existing = window[GLOBAL_KEY];
   if (existing) return existing;
   captureRenderers();
+  if (config.timers !== false) installTimers();
   const host = new PluginHost(plugins);
   host.setupAll();
   const engine = new Engine(config, host);

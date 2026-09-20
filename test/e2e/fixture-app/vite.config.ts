@@ -23,7 +23,7 @@ export default defineConfig({
     perfRecorder({
       enabled: true,
       outDir: process.env.FIXTURE_OUT_DIR ?? path.resolve(__dirname, '../../../.agent-artifacts/fixture-sessions'),
-      plugins: [zustand(), proxyMemoize(), reactQuery()],
+      plugins: [zustand(), proxyMemoize({ functions: ['memoize', 'memoizeWithArgs'] }), reactQuery()],
     }),
   ],
 });

@@ -1,9 +1,10 @@
-import { memo, useContext, useState, createContext, useEffect } from 'react';
+import { memo, useContext, useState, createContext, useEffect, type ReactNode } from 'react';
 import { createStore, useStore } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
 import { flushSync } from 'react-dom';
 import { findRoots, fiberFromNode } from '../../src/core/fiber';
 import { scopeFromFiber } from '../../src/core/scope';
+import { hookText } from '../../src/shared/summary';
 import { flush, makeRecorder, mount } from './helpers';
 
 type Setter = (n: number) => void;
@@ -256,6 +257,30 @@ describe('Recorder', () => {
     });
   });
 
+  it('makes a child its own root when the rendering parent handed it the same props', () => {
+    const store = createStore(() => ({ block: 0 }));
+    const Status = () => <i>{useStore(store, (s) => s.block)}</i>;
+    const Plain = () => <u>plain</u>;
+    const Frame = ({ children }: { children: ReactNode }) => {
+      useStore(store, (s) => s.block);
+      return <div>{children}</div>;
+    };
+    mount(
+      <Frame>
+        <Status />
+        <Plain />
+      </Frame>
+    );
+    const { recorder } = makeRecorder();
+    recorder.start();
+    flush(() => store.setState({ block: 1 }));
+    const rec = recorder.stop();
+    expect(rec.roots.map((r) => [r.name, r.cascade])).toEqual([
+      ['Frame', 1],
+      ['Status', 1],
+    ]);
+  });
+
   it('names the custom hooks behind a hook reason', () => {
     const store = createStore(() => ({ price: 1 }));
     const usePrice = () => useStore(store, (s) => s.price);
@@ -274,8 +299,12 @@ describe('Recorder', () => {
     const rec = recorder.stop();
     const root = rec.roots[0];
     const index = root.reasons[0][0].match(/#(\d+)/)![1];
-    expect(root.hooks?.[index]?.path).toEqual(['useRow', 'usePrice', 'useStore', 'useSyncExternalStoreWithSelector', 'SyncExternalStore']);
-    expect(root.hooks?.[index]?.type).toBe('useSyncExternalStore');
+    const hook = root.hooks?.[index];
+    expect(hook?.path).toEqual(['useRow', 'usePrice', 'useStore', 'useSyncExternalStoreWithSelector', 'SyncExternalStore']);
+    expect(hook?.type).toBe('useSyncExternalStore');
+    expect(hook).toMatchObject({ library: 'zustand', libraryAt: 2 });
+    expect(hookText(hook)).toMatch(/^useRow › usePrice › \[zustand\] useStore › useSyncExternalStoreWithSelector › SyncExternalStore/);
+    expect(hookText(hook, 'short')).toMatch(/^useRow › usePrice › zustand\.useStore( @|$)/);
   });
 
   it('attaches plugin causes emitted before a commit', () => {

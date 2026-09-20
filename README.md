@@ -15,16 +15,20 @@ Think of it as [react-grab](https://github.com/aidenybai/react-grab) for re-rend
 - **Reasons**
   - `state #2`, `external store #3 [useStore] selectPrice`, `context Theme`, `props: value | same: style, onClick`;
   - `SAME-CONTENT` — a new reference with the same content, almost always a subscription bug rather than new data;
-  - hook names instead of numbers: `useOrderForm › useController › useFormState › State @ src/Form.tsx:48 const { fieldState } = useController(…)`.
+  - hook names instead of numbers, with `[package]` where the app's own hooks hand over to a library:
+    `useOrderForm › [react-hook-form] useController › useFormState › State @ src/Form.tsx:48 const { fieldState } = useController(…)`.
 - **Per-component reasons**, including renders caused by the parent: `parent: props equal` (memo would skip it),
   `parent: props price | same: style, onClick` (what broke memo).
-- **Renders that changed nothing in the DOM**.
-- **Causes** — what happened before each commit: store actions with the keys they changed, query cache events,
-  navigations, user input.
+- **Renders that changed nothing in the DOM**, and **mounts** — a component declared inside a render or an
+  unstable `key` remounts its subtree on every render.
+- **Causes** — what scheduled each commit, aimed at the components it actually updated: store actions with the keys
+  they changed, query cache events, timers (`core:timer setInterval useCountdown @ src/hooks/useCountdown.ts`),
+  socket and worker messages (`core:message WebSocket`), navigations, user input.
 - **User actions** — clicks, typing (length only; secrets never), keys, scroll. The recording is cut into
-  *action → consequences* segments: renders per typed character, reaction vs background, input latency (Event Timing).
+  _action → consequences_ segments: renders per typed character, reaction vs background, input latency (Event Timing).
 - **An area** — pick a component on the page and record only inside it; renders that come from outside are
-  attributed to the component above that started them.
+  attributed to the component above that started them. While nothing is recorded, renders inside the area are
+  outlined live, so the overlay is a permanent x-ray of the part you are working on.
 - Long animation frames with their scripts, lanes of each commit, memoized selectors' calls and recomputes.
 
 ## Install
@@ -55,16 +59,22 @@ picks an area. In automated browsers (`navigator.webdriver`) the panel is hidden
 
 ### Options
 
-| Option | Default | |
-| --- | --- | --- |
-| `outDir` | `REACT_PERF_RECORDER_DIR`, then `.agent-artifacts/perf-recorder` | Sessions folder, relative to the root or absolute |
-| `enabled` | dev server only, not under Vitest | |
-| `maxBytes` | 64 MB | Largest request, the final recording included |
-| `retain` | `{ sessions: 100, bytes: 500 MB }` | Oldest sessions go first |
-| `actions` | `{ values: false, secretSelector: '[data-rpr-secret]' }` | `values: true` records typed values; passwords and one-time codes never |
-| `components` | `{ include: ['src/**/*.{tsx,jsx}'], wrappers: ['memo', 'forwardRef', 'createContext'] }` | Adds `displayName` to `const X = memo(…)` and contexts; `wrapperPattern` hides UI-kit wrappers from paths |
-| `panel` | `{ corner: 'bottom-left', highlight: true, shortcuts }` | `false` — engine only |
-| `engine` | `{ bigCommit: 150, timelineLimit: 5000, maxDurationMs: 600000 }` | |
+| Option       | Default                                                                                  |                                                                                                                |
+| ------------ | ---------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `outDir`     | `REACT_PERF_RECORDER_DIR`, then `.agent-artifacts/perf-recorder`                         | Sessions folder, relative to the root or absolute                                                              |
+| `enabled`    | dev server only, not under Vitest                                                        |                                                                                                                |
+| `maxBytes`   | 64 MB                                                                                    | Largest request, the final recording included                                                                  |
+| `retain`     | `{ sessions: 100, bytes: 500 MB }`                                                       | Oldest sessions go first                                                                                       |
+| `actions`    | `{ values: false, secretSelector: '[data-rpr-secret]' }`                                 | `values: true` records typed values; passwords and one-time codes never                                        |
+| `components` | `{ include: ['src/**/*.{tsx,jsx}'], wrappers: ['memo', 'forwardRef', 'createContext'] }` | Adds `displayName` to `const X = memo(…)` and contexts; `wrapperPattern` hides UI-kit wrappers from paths      |
+| `panel`      | `{ corner: 'bottom-left', highlight: true, shortcuts }`                                  | `false` — engine only                                                                                          |
+| `engine`     | `{ bigCommit: 150, timelineLimit: 5000, maxDurationMs: 600000, timers: true }`           | `timers: false` leaves `setTimeout`, `setInterval` and `requestAnimationFrame` unwrapped, and timer causes out |
+
+**The panel.** `● Rec` records, `⌖ Area` picks the part of the page to look at. The area's name opens the tree
+again — parents above it, `→` opens the components inside — and `⧉` copies the area as text for an assistant
+(component, file and line, the path above it, its DOM, what is inside, the `scope` for scripts). `Note` is saved
+with the recording and shown in `list_recordings`. `highlight` outlines renders in the area, both while recording
+and between recordings; a recording made with it on says so in its warnings, because drawing costs frame time.
 
 ## Sessions
 
@@ -83,12 +93,12 @@ from its events.
 { "mcpServers": { "react-perf-recorder": { "command": "node", "args": ["node_modules/react-perf-recorder/dist/cli.js", "mcp"] } } }
 ```
 
-| Tool | |
-| --- | --- |
-| `list_recordings` | Newest first, with status, area, commits, renders, the top root |
-| `get_recording` | `id` (`latest`, `latest-1`), `section`: `summary` (default), `actions`, `roots`, `outside`, `causes`, `components`, `timeline`, `frames`, `plugins`, `plugin:<name>`… |
-| `wait_for_recording` | Blocks until the user finishes a recording (`until: 'done'`) or starts one |
-| `compare_recordings` | Before/after: totals, roots, causes, the same actions, plugin metrics; warns when runs differ |
+| Tool                 |                                                                                                                                                                                                                                                                   |
+| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `list_recordings`    | Newest first, with status, area, commits, renders, the top root                                                                                                                                                                                                   |
+| `get_recording`      | `id` (`latest`, `latest-1`), `section`: `summary` (default), `actions`, `roots`, `outside`, `causes`, `components`, `timeline`, `frames`, `plugins`, `plugin:<name>`…; `hooks: 'short'` prints hook chains up to the library API instead of down to the primitive |
+| `wait_for_recording` | Blocks until the user finishes a recording (`until: 'done'`) or starts one                                                                                                                                                                                        |
+| `compare_recordings` | Before/after: totals, roots, causes, the same actions, plugin metrics; warns when runs differ                                                                                                                                                                     |
 
 The folder comes from `--dir`, then `REACT_PERF_RECORDER_DIR`, then `./.agent-artifacts/perf-recorder`.
 `react-perf-recorder list` and `react-perf-recorder pull` do the same from a shell.
@@ -102,8 +112,9 @@ const rec = await engine.record(10_000, { source: 'script:my-check', scope: { se
 rec.id; // saved session id
 ```
 
-`engine.start()`/`engine.stop()`, `scope: { selector, component?, level? }`, `zones`, `highlight: false` for timing
-runs. Pages without the Vite plugin can load `react-perf-recorder/engine.iife.js` (core only: no plugins, no saving).
+`engine.start()`/`engine.stop()`, `scope: { selector, component?, level? } | { names: [...] }`, `zones`,
+`highlight: false` for timing runs. `window.__REACT_PERF_RECORDER__.format` prints reasons and hook chains the way
+the panel and the MCP server do (`reasonLine(root, reason, 'short' | 'full')`). Pages without the Vite plugin can load `react-perf-recorder/engine.iife.js` (core only: no plugins, no saving).
 
 ## Plugins
 
@@ -115,7 +126,11 @@ import { definePerfRecorderPlugin } from 'react-perf-recorder/vite';
 export const myStore = () =>
   definePerfRecorderPlugin({
     name: 'my-store',
-    vite: { transform(code, id) { /* … */ } }, // resolveId / load / transform / config, dev server only
+    vite: {
+      transform(code, id) {
+        /* … */
+      },
+    }, // resolveId / load / transform / config, dev server only
     runtime: { module: '/src/dev/myStorePlugin.ts', options: { verbose: false } },
   });
 ```
@@ -126,11 +141,17 @@ import { definePlugin } from 'react-perf-recorder/runtime';
 
 export default definePlugin((options: { verbose: boolean }) => ({
   name: 'my-store',
-  setup(ctx) {},                            // at page boot, before the app
-  describe(fn, kind, next) { return null }, // a label for a store selector or a store
-  start(session) {},                        // session.emitCause({ type, changes }) queues a cause for the next commit
-  stop(session) { return { version: 1, highlights: [], metrics: {} } },
-  conditions() { return { account: 'demo' } },
+  setup(ctx) {}, // at page boot, before the app
+  describe(fn, kind, next) {
+    return null;
+  }, // a label for a store selector or a store
+  start(session) {}, // session.emitCause({ type, changes }) queues a cause for the next commit
+  stop(session) {
+    return { version: 1, highlights: [], metrics: {} };
+  },
+  conditions() {
+    return { account: 'demo' };
+  },
 }));
 ```
 
@@ -150,6 +171,10 @@ proxy-memoize plugin.
   in; untouched subtrees (`child === alternate.child`) are skipped.
 - Hook names come from re-running the component with a stand-in dispatcher, as React DevTools does — only on Stop,
   only for components in the report, never inside a commit.
+- A component that rendered while its parent handed it the same props (`children` passed through, equal props to
+  `memo`) is a root of its own: the parent did not cause that render.
+- Timers are wrapped once at page boot, so intervals started on mount are seen too; a callback becomes a cause only
+  when React marked new work during it, and the cause goes to the components that work belongs to.
 - Store and memoizer plugins replace `zustand`, `proxy-memoize` for the app's imports only, so libraries keep the
   originals and memoization behaves exactly the same.
 
@@ -157,6 +182,7 @@ proxy-memoize plugin.
 
 - React 18 dev builds; React 19 is best effort.
 - Store writes that did not lead to a commit in the area are not recorded — there is no store journal by design.
+- Two timers that update the same component between commits are attributed to the first of them.
 - `export default memo(() => …)` without a `const`, nested `memo`, zustand v5 selectors are not named.
 - StrictMode doubles render-time selector calls.
 - Hook names re-run the component: side effects in render run once more.

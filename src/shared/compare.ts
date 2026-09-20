@@ -108,6 +108,11 @@ export function compareRecordings(a: RecordingV1, b: RecordingV1, options: Compa
     const vb = b.plugins[name]?.version;
     if (va !== undefined && vb !== undefined && va !== vb) warnings.push(`plugin ${name}: section v${va} vs v${vb}, only shared metrics compared`);
   }
+  const lit = (r: RecordingV1) => Boolean(r.overhead?.highlight ?? r.overhead?.overlayMs);
+  if (lit(a) !== lit(b))
+    warnings.push(
+      `highlight was on only ${lit(a) ? 'before' : 'after'}: its drawing inflates frame and long-task times, compare renders, not timings`
+    );
   if (a.partial || b.partial) warnings.push('a partial recording is compared: hook names, components and plugin sections may be missing');
   const text = (r: RecordingV1) => r.totals.domTextChanges;
   const totals = {

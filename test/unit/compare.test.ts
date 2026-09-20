@@ -57,4 +57,13 @@ describe('partial recordings and comparison', () => {
     expect(result.comparable).toBe(false);
     expect(result.warnings[0]).toMatch(/viewport differs/);
   });
+
+  it('warns when only one run drew the highlight', () => {
+    const before = aggregateEvents(meta, events(30));
+    const after = aggregateEvents(meta, events(30));
+    after.overhead = { ...after.overhead, highlight: true };
+    const result = compareRecordings(before, after);
+    expect(result.comparable).toBe(false);
+    expect(result.warnings.some((w) => w.startsWith('highlight was on only after'))).toBe(true);
+  });
 });

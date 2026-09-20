@@ -9,6 +9,8 @@ export interface RootLine {
   instances: number;
   perHit: number;
   noDomChange: number;
+  /** Components mounted under the root: remounts on every hit point at a component declared in render or a new key. */
+  mounts?: number;
   renderMsPerHit?: number;
   reasons: string[];
   causes: string[];
@@ -62,9 +64,22 @@ export interface Summary {
 
 const perSec = (n: number, ms: number) => (ms > 0 ? +((n * 1000) / ms).toFixed(2) : 0);
 
-export function hookText(hook: HookInfo | undefined): string {
+/** `full` keeps the whole chain; `short` stops at the package API the app called: `useSelector › zustand.useStore`. */
+export type HookMode = 'full' | 'short';
+
+/**
+ * `useSelector › [zustand] useStore › useSyncExternalStoreWithSelector › SyncExternalStore @ src/Row.tsx:12 const x = …`;
+ * `[zustand]` marks where the app's hooks end and the package begins.
+ */
+export function hookText(hook: HookInfo | undefined, mode: HookMode = 'full'): string {
   if (!hook) return '';
-  const path = hook.path?.length ? hook.path.join(' › ') : hook.type ?? '';
+  const steps = hook.path ?? [];
+  const at = hook.library && hook.libraryAt !== undefined && hook.libraryAt < steps.length ? hook.libraryAt : -1;
+  let path: string;
+  if (!steps.length) path = hook.type ?? '';
+  else if (at < 0) path = steps.join(' › ');
+  else if (mode === 'short') path = [...steps.slice(0, at), `${hook.library}.${steps[at]}`].join(' › ');
+  else path = [...steps.slice(0, at), `[${hook.library}] ${steps[at]}`, ...steps.slice(at + 1)].join(' › ');
   const site = hook.site ? ` @ ${hook.site}${hook.code ? ` ${hook.code}` : ''}` : '';
   return `${path}${site}`;
 }
@@ -80,12 +95,12 @@ export function hookOf(root: RootStat, text: string) {
 }
 
 /** `12× state #2 SAME-CONTENT · useController › useFormState › State @ src/Field.tsx:48 const { fieldState } = …` */
-export function reasonLine(root: RootStat, [text, n]: [string, number]): string {
-  const hook = hookText(hookOf(root, text));
+export function reasonLine(root: RootStat, [text, n]: [string, number], mode: HookMode = 'full'): string {
+  const hook = hookText(hookOf(root, text), mode);
   return `${n}× ${text}${hook ? ` · ${hook}` : ''}`;
 }
 
-export function rootLine(root: RootStat, durationMs: number): RootLine {
+export function rootLine(root: RootStat, durationMs: number, mode: HookMode = 'full'): RootLine {
   return {
     root: root.name,
     source: root.source,
@@ -95,8 +110,9 @@ export function rootLine(root: RootStat, durationMs: number): RootLine {
     instances: root.instances,
     perHit: root.perHit,
     noDomChange: root.noDomChange,
+    ...(root.mounts ? { mounts: root.mounts } : {}),
     ...(root.renderMs ? { renderMsPerHit: +(root.renderMs / Math.max(1, root.hits)).toFixed(2) } : {}),
-    reasons: root.reasons.slice(0, 3).map((r) => reasonLine(root, r)),
+    reasons: root.reasons.slice(0, 3).map((r) => reasonLine(root, r, mode)),
     causes: root.causes.slice(0, 3).map(([k, n]) => `${n}× ${k}`),
     ...(root.lanes.length ? { lanes: root.lanes.map(([l, n]) => `${l}:${n}`).join(' ') } : {}),
   };
@@ -122,7 +138,7 @@ export function actionText(action: ActionRecord): string {
   }
 }
 
-export function summarize(rec: RecordingV1 & { id?: string; status?: string }, top = 5): Summary {
+export function summarize(rec: RecordingV1 & { id?: string; status?: string }, top = 5, hooks: HookMode = 'full'): Summary {
   const ms = rec.durationMs;
   const allRoots = [...rec.roots, ...rec.outsideRoots];
   const actionsById = new Map(rec.actions.map((a) => [a.id, a]));
@@ -144,7 +160,7 @@ export function summarize(rec: RecordingV1 & { id?: string; status?: string }, t
         ...(s.perChar ? { perChar: `${s.perChar.renders} renders, ${s.perChar.commits} commits per char (max ${s.perChar.maxRenders})` } : {}),
         ...(s.latency ? { latencyMs: s.latency.duration } : {}),
         ...(s.longFrames ? { longFrames: s.longFrames } : {}),
-        ...(root ? { topRoot: `${root.name} ×${s.topRoots[0][1]} — ${root.reasons[0] ? reasonLine(root, root.reasons[0]) : ''}` } : {}),
+        ...(root ? { topRoot: `${root.name} ×${s.topRoots[0][1]} — ${root.reasons[0] ? reasonLine(root, root.reasons[0], hooks) : ''}` } : {}),
       };
     });
   const texts = rec.totals.domTextChanges;
@@ -170,8 +186,8 @@ export function summarize(rec: RecordingV1 & { id?: string; status?: string }, t
       domTextChanges: texts,
       rendersPerTextChange: texts ? +(rec.totals.renders / texts).toFixed(1) : null,
     },
-    topRoots: rec.roots.slice(0, top).map((r) => rootLine(r, ms)),
-    outsideRoots: rec.outsideRoots.slice(0, 3).map((r) => rootLine(r, ms)),
+    topRoots: rec.roots.slice(0, top).map((r) => rootLine(r, ms, hooks)),
+    outsideRoots: rec.outsideRoots.slice(0, 3).map((r) => rootLine(r, ms, hooks)),
     topCauses: rec.causes.slice(0, 5).map((c) => ({
       key: c.key,
       events: c.events,

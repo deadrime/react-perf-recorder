@@ -25,7 +25,8 @@ async function main() {
     const ref = args[1] && !args[1].startsWith('--') ? args[1] : 'latest';
     const entry = findSession(dir, ref);
     const name = flag('section') ?? 'summary';
-    console.log(JSON.stringify(section(readRecording(entry), name, Number(flag('top') ?? 10), 0), null, 1));
+    const hooks = flag('hooks') === 'short' ? 'short' : 'full';
+    console.log(JSON.stringify(section(readRecording(entry), name, Number(flag('top') ?? 10), 0, hooks), null, 1));
     return;
   }
   if (command === 'pull') {

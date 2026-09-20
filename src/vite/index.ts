@@ -26,7 +26,8 @@ export interface PerfRecorderOptions {
   panel?:
     | false
     | { corner?: 'bottom-left' | 'bottom-right' | 'top-left' | 'top-right'; highlight?: boolean; shortcuts?: { record?: string; pick?: string } };
-  engine?: { bigCommit?: number; timelineLimit?: number; maxDurationMs?: number };
+  /** `timers: false` leaves setTimeout, setInterval and requestAnimationFrame unwrapped: no timer causes. */
+  engine?: { bigCommit?: number; timelineLimit?: number; maxDurationMs?: number; timers?: boolean };
   plugins?: PerfRecorderPlugin[];
 }
 
@@ -74,6 +75,7 @@ export function perfRecorder(options: PerfRecorderOptions = {}): VitePluginLike[
     maxDurationMs: options.engine?.maxDurationMs ?? 10 * 60_000,
     bigCommit: options.engine?.bigCommit ?? 150,
     timelineLimit: options.engine?.timelineLimit ?? 5000,
+    timers: options.engine?.timers ?? true,
     endpoint: `${base.replace(/\/$/, '')}/${ENDPOINT}`,
     panel:
       options.panel === false

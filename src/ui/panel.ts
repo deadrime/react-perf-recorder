@@ -1,8 +1,10 @@
 import type { Engine, Owner, Saved } from '../core/engine';
+import { currentOf, type Fiber, type FiberRoot } from '../core/fiber';
 import type { ScopeHandle } from '../core/scope';
 import type { Highlighter } from '../overlay/highlight';
 import { summarize, type RootLine } from '../shared/summary';
-import { Picker } from './picker';
+import { describeArea } from './describe';
+import { Picker, type TreeActions, type TreeRow } from './picker';
 import { defaults, loadState, saveState, type Corner, type PanelState } from './storage';
 import { STYLES } from './styles';
 
@@ -53,11 +55,12 @@ export class Panel {
     record: HTMLButtonElement;
     stop: HTMLButtonElement;
     pick: HTMLButtonElement;
-    scope: HTMLSpanElement;
+    scope: HTMLButtonElement;
+    copyScope: HTMLButtonElement;
     clearScope: HTMLButtonElement;
     lastScope: HTMLButtonElement;
     highlight: HTMLInputElement;
-    label: HTMLInputElement;
+    note: HTMLInputElement;
     picker: HTMLDivElement;
     result: HTMLDivElement;
     message: HTMLDivElement;
@@ -74,7 +77,7 @@ export class Panel {
     this.root = this.build();
     this.shadow.append(this.root);
     this.picker = new Picker(this.shadow, this.host, engine, () => this.state.showWrappers, {
-      showOwners: (owners, active, select, hover) => this.showOwners(owners, active, select, hover),
+      showTree: (rows, active, actions) => this.showTree(rows, active, actions),
       done: (owner) => this.onPicked(owner),
     });
     engine.onChange(() => this.sync());
@@ -88,12 +91,13 @@ export class Panel {
 
   setHighlighter(highlighter: Highlighter) {
     this.highlighter = highlighter;
-    highlighter.enabled = this.state.highlight;
+    highlighter.enabled = !this.root.hidden && this.state.highlight;
   }
 
   /** Panel host goes on <html>, outside body: the app's root lookups and DOM observers never see it. */
   mount() {
     document.documentElement.appendChild(this.host);
+    this.syncIdleHighlight();
   }
 
   get shadowRoot() {
@@ -106,6 +110,15 @@ export class Panel {
     this.state.collapsed = false;
     this.persist();
     this.sync();
+    this.syncIdleHighlight();
+  }
+
+  /** Renders in the area are outlined all the time the panel is shown, not only while recording. */
+  private syncIdleHighlight() {
+    const on = !this.root.hidden && this.state.highlight;
+    // A hidden panel draws nothing, so an automated browser gets clean screenshots.
+    if (this.highlighter) this.highlighter.enabled = on;
+    this.engine.highlightWhenIdle(on, this.scope);
   }
 
   private initialVisibility() {
@@ -125,32 +138,59 @@ export class Panel {
     const record = h('button', { class: 'rec', 'data-rpr': 'record', title: `Start recording (${this.options.shortcuts.record})` }, '● Rec');
     const stop = h('button', { class: 'stop', 'data-rpr': 'stop', title: `Stop (${this.options.shortcuts.record})` }, '■ Stop');
     const pick = h('button', { 'data-rpr': 'pick', title: `Pick an area (${this.options.shortcuts.pick})` }, '⌖ Area');
-    const scope = h('span', { class: 'scope', 'data-rpr': 'scope' }, 'Whole app');
+    const scope = h('button', { class: 'scope', 'data-rpr': 'scope', title: 'Click to change the area, hover to outline it' }, 'Whole app');
+    const copyScope = h('button', { 'data-rpr': 'copy-scope', title: 'Copy the area as text for an AI assistant: component, file, path, DOM' }, '⧉');
     const clearScope = h('button', { 'data-rpr': 'clear-scope', title: 'Record the whole app' }, '×');
     const lastScope = h('button', { 'data-rpr': 'last-scope', title: 'Find the last area again' }, '↺');
     const highlight = h('input', { type: 'checkbox', 'data-rpr': 'highlight' });
-    const label = h('input', { type: 'text', 'data-rpr': 'label', placeholder: 'label (optional)' });
+    const note = h('input', {
+      type: 'text',
+      'data-rpr': 'note',
+      placeholder: 'what you are testing, e.g. typing the amount',
+      title: 'Saved with the recording and shown in the list of recordings, so you and the agent can tell them apart',
+    });
     const picker = h('div', { class: 'picker', 'data-rpr': 'picker' });
     const result = h('div', { class: 'result', 'data-rpr': 'result' });
     const message = h('div', { 'data-rpr': 'message' });
     card.append(
       header,
-      h('div', { class: 'row' }, record, stop, pick, scope, clearScope, lastScope, h('label', { class: 'toggle' }, highlight, 'highlight')),
-      h('div', { class: 'row' }, label),
+      h(
+        'div',
+        { class: 'row' },
+        record,
+        stop,
+        pick,
+        scope,
+        copyScope,
+        clearScope,
+        lastScope,
+        h('label', { class: 'toggle', title: 'Outline renders in the area, also between recordings' }, highlight, 'highlight')
+      ),
+      h('label', { class: 'row note' }, h('span', { class: 'muted' }, 'Note'), note),
       picker,
       message,
       result
     );
     const dot = h('button', { class: 'dot', 'data-rpr': 'toggle', title: `react-perf-recorder (${this.options.shortcuts.record})` }, '●');
     const root = h('div', { class: 'rpr' }, dot, card);
-    this.els = { live, record, stop, pick, scope, clearScope, lastScope, highlight, label, picker, result, message };
+    this.els = { live, record, stop, pick, scope, copyScope, clearScope, lastScope, highlight, note, picker, result, message };
     highlight.checked = this.state.highlight;
-    label.value = this.state.label;
+    note.value = this.state.label;
     dot.addEventListener('click', () => this.setCollapsed(false));
     collapse.addEventListener('click', () => this.setCollapsed(true));
     record.addEventListener('click', () => void this.start());
     stop.addEventListener('click', () => void this.stop());
     pick.addEventListener('click', () => this.togglePicker());
+    scope.addEventListener('click', () => this.editScope());
+    scope.addEventListener('mouseenter', () => {
+      const target = this.scopeTarget();
+      if (target && !this.picker.active) this.picker.outline(target, this.scope!.name);
+    });
+    scope.addEventListener('mouseleave', () => this.picker.hideOutline());
+    copyScope.addEventListener('click', () => {
+      const target = this.scopeTarget();
+      if (target) void this.copy(describeArea(this.engine, target), 'Area copied: paste it into the chat with the assistant.');
+    });
     clearScope.addEventListener('click', () => this.setScope(null));
     lastScope.addEventListener('click', () => {
       try {
@@ -161,11 +201,12 @@ export class Panel {
     });
     highlight.addEventListener('change', () => {
       this.state.highlight = highlight.checked;
-      if (this.highlighter) this.highlighter.enabled = highlight.checked;
+      if (!highlight.checked) this.highlighter?.reset();
       this.persist();
+      this.syncIdleHighlight();
     });
-    label.addEventListener('input', () => {
-      this.state.label = label.value;
+    note.addEventListener('input', () => {
+      this.state.label = note.value;
       this.persist();
     });
     this.enableDrag(header, root);
@@ -180,6 +221,8 @@ export class Panel {
     this.els.record.hidden = recording || this.busy;
     this.els.stop.hidden = !recording;
     this.els.pick.disabled = recording;
+    this.els.scope.disabled = recording;
+    this.els.copyScope.hidden = !this.scope;
     this.els.clearScope.hidden = !this.scope || recording;
     this.els.lastScope.hidden = Boolean(this.scope) || !this.state.lastScope || recording;
     this.els.lastScope.title = this.state.lastScope ? `Find ${this.state.lastScope.label} again` : '';
@@ -211,7 +254,7 @@ export class Panel {
     this.say('');
     try {
       this.highlighter?.reset();
-      this.engine.start({ source: 'panel', scope: this.scope, label: this.state.label || undefined, highlight: this.state.highlight });
+      this.engine.start({ source: 'panel', scope: this.scope, label: this.state.label || undefined });
     } catch (error) {
       this.say(String((error as Error)?.message ?? error), 'error');
     }
@@ -239,8 +282,51 @@ export class Panel {
       return;
     }
     this.setCollapsed(false);
-    this.say('Hover the page and click an element; ↑/↓ choose the component, Enter confirms, Esc cancels.', 'muted');
+    this.say('Hover the page and click an element; then ↑/↓ move, → opens the components inside, Enter confirms, Esc cancels.', 'muted');
     this.picker.start();
+  }
+
+  /** Reopens the tree on the current area; without one, picks from scratch. */
+  private editScope() {
+    if (this.engine.recording) return;
+    const target = this.scopeTarget();
+    if (!target) return this.togglePicker();
+    this.picker.cancel();
+    this.setCollapsed(false);
+    this.say('↑/↓ move, → opens the components inside, ← goes up, Enter confirms; click the page to pick elsewhere.', 'muted');
+    this.picker.startAt(target);
+  }
+
+  /** The committed fiber of the area; after a remount the area is found again by its component path. */
+  private scopeTarget(): Fiber | null {
+    if (!this.scope) return null;
+    const target = currentOf(this.scope.chain[this.scope.chain.length - 1]);
+    // React cuts `return` of deleted fibers, so only a mounted one leads up to the committed root.
+    let top = target;
+    while (top.return) top = top.return;
+    if ((top.stateNode as FiberRoot | null)?.current === top) return target;
+    try {
+      this.scope = this.engine.scopeFromNames(scopeNames(this.scope));
+      return this.scope.chain[this.scope.chain.length - 1];
+    } catch {
+      this.say(`${this.scope.name} is not on the page now.`, 'notice');
+      return null;
+    }
+  }
+
+  private async copy(text: string, done: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      // No clipboard API outside secure contexts: fall back to a selected textarea.
+      const area = h('textarea');
+      area.value = text;
+      this.shadow.append(area);
+      area.select();
+      document.execCommand('copy');
+      area.remove();
+    }
+    this.say(done, 'muted');
   }
 
   private onPicked(owner: Owner | null) {
@@ -252,11 +338,13 @@ export class Panel {
   private setScope(scope: ScopeHandle | null) {
     this.scope = scope;
     this.state.lastScope = scope ? { names: scopeNames(scope), label: scope.name } : null;
+    this.highlighter?.reset();
     this.persist();
     this.sync();
+    this.syncIdleHighlight();
   }
 
-  private showOwners(owners: Owner[], active: number, select: (index: number) => void, hover: (index: number) => void) {
+  private showTree(rows: TreeRow[], active: number, actions: TreeActions) {
     const wrappers = h('input', { type: 'checkbox' });
     wrappers.checked = this.state.showWrappers;
     wrappers.addEventListener('change', () => {
@@ -264,22 +352,43 @@ export class Panel {
       this.persist();
       this.picker.refresh();
     });
-    const list = h('ul');
-    owners.forEach((owner, i) => {
+    const list = h('ul', { 'data-rpr': 'tree' });
+    rows.forEach((row, i) => {
+      const toggle = h('span', { class: 'toggle', 'data-rpr': 'expand' }, row.toggle === 'open' ? '▾' : row.toggle === 'closed' ? '▸' : '');
+      const copy = h('span', { class: 'copy', 'data-rpr': 'copy-row', title: 'Copy for an AI assistant' }, '⧉');
       const item = h(
         'li',
-        { 'data-active': String(i === active), 'data-wrapper': String(owner.wrapper), 'data-name': owner.name },
-        h('span', {}, owner.name),
-        h('span', { class: 'src' }, owner.source)
+        { 'data-active': String(i === active), 'data-wrapper': String(row.owner.wrapper), 'data-name': row.owner.name },
+        toggle,
+        h('span', { class: 'name' }, row.owner.name),
+        // LRM marks keep `:line` at the end while the rtl box cuts the path from the left.
+        h('span', { class: 'src', title: row.owner.source }, `\u200e${row.owner.source}\u200e`),
+        copy
       );
-      item.addEventListener('click', () => select(i));
-      item.addEventListener('mouseenter', () => hover(i));
+      item.style.paddingLeft = `${4 + Math.min(row.depth, 24) * 10}px`;
+      toggle.addEventListener('click', (e) => {
+        e.stopPropagation();
+        actions.toggle(i);
+      });
+      copy.addEventListener('click', (e) => {
+        e.stopPropagation();
+        void this.copy(describeArea(this.engine, row.owner.fiber), `${row.owner.name} copied: paste it into the chat with the assistant.`);
+      });
+      item.addEventListener('click', () => actions.select(i));
+      item.addEventListener('mouseenter', () => actions.hover(i));
       list.append(item);
     });
+    list.addEventListener('mouseleave', () => actions.leave());
     this.els.picker.replaceChildren(
-      h('div', { class: 'row' }, h('span', { class: 'muted' }, 'Record inside:'), h('label', { class: 'toggle' }, wrappers, 'show wrappers')),
+      h(
+        'div',
+        { class: 'row' },
+        h('span', { class: 'muted' }, 'Record inside:'),
+        h('label', { class: 'toggle', title: 'Show styling wrappers and providers' }, wrappers, 'show wrappers')
+      ),
       list
     );
+    list.querySelector('[data-active="true"]')?.scrollIntoView({ block: 'nearest' });
   }
 
   private renderResult(rec: Saved) {
@@ -318,7 +427,9 @@ export class Panel {
       roots.map((r) =>
         line(
           n(r.root),
-          ` ×${r.hits} · ${r.perHit}/hit${r.instances > 1 ? ` · ${r.instances} inst` : ''}${r.noDomChange ? ` · ${r.noDomChange} no-DOM` : ''} `,
+          ` ×${r.hits} · ${r.perHit}/hit${r.instances > 1 ? ` · ${r.instances} inst` : ''}${r.noDomChange ? ` · ${r.noDomChange} no-DOM` : ''}${
+            r.mounts ? ` · ${r.mounts} mounts` : ''
+          } `,
           why(r.reasons.join('; '))
         )
       );
