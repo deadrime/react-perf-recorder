@@ -161,6 +161,32 @@ test('the shortcut opens the panel and records', async ({ page }) => {
   await expect(page.locator('[data-rpr="record"]')).toBeVisible();
 });
 
+test('records the page load: the panel reloads into a recording', async ({ page }) => {
+  const before = sessions();
+  await open(page);
+  await page.locator('[data-rpr="note"]').fill('what the load costs');
+  await page.locator('[data-rpr="record-on-load"]').click();
+  await expect(page.getByTestId('balance')).toBeVisible();
+  await expect(page.locator('[data-rpr="stop"]')).toBeVisible();
+  await page.locator('[data-rpr="stop"]').click();
+  const { meta, recording } = await newRecording(before);
+
+  expect(meta).toMatchObject({ source: 'load', label: 'what the load costs' });
+  // Everything the page mounted is in the recording, with the components it mounted on the way.
+  expect(recording.totals.mounts).toBeGreaterThan(10);
+  expect(recording.components.find((c) => c.name === 'PositionRow')?.mounts).toBe(3);
+});
+
+test('?rpr=rec records from the first render for a script', async ({ page }) => {
+  const before = sessions();
+  await page.goto('/?rpr=rec&tick=150');
+  await expect(page.getByTestId('balance')).toBeVisible();
+  await page.locator('[data-rpr="stop"]').click();
+  const { meta, recording } = await newRecording(before);
+  expect(meta.source).toBe('load');
+  expect(recording.totals.mounts).toBeGreaterThan(10);
+});
+
 test('Esc cancels the picker and the page keeps working', async ({ page }) => {
   await open(page);
   await page.locator('[data-rpr="pick"]').click();

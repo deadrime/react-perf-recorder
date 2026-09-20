@@ -11,6 +11,32 @@ export interface PanelState {
 }
 
 const KEY = 'react-perf-recorder:v1';
+const ON_LOAD_KEY = 'react-perf-recorder:record-on-load';
+
+export interface RecordOnLoad {
+  names?: string[];
+  label?: string;
+}
+
+/** The panel asks for a reload that records from the first render; the flag is consumed by the next boot. */
+export function setRecordOnLoad(value: RecordOnLoad) {
+  try {
+    sessionStorage.setItem(ON_LOAD_KEY, JSON.stringify(value));
+  } catch {
+    // See loadState.
+  }
+}
+
+export function takeRecordOnLoad(): RecordOnLoad | null {
+  try {
+    const raw = sessionStorage.getItem(ON_LOAD_KEY);
+    if (!raw) return null;
+    sessionStorage.removeItem(ON_LOAD_KEY);
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
 
 export const defaults = (corner: Corner, highlight: boolean): PanelState => ({
   collapsed: true,

@@ -15,6 +15,13 @@ interface Flash {
 const FADE_MS = 500;
 const MAX_FLASHES = 300;
 
+/**
+ * A closed menu or popover is often still in the DOM, unpositioned in the top-left corner: its renders are real,
+ * but outlining them stacks boxes over the page. Rects come from an IntersectionObserver, so no layout is forced
+ * here beyond the style check itself.
+ */
+const shown = (el: Element) => el.checkVisibility?.({ opacityProperty: true, visibilityProperty: true, contentVisibilityAuto: true }) ?? true;
+
 const colorOf = (count: number, wasted: boolean) => {
   if (wasted) return [150, 150, 160];
   if (count < 3) return [52, 199, 89];
@@ -96,7 +103,7 @@ export class Highlighter implements HighlightSink {
       for (const entry of entries) {
         const info = batch.get(entry.target);
         const r = entry.boundingClientRect;
-        if (!info || (!r.width && !r.height)) continue;
+        if (!info || (!r.width && !r.height) || !shown(entry.target)) continue;
         this.flashes.push({ x: r.left, y: r.top, w: r.width, h: r.height, ...info, start: now });
       }
       if (this.flashes.length > MAX_FLASHES) this.flashes.splice(0, this.flashes.length - MAX_FLASHES);

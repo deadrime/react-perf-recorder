@@ -7,6 +7,7 @@ import { ENDPOINT, type JsonValue } from '../shared/schema';
 import { addComponentNames, DEFAULT_WRAPPERS, type ComponentNamesOptions } from './component-names';
 import { ENTRY_ID, entryCode, RESOLVED_ENTRY_ID, runtimeSpecifier } from './entry';
 import { createFilter } from './helpers/filter';
+import { proxyModule } from './helpers/proxy-module';
 import { createMiddleware, SessionStore } from './middleware';
 import type { BuildContext, PerfRecorderPlugin } from './plugin-api';
 
@@ -66,6 +67,23 @@ export function perfRecorder(options: PerfRecorderOptions = {}): VitePluginLike[
   const components = options.components === false ? null : options.components ?? {};
   const componentFilter = createFilter(() => root, components?.include ?? ['src/**/*.{tsx,jsx}'], components?.exclude);
   const wrapperPattern = components?.wrapperPattern ?? DEFAULT_WRAPPER_PATTERN;
+  // Recording from the page load has to start before the first commit, and a root exists as soon as createRoot
+  // returns; the app's own import of react-dom/client goes through a proxy that says so.
+  const appFilter = createFilter(() => root, ['src/**/*.{ts,tsx,js,jsx}']);
+  const rootProxy = proxyModule('core', {
+    source: 'react-dom/client',
+    importer: appFilter,
+    code: () =>
+      [
+        // Named exports only: react-dom/client is interop'd from CJS, and `export *` would lose them.
+        `import * as original from 'react-dom/client';`,
+        `import { noteRoot } from 'react-perf-recorder/runtime';`,
+        `export const createRoot = (...args) => { const root = original.createRoot(...args); noteRoot(); return root; };`,
+        `export const hydrateRoot = (...args) => { const root = original.hydrateRoot(...args); noteRoot(); return root; };`,
+        `export const version = original.version;`,
+        `export default original.default ?? original;`,
+      ].join('\n'),
+  });
 
   const clientConfig = (): JsonValue => ({
     version: VERSION,
@@ -96,8 +114,10 @@ export function perfRecorder(options: PerfRecorderOptions = {}): VitePluginLike[
       root = config.root;
       base = config.base;
     },
-    resolveId: (id) => (id === ENTRY_ID ? RESOLVED_ENTRY_ID : null),
+    resolveId: (id, importer) => (id === ENTRY_ID ? RESOLVED_ENTRY_ID : rootProxy.resolveId(id, importer)),
     load(id) {
+      const proxied = rootProxy.load(id);
+      if (proxied) return proxied;
       if (id !== RESOLVED_ENTRY_ID) return null;
       const runtimes = plugins
         .filter((p) => p.runtime)

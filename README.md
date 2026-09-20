@@ -19,6 +19,8 @@ Think of it as [react-grab](https://github.com/aidenybai/react-grab) for re-rend
     `useOrderForm › [react-hook-form] useController › useFormState › State @ src/Form.tsx:48 const { fieldState } = useController(…)`.
 - **Per-component reasons**, including renders caused by the parent: `parent: props equal` (memo would skip it),
   `parent: props price | same: style, onClick` (what broke memo).
+- **The page load** — recording starts before the first commit, so the mount cascade and everything that follows
+  it are in the recording.
 - **Renders that changed nothing in the DOM**, and **mounts** — a component declared inside a render or an
   unstable `key` remounts its subtree on every render.
 - **Causes** — what scheduled each commit, aimed at the components it actually updated: store actions with the keys
@@ -70,7 +72,8 @@ picks an area. In automated browsers (`navigator.webdriver`) the panel is hidden
 | `panel`      | `{ corner: 'bottom-left', highlight: true, shortcuts }`                                  | `false` — engine only                                                                                          |
 | `engine`     | `{ bigCommit: 150, timelineLimit: 5000, maxDurationMs: 600000, timers: true }`           | `timers: false` leaves `setTimeout`, `setInterval` and `requestAnimationFrame` unwrapped, and timer causes out |
 
-**The panel.** `● Rec` records, `⌖ Area` picks the part of the page to look at. The area's name opens the tree
+**The panel.** `● Rec` records, `⟳ Rec on load` reloads the page and records from its first render (the area and
+the note survive the reload; `?rpr=rec` does the same from a script or a link). `⌖ Area` picks the part of the page to look at. The area's name opens the tree
 again — parents above it, `→` opens the components inside — and `⧉` copies the area as text for an assistant
 (component, file and line, the path above it, its DOM, what is inside, the `scope` for scripts). `Note` is saved
 with the recording and shown in `list_recordings`. `highlight` outlines renders in the area, both while recording
@@ -175,6 +178,10 @@ proxy-memoize plugin.
   `memo`) is a root of its own: the parent did not cause that render.
 - Timers are wrapped once at page boot, so intervals started on mount are seen too; a callback becomes a cause only
   when React marked new work during it, and the cause goes to the components that work belongs to.
+- The app's `react-dom/client` is proxied so the recorder learns about a root the moment `createRoot` returns —
+  that is what makes recording from the page load possible.
+- The overlay skips elements the person cannot see (`checkVisibility`): a closed menu or popover still renders, and
+  its renders are in the recording, but its boxes would pile up unpositioned in a corner.
 - Store and memoizer plugins replace `zustand`, `proxy-memoize` for the app's imports only, so libraries keep the
   originals and memoization behaves exactly the same.
 

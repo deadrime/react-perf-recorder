@@ -4,6 +4,7 @@ import type { Fiber } from '../core/fiber';
 export type { Conditions, JsonValue, PluginSection, Primitive } from '../shared/schema';
 export type { Fiber } from '../core/fiber';
 export { createMemoInstrumentation, type MemoInstrumentation, type MemoStat } from './memo';
+export { noteRoot } from '../core/roots-notify';
 
 export interface CauseInput {
   /** Shown as `<plugin>:<type>`, e.g. `markets/updateMarketsAmmState`. */

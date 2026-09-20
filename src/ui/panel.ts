@@ -5,7 +5,7 @@ import type { Highlighter } from '../overlay/highlight';
 import { summarize, type RootLine } from '../shared/summary';
 import { describeArea } from './describe';
 import { Picker, type TreeActions, type TreeRow } from './picker';
-import { defaults, loadState, saveState, type Corner, type PanelState } from './storage';
+import { defaults, loadState, saveState, setRecordOnLoad, type Corner, type PanelState } from './storage';
 import { STYLES } from './styles';
 
 export interface PanelOptions {
@@ -53,6 +53,7 @@ export class Panel {
   private els!: {
     live: HTMLSpanElement;
     record: HTMLButtonElement;
+    recordOnLoad: HTMLButtonElement;
     stop: HTMLButtonElement;
     pick: HTMLButtonElement;
     scope: HTMLButtonElement;
@@ -123,7 +124,7 @@ export class Panel {
 
   private initialVisibility() {
     const flag = new URLSearchParams(location.search).get('rpr');
-    if (flag === 'panel') this.state.visible = true;
+    if (flag === 'panel' || flag === 'rec') this.state.visible = true;
     if (flag === 'off') this.state.visible = false;
     if (flag) this.persist();
     // Automated browsers (e2e, playwright-mcp) get no panel unless asked: it would cover clicks and screenshots.
@@ -136,6 +137,11 @@ export class Panel {
     const collapse = h('button', { title: 'Collapse', 'data-rpr': 'collapse' }, '–');
     const header = h('header', {}, h('span', { class: 'title' }, 'perf'), live, collapse);
     const record = h('button', { class: 'rec', 'data-rpr': 'record', title: `Start recording (${this.options.shortcuts.record})` }, '● Rec');
+    const recordOnLoad = h(
+      'button',
+      { class: 'rec', 'data-rpr': 'record-on-load', title: 'Reload the page and record from its first render' },
+      '⟳ Rec on load'
+    );
     const stop = h('button', { class: 'stop', 'data-rpr': 'stop', title: `Stop (${this.options.shortcuts.record})` }, '■ Stop');
     const pick = h('button', { 'data-rpr': 'pick', title: `Pick an area (${this.options.shortcuts.pick})` }, '⌖ Area');
     const scope = h('button', { class: 'scope', 'data-rpr': 'scope', title: 'Click to change the area, hover to outline it' }, 'Whole app');
@@ -158,6 +164,7 @@ export class Panel {
         'div',
         { class: 'row' },
         record,
+        recordOnLoad,
         stop,
         pick,
         scope,
@@ -173,12 +180,16 @@ export class Panel {
     );
     const dot = h('button', { class: 'dot', 'data-rpr': 'toggle', title: `react-perf-recorder (${this.options.shortcuts.record})` }, '●');
     const root = h('div', { class: 'rpr' }, dot, card);
-    this.els = { live, record, stop, pick, scope, copyScope, clearScope, lastScope, highlight, note, picker, result, message };
+    this.els = { live, record, recordOnLoad, stop, pick, scope, copyScope, clearScope, lastScope, highlight, note, picker, result, message };
     highlight.checked = this.state.highlight;
     note.value = this.state.label;
     dot.addEventListener('click', () => this.setCollapsed(false));
     collapse.addEventListener('click', () => this.setCollapsed(true));
     record.addEventListener('click', () => void this.start());
+    recordOnLoad.addEventListener('click', () => {
+      setRecordOnLoad({ ...(this.scope ? { names: scopeNames(this.scope) } : {}), label: this.state.label || 'from page load' });
+      location.reload();
+    });
     stop.addEventListener('click', () => void this.stop());
     pick.addEventListener('click', () => this.togglePicker());
     scope.addEventListener('click', () => this.editScope());
@@ -219,6 +230,7 @@ export class Panel {
     this.root.dataset.collapsed = String(this.state.collapsed && !recording);
     this.root.dataset.recording = String(recording);
     this.els.record.hidden = recording || this.busy;
+    this.els.recordOnLoad.hidden = recording || this.busy;
     this.els.stop.hidden = !recording;
     this.els.pick.disabled = recording;
     this.els.scope.disabled = recording;
