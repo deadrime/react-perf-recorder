@@ -42,7 +42,8 @@ export function takeRecordOnLoad(): RecordOnLoad | null {
 }
 
 export const defaults = (corner: Corner, highlight: boolean): PanelState => ({
-  collapsed: true,
+  // Open on the first visit: a tool nobody can see is a tool nobody uses. Collapsing it is remembered.
+  collapsed: false,
   corner,
   highlight,
   showWrappers: false,

@@ -98,7 +98,11 @@ export class Panel {
 
   private initialVisibility() {
     const flag = new URLSearchParams(location.search).get('rpr');
-    if (flag === 'panel' || flag === 'rec') this.state.visible = true;
+    // Asking for the panel by hand means the card, not the dot it collapses to.
+    if (flag === 'panel' || flag === 'rec') {
+      this.state.visible = true;
+      this.state.collapsed = false;
+    }
     if (flag === 'off') this.state.visible = false;
     if (flag) this.persist();
     // Automated browsers (e2e, playwright-mcp) get no panel unless asked: it would cover clicks and screenshots.

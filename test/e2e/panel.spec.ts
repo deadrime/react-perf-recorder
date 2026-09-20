@@ -24,9 +24,8 @@ async function newRecording(before: string[]): Promise<{ meta: SessionMeta; reco
 }
 
 const open = async (page: Page) => {
-  await page.goto('/?rpr=panel&tick=150');
+  await page.goto('/app?rpr=panel&tick=150');
   await expect(page.getByTestId('balance')).toBeVisible();
-  await page.locator('[data-rpr="toggle"]').click();
 };
 
 const tree = (page: Page) => page.locator('[data-rpr="tree"] li');
@@ -46,6 +45,8 @@ test('records a session from the panel with a note, store causes, hook names and
   await open(page);
   await page.locator('[data-rpr="note"]').fill('typing the key label');
   await page.locator('[data-rpr="record"]').click();
+  // The rows render from the price feed, so wait until the recording has seen one tick before typing into the form.
+  await expect(page.locator('[data-rpr="live-roots"]')).toContainText('PositionRow');
   await page.getByTestId('key-label').pressSequentially('main');
   await page.getByTestId('key-secret').pressSequentially('s3cret');
   await page.getByTestId('close-p3').click();
@@ -182,7 +183,7 @@ test('outlines renders inside the area while nothing is recorded, and marks reco
 
 test('the shortcut opens the panel and records', async ({ page }) => {
   const before = sessions();
-  await page.goto('/?tick=150');
+  await page.goto('/app?tick=150');
   await expect(page.getByTestId('balance')).toBeVisible();
   await expect(page.locator('[data-rpr="record"]')).toBeHidden();
   await page.keyboard.press('Alt+Shift+KeyR');
@@ -212,7 +213,7 @@ test('records the page load: the panel reloads into a recording', async ({ page 
 
 test('?rpr=rec records from the first render for a script', async ({ page }) => {
   const before = sessions();
-  await page.goto('/?rpr=rec&tick=150');
+  await page.goto('/app?rpr=rec&tick=150');
   await expect(page.getByTestId('balance')).toBeVisible();
   await page.locator('[data-rpr="stop"]').click();
   const { meta, recording } = await newRecording(before);

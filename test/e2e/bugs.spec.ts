@@ -19,7 +19,7 @@ const scenarios: Record<Scenario, (page: Page) => Promise<void>> = {
 
 /** Runs the scenario on the fixture with the bug on or off and returns what the recorder saw. */
 async function record(page: Page, scenario: Scenario, bugs: Bug | ''): Promise<RecordingV1> {
-  await page.goto(`/?tick=150&bugs=${bugs}`);
+  await page.goto(bugs ? `/bug/${bugs}?tick=150` : `/app?tick=150`);
   await page.getByTestId('balance').waitFor();
   await page.waitForTimeout(300);
   // The page always has the recorder; its global is declared optional for pages without the plugin.

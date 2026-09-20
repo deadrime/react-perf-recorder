@@ -209,15 +209,17 @@ proxy-memoize plugin.
 
 ## Working on it
 
-`npm test` runs the unit tests, `npm run test:e2e` the browser ones. Both e2e suites run against the fixture app in
-`test/e2e/fixture-app`: a small trading terminal with a store, a socket feed, a form and a dozen re-render bugs that
-each turn on from the URL (`/?bugs=whole-object,form-watch`), so a recording can be checked against a known cause and
-against a clean run. It needs a dev server because the Vite plugin is half of what is under test — it injects the
-recorder, names the components, proxies `react-dom/client` and the stores, and stores the sessions.
+`npm test` runs the unit tests, `npm run test:e2e` the browser ones. They run against the fixture app in
+`test/e2e/fixture-app`, which doubles as the demo: a small trading terminal with a store, a price feed and a form,
+and thirteen seeded re-render bugs, one per page (`/bug/whole-object`), with `/app` as the same app with none of
+them. `/` lists them as cards that say what to do on the page and what the recording should name, so a recording can
+be checked against a known cause and against a clean run. It needs a dev server because the Vite plugin is half of
+what is under test — it injects the recorder, names the components, proxies `react-dom/client` and the stores, and
+stores the sessions.
 
-`npm run fixture` opens the same app by hand on http://localhost:5391 (`?rpr=panel` shows the panel), which is the
-quickest way to try a change to the panel. Playwright starts its own copy of that server, so stop this one before
-running the e2e suite — the port is taken.
+`npm run fixture` opens it by hand on http://localhost:5391, which is also the quickest way to try a change to the
+panel. Playwright starts its own copy of that server, so stop this one before running the e2e suite — the port is
+taken.
 
 ## License
 

@@ -32,9 +32,8 @@ const churn = (page: Page) => page.evaluate(() => (window as unknown as { __chur
 const scrollOf = (page: Page) => page.locator('[data-rpr="tree"]').evaluate((ul) => Math.round(ul.scrollLeft));
 
 test('moving the area patches the tree instead of drawing it again', async ({ page }) => {
-  await page.goto('/?rpr=panel&tick=150');
+  await page.goto('/app?rpr=panel&tick=150');
   await expect(page.getByTestId('balance')).toBeVisible();
-  await page.locator('[data-rpr="toggle"]').click();
   await page.locator('[data-rpr="pick"]').click();
   await page.getByTestId('position-p1').click();
   await expect(page.locator('[data-rpr="scope"]')).toHaveText('PositionRow');

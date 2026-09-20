@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { bug } from '../bugs';
+import { BugStrip } from '../Demo';
 import { useTerminalStore } from '../store/terminal';
 import { ApiKeyForm } from './ApiKeyForm';
 import { FundingCountdown } from './FundingCountdown';
@@ -52,6 +53,7 @@ const SettingsByBlock = ({ children }: { children: ReactNode }) => {
 
 export const Layout = () => (
   <SettingsByBlock>
+    <BugStrip />
     <Header />
     <ConnectionStatus />
     <TradeView />
