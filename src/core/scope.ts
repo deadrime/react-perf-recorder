@@ -15,6 +15,23 @@ export function scopeFromFiber(target: Fiber, projectRoot = ''): ScopeHandle {
   return { kind: 'scope', chain, name: nameOf(target) ?? String(target.type ?? 'root'), source: sourceOf(target, projectRoot) };
 }
 
+/**
+ * The component path of a scope, e.g. ['OrdersPanel', 'PositionTable']: what `scopeFromNames` finds again after a
+ * reload or a remount, and what the panel stores instead of a fiber. Components without a name of their own are
+ * left out — `Anonymous` and `Memo` would match anything.
+ */
+export function scopeNames(scope: ScopeHandle, depth = 6): string[] {
+  return scope.chain
+    .map((f) => {
+      const t = f.type;
+      if (typeof t === 'function') return t.displayName || t.name;
+      if (t && typeof t === 'object') return t.displayName || t.render?.displayName || t.render?.name || t.type?.displayName || t.type?.name;
+      return null;
+    })
+    .filter((n): n is string => Boolean(n))
+    .slice(-depth);
+}
+
 export interface ChainVisit {
   rendered: boolean;
 }

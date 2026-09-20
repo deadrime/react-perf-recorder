@@ -1,11 +1,10 @@
 /** @jsxImportSource preact */
-import { type ComponentChildren, type JSX } from 'preact';
-import type { Saved } from '../core/engine';
-import { summarize, type RootLine } from '../shared/summary';
-
-const Line = ({ children }: { children: ComponentChildren }) => <div class="line">{children}</div>;
-const N = ({ children }: { children: ComponentChildren }) => <span class="n">{children}</span>;
-const Why = ({ children }: { children: ComponentChildren }) => <span class="why">{children}</span>;
+import type { JSX } from 'preact';
+import { useMemo } from 'preact/hooks';
+import type { Saved } from '../../core/engine';
+import { summarize, type RootLine } from '../../shared/summary';
+import { downloadJson } from '../download';
+import { Line, N, Why } from './Text';
 
 const Section = ({ title, rows }: { title: string; rows: JSX.Element[] }) =>
   rows.length ? (
@@ -17,7 +16,7 @@ const Section = ({ title, rows }: { title: string; rows: JSX.Element[] }) =>
 
 const rootRows = (roots: RootLine[]) =>
   roots.map((r) => (
-    <Line>
+    <Line key={r.root}>
       <N>{r.root}</N>
       {` ×${r.hits} · ${r.perHit}/hit${r.instances > 1 ? ` · ${r.instances} inst` : ''}${r.noDomChange ? ` · ${r.noDomChange} no-DOM` : ''}${
         r.mounts ? ` · ${r.mounts} mounts` : ''
@@ -26,9 +25,9 @@ const rootRows = (roots: RootLine[]) =>
     </Line>
   ));
 
-/** The summary shown after Stop: a pure function of the recording. */
+/** The summary shown after Stop: a pure function of the recording, so it is summarized once and redrawn for free. */
 export function Result({ rec, onDismiss }: { rec: Saved; onDismiss: () => void }): JSX.Element {
-  const s = summarize(rec, 5);
+  const s = useMemo(() => summarize(rec, 5), [rec]);
   const t = s.totals;
   const roots = [...rec.roots, ...rec.outsideRoots];
   const appComponents = rec.components.filter((c) => !c.library && !c.wrapper);
@@ -46,7 +45,7 @@ export function Result({ rec, onDismiss }: { rec: Saved; onDismiss: () => void }
       <Section
         title="Actions"
         rows={s.actions.map((a) => (
-          <Line>
+          <Line key={`${a.atSec}${a.what}`}>
             {`${a.atSec}s ${a.what} — `}
             <N>{a.renders}</N>
             {` renders, ${a.commits} commits`}
@@ -60,7 +59,7 @@ export function Result({ rec, onDismiss }: { rec: Saved; onDismiss: () => void }
       <Section
         title="Watched"
         rows={Object.entries(rec.watch ?? {}).map(([name, w]) => (
-          <Line>
+          <Line key={name}>
             <N>{w.renders}</N>
             {` renders of ${name}${w.mounted !== 1 ? ` (${w.mounted} mounted)` : ''} `}
             <Why>
@@ -77,7 +76,7 @@ export function Result({ rec, onDismiss }: { rec: Saved; onDismiss: () => void }
       <Section
         title="Causes"
         rows={s.topCauses.map((c) => (
-          <Line>
+          <Line key={c.key}>
             <N>{c.commits}</N>
             {` commits ← ${c.key}`}
             {c.keys ? <Why>{` · ${c.keys}`}</Why> : ''}
@@ -88,19 +87,19 @@ export function Result({ rec, onDismiss }: { rec: Saved; onDismiss: () => void }
         title="Components"
         rows={[
           ...appComponents.slice(0, 8).map((c) => (
-            <Line>
+            <Line key={c.name}>
               <N>{c.renders}</N>
               {` ${c.name}${c.memo ? ' (memo)' : ''}${c.withoutDom ? ` · ${c.withoutDom} no-DOM` : ''} `}
               <Why>{c.reasons.map(([r, k]) => `${k}× ${r}`).join('; ')}</Why>
             </Line>
           )),
-          ...(hidden > 0 ? [<Line>{<span class="muted">{`+ ${hidden} wrappers and components of packages`}</span>}</Line>] : []),
+          ...(hidden > 0 ? [<Line key="hidden">{<span class="muted">{`+ ${hidden} wrappers and components of packages`}</span>}</Line>] : []),
         ]}
       />
       {Object.entries(s.plugins).map(([name, plugin]) => (
-        <Section title={name} rows={plugin.highlights.slice(0, 2).map((text) => <Line>{text}</Line>)} />
+        <Section key={name} title={name} rows={plugin.highlights.slice(0, 2).map((text) => <Line key={text}>{text}</Line>)} />
       ))}
-      <Section title="Warnings" rows={s.warnings.slice(0, 3).map((w) => <Line>{w}</Line>)} />
+      <Section title="Warnings" rows={s.warnings.slice(0, 3).map((w) => <Line key={w}>{w}</Line>)} />
       <div class="row section">
         {rec.id ? <span class="muted">{`saved ${rec.id}`}</span> : <span class="error">{rec.saveError ?? 'not saved'}</span>}
         {rec.id ? <button onClick={() => void navigator.clipboard?.writeText(rec.id ?? '')}>Copy id</button> : null}
@@ -109,13 +108,4 @@ export function Result({ rec, onDismiss }: { rec: Saved; onDismiss: () => void }
       </div>
     </>
   );
-}
-
-function downloadJson(rec: Saved) {
-  const blob = new Blob([JSON.stringify(rec, null, 2)], { type: 'application/json' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = `react-perf-recorder-${rec.id ?? rec.startedAt.replace(/[:.]/g, '-')}.json`;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }

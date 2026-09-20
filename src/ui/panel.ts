@@ -1,13 +1,14 @@
 import type { Engine, Owner, Saved } from '../core/engine';
 import { currentOf, type Fiber, type FiberRoot } from '../core/fiber';
-import type { ScopeHandle } from '../core/scope';
+import { scopeNames, type ScopeHandle } from '../core/scope';
 import type { Highlighter } from '../overlay/highlight';
+import { renderPanel, type PanelHandlers, type PanelViewProps } from './components/PanelView';
+import type { TreeProps } from './components/Tree';
 import { describeArea } from './describe';
-import { renderPanel, type PanelHandlers, type PanelViewProps } from './panel-view';
 import { Picker, type TreeActions, type TreeRow } from './picker';
+import { matches } from './shortcuts';
 import { defaults, loadState, saveState, setRecordOnLoad, type Corner, type PanelState } from './storage';
 import { STYLES } from './styles';
-import type { TreeProps } from './tree-view';
 
 export interface PanelOptions {
   corner: Corner;
@@ -18,22 +19,9 @@ export interface PanelOptions {
 
 type Message = PanelViewProps['message'];
 
-/** `Alt+Shift+KeyR` against a keyboard event; `code`, not `key`: on macOS Alt changes the character. */
-const matches = (shortcut: string, event: KeyboardEvent) => {
-  const parts = shortcut.split('+');
-  const code = parts.pop();
-  const has = (m: string) => parts.includes(m);
-  return (
-    event.code === code &&
-    event.altKey === has('Alt') &&
-    event.shiftKey === has('Shift') &&
-    event.ctrlKey === has('Ctrl') &&
-    event.metaKey === has('Meta')
-  );
-};
-
 /**
- * Everything the panel knows lives here; the markup is a preact view of it (`panel-view.tsx`), redrawn from `sync()`.
+ * Everything the panel knows lives here; the markup is a preact view of it (`components/PanelView.tsx`),
+ * redrawn from `sync()`.
  * The view is rendered into the panel's own shadow root, never into the page: the app's React never sees it.
  */
 export class Panel {
@@ -117,49 +105,20 @@ export class Panel {
     return this.state.visible ?? !navigator.webdriver;
   }
 
+  /** What the view can ask for, in one place; each line is a method below. */
   private buildHandlers(): PanelHandlers {
     return {
       record: () => void this.start(),
-      recordOnLoad: () => {
-        setRecordOnLoad({
-          ...(this.scope ? { names: scopeNames(this.scope) } : {}),
-          ...(this.state.watch.length ? { watch: this.state.watch } : {}),
-          label: this.state.label || 'from page load',
-        });
-        location.reload();
-      },
+      recordOnLoad: () => this.reloadIntoRecording(),
       stop: () => void this.stop(),
       pick: () => this.togglePicker(),
       editScope: () => this.editScope(),
-      copyScope: () => {
-        const target = this.scopeTarget();
-        if (target) void this.copy(describeArea(this.engine, target), 'Area copied: paste it into the chat with the assistant.');
-      },
+      copyScope: () => this.copyScope(),
       clearScope: () => this.setScope(null),
-      lastScope: () => {
-        try {
-          if (this.state.lastScope) this.setScope(this.engine.scopeFromNames(this.state.lastScope.names));
-        } catch (error) {
-          this.say(String((error as Error)?.message ?? error), 'error');
-        }
-      },
-      outlineScope: (on) => {
-        if (!on) return this.picker.hideOutline();
-        const target = this.scopeTarget();
-        if (target && !this.picker.active) this.picker.outline(target, this.scope!.name);
-      },
-      setHighlight: (on) => {
-        this.state.highlight = on;
-        if (!on) this.highlighter?.reset();
-        this.persist();
-        this.sync();
-        this.syncIdleHighlight();
-      },
-      setNote: (text) => {
-        this.state.label = text;
-        this.persist();
-        this.sync();
-      },
+      lastScope: () => this.findLastScope(),
+      outlineScope: (on) => this.outlineScope(on),
+      setHighlight: (on) => this.setHighlight(on),
+      setNote: (text) => this.setNote(text),
       unwatch: (name) => this.toggleWatch(name),
       setCollapsed: (collapsed) => this.setCollapsed(collapsed),
       dragStart: (event) => this.onDragStart(event),
@@ -170,15 +129,63 @@ export class Panel {
     };
   }
 
+  /** The area, the note and the watched components are put aside, so the reloaded page can pick the recording up. */
+  private reloadIntoRecording() {
+    setRecordOnLoad({
+      ...(this.scope ? { names: scopeNames(this.scope) } : {}),
+      ...(this.state.watch.length ? { watch: this.state.watch } : {}),
+      label: this.state.label || 'from page load',
+    });
+    location.reload();
+  }
+
+  private copyScope() {
+    const target = this.scopeTarget();
+    if (target) void this.copy(describeArea(this.engine, target), 'Area copied: paste it into the chat with the assistant.');
+  }
+
+  private findLastScope() {
+    try {
+      if (this.state.lastScope) this.setScope(this.engine.scopeFromNames(this.state.lastScope.names));
+    } catch (error) {
+      this.say(String((error as Error)?.message ?? error), 'error');
+    }
+  }
+
+  /** Hovering the area's name outlines it on the page, unless the picker is already drawing something. */
+  private outlineScope(on: boolean) {
+    if (!on) return this.picker.hideOutline();
+    const target = this.scopeTarget();
+    if (target && !this.picker.active) this.picker.outline(target, this.scope!.name);
+  }
+
+  private setHighlight(on: boolean) {
+    this.state.highlight = on;
+    if (!on) this.highlighter?.reset();
+    this.persist();
+    this.sync();
+    this.syncIdleHighlight();
+  }
+
+  private setNote(text: string) {
+    this.state.label = text;
+    this.persist();
+    this.sync();
+  }
+
   private sync() {
     const recording = this.engine.recording;
-    const live = this.engine.live();
     if (recording && !this.liveTimer) this.liveTimer = setInterval(() => this.sync(), 250);
     if (!recording && this.liveTimer) {
       clearInterval(this.liveTimer);
       this.liveTimer = null;
     }
-    renderPanel(this.container, {
+    renderPanel(this.container, this.viewProps(recording));
+  }
+
+  private viewProps(recording: boolean): PanelViewProps {
+    const live = this.engine.live();
+    return {
       visible: this.visible,
       collapsed: this.state.collapsed,
       recording,
@@ -195,7 +202,7 @@ export class Panel {
       tree: this.tree,
       result: this.result,
       on: this.handlers,
-    });
+    };
   }
 
   private toggleWatch(name: string) {
@@ -381,16 +388,4 @@ export class Panel {
   private persist() {
     saveState(this.state);
   }
-}
-
-function scopeNames(scope: ScopeHandle): string[] {
-  return scope.chain
-    .map((f) => {
-      const t = f.type;
-      if (typeof t === 'function') return t.displayName || t.name;
-      if (t && typeof t === 'object') return t.displayName || t.render?.displayName || t.render?.name || t.type?.displayName || t.type?.name;
-      return null;
-    })
-    .filter((n): n is string => Boolean(n))
-    .slice(-6);
 }
