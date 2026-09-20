@@ -1,9 +1,9 @@
-import type { Engine, Owner, Saved } from '../core/engine';
+import type { Engine, Owner } from '../core/engine';
 import { currentOf, type Fiber, type FiberRoot } from '../core/fiber';
 import type { ScopeHandle } from '../core/scope';
 import type { Highlighter } from '../overlay/highlight';
-import { summarize, type RootLine } from '../shared/summary';
 import { describeArea } from './describe';
+import { clearResult, renderResult } from './result-view';
 import { h } from './dom';
 import { clearTree, renderTree } from './tree-view';
 import { Picker, type TreeActions, type TreeRow } from './picker';
@@ -307,7 +307,7 @@ export class Panel {
   private async start() {
     if (this.engine.recording || this.busy) return;
     this.picker.cancel();
-    this.els.result.replaceChildren();
+    clearResult(this.els.result);
     this.say('');
     try {
       this.highlighter?.reset();
@@ -329,7 +329,7 @@ export class Panel {
     this.sync();
     try {
       const recording = await this.engine.stop();
-      this.renderResult(recording);
+      renderResult(this.els.result, recording, () => clearResult(this.els.result));
     } catch (error) {
       this.say(String((error as Error)?.message ?? error), 'error');
     } finally {
@@ -431,118 +431,6 @@ export class Panel {
     });
   }
 
-  private renderResult(rec: Saved) {
-    const s = summarize(rec, 5);
-    const t = s.totals;
-    const out: Node[] = [];
-    const line = (...parts: Array<Node | string>) => h('div', { class: 'line' }, ...parts);
-    const n = (text: string | number) => h('span', { class: 'n' }, String(text));
-    const why = (text: string) => h('span', { class: 'why' }, text);
-    out.push(
-      line(
-        `${s.durationSec}s · `,
-        n(t.commitsInScope),
-        ` commits${s.scope ? ' in area' : ''} (${t.commits} total) · `,
-        n(t.renders),
-        ` renders · ${t.rendersPerScopeCommit}/commit · ${t.rendersWithoutDom} without DOM change`,
-        t.rendersFromOutside ? ` · ${t.rendersFromOutside} from outside` : ''
-      )
-    );
-    const section = (title: string, rows: Node[]) => rows.length && out.push(h('div', { class: 'section' }, h('h4', {}, title), ...rows));
-    section(
-      'Actions',
-      s.actions.map((a) =>
-        line(
-          `${a.atSec}s ${a.what} — `,
-          n(a.renders),
-          ` renders, ${a.commits} commits`,
-          a.perChar ? ` (${a.perChar})` : '',
-          a.latencyMs ? ` · ${a.latencyMs}ms` : '',
-          a.topRoot ? ` · ` : '',
-          a.topRoot ? why(a.topRoot) : ''
-        )
-      )
-    );
-    const roots = [...rec.roots, ...rec.outsideRoots];
-    section(
-      'Watched',
-      Object.entries(rec.watch ?? {}).map(([name, w]) =>
-        line(
-          n(w.renders),
-          ` renders of ${name}${w.mounted !== 1 ? ` (${w.mounted} mounted)` : ''} `,
-          why(
-            w.byRoot
-              .map(([index, count]) => `${count}× ${index === null ? 'unknown root' : roots[index]?.name ?? '?'}`)
-              .slice(0, 3)
-              .join('; ')
-          )
-        )
-      )
-    );
-    const rootRows = (roots: RootLine[]) =>
-      roots.map((r) =>
-        line(
-          n(r.root),
-          ` ×${r.hits} · ${r.perHit}/hit${r.instances > 1 ? ` · ${r.instances} inst` : ''}${r.noDomChange ? ` · ${r.noDomChange} no-DOM` : ''}${
-            r.mounts ? ` · ${r.mounts} mounts` : ''
-          } `,
-          why(r.reasons.join('; '))
-        )
-      );
-    section('Roots', rootRows(s.topRoots));
-    section('From outside the area', rootRows(s.outsideRoots));
-    section(
-      'Causes',
-      s.topCauses.map((c) => line(n(c.commits), ` commits ← ${c.key}`, c.keys ? why(` · ${c.keys}`) : ''))
-    );
-    const appComponents = rec.components.filter((c) => !c.library && !c.wrapper);
-    section(
-      'Components',
-      appComponents
-        .slice(0, 8)
-        .map((c) =>
-          line(
-            n(c.renders),
-            ` ${c.name}${c.memo ? ' (memo)' : ''}${c.withoutDom ? ` · ${c.withoutDom} no-DOM` : ''} `,
-            why(c.reasons.map(([r, k]) => `${k}× ${r}`).join('; '))
-          )
-        )
-        .concat(
-          rec.components.length > appComponents.length
-            ? [line(h('span', { class: 'muted' }, `+ ${rec.components.length - appComponents.length} wrappers and components of packages`))]
-            : []
-        )
-    );
-    for (const [name, plugin] of Object.entries(s.plugins))
-      section(
-        name,
-        plugin.highlights.slice(0, 2).map((text) => line(text))
-      );
-    if (s.warnings.length)
-      section(
-        'Warnings',
-        s.warnings.slice(0, 3).map((w) => line(w))
-      );
-    const copy = h('button', {}, 'Copy id');
-    const download = h('button', {}, 'Download');
-    const dismiss = h('button', {}, 'Dismiss');
-    copy.addEventListener('click', () => void navigator.clipboard?.writeText(rec.id ?? ''));
-    download.addEventListener('click', () => downloadJson(rec));
-    dismiss.addEventListener('click', () => this.els.result.replaceChildren());
-    copy.hidden = !rec.id;
-    out.push(
-      h(
-        'div',
-        { class: 'row section' },
-        rec.id ? h('span', { class: 'muted' }, `saved ${rec.id}`) : h('span', { class: 'error' }, rec.saveError ?? 'not saved'),
-        copy,
-        download,
-        dismiss
-      )
-    );
-    this.els.result.replaceChildren(...out);
-  }
-
   private say(text: string, kind: 'error' | 'notice' | 'muted' = 'muted') {
     this.els.message.className = kind;
     this.els.message.textContent = text;
@@ -603,13 +491,4 @@ function scopeNames(scope: ScopeHandle): string[] {
     })
     .filter((n): n is string => Boolean(n))
     .slice(-6);
-}
-
-function downloadJson(rec: Saved) {
-  const blob = new Blob([JSON.stringify(rec, null, 2)], { type: 'application/json' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = `react-perf-recorder-${rec.id ?? rec.startedAt.replace(/[:.]/g, '-')}.json`;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
