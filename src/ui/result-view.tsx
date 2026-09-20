@@ -1,5 +1,5 @@
 /** @jsxImportSource preact */
-import { render, type ComponentChildren, type JSX } from 'preact';
+import { type ComponentChildren, type JSX } from 'preact';
 import type { Saved } from '../core/engine';
 import { summarize, type RootLine } from '../shared/summary';
 
@@ -26,7 +26,8 @@ const rootRows = (roots: RootLine[]) =>
     </Line>
   ));
 
-function Result({ rec, onDismiss }: { rec: Saved; onDismiss: () => void }): JSX.Element {
+/** The summary shown after Stop: a pure function of the recording. */
+export function Result({ rec, onDismiss }: { rec: Saved; onDismiss: () => void }): JSX.Element {
   const s = summarize(rec, 5);
   const t = s.totals;
   const roots = [...rec.roots, ...rec.outsideRoots];
@@ -108,15 +109,6 @@ function Result({ rec, onDismiss }: { rec: Saved; onDismiss: () => void }): JSX.
       </div>
     </>
   );
-}
-
-/** The summary shown after Stop: a pure function of the recording, redrawn only when a new one arrives. */
-export function renderResult(container: HTMLElement, rec: Saved, onDismiss: () => void) {
-  render(<Result rec={rec} onDismiss={onDismiss} />, container);
-}
-
-export function clearResult(container: HTMLElement) {
-  render(null, container);
 }
 
 function downloadJson(rec: Saved) {

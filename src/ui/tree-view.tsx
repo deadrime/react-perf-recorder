@@ -1,5 +1,6 @@
 /** @jsxImportSource preact */
-import { render, type JSX } from 'preact';
+import { type JSX } from 'preact';
+import { useLayoutEffect, useRef } from 'preact/hooks';
 import type { Owner } from '../core/engine';
 import type { TreeActions, TreeRow } from './picker';
 
@@ -59,7 +60,15 @@ function Row({ p, i }: { p: TreeProps; i: number }): JSX.Element {
   );
 }
 
-const Tree = (p: TreeProps): JSX.Element => (
+/**
+ * The component tree of the picker. Preact patches the rows in place — moving the area with the arrows must not throw
+ * the list away, or the place it is scrolled to goes with it. It lives in the panel's shadow root and never in the
+ * page, so the app's own React knows nothing about it.
+ */
+export function Tree(p: TreeProps): JSX.Element {
+  const list = useRef<HTMLUListElement>(null);
+  useLayoutEffect(() => focusActive(list.current));
+  return (
   <>
     <div class="row">
       <span class="muted">Record inside:</span>
@@ -68,31 +77,17 @@ const Tree = (p: TreeProps): JSX.Element => (
         show library
       </label>
     </div>
-    <ul data-rpr="tree" onMouseLeave={() => p.actions.leave()}>
+    <ul data-rpr="tree" ref={list} onMouseLeave={() => p.actions.leave()}>
       {p.rows.map((_, i) => (
         <Row p={p} i={i} />
       ))}
     </ul>
   </>
-);
-
-/**
- * The component tree of the picker. Preact patches the rows in place — moving the area with the arrows must not throw
- * the list away, or the place it is scrolled to goes with it. It renders into the panel's shadow root and never into
- * the page, so the app's own React knows nothing about it.
- */
-export function renderTree(container: HTMLElement, props: TreeProps) {
-  render(<Tree {...props} />, container);
-  focusActive(container);
-}
-
-export function clearTree(container: HTMLElement) {
-  render(null, container);
+  );
 }
 
 /** The active row into view: vertically by hand, because scrollIntoView also drags the view away from the path. */
-function focusActive(container: HTMLElement) {
-  const list = container.querySelector('ul');
+function focusActive(list: HTMLUListElement | null) {
   const current = list?.querySelector('[data-active="true"]');
   if (!list || !current) return;
   const box = list.getBoundingClientRect();
