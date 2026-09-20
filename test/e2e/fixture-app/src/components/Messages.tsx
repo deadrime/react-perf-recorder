@@ -3,6 +3,7 @@ import { bug } from '../bugs';
 import { selectMessageIds, selectMessageInfo } from '../store/selectors';
 import { useChatStore, type Chat } from '../store/chat';
 import { useSettings } from './Settings';
+import { TimeAgo } from './TimeAgo';
 
 const useMessageInfo = (id: string) => useChatStore((s) => selectMessageInfo(s, id));
 
@@ -37,7 +38,7 @@ export const MessageRow = memo(({ id }: { id: string }) => {
       <span className="body">
         <span className="who">
           {message.from}
-          <small>{message.sentAgo} min ago</small>
+          <TimeAgo sentAt={message.sentAt} />
         </span>
         <span className="text">{message.text}</span>
       </span>

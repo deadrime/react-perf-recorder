@@ -29,7 +29,8 @@ Think of it as [react-grab](https://github.com/aidenybai/react-grab) for re-rend
   unstable `key` remounts its subtree on every render.
 - **Causes** — what scheduled each commit, aimed at the components it actually updated: store actions with the keys
   they changed, query cache events, timers (`core:timer setInterval useCountdown @ src/hooks/useCountdown.ts`),
-  socket and worker messages (`core:message WebSocket`), navigations, user input. What none of them explains is
+  socket and worker messages (`core:message WebSocket`), navigations, user input. A store write that marked no work
+  is not blamed for a commit another write caused. What none of them explains is
   read off the stack at the moment React is told about the update: `core:effect @ src/hooks/useSync.ts`,
   `core:update onMessage @ src/socket.ts`, `core:update refCallback (package)`.
 - **User actions** — clicks, typing (length only; secrets never), keys, scroll. The recording is cut into

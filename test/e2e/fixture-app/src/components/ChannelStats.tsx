@@ -7,7 +7,7 @@ export const ChannelStats = () => {
   const { data } = useQuery({
     queryKey: ['presence'],
     queryFn: async () => ({ online: 3 + (++polls % 4) }),
-    refetchInterval: 300,
+    refetchInterval: 500,
   });
   return (
     <p className="side-line" data-testid="stats">

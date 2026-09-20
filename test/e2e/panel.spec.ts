@@ -92,13 +92,14 @@ test('one click on the page is the area; the tree opens around it and moves it',
   await expect(page.locator('[data-rpr="tree"] li[data-active="true"]')).toHaveAttribute('data-name', 'MessageRow');
   // The neighbours of the picked row and what is inside it are listed without opening anything.
   await expect(page.locator('[data-rpr="tree"] li[data-name="MessageRow"]')).toHaveCount(3);
+  await expect(page.locator('[data-rpr="tree"] li[data-name="TimeAgo"]')).toHaveCount(1);
   await expect(page.locator('[data-rpr="tree"] li[data-name="Status"]')).toHaveCount(1);
   // Nothing is inside the cell, so its row offers no arrow to open.
-  await expect(page.locator('[data-rpr="tree"] li[data-name="Status"] [data-rpr="expand"]')).toHaveText('');
+  await expect(page.locator('[data-rpr="tree"] li[data-name="TimeAgo"] [data-rpr="expand"]')).toHaveText('');
 
   // ↓ moves the area with the active row; Esc puts back the area that was there before.
   await page.keyboard.press('ArrowDown');
-  await expect(page.locator('[data-rpr="scope"]')).toHaveText('Status');
+  await expect(page.locator('[data-rpr="scope"]')).toHaveText('TimeAgo');
   await page.keyboard.press('Escape');
   await expect(page.locator('[data-rpr="scope"]')).toHaveText('Whole app');
 
@@ -110,14 +111,15 @@ test('one click on the page is the area; the tree opens around it and moves it',
   await expect(page.locator('[data-rpr="scope"]')).toHaveText('MessageRow');
 
   await page.locator('[data-rpr="record"]').click();
-  await page.waitForTimeout(800);
+  // Reactions land on one message at a time, so the recording has to be long enough for this row's turn.
+  await page.waitForTimeout(3000);
   await page.locator('[data-rpr="stop"]').click();
   const { recording } = await newRecording(before);
   expect(recording.scope).toMatchObject({ name: 'MessageRow', state: 'attached' });
   // The row renders from its own subscription; its children are inside the area, the rest of the page is not.
   expect(recording.roots.map((r) => r.name)).toContain('Status');
   expect(recording.components.map((c) => c.name)).toContain('Status');
-  expect(recording.components.map((c) => c.name)).not.toContain('ConnectionStatus');
+  expect(recording.components.map((c) => c.name)).not.toContain('TypingLine');
 });
 
 test('follows a component picked in the tree and shows the leading roots live', async ({ page }) => {
@@ -158,7 +160,7 @@ test('copies the area for an assistant', async ({ page }) => {
   expect(copied).toContain('Component: MessageRow — src/components/Messages.tsx:');
   expect(copied).toContain('› MessageList › MessageRow');
   expect(copied).toContain('Element: <li data-testid="message-m1"');
-  expect(copied).toContain('Inside: Status');
+  expect(copied).toContain('Inside: TimeAgo, Status');
   expect(copied).toContain('react-perf-recorder scope: {"names":');
 });
 

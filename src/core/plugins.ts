@@ -11,6 +11,8 @@ export interface CauseEvent {
   data?: Record<string, Primitive>;
   /** Components the event scheduled updates on, when the core knows them: the cause goes to those roots only. */
   fibers?: Set<Fiber>;
+  /** The event knows which components it woke — even if that turned out to be none of them. */
+  aimed?: true;
 }
 
 export type PluginEntry = [RuntimePluginFactory | RuntimePlugin, unknown];
@@ -67,15 +69,17 @@ export class PluginHost implements Describer {
     };
   }
 
+  /** Aimed only when the caller says it can be: an event that runs before React cannot say whom it woke. */
   emit(plugin: string, event: CauseInput, fibers?: Set<Fiber>): CauseEvent | null {
     if (!this.recording || this.buffer.length >= MAX_BUFFER) return null;
-    const aimed = fibers ?? this.targets?.();
+    const aimed = fibers ?? (event.aim ? this.targets?.() : undefined);
     const cause: CauseEvent = {
       plugin,
       type: event.type,
       atMs: Math.round(this.now()),
       changes: event.changes,
       data: event.data,
+      ...(aimed ? { aimed: true as const } : {}),
       fibers: aimed?.size ? aimed : undefined,
     };
     this.buffer.push(cause);

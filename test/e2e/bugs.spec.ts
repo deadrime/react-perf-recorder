@@ -140,12 +140,14 @@ test.describe('seeded re-render bugs', () => {
 
   test('an exact value where only a rounded one is shown', async ({ page }) => {
     const rec = await record(page, 'idle', 'exact-value');
-    const bar = root(rec, 'SyncBar');
-    expect(reasons(bar)[0]).toBe('external store #2 [useChatStore] selectSynced');
-    expect(bar.noDomChange).toBe(bar.hits);
+    // The message is minutes old, so its label does not move; the clock behind it does, every second.
+    const time = root(rec, 'TimeAgo');
+    expect(reasons(time)[0]).toMatch(/^external store #\d+ \[clockStore\]/);
+    // Three rows, so every commit is three renders — and not one of them changed a word on the screen.
+    expect(time.noDomChange).toBe(time.cascade);
     expect(rec.totals.rendersWithoutDom).toBeGreaterThan(0);
 
-    expect(root(await record(page, 'idle', ''), 'SyncBar')).toBeUndefined();
+    expect(root(await record(page, 'idle', ''), 'TimeAgo')).toBeUndefined();
   });
 
   test('a component declared inside a render is remounted every time', async ({ page }) => {
@@ -168,7 +170,6 @@ test.describe('seeded re-render bugs', () => {
     expect(badge.noDomChange).toBe(badge.hits);
     // The timer is named, and only the component it updated gets it.
     expect(causes(badge)).toEqual(['core:timer setInterval @ src/components/TypingBadge.tsx']);
-    expect(causes(root(rec, 'AwayCountdown'))).toEqual(['core:timer setInterval @ src/components/AwayCountdown.tsx']);
 
     expect(root(await record(page, 'idle', ''), 'TypingBadge')).toBeUndefined();
   });
@@ -201,12 +202,12 @@ test.describe('seeded re-render bugs', () => {
         'zustand:feed/tick',
         'zustand:presenceStore.setState',
         'core:message Worker',
-        'core:timer setInterval @ src/components/AwayCountdown.tsx',
       ])
     );
     expect(keys.some((k) => k.startsWith('react-query:'))).toBe(true);
     // Every commit is explained: nothing falls through to "no known cause".
     expect(keys).not.toContain('core:none');
-    expect(rec.totals.causesDropped).toBe(0);
+    // And the other way round: most feed ticks wake nobody, so their events are dropped instead of counted.
+    expect(rec.totals.causesDropped).toBeGreaterThan(0);
   });
 });

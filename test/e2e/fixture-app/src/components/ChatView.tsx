@@ -3,12 +3,12 @@ import { useSearchParams } from 'react-router-dom';
 import { bug } from '../bugs';
 import { BugStrip } from '../Demo';
 import { useChatStore } from '../store/chat';
-import { AwayCountdown } from './AwayCountdown';
 import { ChannelStats } from './ChannelStats';
 import { ChatPanel } from './ChatPanel';
 import { Composer } from './Composer';
 import { Header } from './Header';
 import { SettingsProvider } from './Settings';
+import { TypingLine } from './TypingLine';
 import { WebhookForm } from './WebhookForm';
 
 function useLayoutWithParams() {
@@ -23,15 +23,6 @@ function useLayout() {
 /** A layout hook that also read the URL made the whole page render on every tab switch. */
 const useChatLayout = bug('router-in-layout') ? useLayoutWithParams : useLayout;
 
-const ConnectionStatus = () => {
-  const synced = useChatStore((s) => s.syncedAt);
-  return (
-    <small className="connection" data-testid="sync">
-      connected · synced {synced}
-    </small>
-  );
-};
-
 export const ChatView = () => {
   const { wide } = useChatLayout();
   return (
@@ -43,7 +34,6 @@ export const ChatView = () => {
       <aside className="side" data-testid="side-panel">
         <h3>Channel</h3>
         <ChannelStats />
-        <AwayCountdown />
         <h3>Webhook</h3>
         <WebhookForm />
       </aside>
@@ -54,7 +44,7 @@ export const ChatView = () => {
 /** Renders on every tick; the page below comes as children and skips, unless the settings object is new. */
 /** Subscribed to the feed only when the bug asks for it: a provider that renders for nothing is the bug itself. */
 function useDenseByTick() {
-  return useChatStore((s) => s.syncedAt) < 0;
+  return useChatStore((s) => s.workspace.lastEventAt) < 0;
 }
 
 function useDense() {
@@ -71,7 +61,7 @@ export const Layout = () => (
     <BugStrip />
     <div className="app">
       <Header />
-      <ConnectionStatus />
+      <TypingLine />
       <ChatView />
     </div>
   </SettingsBySync>

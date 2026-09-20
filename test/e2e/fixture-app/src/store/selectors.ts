@@ -4,7 +4,6 @@ import type { Chat } from './chat';
 
 export const selectWorkspace = (s: Chat) => s.workspace;
 export const selectUnread = (s: Chat) => s.workspace.unread;
-export const selectSynced = (s: Chat) => s.workspace.synced;
 
 export const selectMessageIds = memoize((s: Chat) => Object.keys(s.messageById));
 
@@ -12,7 +11,7 @@ export const selectMessageIds = memoize((s: Chat) => Object.keys(s.messageById))
 export const selectMessageInfo = memoizeWithArgs(
   (s: Chat, id: string) => {
     const message = s.messageById[id];
-    return { ...message, reactions: s.reactionsById[id] ?? 0, seen: message.sentAgo > 1 };
+    return { ...message, reactions: s.reactionsById[id] ?? 0, seen: s.workspace.unread < 13 };
   },
   bug('memo-cache-slot') ? undefined : { size: 32 }
 );

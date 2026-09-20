@@ -652,7 +652,14 @@ export class Recorder {
     this.totals.commitsInScope++;
     const keys = new Set<string>();
     const targets = new Map<string, Set<Fiber>>();
+    // When something in this task did mark work, a write that marked none is not what the commit is about. When
+    // nothing could say — a query cache, a navigation — the events stand as they are.
+    const someoneAimed = causes.some((cause) => cause.fibers?.size);
     for (const cause of causes) {
+      if (someoneAimed && cause.aimed && !cause.fibers) {
+        this.totals.causesDropped++;
+        continue;
+      }
       const key = this.attachCause(cause);
       keys.add(key);
       if (cause.fibers?.size) targets.set(key, new Set([...(targets.get(key) ?? []), ...cause.fibers]));

@@ -109,7 +109,7 @@ export default definePlugin((options: { devtools?: boolean } | null) => {
         unsubscribes.push(
           api.subscribe((state, prev) => {
             counts.set(name, (counts.get(name) ?? 0) + 1);
-            const event = session.emitCause({ type: `${name}.setState`, changes: changedKeys(prev, state), data: { store: name } });
+            const event = session.emitCause({ type: `${name}.setState`, changes: changedKeys(prev, state), data: { store: name }, aim: true });
             if (event && state && typeof state === 'object') eventByState.set(state as object, event);
           })
         );

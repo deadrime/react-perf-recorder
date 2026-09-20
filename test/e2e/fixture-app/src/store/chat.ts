@@ -8,20 +8,32 @@ export interface Message {
   id: string;
   from: Person;
   text: string;
-  /** Reactions arrive from other people all the time, like any live counter in a chat. */
-  reactions: number;
-  sentAgo: number;
+  sentAt: number;
 }
+
+/** The chat runs on a compressed clock: a message every 40 ticks, a reaction every 5, typing three ticks ahead. */
+export const ARRIVAL_EVERY = 40;
+export const TYPING_LEAD = 3;
+const REACTION_EVERY = 5;
+
+const PEOPLE: Person[] = ['Anna', 'Boris', 'Chen'];
+const ARRIVALS = [
+  'One more thing before I forget — the picker keeps the scroll now',
+  'Anyone else seeing the countdown flicker?',
+  'Merged. The baseline is down to one render per commit',
+  'I added the mount counter to the keys page',
+];
+
+export const senderAt = (step: number): Person => PEOPLE[Math.floor(step / ARRIVAL_EVERY) % PEOPLE.length];
 
 interface FeedSlice {
   reactionsById: Record<string, number>;
-  /** Grows on every tick from the feed: whoever holds the whole object re-renders with it. */
-  syncedAt: number;
   tick(step: number): void;
 }
 
 interface WorkspaceSlice {
-  workspace: { id: string; name: string; unread: number; synced: number };
+  /** `lastEventAt` moves on every tick: whoever holds the whole object re-renders with it. */
+  workspace: { id: string; name: string; unread: number; lastEventAt: number };
   markRead(): void;
 }
 
@@ -34,43 +46,46 @@ interface MessagesSlice {
 export type Chat = FeedSlice & WorkspaceSlice & MessagesSlice;
 type Slice<T> = StateCreator<Chat, [['zustand/devtools', never]], [], T>;
 
-/**
- * The feed ticks reactions and read receipts, and never adds a message on its own: a message appears only when
- * someone sends one, so a recording of a quiet page has no mounts in it and stays comparable between runs.
- */
+const minutes = (n: number) => Date.now() - n * 60_000;
+
 const feed: Slice<FeedSlice> = (set) => ({
   reactionsById: { m1: 2, m2: 0, m3: 5 },
-  syncedAt: 0,
   tick: (step) =>
     set(
       (s) => {
-        const reactionsById = {
-          ...s.reactionsById,
-          m1: 2 + (Math.sin(step) > 0 ? 1 : 0),
-          m2: Math.abs(Math.round(Math.cos(step))),
-        };
-        // Drifts a little on every tick, like a sync that is never quite finished.
-        const synced = 92 + Math.sin(step / 3) * 2;
-        return { reactionsById, syncedAt: s.syncedAt + 1, workspace: { ...s.workspace, synced } };
+        const next: Partial<Chat> = { workspace: { ...s.workspace, lastEventAt: step } };
+        // A reaction lands on one message at a time, not on all of them at once.
+        if (step % REACTION_EVERY === 0) {
+          const ids = Object.keys(s.messageById);
+          const id = ids[Math.floor(step / REACTION_EVERY) % ids.length];
+          next.reactionsById = { ...s.reactionsById, [id]: (s.reactionsById[id] ?? 0) + 1 };
+        }
+        if (step % ARRIVAL_EVERY === 0) {
+          const id = `m${Object.keys(s.messageById).length + 1}`;
+          const text = ARRIVALS[Math.floor(step / ARRIVAL_EVERY - 1) % ARRIVALS.length];
+          next.messageById = { ...s.messageById, [id]: { id, from: senderAt(step), text, sentAt: Date.now() } };
+          next.workspace = { ...next.workspace!, unread: s.workspace.unread + 1 };
+        }
+        return next;
       },
       false,
-      'feed/tick'
+      step % ARRIVAL_EVERY === 0 ? 'feed/message' : 'feed/tick'
     ),
 });
 
 const workspace: Slice<WorkspaceSlice> = (set) => ({
-  workspace: { id: 'demo', name: 'Design team', unread: 12, synced: 96 },
+  workspace: { id: 'demo', name: 'Design team', unread: 12, lastEventAt: 0 },
   markRead: () => set((s) => ({ workspace: { ...s.workspace, unread: 0 } }), false, 'workspace/markRead'),
 });
 
-const texts: Record<string, { from: Person; text: string; sentAgo: number }> = {
-  m1: { from: 'Anna', text: 'The picker opens on the component you clicked now', sentAgo: 4 },
-  m2: { from: 'Boris', text: 'Ship it — the tree is finally readable', sentAgo: 2 },
-  m3: { from: 'Chen', text: 'Recording the page load found two more cascades', sentAgo: 1 },
-};
+const START: Array<Omit<Message, 'id'>> = [
+  { from: 'Anna', text: 'The picker opens on the component you clicked now', sentAt: minutes(4) },
+  { from: 'Boris', text: 'Ship it — the tree is finally readable', sentAt: minutes(2) },
+  { from: 'Chen', text: 'Recording the page load found two more cascades', sentAt: minutes(1) },
+];
 
 const messages: Slice<MessagesSlice> = (set) => ({
-  messageById: Object.fromEntries(Object.entries(texts).map(([id, m]) => [id, { id, reactions: 0, ...m }])),
+  messageById: Object.fromEntries(START.map((m, i) => [`m${i + 1}`, { id: `m${i + 1}`, ...m }])),
   removeMessage: (id) =>
     set(
       (s) => {
@@ -84,7 +99,7 @@ const messages: Slice<MessagesSlice> = (set) => ({
     set(
       (s) => {
         const id = `m${Object.keys(s.messageById).length + 1}`;
-        return { messageById: { ...s.messageById, [id]: { id, from: 'Anna', text, reactions: 0, sentAgo: 0 } } };
+        return { messageById: { ...s.messageById, [id]: { id, from: 'Anna', text, sentAt: Date.now() } } };
       },
       false,
       'messages/send'
@@ -96,4 +111,4 @@ export const useChatStore = create<Chat>()(
 );
 
 /** Who is typing right now, in a store without devtools: its updates show up as `presenceStore.setState`. */
-export const presenceStore = createStore(() => ({ typing: 'Anna' as Person | null }));
+export const presenceStore = createStore(() => ({ typing: [] as Person[] }));

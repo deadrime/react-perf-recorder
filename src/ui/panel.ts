@@ -256,7 +256,11 @@ export class Panel {
     }
     this.setCollapsed(false);
     this.rememberScope();
-    this.say('Click an element on the page: it becomes the area at once. Then ↑/↓ move it, →/← go in and out, Enter keeps it, Esc puts the old one back.', 'muted');
+    this.say(
+      'Click an element: it becomes the area at once. ↑/↓ move it, →/← go in and out, Enter keeps it, Esc puts the ' +
+        'old one back. The page itself does not react to clicks while you are picking.',
+      'muted'
+    );
     this.picker.start();
   }
 
