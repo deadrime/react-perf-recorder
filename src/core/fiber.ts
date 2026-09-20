@@ -84,6 +84,15 @@ export function nameOf(f: Fiber): string | null {
 
 export const isProvider = (name: string) => name.startsWith('Provider(');
 
+/**
+ * A component whose whole job is to hand a context down — `const Settings = ({children}) => <Ctx.Provider …>`.
+ * Told by what it renders rather than by its name: the path to an area is about where it is, not what wraps it.
+ */
+export function wrapsProvider(f: Fiber): boolean {
+  const child = currentOf(f).child;
+  return Boolean(child && !child.sibling && isProvider(nameOf(child) ?? ''));
+}
+
 /** `src/pages/Trade/Row.tsx:42`: relative to the project root when known, else from the last `/src/`. */
 const libraryByType = new WeakMap<object, boolean>();
 

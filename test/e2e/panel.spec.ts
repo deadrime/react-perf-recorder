@@ -46,7 +46,7 @@ test('records a session from the panel with a note, store causes, hook names and
   await page.locator('[data-rpr="note"]').fill('typing the key label');
   await page.locator('[data-rpr="record"]').click();
   // The rows render from the price feed, so wait until the recording has seen one tick before typing into the form.
-  await expect(page.locator('[data-rpr="live-roots"]')).toContainText('MessageRow');
+  await expect(page.locator('[data-rpr="live-roots"]')).toContainText('Status');
   await page.getByTestId('hook-name').pressSequentially('main');
   await page.getByTestId('hook-secret').pressSequentially('s3cret');
   await page.getByTestId('delete-m3').click();
@@ -55,7 +55,7 @@ test('records a session from the panel with a note, store causes, hook names and
   const { meta, recording } = await newRecording(before);
 
   expect(meta).toMatchObject({ status: 'done', label: 'typing the key label' });
-  const row = recording.roots.find((r) => r.name === 'MessageRow')!;
+  const row = recording.roots.find((r) => r.name === 'Status')!;
   const storeReason = row.reasons.find(([text]) => text.startsWith('external store'))![0];
   expect(storeReason).toMatch(/^external store #\d+ \[useChatStore\]/);
   const hook = row.hooks![/#(\d+)/.exec(storeReason)![1]];
@@ -115,7 +115,7 @@ test('one click on the page is the area; the tree opens around it and moves it',
   const { recording } = await newRecording(before);
   expect(recording.scope).toMatchObject({ name: 'MessageRow', state: 'attached' });
   // The row renders from its own subscription; its children are inside the area, the rest of the page is not.
-  expect(recording.roots.map((r) => r.name)).toContain('MessageRow');
+  expect(recording.roots.map((r) => r.name)).toContain('Status');
   expect(recording.components.map((c) => c.name)).toContain('Status');
   expect(recording.components.map((c) => c.name)).not.toContain('ConnectionStatus');
 });
@@ -124,25 +124,25 @@ test('follows a component picked in the tree and shows the leading roots live', 
   const before = sessions();
   await open(page);
   await page.locator('[data-rpr="pick"]').click();
-  await page.getByTestId('message-m1').click();
-  await page.locator('[data-rpr="tree"] li[data-name="MessageRow"] [data-rpr="watch-toggle"]').first().click();
+  await page.locator('[data-testid="message-m1"] .status').click();
+  await page.locator('[data-rpr="tree"] li[data-name="Status"] [data-rpr="watch-toggle"]').first().click();
   // Esc leaves the tree and the whole app as the area; the component stays followed.
   await page.keyboard.press('Escape');
-  await expect(page.locator('[data-rpr="watch"] [data-name="MessageRow"]')).toBeVisible();
+  await expect(page.locator('[data-rpr="watch"] [data-name="Status"]')).toBeVisible();
 
   await page.locator('[data-rpr="record"]').click();
   // While it records, the panel names the roots leading so far.
-  await expect(page.locator('[data-rpr="live-roots"]')).toContainText('MessageRow');
+  await expect(page.locator('[data-rpr="live-roots"]')).toContainText('Status');
   await expect(page.locator('[data-rpr="live-roots"]')).toContainText('external store');
   await page.locator('[data-rpr="stop"]').click();
   const { recording } = await newRecording(before);
-  expect(recording.watch?.MessageRow.renders).toBeGreaterThan(0);
-  expect(recording.watch?.MessageRow.mounted).toBe(3);
+  expect(recording.watch?.Status.renders).toBeGreaterThan(0);
+  expect(recording.watch?.Status.mounted).toBe(3);
   await expect(page.locator('[data-rpr="result"]')).toContainText('Watched');
 
   // The chip removes it again.
-  await page.locator('[data-rpr="watch"] [data-name="MessageRow"]').click();
-  await expect(page.locator('[data-rpr="watch"] [data-name="MessageRow"]')).toHaveCount(0);
+  await page.locator('[data-rpr="watch"] [data-name="Status"]').click();
+  await expect(page.locator('[data-rpr="watch"] [data-name="Status"]')).toHaveCount(0);
 });
 
 test('copies the area for an assistant', async ({ page }) => {
@@ -153,6 +153,8 @@ test('copies the area for an assistant', async ({ page }) => {
   await expect(page.locator('[data-rpr="scope"]')).toHaveText('MessageRow');
   await page.locator('[data-rpr="copy-scope"]').click();
   const copied = await page.evaluate(() => navigator.clipboard.readText());
+  // The tool's own flag is not part of the address the assistant should reproduce.
+  expect(copied).toContain('React area on http://localhost:5391/app?tick=150\n');
   expect(copied).toContain('Component: MessageRow — src/components/Messages.tsx:');
   expect(copied).toContain('› MessageList › MessageRow');
   expect(copied).toContain('Element: <li data-testid="message-m1"');

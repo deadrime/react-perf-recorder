@@ -8,8 +8,16 @@ function elementText(el: Element): string {
     .map(([name, value]) => ` ${name}="${value}"`)
     .join('');
   const classes = [...el.classList].slice(0, 2).join(' ');
-  const text = (el.textContent ?? '').replace(/\s+/g, ' ').trim().slice(0, 60);
+  const full = (el.textContent ?? '').replace(/\s+/g, ' ').trim();
+  const text = full.length > 40 ? `${full.slice(0, 40)}…` : full;
   return `<${el.tagName.toLowerCase()}${attrs}${classes ? ` class="${classes}"` : ''}>${text ? ` "${text}"` : ''}`;
+}
+
+/** The page as the app sees it: the recorder's own flags are not part of the address anyone should reproduce. */
+function pageUrl(): string {
+  const url = new URL(location.href);
+  for (const key of [...url.searchParams.keys()]) if (key.startsWith('rpr')) url.searchParams.delete(key);
+  return url.href;
 }
 
 /**
@@ -28,7 +36,7 @@ export function describeArea(engine: Engine, fiber: Fiber): string {
     .map(([name, n]) => (n > 1 ? `${name} ×${n}` : name))
     .join(', ');
   const lines = [
-    `React area on ${location.href}`,
+    `React area on ${pageUrl()}`,
     `Component: ${self.name}${self.source ? ` — ${self.source}` : ''}`,
     `Path: ${path.slice(-8).join(' › ')}`,
     hosts.length ? `Element: ${elementText(hosts[0])}${hosts.length > 1 ? ` (+${hosts.length - 1} more top-level elements)` : ''}` : null,

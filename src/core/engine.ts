@@ -9,6 +9,7 @@ import {
   findRoots,
   isProvider,
   nameOf,
+  wrapsProvider,
   reactVersion,
   sourceOf,
   type Fiber,
@@ -251,7 +252,7 @@ export class Engine {
     return {
       name,
       source: sourceOf(fiber, this.config.projectRoot),
-      wrapper: this.wrapperRe.test(name) || isProvider(name),
+      wrapper: this.wrapperRe.test(name) || isProvider(name) || wrapsProvider(fiber),
       library: isLibraryFiber(fiber),
       fiber,
     };

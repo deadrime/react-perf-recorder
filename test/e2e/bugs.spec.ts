@@ -92,12 +92,12 @@ test.describe('seeded re-render bugs', () => {
   test('one memo slot shared by rows with different arguments', async ({ page }) => {
     const rec = await record(page, 'idle', 'memo-cache-slot');
     expect(selector(rec, 'selectMessageInfo')).toMatchObject({ thrash: true });
-    expect(reasons(root(rec, 'MessageRow'))).toContainEqual(expect.stringContaining('SAME-CONTENT'));
+    expect(reasons(root(rec, 'Status'))).toContainEqual(expect.stringContaining('SAME-CONTENT'));
     expect(rec.plugins['proxy-memoize'].highlights?.join(' ')).toContain('selectMessageInfo');
 
     const clean = await record(page, 'idle', '');
     expect(selector(clean, 'selectMessageInfo')).toMatchObject({ thrash: false });
-    expect(reasons(root(clean, 'MessageRow'))).not.toContainEqual(expect.stringContaining('SAME-CONTENT'));
+    expect(reasons(root(clean, 'Status'))).not.toContainEqual(expect.stringContaining('SAME-CONTENT'));
   });
 
   test('a selector that builds a new array on every call', async ({ page }) => {
@@ -150,9 +150,9 @@ test.describe('seeded re-render bugs', () => {
 
   test('a component declared inside a render is remounted every time', async ({ page }) => {
     const rec = await record(page, 'idle', 'nested-component');
-    expect(root(rec, 'MessageRow').mounts).toBeGreaterThan(0);
-    expect(component(rec, 'NestedStatus')).toMatchObject({ renders: 0 });
-    expect(component(rec, 'NestedStatus')!.mounts).toBeGreaterThan(0);
+    expect(root(rec, 'Status').mounts).toBeGreaterThan(0);
+    expect(component(rec, 'NestedCount')).toMatchObject({ renders: 0 });
+    expect(component(rec, 'NestedCount')!.mounts).toBeGreaterThan(0);
     expect(rec.dom.child).toBeGreaterThan(0);
 
     const clean = await record(page, 'idle', '');

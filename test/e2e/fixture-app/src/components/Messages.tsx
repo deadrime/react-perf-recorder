@@ -12,28 +12,36 @@ function useMessageIds() {
   return useChatStore(bug('new-array-selector') ? selectFreshIds : selectMessageIds);
 }
 
-const Status = ({ reactions, seen }: { reactions: number; seen: boolean }) => (
-  <span className="status">
-    ♥ {reactions} {seen ? '✓✓' : '✓'}
-  </span>
-);
-
-export const MessageRow = memo(({ id }: { id: string }) => {
+/**
+ * The reactions and the read receipts are the only thing that moves, so the subscription lives here and not in the
+ * row: on a tick React renders this span and leaves the message above it alone.
+ */
+const Status = memo(({ id }: { id: string }) => {
   const info = useMessageInfo(id);
+  // A new component type on every render: React unmounts the old count and mounts a new one.
+  const NestedCount = () => <b>{info.reactions}</b>;
+  return (
+    <span className="status" title={info.seen ? 'read by everyone' : 'sent'}>
+      ♥ {bug('nested-component') ? <NestedCount /> : <b>{info.reactions}</b>} {info.seen ? '✓✓' : '✓'}
+    </span>
+  );
+});
+
+/** The message itself never changes once it is sent, so the row renders once and stays. */
+export const MessageRow = memo(({ id }: { id: string }) => {
+  const message = useChatStore((s) => s.messageById[id]);
   const { dense } = useSettings();
-  // A new component type on every render: React unmounts the old status and mounts a new one.
-  const NestedStatus = () => <Status reactions={info.reactions} seen={info.seen} />;
   return (
     <li className={dense ? 'message dense' : 'message'} data-testid={`message-${id}`}>
-      <span className="avatar">{info.from[0]}</span>
+      <span className="avatar">{message.from[0]}</span>
       <span className="body">
         <span className="who">
-          {info.from}
-          <small>{info.sentAgo} min ago</small>
+          {message.from}
+          <small>{message.sentAgo} min ago</small>
         </span>
-        <span className="text">{info.text}</span>
+        <span className="text">{message.text}</span>
       </span>
-      {bug('nested-component') ? <NestedStatus /> : <Status reactions={info.reactions} seen={info.seen} />}
+      <Status id={id} />
       <button
         type="button"
         className="delete"
