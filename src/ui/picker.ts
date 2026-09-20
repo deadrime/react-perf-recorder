@@ -131,7 +131,7 @@ export class Picker {
     if (this.frozen || this.isOwn(event)) return;
     const el = this.elementAt(event.clientX, event.clientY);
     if (!el) return;
-    const owner = this.engine.owners(el).find((o) => !o.wrapper);
+    const owner = this.engine.owners(el).find((o) => !o.wrapper && !o.library);
     this.drawBox([el.getBoundingClientRect()], owner ? owner.name : el.tagName.toLowerCase());
   }
 
@@ -172,7 +172,7 @@ export class Picker {
   /** `owners` nearest first; the tree shows them from the app root down, the focus (or the nearest component) active. */
   private build(owners: Owner[], focus: Fiber | null) {
     const withWrappers = this.showWrappers();
-    const path = owners.filter((o) => withWrappers || !o.wrapper || (focus && sameFiber(o.fiber, focus))).reverse();
+    const path = owners.filter((o) => withWrappers || (!o.wrapper && !o.library) || (focus && sameFiber(o.fiber, focus))).reverse();
     if (!path.length) return;
     let parent: Node | null = null;
     this.root = null;
@@ -185,7 +185,9 @@ export class Picker {
       parent = node;
     }
     nodes[nodes.length - 1].open = false;
-    const target = focus ? nodes.find((n) => sameFiber(n.owner.fiber, focus)) : [...nodes].reverse().find((n) => !n.owner.wrapper);
+    const target = focus
+      ? nodes.find((n) => sameFiber(n.owner.fiber, focus))
+      : [...nodes].reverse().find((n) => !n.owner.wrapper && !n.owner.library);
     this.current = target ?? nodes[nodes.length - 1];
     this.frozen = true;
     this.render();

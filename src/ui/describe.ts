@@ -17,7 +17,7 @@ function elementText(el: Element): string {
  * the DOM it renders, what is inside, and the scope to pass to the recorder's scripts.
  */
 export function describeArea(engine: Engine, fiber: Fiber): string {
-  const owners = engine.ownersOfFiber(fiber).filter((o) => !o.wrapper);
+  const owners = engine.ownersOfFiber(fiber).filter((o) => !o.wrapper && !o.library);
   const self = engine.ownerOf(fiber);
   const path = owners.map((o) => o.name).reverse();
   const hosts = nearestHosts(fiber, 50);

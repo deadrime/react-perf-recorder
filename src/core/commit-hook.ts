@@ -32,7 +32,13 @@ export function hookOwner(root: FiberRoot): string | null {
  * mutation phase and before layout effects. The DevTools hook is not used: react-grab's bippy owns it, and polling
  * `root.current` once per frame loses commits because current and alternate swap.
  */
-export function hookCommits(roots: FiberRoot[], owner: string, onCommit: (info: CommitInfo) => void): CommitHook {
+export function hookCommits(
+  roots: FiberRoot[],
+  owner: string,
+  onCommit: (info: CommitInfo) => void,
+  /** Called the moment React marks new work on a root, while the code that scheduled it is still on the stack. */
+  onUpdate?: () => void
+): CommitHook {
   for (const root of roots) {
     const busy = hookOwner(root);
     if (busy) throw new RecorderError('BUSY', `root.current is already hooked by ${busy}: wait for it to finish or call its stop()`, busy);
@@ -59,6 +65,27 @@ export function hookCommits(roots: FiberRoot[], owner: string, onCommit: (info: 
     set.owner = `react-perf-recorder:${owner}`;
     Object.defineProperty(root, 'current', { configurable: true, enumerable: true, get: () => current, set });
 
+    const pendingDescriptor = Object.getOwnPropertyDescriptor(root, 'pendingLanes');
+    let pendingLanes = root.pendingLanes ?? 0;
+    const hasPending = Boolean(onUpdate) && pendingDescriptor && 'value' in pendingDescriptor && pendingDescriptor.configurable;
+    if (hasPending) {
+      Object.defineProperty(root, 'pendingLanes', {
+        configurable: true,
+        enumerable: true,
+        get: () => pendingLanes,
+        set: (value: number) => {
+          const added = value & ~pendingLanes;
+          pendingLanes = value;
+          if (!added || passthrough) return;
+          try {
+            onUpdate!();
+          } catch (error) {
+            if (errors.length < 3) errors.push(String((error as Error)?.stack || error).slice(0, 300));
+          }
+        },
+      });
+    }
+
     const lanesDescriptor = Object.getOwnPropertyDescriptor(root, 'finishedLanes');
     let finishedLanes = root.finishedLanes ?? 0;
     const hasLanes = lanesDescriptor && 'value' in lanesDescriptor && lanesDescriptor.configurable;
@@ -82,6 +109,7 @@ export function hookCommits(roots: FiberRoot[], owner: string, onCommit: (info: 
         passthrough = true;
       }
       if (hasLanes) Object.defineProperty(root, 'finishedLanes', { configurable: true, enumerable: true, writable: true, value: finishedLanes });
+      if (hasPending) Object.defineProperty(root, 'pendingLanes', { configurable: true, enumerable: true, writable: true, value: pendingLanes });
     };
   });
   let active = true;

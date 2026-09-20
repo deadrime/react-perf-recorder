@@ -25,6 +25,7 @@ import {
   hostRootOf,
   isComposite,
   isHost,
+  isLibraryFiber,
   isProvider,
   nameOf,
   nearestHosts,
@@ -39,6 +40,7 @@ import { inspectHooks, type InspectedHooks } from './hook-names';
 import type { CauseEvent, PluginHost } from './plugins';
 import { didRender, hookTypeAt, parentReason, reasonsOf, snapshotOf, type Reason, type Snapshot } from './reasons';
 import { ScopeTracker, type ScopeHandle, type ScopeResolution } from './scope';
+import { updateOrigin, type UpdateOrigin } from './env/origin';
 import { runningTimer, setTimerSink } from './env/timers';
 
 export interface EngineConfig {
@@ -105,6 +107,7 @@ interface RootAgg {
   noDomChange: number;
   renderMs: number;
   mounts: number;
+  library: boolean;
   hookIdx: Set<number>;
   contexts: Map<string, object>;
   latest: WeakRef<Fiber> | null;
@@ -113,6 +116,8 @@ interface RootAgg {
 interface ComponentAgg {
   renders: number;
   mounts: number;
+  library: boolean;
+  wrapper: boolean;
   withoutDom: number;
   byParent: number;
   memo: boolean;
@@ -132,9 +137,20 @@ interface CommitState {
   touched: Set<Fiber>;
 }
 
-type StackItem = [fiber: Fiber, parentRendered: boolean, path: string, rootKey: string | null, pending: [string, Fiber] | null, zone: string | null];
+/** `pending` carries the component an outline will be labelled with, and whether it is a package's own. */
+type StackItem = [
+  fiber: Fiber,
+  parentRendered: boolean,
+  path: string,
+  rootKey: string | null,
+  pending: [string, Fiber, boolean] | null,
+  zone: string | null
+];
 
 const MAX_TIMES = 2000;
+/** Stacks are read only while a commit window is unexplained; a burst of updates does not pay for all of them. */
+const MAX_UPDATE_NOTES = 10;
+const MAX_CAUSE_KEYS = 300;
 const MAX_SEGMENT_COMMITS = 20_000;
 
 const currentEventType = (): string | undefined => {
@@ -206,8 +222,10 @@ export class Recorder {
   private stopped = false;
   private overlayMs = 0;
   private highlighted = false;
-  /** Fibers a timer cause already names since the last commit. */
+  /** Fibers a cause already names since the last commit. */
   private claimed = new WeakSet<Fiber>();
+  /** Where updates of this commit window came from, used only for the components no other event explains. */
+  private origins: Array<UpdateOrigin & { fibers: Set<Fiber>; event: string | undefined }> = [];
   private frameCount = 0;
   private counting = false;
   private readonly totals = {
@@ -275,7 +293,12 @@ export class Recorder {
     this.deps.plugins.start({ scope: this.scopeInfo, findFibers: (pred, limit) => this.findFibers(pred, limit) }, this.t0);
     if (this.scope) this.dom.setScopeHosts(this.scopeHosts());
     this.dom.start();
-    this.hook = hookCommits(this.roots, this.options.source ?? 'panel', (info) => this.onCommit(info));
+    this.hook = hookCommits(
+      this.roots,
+      this.options.source ?? 'panel',
+      (info) => this.onCommit(info),
+      () => this.noteUpdate()
+    );
     // A store or query notifies its subscribers before the recorder hears about it, so the fibers React just
     // marked are the ones this event updated.
     this.deps.plugins.targets = () => this.freshUpdates();
@@ -357,6 +380,8 @@ export class Recorder {
     const event = currentEventType();
     const source = event === 'message' ? messageSource() : undefined;
     this.claimed = new WeakSet();
+    const origins = this.origins;
+    this.origins = [];
     const timer = runningTimer();
     if (timer) this.deps.plugins.emit('core', { type: timer });
     const causes = this.deps.plugins.drain();
@@ -380,7 +405,7 @@ export class Recorder {
     } else {
       this.scan(fiber, false, '', null, c, false);
     }
-    this.finishCommit(c, causes, lane, event, source);
+    this.finishCommit(c, causes, lane, event, source, origins);
   }
 
   private visitChain(f: Fiber, prevs: Array<Snapshot | undefined>) {
@@ -494,7 +519,8 @@ export class Recorder {
           const z = this.zones.get(zone);
           if (z) z.renders++;
         }
-        if (highlight && !pending && isComposite(f)) nextPending = [name, f];
+        // The outline says the app's component, not the UI-kit wrapper it happens to sit under.
+        if (highlight && isComposite(f) && (!nextPending || (nextPending[2] && !isLibraryFiber(f)))) nextPending = [name, f, isLibraryFiber(f)];
       }
       if (nextPending && (isHost(f) || f.tag === Tag.HostText)) {
         const el = isHost(f) ? (f.stateNode as Element) : (f.stateNode as Text).parentElement;
@@ -520,6 +546,8 @@ export class Recorder {
       comp = {
         renders: 0,
         mounts: 0,
+        library: isLibraryFiber(f),
+        wrapper: this.wrapperRe.test(name) || isProvider(name),
         withoutDom: 0,
         byParent: 0,
         memo: f.tag === Tag.MemoComponent || f.tag === Tag.SimpleMemoComponent,
@@ -554,6 +582,7 @@ export class Recorder {
         noDomChange: 0,
         renderMs: 0,
         mounts: 0,
+        library: isLibraryFiber(f),
         hookIdx: new Set(),
         contexts: new Map(),
         latest: null,
@@ -589,7 +618,14 @@ export class Recorder {
     return { agg, reasons };
   }
 
-  private finishCommit(c: CommitState, causes: CauseEvent[], lane: string | undefined, event: string | undefined, source?: string) {
+  private finishCommit(
+    c: CommitState,
+    causes: CauseEvent[],
+    lane: string | undefined,
+    event: string | undefined,
+    source: string | undefined,
+    origins: Array<UpdateOrigin & { fibers: Set<Fiber>; event: string | undefined }>
+  ) {
     if (lane) this.totals.lanes[lane] = (this.totals.lanes[lane] ?? 0) + 1;
     if (!c.renders) {
       this.totals.causesDropped += causes.length;
@@ -605,6 +641,16 @@ export class Recorder {
     }
     if (event && USER_EVENTS.has(event)) keys.add(this.attachCause({ plugin: 'core', type: `input ${event}`, atMs: c.t }));
     else if (source) keys.add(this.attachCause({ plugin: 'core', type: `message ${source}`, atMs: c.t }));
+    // Where the update came from, for the components no store, query or timer event claimed. An update made while
+    // the person's event was being handled is already told by `input`; an effect flushed in the same window is not.
+    const claimedByEvents = new Set([...targets.values()].flatMap((set) => [...set]));
+    for (const origin of origins) {
+      if (origin.kind === 'update' && origin.event && origin.event === event) continue;
+      if ([...origin.fibers].some((f) => claimedByEvents.has(f))) continue;
+      const key = this.attachCause({ plugin: 'core', type: origin.text, atMs: c.t });
+      keys.add(key);
+      targets.set(key, new Set([...(targets.get(key) ?? []), ...origin.fibers]));
+    }
     if (!keys.size) keys.add(this.attachCause({ plugin: 'core', type: 'none', atMs: c.t }));
     for (const key of keys) this.causeStats.get(key)!.commits++;
     const involved = new Set<RootAgg>([...c.cascade.keys(), ...(c.outside ? [c.outside] : [])]);
@@ -661,10 +707,12 @@ export class Recorder {
   }
 
   private attachCause(cause: CauseEvent): string {
-    const key = `${cause.plugin}:${cause.type}`;
+    let key = `${cause.plugin}:${cause.type}`;
+    // A page with very many distinct call sites should not grow the cause list without end.
+    if (!this.causeStats.has(key) && this.causeStats.size >= MAX_CAUSE_KEYS) key = `${cause.plugin}:other`;
     let stat = this.causeStats.get(key);
     if (!stat) {
-      stat = { key, plugin: cause.plugin, type: cause.type, events: 0, commits: 0 };
+      stat = { key, plugin: cause.plugin, type: key.slice(cause.plugin.length + 1), events: 0, commits: 0 };
       this.causeStats.set(key, stat);
     }
     stat.events++;
@@ -682,11 +730,24 @@ export class Recorder {
   }
 
   /**
+   * An update was just scheduled and nothing else explains it: no user event, no timer callback, no store or query
+   * event yet. The stack still holds the code that asked for it, so the cause names that code.
+   */
+  private noteUpdate() {
+    if (this.origins.length >= MAX_UPDATE_NOTES || runningTimer()) return;
+    // No claim: the store or query that is about to report this update should keep the right to name it.
+    const fibers = this.freshUpdates(false);
+    if (!fibers.size) return;
+    const origin = updateOrigin();
+    if (origin) this.origins.push({ ...origin, fibers, event: currentEventType() });
+  }
+
+  /**
    * Components that got updates since the last commit and were not claimed by an earlier timer: a second timer
    * that updates another component in an already pending lane adds no lane bits, only a fiber. React marks the
    * path to updated fibers with childLanes, so the walk stays narrow.
    */
-  private freshUpdates(): Set<Fiber> {
+  private freshUpdates(claim = true): Set<Fiber> {
     const out = new Set<Fiber>();
     const lanes = this.roots.reduce((all, root) => all | (root.pendingLanes ?? 0), 0);
     if (!lanes) return out;
@@ -695,10 +756,10 @@ export class Recorder {
       const f = stack.pop()!;
       if ((f.lanes ?? 0) & lanes && !this.claimed.has(f)) {
         out.add(f);
-        this.claimed.add(f);
-        if (f.alternate) {
-          out.add(f.alternate);
-          this.claimed.add(f.alternate);
+        if (f.alternate) out.add(f.alternate);
+        if (claim) {
+          this.claimed.add(f);
+          if (f.alternate) this.claimed.add(f.alternate);
         }
       }
       for (let child = f.child; child; child = child.sibling) if (((child.lanes ?? 0) | (child.childLanes ?? 0)) & lanes) stack.push(child);
@@ -844,6 +905,7 @@ export class Recorder {
       noDomChange: agg.noDomChange,
       ...(agg.renderMs ? { renderMs: +agg.renderMs.toFixed(1) } : {}),
       ...(agg.mounts ? { mounts: agg.mounts } : {}),
+      ...(agg.library ? { library: true as const } : {}),
       ...(withHooks ? { hooks: this.hookInfo(agg) } : {}),
       ...(agg.outside ? { scopeRenders: agg.cascade } : {}),
     };
@@ -919,13 +981,19 @@ export class Recorder {
       },
       roots: rootsOrdered.slice(0, orderedInside.length),
       outsideRoots: rootsOrdered.slice(orderedInside.length),
+      // The app's own components first: a UI kit fills the top with its wrappers and internals otherwise.
       components: [...this.components]
-        .sort((a, b) => b[1].renders + b[1].mounts - (a[1].renders + a[1].mounts))
+        .sort(
+          (a, b) =>
+            Number(a[1].library || a[1].wrapper) - Number(b[1].library || b[1].wrapper) || b[1].renders + b[1].mounts - (a[1].renders + a[1].mounts)
+        )
         .slice(0, 150)
         .map(([name, s]) => ({
           name,
           renders: s.renders,
           ...(s.mounts ? { mounts: s.mounts } : {}),
+          ...(s.library ? { library: true as const } : {}),
+          ...(s.wrapper ? { wrapper: true as const } : {}),
           withoutDom: s.withoutDom,
           byParent: s.byParent,
           ...(s.memo ? { memo: true as const } : {}),

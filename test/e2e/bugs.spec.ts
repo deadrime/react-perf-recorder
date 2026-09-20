@@ -179,7 +179,18 @@ test.describe('seeded re-render bugs', () => {
     const hits = (r: RecordingV1) => root(r, 'OrdersPanel').hits;
     expect(hits(rec)).toBeGreaterThan(hits(clean));
     expect(root(rec, 'OrdersPanel').noDomChange).toBeGreaterThan(0);
-    expect(rec.segments.every((s) => s.commits >= 1)).toBe(true);
+    // Nothing else explains the second commit, so the cause names the effect that asked for it.
+    expect(causes(root(rec, 'OrdersPanel'))).toContain('core:effect @ src/components/OrdersPanel.tsx');
+    expect(rec.causes.find((c) => c.key === 'core:effect @ src/components/OrdersPanel.tsx')!.commits).toBeGreaterThan(1);
+  });
+
+  test('the report keeps the app’s components apart from the packages’', async ({ page }) => {
+    const rec = await record(page, 'tabs', '');
+    expect(component(rec, 'PositionRow')).not.toHaveProperty('library');
+    expect(component(rec, 'RenderedRoute')).toMatchObject({ library: true });
+    // The app's own come first, whatever a package renders more often.
+    const first = rec.components.findIndex((c) => c.library);
+    expect(rec.components.slice(0, first).every((c) => !c.library)).toBe(true);
   });
 
   test('the price feed and the poll are named as the causes of the quiet page', async ({ page }) => {

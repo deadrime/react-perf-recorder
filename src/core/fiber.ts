@@ -1,3 +1,4 @@
+import { libraryOf } from './stack';
 export interface Hook {
   memoizedState: unknown;
   queue: { getSnapshot?: unknown; lastRenderedReducer?: unknown } | null;
@@ -30,6 +31,7 @@ export interface Fiber {
   childLanes?: number;
   actualDuration?: number;
   _debugSource?: { fileName: string; lineNumber: number; columnNumber?: number } | null;
+  _debugOwner?: Fiber | null;
   _debugHookTypes?: string[] | null;
 }
 
@@ -83,6 +85,34 @@ export function nameOf(f: Fiber): string | null {
 export const isProvider = (name: string) => name.startsWith('Provider(');
 
 /** `src/pages/Trade/Row.tsx:42`: relative to the project root when known, else from the last `/src/`. */
+const libraryByType = new WeakMap<object, boolean>();
+
+/**
+ * A component of the app or of a package. Only files built with the dev JSX transform carry `_debugSource`, and
+ * packages ship compiled. React itself creates some elements — a route's, a lazy one, a provider's child — and
+ * those have no source of their own, so the JSX the component rendered answers instead.
+ */
+export function isLibraryFiber(f: Fiber): boolean {
+  const type = (typeof f.type === 'function' || (f.type && typeof f.type === 'object') ? f.type : null) as object | null;
+  const known = type ? libraryByType.get(type) : undefined;
+  if (known !== undefined) return known;
+  let library = true;
+  const own = f._debugSource?.fileName;
+  if (own) library = libraryOf(own) !== null;
+  else {
+    for (let child = f.child, depth = 0; child && depth < 4; child = child.child, depth++) {
+      const owner = child._debugOwner;
+      if (owner !== f && owner !== f.alternate) continue;
+      const file = child._debugSource?.fileName;
+      if (!file) continue;
+      library = libraryOf(file) !== null;
+      break;
+    }
+  }
+  if (type) libraryByType.set(type, library);
+  return library;
+}
+
 export function sourceOf(f: Fiber, root = ''): string {
   const s = f._debugSource;
   if (!s) return '';

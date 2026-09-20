@@ -396,7 +396,7 @@ export class Panel {
         'div',
         { class: 'row' },
         h('span', { class: 'muted' }, 'Record inside:'),
-        h('label', { class: 'toggle', title: 'Show styling wrappers and providers' }, wrappers, 'show wrappers')
+        h('label', { class: 'toggle', title: 'Show styling wrappers, providers and components of packages' }, wrappers, 'show library')
       ),
       list
     );
@@ -451,9 +451,10 @@ export class Panel {
       'Causes',
       s.topCauses.map((c) => line(n(c.commits), ` commits ← ${c.key}`, c.keys ? why(` · ${c.keys}`) : ''))
     );
+    const appComponents = rec.components.filter((c) => !c.library && !c.wrapper);
     section(
       'Components',
-      rec.components
+      appComponents
         .slice(0, 8)
         .map((c) =>
           line(
@@ -461,6 +462,11 @@ export class Panel {
             ` ${c.name}${c.memo ? ' (memo)' : ''}${c.withoutDom ? ` · ${c.withoutDom} no-DOM` : ''} `,
             why(c.reasons.map(([r, k]) => `${k}× ${r}`).join('; '))
           )
+        )
+        .concat(
+          rec.components.length > appComponents.length
+            ? [line(h('span', { class: 'muted' }, `+ ${rec.components.length - appComponents.length} wrappers and components of packages`))]
+            : []
         )
     );
     for (const [name, plugin] of Object.entries(s.plugins))

@@ -4,6 +4,7 @@ import {
   compositeChain,
   compositeChildren,
   currentOf,
+  isLibraryFiber,
   fiberFromNode,
   findRoots,
   isProvider,
@@ -35,6 +36,8 @@ export interface Owner {
   name: string;
   source: string;
   wrapper: boolean;
+  /** A component of a package, not of the app: no `_debugSource`, or a file under node_modules. */
+  library: boolean;
   fiber: Fiber;
 }
 
@@ -245,12 +248,21 @@ export class Engine {
 
   ownerOf(fiber: Fiber): Owner {
     const name = nameOf(fiber) ?? 'Anonymous';
-    return { name, source: sourceOf(fiber, this.config.projectRoot), wrapper: this.wrapperRe.test(name) || isProvider(name), fiber };
+    return {
+      name,
+      source: sourceOf(fiber, this.config.projectRoot),
+      wrapper: this.wrapperRe.test(name) || isProvider(name),
+      library: isLibraryFiber(fiber),
+      fiber,
+    };
   }
 
-  /** Nearest components below one; without wrappers the walk goes through them. */
+  /** Nearest components below one; without wrappers the walk goes through them and through package internals. */
   childOwners(fiber: Fiber, withWrappers: boolean): Owner[] {
-    return compositeChildren(fiber, (f) => !withWrappers && this.ownerOf(f).wrapper).map((f) => this.ownerOf(f));
+    return compositeChildren(
+      fiber,
+      (f) => !withWrappers && (this.wrapperRe.test(nameOf(f) ?? '') || isProvider(nameOf(f) ?? '') || isLibraryFiber(f))
+    ).map((f) => this.ownerOf(f));
   }
 
   scopeFromFiber(fiber: Fiber): ScopeHandle {
@@ -258,7 +270,7 @@ export class Engine {
   }
 
   scopeFromElement(el: Element, level = 0): ScopeHandle {
-    const owners = this.owners(el).filter((o) => !o.wrapper);
+    const owners = this.owners(el).filter((o) => !o.wrapper && !o.library);
     const owner = owners[Math.min(level, owners.length - 1)];
     if (!owner) throw new RecorderError('SCOPE_NOT_FOUND', 'no React component owns this element');
     return this.scopeFromFiber(owner.fiber);

@@ -201,6 +201,10 @@ export interface RecordingV1 {
     name: string;
     renders: number;
     mounts?: number;
+    /** A component of a package: the app's own come first in the list. */
+    library?: true;
+    /** A styling wrapper or a provider, by the `wrapperPattern` of the build: listed after the app's own. */
+    wrapper?: true;
     withoutDom: number;
     byParent: number;
     memo?: true;

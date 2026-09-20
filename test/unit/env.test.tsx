@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { act } from 'react';
 import { installTimers } from '../../src/core/env/timers';
 import { Engine } from '../../src/core/engine';
-import { fiberFromNode } from '../../src/core/fiber';
+import { fiberFromNode, isLibraryFiber } from '../../src/core/fiber';
 import { LiveHighlight } from '../../src/core/live-highlight';
 import type { HighlightSink } from '../../src/core/recorder';
 import { scopeFromFiber } from '../../src/core/scope';
@@ -23,6 +23,22 @@ describe('libraryOf', () => {
     ['http://localhost:5173/src/components/Row.tsx?t=123', null],
   ])('%s → %s', (url, library) => {
     expect(libraryOf(url)).toBe(library);
+  });
+});
+
+describe('app code and packages', () => {
+  const fiber = (source: string | null, child?: object) =>
+    ({ type: () => null, ...(source ? { _debugSource: { fileName: source, lineNumber: 1 } } : {}), child } as never);
+
+  it('tells a component of the app from one of a package', () => {
+    expect(isLibraryFiber(fiber('/proj/src/components/Row.tsx'))).toBe(false);
+    expect(isLibraryFiber(fiber('/proj/node_modules/@chakra-ui/react/dist/index.js'))).toBe(true);
+    // No source of its own (a route element, a lazy one): the JSX it rendered answers instead.
+    const rendered = { _debugSource: { fileName: '/proj/src/pages/Dashboard.tsx', lineNumber: 4 } } as { _debugOwner?: unknown };
+    const owner = fiber(null, rendered);
+    rendered._debugOwner = owner;
+    expect(isLibraryFiber(owner)).toBe(false);
+    expect(isLibraryFiber(fiber(null))).toBe(true);
   });
 });
 
