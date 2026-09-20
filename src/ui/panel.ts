@@ -4,6 +4,8 @@ import type { ScopeHandle } from '../core/scope';
 import type { Highlighter } from '../overlay/highlight';
 import { summarize, type RootLine } from '../shared/summary';
 import { describeArea } from './describe';
+import { h } from './dom';
+import { clearTree, renderTree } from './tree-view';
 import { Picker, type TreeActions, type TreeRow } from './picker';
 import { defaults, loadState, saveState, setRecordOnLoad, type Corner, type PanelState } from './storage';
 import { STYLES } from './styles';
@@ -13,18 +15,6 @@ export interface PanelOptions {
   highlight: boolean;
   shortcuts: { record: string; pick: string };
   interrupted: { id: string } | null;
-}
-
-type El<K extends keyof HTMLElementTagNameMap> = HTMLElementTagNameMap[K];
-
-function h<K extends keyof HTMLElementTagNameMap>(tag: K, attrs: Record<string, string> = {}, ...children: Array<Node | string | null>): El<K> {
-  const el = document.createElement(tag);
-  for (const [key, value] of Object.entries(attrs)) {
-    if (key === 'class') el.className = value;
-    else el.setAttribute(key, value);
-  }
-  for (const child of children) if (child != null) el.append(child);
-  return el;
 }
 
 /** `Alt+Shift+KeyR` against a keyboard event; `code`, not `key`: on macOS Alt changes the character. */
@@ -409,7 +399,7 @@ export class Panel {
   }
 
   private onPicked(owner: Owner | null) {
-    this.els.picker.replaceChildren();
+    clearTree(this.els.picker);
     this.say('');
     if (owner) this.setScope(this.engine.scopeFromFiber(owner.fiber));
     else this.setScope(this.before.scope, this.before.last);
@@ -425,66 +415,20 @@ export class Panel {
   }
 
   private showTree(rows: TreeRow[], active: number, actions: TreeActions) {
-    const wrappers = h('input', { type: 'checkbox' });
-    wrappers.checked = this.state.showWrappers;
-    wrappers.addEventListener('change', () => {
-      this.state.showWrappers = wrappers.checked;
-      this.persist();
-      this.picker.refresh();
+    renderTree(this.els.picker, {
+      rows,
+      active,
+      actions,
+      showLibrary: this.state.showWrappers,
+      watched: this.state.watch,
+      onShowLibrary: (on) => {
+        this.state.showWrappers = on;
+        this.persist();
+        this.picker.refresh();
+      },
+      onWatch: (name) => this.toggleWatch(name),
+      onCopy: (owner) => void this.copy(describeArea(this.engine, owner.fiber), `${owner.name} copied: paste it into the chat with the assistant.`),
     });
-    const list = h('ul', { 'data-rpr': 'tree' });
-    rows.forEach((row, i) => {
-      const toggle = h('span', { class: 'toggle', 'data-rpr': 'expand' }, row.toggle === 'open' ? '▾' : row.toggle === 'closed' ? '▸' : '');
-      const copy = h('span', { class: 'copy', 'data-rpr': 'copy-row', title: 'Copy for an AI assistant' }, '⧉');
-      const watching = this.state.watch.includes(row.owner.name);
-      const watch = h(
-        'span',
-        { class: 'watch-toggle', 'data-rpr': 'watch-toggle', 'data-on': String(watching), title: 'Follow this component through the recording' },
-        watching ? '◉' : '◎'
-      );
-      const item = h(
-        'li',
-        { 'data-active': String(i === active), 'data-wrapper': String(row.owner.wrapper), 'data-name': row.owner.name },
-        toggle,
-        h('span', { class: 'name' }, row.owner.name),
-        h('span', { class: 'src', title: row.owner.source }, row.owner.source),
-        watch,
-        copy
-      );
-      // Full steps while the tree is shallow, narrow ones below: a long path of providers must not eat the width.
-      item.style.paddingLeft = `${4 + Math.min(row.depth, 10) * 10 + Math.max(0, row.depth - 10) * 3}px`;
-      toggle.addEventListener('click', (e) => {
-        e.stopPropagation();
-        actions.toggle(i);
-      });
-      watch.addEventListener('click', (e) => {
-        e.stopPropagation();
-        this.toggleWatch(row.owner.name);
-      });
-      copy.addEventListener('click', (e) => {
-        e.stopPropagation();
-        void this.copy(describeArea(this.engine, row.owner.fiber), `${row.owner.name} copied: paste it into the chat with the assistant.`);
-      });
-      item.addEventListener('click', () => actions.select(i));
-      item.addEventListener('mouseenter', () => actions.hover(i));
-      list.append(item);
-    });
-    list.addEventListener('mouseleave', () => actions.leave());
-    this.els.picker.replaceChildren(
-      h(
-        'div',
-        { class: 'row' },
-        h('span', { class: 'muted' }, 'Record inside:'),
-        h('label', { class: 'toggle', title: 'Show styling wrappers, providers and components of packages' }, wrappers, 'show library')
-      ),
-      list
-    );
-    const current = list.querySelector('[data-active="true"]');
-    current?.scrollIntoView({ block: 'nearest' });
-    // Only when the indent has pushed the active name out of sight: otherwise the rows above would be cut from the left.
-    const name = current?.querySelector('.name');
-    const offset = name ? name.getBoundingClientRect().left - list.getBoundingClientRect().left + list.scrollLeft : 0;
-    if (offset > list.clientWidth * 0.6) list.scrollLeft = offset - 24;
   }
 
   private renderResult(rec: Saved) {
