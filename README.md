@@ -192,9 +192,9 @@ proxy-memoize plugin.
   that is what makes recording from the page load possible.
 - The overlay skips elements the person cannot see (`checkVisibility`): a closed menu or popover still renders, and
   its renders are in the recording, but its boxes would pile up unpositioned in a corner.
-- The panel is its own DOM in a shadow root on `<html>`, never the app's React: the picker tree is drawn with preact
-  (bundled into the client, ~18 KB in the dev bundle), so moving the area patches the rows instead of rebuilding
-  them, and the app's React never learns the tool exists.
+- The panel is state plus a preact view in a shadow root on `<html>` (bundled into the client, ~20 KB of the dev
+  bundle), never the app's React: moving the area patches the rows instead of rebuilding them, and the app's React
+  never learns the tool exists.
 - Store and memoizer plugins replace `zustand`, `proxy-memoize` for the app's imports only, so libraries keep the
   originals and memoization behaves exactly the same.
 
