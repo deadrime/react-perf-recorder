@@ -506,3 +506,12 @@ input {
 .count[data-count='1'] {
   color: #5ddc9a;
 }
+
+.count.mounts {
+  min-width: 78px;
+  color: #6b6b78;
+}
+
+.count.mounts.again {
+  color: #ff8a80;
+}

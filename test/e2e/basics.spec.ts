@@ -25,7 +25,8 @@ test('key decides whether a row is the same row after one is added at the top', 
       els.map((li) => ({
         title: li.querySelector('.grow')!.textContent,
         checked: li.querySelector('input')!.checked,
-        renders: Number((li.querySelector('.count') as HTMLElement).dataset.count),
+        renders: Number((li.querySelector('[data-count]') as HTMLElement).dataset.count),
+        mounts: Number((li.querySelector('[data-mounts]') as HTMLElement).dataset.mounts),
       }))
     );
   // The first task is ticked in both lists, then a new one arrives above it.
@@ -46,14 +47,22 @@ test('key decides whether a row is the same row after one is added at the top', 
   expect(byId[1]).toMatchObject({ title: 'Write the release notes', checked: true });
   expect(byId.slice(2).every((r) => r.renders === 1)).toBe(true);
 
-  // A key nobody can match: every row is a new row, so the counters start over and the ticks are gone.
-  expect((await rows('random')).every((r) => r.renders === 1 && !r.checked)).toBe(true);
+  // With index keys the task pushed to the end lands on a position that did not exist, so it is mounted a second
+  // time; with id keys every task is still on the row it was mounted on.
+  expect(byIndex.some((r) => r.mounts > 1)).toBe(true);
+  expect(byId.every((r) => r.mounts === 1)).toBe(true);
+
+  // A key nobody can match: every row is a new row. Its render counter says 1, and only the mounts counter tells
+  // the difference between a row that was skipped and a row that was thrown away.
+  const byRandom = await rows('random');
+  expect(byRandom.every((r) => r.renders === 1 && !r.checked)).toBe(true);
+  expect(byRandom.filter((r) => r.title !== 'New task 1').every((r) => r.mounts > 1)).toBe(true);
 
   // Starting over mounts the lists again: the tasks, the ticks and the counters are all back where they began.
   await page.getByTestId('reset').click();
   const back = await rows('id');
   expect(back).toHaveLength(3);
-  expect(back.every((r) => r.renders === 1 && !r.checked)).toBe(true);
+  expect(back.every((r) => r.renders === 1 && r.mounts === 1 && !r.checked)).toBe(true);
 });
 
 test('the front page leads to the basics and back', async ({ page }) => {

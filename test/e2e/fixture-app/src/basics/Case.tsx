@@ -14,6 +14,12 @@ export const RenderCount = ({ n }: { n: number }) => (
   </span>
 );
 
+export const MountCount = ({ n }: { n: number }) => (
+  <span className={n > 1 ? 'count mounts again' : 'count mounts'} data-mounts={n}>
+    mounted {n}×
+  </span>
+);
+
 /** The frame every basics page shares: what the mistake is, and the two versions of it side by side. */
 export const Case = ({ title, what, children }: { title: string; what: ReactNode; children: ReactNode }) => (
   <div className="basics">

@@ -1,5 +1,5 @@
 import { memo, useState } from 'react';
-import { Case, Panel, RenderCount, useRenderCount } from './Case';
+import { Case, MountCount, Panel, RenderCount, useRenderCount } from './Case';
 
 interface Task {
   id: string;
@@ -14,6 +14,21 @@ const START: Task[] = [
 
 let added = 0;
 
+/**
+ * How many times each task has been mounted in each list. Counted while the row renders for the first time, not in
+ * an effect: an effect would only tell the page about a mount after the screen had already been painted.
+ */
+const mounts = new Map<string, number>();
+
+function useMountNumber(mode: Mode, id: string) {
+  const [n] = useState(() => {
+    const next = (mounts.get(`${mode}:${id}`) ?? 0) + 1;
+    mounts.set(`${mode}:${id}`, next);
+    return next;
+  });
+  return n;
+}
+
 type Mode = 'index' | 'id' | 'random';
 
 const MODES: Array<{ mode: Mode; kind: 'broken' | 'fixed'; title: string; says: string }> = [
@@ -21,7 +36,7 @@ const MODES: Array<{ mode: Mode; kind: 'broken' | 'fixed'; title: string; says: 
     mode: 'index',
     kind: 'broken',
     title: 'key={index}',
-    says: 'The recorder says: parent: props task on every row — React matched them by position, so each row got someone else’s data.',
+    says: 'The recorder says: parent: props task on every row — React matched them by position, so each row got someone else’s data, and the task pushed off the end was mounted a second time.',
   },
   {
     mode: 'id',
@@ -33,19 +48,21 @@ const MODES: Array<{ mode: Mode; kind: 'broken' | 'fixed'; title: string; says: 
     mode: 'random',
     kind: 'broken',
     title: 'key={Math.random()}',
-    says: 'The recorder says: mounts, and DOM nodes added and removed — every row is thrown away and built again.',
+    says: 'The recorder says: mounts, and DOM nodes added and removed. Watch the mounted counter: the rows are not being skipped, they are new every time.',
   },
 ];
 
 /** Each row keeps a little state of its own, so it is visible where React thinks the row went. */
-const Row = memo(({ task }: { task: Task }) => {
+const Row = memo(({ task, mode }: { task: Task; mode: Mode }) => {
   const renders = useRenderCount();
+  const mounted = useMountNumber(mode, task.id);
   const [done, setDone] = useState(false);
   return (
     <li data-testid={`task-${task.id}`}>
       <input type="checkbox" checked={done} onChange={(e) => setDone(e.target.checked)} />
       <span className="grow">{task.title}</span>
       <RenderCount n={renders} />
+      <MountCount n={mounted} />
     </li>
   );
 });
@@ -55,7 +72,7 @@ const keyOf = (mode: Mode, task: Task, index: number) => (mode === 'index' ? ind
 const List = ({ mode, tasks }: { mode: Mode; tasks: Task[] }) => (
   <ul className="rows" data-testid={`list-${mode}`}>
     {tasks.map((task, index) => (
-      <Row key={keyOf(mode, task, index)} task={task} />
+      <Row key={keyOf(mode, task, index)} task={task} mode={mode} />
     ))}
   </ul>
 );
@@ -88,6 +105,7 @@ export const Keys = () => {
           data-testid="reset"
           title="Puts the tasks back and mounts the lists again, so the counters and the ticks start over"
           onClick={() => {
+            mounts.clear();
             setTasks(START);
             setRun((r) => r + 1);
           }}
