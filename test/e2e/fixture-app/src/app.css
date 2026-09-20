@@ -515,3 +515,8 @@ input {
 .count.mounts.again {
   color: #ff8a80;
 }
+
+.clock {
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}

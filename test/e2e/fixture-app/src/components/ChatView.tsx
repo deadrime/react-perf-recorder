@@ -52,10 +52,19 @@ export const ChatView = () => {
 };
 
 /** Renders on every tick; the page below comes as children and skips, unless the settings object is new. */
-const SettingsBySync = ({ children }: { children: ReactNode }) => {
-  const synced = useChatStore((s) => s.syncedAt);
-  return <SettingsProvider dense={synced < 0}>{children}</SettingsProvider>;
-};
+/** Subscribed to the feed only when the bug asks for it: a provider that renders for nothing is the bug itself. */
+function useDenseByTick() {
+  return useChatStore((s) => s.syncedAt) < 0;
+}
+
+function useDense() {
+  return false;
+}
+
+const useDenseSetting = bug('inline-context') ? useDenseByTick : useDense;
+
+/** With the bug on this renders on every tick; the page below comes as children and skips, the settings do not. */
+const SettingsBySync = ({ children }: { children: ReactNode }) => <SettingsProvider dense={useDenseSetting()}>{children}</SettingsProvider>;
 
 export const Layout = () => (
   <SettingsBySync>

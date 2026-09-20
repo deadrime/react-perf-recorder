@@ -73,3 +73,38 @@ test('the front page leads to the basics and back', async ({ page }) => {
   await page.getByTestId('strip').getByRole('link').click();
   await expect(page.locator('.card[data-basic="memo"]')).toBeVisible();
 });
+
+test('an object written in render is a new prop every time', async ({ page }) => {
+  await page.goto('/basics/props');
+  for (let i = 0; i < 3; i++) await page.getByTestId('render').click();
+  // The panel rendered four times; on the left the cards came along, on the right they did not.
+  expect(await countsOf(page, 'broken')).toEqual([4, 4, 4]);
+  expect(await countsOf(page, 'fixed')).toEqual([1, 1, 1]);
+
+  // When the tag really changes, both sides render — that is the render nobody argues with.
+  await page.getByTestId('filter').click();
+  expect(await countsOf(page, 'fixed')).toEqual([2, 2, 2]);
+});
+
+test('a clock in its own component leaves the card alone', async ({ page }) => {
+  await page.goto('/basics/state');
+  const clocks = async () => ({
+    broken: await countsOf(page, 'broken'),
+    fixed: await countsOf(page, 'fixed'),
+  });
+  const before = await clocks();
+  await page.waitForTimeout(2200);
+  const after = await clocks();
+  // Left: the card and every item render with the clock. Right: only the clock does.
+  expect(after.broken.every((n, i) => n > before.broken[i])).toBe(true);
+  expect(after.fixed.slice(1).every((n, i) => n === before.fixed[i + 1])).toBe(true);
+  expect(after.fixed[0]).toBeGreaterThan(before.fixed[0]);
+});
+
+test('two values in one context wake up both readers', async ({ page }) => {
+  await page.goto('/basics/context');
+  await page.getByTestId('theme').click();
+  // Left: the reader of the user renders although the user did not change. Right: only the theme reader.
+  expect(await countsOf(page, 'broken')).toEqual([2, 2]);
+  expect(await countsOf(page, 'fixed')).toEqual([1, 2]);
+});
