@@ -60,6 +60,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:e2e": "playwright test",
+    "fixture": "vite --config test/e2e/fixture-app/vite.config.ts",
     "format": "prettier --write ."
   },
   "peerDependencies": {
