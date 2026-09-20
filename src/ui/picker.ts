@@ -18,6 +18,9 @@ export interface TreeActions {
 export interface PickerCallbacks {
   /** Renders the component tree inside the panel. */
   showTree(rows: TreeRow[], active: number, actions: TreeActions): void;
+  /** The active component is the area right away; moving in the tree moves the area with it. */
+  preview(owner: Owner): void;
+  /** `null`: cancelled, the area goes back to what it was. */
   done(owner: Owner | null): void;
 }
 
@@ -36,8 +39,8 @@ const sameFiber = (a: Fiber, b: Fiber) => a === b || a.alternate === b;
 
 /**
  * Picks the area to record, like the react-scan inspector: hover outlines the element and its component, a click
- * freezes it and shows the path from the app root down to it. ↑/↓ move, → opens the components inside, ← closes
- * or goes to the parent, Enter confirms, Esc cancels; a click elsewhere on the page picks again.
+ * takes it as the area and opens the tree around it. ↑/↓ move the area, → goes inside, ← goes up, Enter or a click
+ * on a row confirms, Esc puts the old area back; a click elsewhere on the page picks again.
  */
 export class Picker {
   active = false;
@@ -45,8 +48,11 @@ export class Picker {
   private tag: HTMLDivElement;
   private root: Node | null = null;
   private current: Node | null = null;
+  private previewed: Node | null = null;
   private frozen = false;
   private listeners: Array<[string, EventListener]> = [];
+  /** What the box is drawn around, so it can be measured again when the page scrolls under it. */
+  private shown: { fiber: Fiber; label: string } | null = null;
 
   constructor(
     private shadow: ShadowRoot,
@@ -80,6 +86,13 @@ export class Picker {
     on('pointermove', (e) => this.onMove(e as PointerEvent));
     for (const type of BLOCKED) on(type, (e) => this.onPress(e as MouseEvent));
     on('keydown', (e) => this.onKey(e as KeyboardEvent));
+    // The box is positioned in viewport coordinates: scrolling or resizing moves the element under it.
+    on('scroll', () => this.redraw());
+    on('resize', () => this.redraw());
+  }
+
+  private redraw() {
+    if (this.shown && !this.box.hidden) this.outline(this.shown.fiber, this.shown.label);
   }
 
   /** Opens the tree on a component, e.g. the current area, to move from it instead of picking anew. */
@@ -98,6 +111,7 @@ export class Picker {
   }
 
   outline(fiber: Fiber, label: string) {
+    this.shown = { fiber, label };
     this.drawBox(
       nearestHosts(fiber, 200).map((el) => el.getBoundingClientRect()),
       label
@@ -106,7 +120,10 @@ export class Picker {
 
   hideOutline() {
     if (this.active && this.current) this.outline(this.current.owner.fiber, this.current.owner.name);
-    else this.box.hidden = true;
+    else {
+      this.box.hidden = true;
+      this.shown = null;
+    }
   }
 
   private finish(owner: Owner | null) {
@@ -115,7 +132,8 @@ export class Picker {
     for (const [type, listener] of this.listeners) window.removeEventListener(type, listener, { capture: true });
     this.listeners = [];
     this.box.hidden = true;
-    this.root = this.current = null;
+    this.shown = null;
+    this.root = this.current = this.previewed = null;
     this.callbacks.done(owner);
   }
 
@@ -131,6 +149,7 @@ export class Picker {
     if (this.frozen || this.isOwn(event)) return;
     const el = this.elementAt(event.clientX, event.clientY);
     if (!el) return;
+    this.shown = null;
     const owner = this.engine.owners(el).find((o) => !o.wrapper && !o.library);
     this.drawBox([el.getBoundingClientRect()], owner ? owner.name : el.tagName.toLowerCase());
   }
@@ -162,7 +181,7 @@ export class Picker {
     if (event.key === 'ArrowDown') this.current = rows[Math.min(rows.length - 1, at + 1)].node;
     else if (event.key === 'ArrowUp') this.current = rows[Math.max(0, at - 1)].node;
     else if (event.key === 'ArrowRight') {
-      if (!node.open || !node.full) this.expand(node);
+      if (!node.open) this.expand(node);
       else if (node.children.length) this.current = node.children[0];
     } else if (node.open && node.children.length) node.open = false;
     else if (node.parent) this.current = node.parent;
@@ -190,25 +209,34 @@ export class Picker {
       : [...nodes].reverse().find((n) => !n.owner.wrapper && !n.owner.library);
     this.current = target ?? nodes[nodes.length - 1];
     this.frozen = true;
+    // The neighbourhood of the picked component, not just the path to it: its siblings and what is inside it.
+    if (this.current.parent) this.expand(this.current.parent);
+    this.expand(this.current);
     this.render();
   }
 
+  /** Lists every component below the node; the path step already there keeps its place and its open children. */
+  private fill(node: Node) {
+    if (node.full) return;
+    const kept = node.children;
+    node.children = this.engine
+      .childOwners(node.owner.fiber, this.showWrappers())
+      .map((owner) => kept.find((k) => sameFiber(k.owner.fiber, owner.fiber)) ?? { owner, parent: node, children: [], full: false, open: false });
+    // The next step of the path can sit under a wrapper that the walk passed: keep it listed.
+    for (const k of kept) if (!node.children.includes(k)) node.children.push(k);
+    node.full = true;
+  }
+
   private expand(node: Node) {
-    if (!node.full) {
-      const kept = node.children;
-      node.children = this.engine
-        .childOwners(node.owner.fiber, this.showWrappers())
-        .map((owner) => kept.find((k) => sameFiber(k.owner.fiber, owner.fiber)) ?? { owner, parent: node, children: [], full: false, open: false });
-      // The next step of the path can sit under a wrapper that the walk passed: keep it listed.
-      for (const k of kept) if (!node.children.includes(k)) node.children.push(k);
-      node.full = true;
-    }
+    this.fill(node);
     node.open = true;
   }
 
   private rows(): Array<{ node: Node; depth: number }> {
     const out: Array<{ node: Node; depth: number }> = [];
     const walk = (node: Node, depth: number) => {
+      // A closed row is filled to know whether it has anything inside: an arrow that opens nothing is a dead end.
+      if (!node.open) this.fill(node);
       out.push({ node, depth });
       if (node.open) for (const child of node.children) walk(child, depth + 1);
     };
@@ -226,7 +254,7 @@ export class Picker {
       rows.map(({ node, depth }) => ({
         owner: node.owner,
         depth,
-        toggle: node.open ? (node.children.length ? 'open' : null) : 'closed',
+        toggle: node.children.length ? (node.open ? 'open' : 'closed') : null,
       })),
       active,
       {
@@ -234,16 +262,22 @@ export class Picker {
         hover: (i) => rows[i] && this.outline(rows[i].node.owner.fiber, rows[i].node.owner.name),
         toggle: (i) => {
           const node = rows[i]?.node;
-          if (!node) return;
-          if (node.open && node.children.length) node.open = false;
+          if (!node || !node.children.length) return;
+          if (node.open) node.open = false;
           else this.expand(node);
-          this.current = node;
+          // Closing can hide the area's row; then the row that was closed takes its place.
+          if (!this.rows().some((r) => r.node === this.current)) this.current = node;
           this.render();
         },
         leave: () => this.hideOutline(),
       }
     );
-    if (this.current) this.outline(this.current.owner.fiber, this.current.owner.name);
+    if (!this.current) return;
+    this.outline(this.current.owner.fiber, this.current.owner.name);
+    if (this.current !== this.previewed) {
+      this.previewed = this.current;
+      this.callbacks.preview(this.current.owner);
+    }
   }
 
   private drawBox(rects: DOMRect[], label: string) {

@@ -47,6 +47,7 @@ export class Panel {
   private root: HTMLDivElement;
   private state: PanelState;
   private scope: ScopeHandle | null = null;
+  private before: { scope: ScopeHandle | null; last: PanelState['lastScope'] } = { scope: null, last: null };
   private liveTimer: ReturnType<typeof setInterval> | null = null;
   private picker: Picker;
   private busy = false;
@@ -81,6 +82,7 @@ export class Panel {
     this.shadow.append(this.root);
     this.picker = new Picker(this.shadow, this.host, engine, () => this.state.showWrappers, {
       showTree: (rows, active, actions) => this.showTree(rows, active, actions),
+      preview: (owner) => this.setScope(this.engine.scopeFromFiber(owner.fiber)),
       done: (owner) => this.onPicked(owner),
     });
     engine.onChange(() => this.sync());
@@ -352,7 +354,8 @@ export class Panel {
       return;
     }
     this.setCollapsed(false);
-    this.say('Hover the page and click an element; then ↑/↓ move, → opens the components inside, Enter confirms, Esc cancels.', 'muted');
+    this.rememberScope();
+    this.say('Click an element on the page: it becomes the area at once. Then ↑/↓ move it, →/← go in and out, Enter keeps it, Esc puts the old one back.', 'muted');
     this.picker.start();
   }
 
@@ -363,8 +366,14 @@ export class Panel {
     if (!target) return this.togglePicker();
     this.picker.cancel();
     this.setCollapsed(false);
-    this.say('↑/↓ move, → opens the components inside, ← goes up, Enter confirms; click the page to pick elsewhere.', 'muted');
+    this.rememberScope();
+    this.say('↑/↓ move the area, → goes inside, ← goes up, Enter keeps it, Esc puts the old one back; click the page to pick elsewhere.', 'muted');
     this.picker.startAt(target);
+  }
+
+  /** The area as it was before the tree opened: Esc puts it back, whatever was tried in between. */
+  private rememberScope() {
+    this.before = { scope: this.scope, last: this.state.lastScope };
   }
 
   /** The committed fiber of the area; after a remount the area is found again by its component path. */
@@ -403,11 +412,12 @@ export class Panel {
     this.els.picker.replaceChildren();
     this.say('');
     if (owner) this.setScope(this.engine.scopeFromFiber(owner.fiber));
+    else this.setScope(this.before.scope, this.before.last);
   }
 
-  private setScope(scope: ScopeHandle | null) {
+  private setScope(scope: ScopeHandle | null, last = scope ? { names: scopeNames(scope), label: scope.name } : null) {
     this.scope = scope;
-    this.state.lastScope = scope ? { names: scopeNames(scope), label: scope.name } : null;
+    this.state.lastScope = last;
     this.highlighter?.reset();
     this.persist();
     this.sync();
@@ -437,12 +447,12 @@ export class Panel {
         { 'data-active': String(i === active), 'data-wrapper': String(row.owner.wrapper), 'data-name': row.owner.name },
         toggle,
         h('span', { class: 'name' }, row.owner.name),
-        // LRM marks keep `:line` at the end while the rtl box cuts the path from the left.
-        h('span', { class: 'src', title: row.owner.source }, `\u200e${row.owner.source}\u200e`),
+        h('span', { class: 'src', title: row.owner.source }, row.owner.source),
         watch,
         copy
       );
-      item.style.paddingLeft = `${4 + Math.min(row.depth, 24) * 10}px`;
+      // Full steps while the tree is shallow, narrow ones below: a long path of providers must not eat the width.
+      item.style.paddingLeft = `${4 + Math.min(row.depth, 10) * 10 + Math.max(0, row.depth - 10) * 3}px`;
       toggle.addEventListener('click', (e) => {
         e.stopPropagation();
         actions.toggle(i);
@@ -469,7 +479,12 @@ export class Panel {
       ),
       list
     );
-    list.querySelector('[data-active="true"]')?.scrollIntoView({ block: 'nearest' });
+    const current = list.querySelector('[data-active="true"]');
+    current?.scrollIntoView({ block: 'nearest' });
+    // Only when the indent has pushed the active name out of sight: otherwise the rows above would be cut from the left.
+    const name = current?.querySelector('.name');
+    const offset = name ? name.getBoundingClientRect().left - list.getBoundingClientRect().left + list.scrollLeft : 0;
+    if (offset > list.clientWidth * 0.6) list.scrollLeft = offset - 24;
   }
 
   private renderResult(rec: Saved) {

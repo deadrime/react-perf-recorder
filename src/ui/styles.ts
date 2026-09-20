@@ -21,7 +21,7 @@ header .live { flex: 1; color: #9a9aa4; white-space: nowrap; overflow: hidden; t
 .row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: 4px 0; }
 .rec { color: #ff6b61; }
 .stop { color: #fff; background: #b3261e; border-color: #d0463c; }
-.scope { padding: 2px 6px; border-radius: 4px; background: #23232a; color: #c9c9d1; max-width: 190px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.scope { background: #23232a; color: #c9c9d1; max-width: 190px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .scope[data-lost="true"] { color: #ffcc00; }
 label.toggle { display: inline-flex; align-items: center; gap: 4px; color: #b9b9c2; cursor: pointer; }
 input[type="text"] { width: 100%; font: inherit; color: inherit; background: #1b1b20; border: 1px solid #3a3a44; border-radius: 6px; padding: 3px 6px; }
@@ -44,20 +44,20 @@ input[type="text"] { width: 100%; font: inherit; color: inherit; background: #1b
 .live-roots { margin: 4px 0; }
 .live-roots .line { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .picker ul { list-style: none; margin: 4px 0; padding: 0; max-height: 280px; overflow: auto; }
-.picker li { padding: 2px 6px; border-radius: 4px; cursor: pointer; display: flex; gap: 4px; align-items: baseline; }
+/* Rows grow with their content and the list scrolls sideways: deep nesting must not eat the name or the file. */
+.picker li { width: max-content; min-width: 100%; padding: 2px 6px; border-radius: 4px; cursor: pointer; display: flex; gap: 4px; align-items: baseline; }
 .picker li:hover { background: #2a2f3a; }
 .picker li[data-active="true"] { background: #33415c; }
 .picker li .toggle { width: 12px; flex: none; color: #9a9aa4; text-align: center; }
 .picker li .toggle:hover { color: #fff; }
-.picker li .name { white-space: nowrap; }
-.picker li .src { color: #8c8c96; margin-left: auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; }
+.picker li .name { flex: none; white-space: nowrap; }
+.picker li .src { flex: none; color: #8c8c96; margin-left: auto; padding-left: 8px; white-space: nowrap; }
 .picker li .copy { flex: none; color: #8c8c96; visibility: hidden; }
 .picker li:hover .copy, .picker li[data-active="true"] .copy { visibility: visible; }
 .picker li .copy:hover { color: #fff; }
 .picker li[data-wrapper="true"] { color: #8c8c96; }
 .note { flex-wrap: nowrap; }
 .note input { flex: 1; }
-button.scope { border: none; cursor: pointer; }
 button.scope:disabled { cursor: default; }
 .box { position: fixed; pointer-events: none; border: 2px solid #0a84ff; background: rgba(10,132,255,.08); z-index: 2147483646; border-radius: 3px; }
 .box .tag { position: absolute; left: -2px; top: -18px; background: #0a84ff; color: #fff; padding: 0 5px; border-radius: 3px 3px 0 0; font-size: 11px; white-space: nowrap; }

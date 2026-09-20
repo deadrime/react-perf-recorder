@@ -79,10 +79,12 @@ picks an area. In automated browsers (`navigator.webdriver`) the panel is hidden
 
 **The panel.** `● Rec` records, `⟳ Load` reloads the page and records from its first render (the area, the note and
 the watched components survive the reload; `?rpr=rec` does the same from a script or a link). `⌖ Area` picks the part
-of the page to look at. While a recording runs, the panel names the roots leading so far, so what is flashing right
-now is readable without stopping. The area's name opens the tree
-again — parents above it, `→` opens the components inside, `◎` follows a component by name through the recording
-(renders and which root pulled it) — and `⧉` copies the area as text for an assistant
+of the page to look at: one click on the page takes the component under the cursor as the area and opens the tree
+around it — its parents above, its neighbours and what is inside it — so the area can be moved without picking again.
+`↑`/`↓` move it, `→` goes inside, `←` goes up, `Enter` or a click on a row keeps it, `Esc` puts back the area that was
+there before. While a recording runs, the panel names the roots leading so far, so what is flashing right
+now is readable without stopping. The area's name opens the tree again, `◎` follows a component by name through the
+recording (renders and which root pulled it), and `⧉` copies the area as text for an assistant
 (component, file and line, the path above it, its DOM, what is inside, the `scope` for scripts). `Note` is saved
 with the recording and shown in `list_recordings`. `highlight` outlines renders in the area, both while recording
 and between recordings; a recording made with it on says so in its warnings, because drawing costs frame time.

@@ -77,28 +77,35 @@ test('records a session from the panel with a note, store causes, hook names and
   expect(Object.keys(recording.plugins)).toEqual(expect.arrayContaining(['zustand', 'proxy-memoize', 'react-query']));
 });
 
-test('picks an area from the tree: parents above, components inside, and the area stays editable', async ({ page }) => {
+test('one click on the page is the area; the tree opens around it and moves it', async ({ page }) => {
   const before = sessions();
   await open(page);
   await page.locator('[data-rpr="pick"]').click();
   await page.getByTestId('position-p1').hover();
   await page.getByTestId('position-p1').click();
-  // The path from the app's own root down to the row, the row active; the router and the query client are packages.
+  // The click picks: the area is set at once and the tree stays open to change it.
+  await expect(page.locator('[data-rpr="scope"]')).toHaveText('PositionRow');
+  // The path from the app's own root down to the row; the router and the query client are packages.
   await expect(tree(page).first()).toHaveAttribute('data-name', 'Layout');
   await expect(page.locator('[data-rpr="tree"] li[data-name="RenderedRoute"]')).toHaveCount(0);
-  await expect(tree(page).locator('[data-active="true"]')).toHaveCount(0);
-  await expect(page.locator('[data-rpr="tree"] li[data-name="PositionRow"]')).toHaveAttribute('data-active', 'true');
-  // Right opens what is inside the row.
-  await page.keyboard.press('ArrowRight');
-  await expect(page.locator('[data-rpr="tree"] li[data-name="Pnl"]')).toBeVisible();
-  await page.locator('[data-rpr="tree"] li[data-name="Pnl"]').click();
-  await expect(page.locator('[data-rpr="scope"]')).toHaveText('Pnl');
+  await expect(page.locator('[data-rpr="tree"] li[data-active="true"]')).toHaveAttribute('data-name', 'PositionRow');
+  // The neighbours of the picked row and what is inside it are listed without opening anything.
+  await expect(page.locator('[data-rpr="tree"] li[data-name="PositionRow"]')).toHaveCount(3);
+  await expect(page.locator('[data-rpr="tree"] li[data-name="Pnl"]')).toHaveCount(1);
+  // Nothing is inside the cell, so its row offers no arrow to open.
+  await expect(page.locator('[data-rpr="tree"] li[data-name="Pnl"] [data-rpr="expand"]')).toHaveText('');
 
-  // Clicking the area name reopens the tree on it; ← goes back to the parent, Enter confirms it.
-  await page.locator('[data-rpr="scope"]').click();
-  await expect(page.locator('[data-rpr="tree"] li[data-name="Pnl"]')).toHaveAttribute('data-active', 'true');
-  await page.keyboard.press('ArrowLeft');
-  await page.keyboard.press('Enter');
+  // ↓ moves the area with the active row; Esc puts back the area that was there before.
+  await page.keyboard.press('ArrowDown');
+  await expect(page.locator('[data-rpr="scope"]')).toHaveText('Pnl');
+  await page.keyboard.press('Escape');
+  await expect(page.locator('[data-rpr="scope"]')).toHaveText('Whole app');
+
+  // Clicking a row confirms it and closes the tree.
+  await page.locator('[data-rpr="pick"]').click();
+  await page.getByTestId('position-p1').click();
+  await page.locator('[data-rpr="tree"] li[data-active="true"]').click();
+  await expect(page.locator('[data-rpr="tree"]')).toHaveCount(0);
   await expect(page.locator('[data-rpr="scope"]')).toHaveText('PositionRow');
 
   await page.locator('[data-rpr="record"]').click();
@@ -117,7 +124,8 @@ test('follows a component picked in the tree and shows the leading roots live', 
   await open(page);
   await page.locator('[data-rpr="pick"]').click();
   await page.getByTestId('position-p1').click();
-  await page.locator('[data-rpr="tree"] li[data-name="PositionRow"] [data-rpr="watch-toggle"]').click();
+  await page.locator('[data-rpr="tree"] li[data-name="PositionRow"] [data-rpr="watch-toggle"]').first().click();
+  // Esc leaves the tree and the whole app as the area; the component stays followed.
   await page.keyboard.press('Escape');
   await expect(page.locator('[data-rpr="watch"] [data-name="PositionRow"]')).toBeVisible();
 
