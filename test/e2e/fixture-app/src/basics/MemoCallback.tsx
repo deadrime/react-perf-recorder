@@ -48,6 +48,8 @@ const List = ({ stable, ticks }: { stable: boolean; ticks: number }) => {
 
 export const MemoCallback = () => {
   const [ticks, setTicks] = useState(0);
+  // A new key mounts the lists again, which is how the counters are put back to one.
+  const [run, setRun] = useState(0);
   return (
     <Case
       title="memo and useCallback"
@@ -63,14 +65,25 @@ export const MemoCallback = () => {
         <button type="button" data-testid="render" onClick={() => setTicks((t) => t + 1)}>
           Render both panels
         </button>
+        <button
+          type="button"
+          data-testid="reset"
+          title="Mounts both lists again, so the counters start over"
+          onClick={() => {
+            setTicks(0);
+            setRun((r) => r + 1);
+          }}
+        >
+          Start over
+        </button>
         <span className="muted">clicked {ticks}×</span>
       </p>
       <div className="two">
         <Panel kind="broken" title="onPick written in render" says="The recorder says: parent: props same: onPick — the prop changed identity, not content.">
-          <List stable={false} ticks={ticks} />
+          <List key={run} stable={false} ticks={ticks} />
         </Panel>
         <Panel kind="fixed" title="onPick from useCallback" says="The recorder says nothing about these rows: they never render again.">
-          <List stable ticks={ticks} />
+          <List key={run} stable ticks={ticks} />
         </Panel>
       </div>
     </Case>

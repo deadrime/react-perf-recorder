@@ -13,6 +13,9 @@ test('memo only skips a child when the handler it gets stays the same', async ({
   expect(await countsOf(page, 'broken')).toEqual([5, 5, 5]);
   // The one from useCallback is the same prop, so the rows never render again.
   expect(await countsOf(page, 'fixed')).toEqual([1, 1, 1]);
+
+  await page.getByTestId('reset').click();
+  expect(await countsOf(page, 'broken')).toEqual([1, 1, 1]);
 });
 
 test('key decides whether a row is the same row after one is added at the top', async ({ page }) => {
@@ -45,6 +48,12 @@ test('key decides whether a row is the same row after one is added at the top', 
 
   // A key nobody can match: every row is a new row, so the counters start over and the ticks are gone.
   expect((await rows('random')).every((r) => r.renders === 1 && !r.checked)).toBe(true);
+
+  // Starting over mounts the lists again: the tasks, the ticks and the counters are all back where they began.
+  await page.getByTestId('reset').click();
+  const back = await rows('id');
+  expect(back).toHaveLength(3);
+  expect(back.every((r) => r.renders === 1 && !r.checked)).toBe(true);
 });
 
 test('the front page leads to the basics and back', async ({ page }) => {

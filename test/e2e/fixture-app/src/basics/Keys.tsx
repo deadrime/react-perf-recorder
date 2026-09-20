@@ -62,6 +62,9 @@ const List = ({ mode, tasks }: { mode: Mode; tasks: Task[] }) => (
 
 export const Keys = () => {
   const [tasks, setTasks] = useState(START);
+  // Starting over means forgetting everything the rows remember, and a key change is exactly how that is asked for —
+  // the one honest use of a key that is not an id.
+  const [run, setRun] = useState(0);
   return (
     <Case
       title="key: the position or the thing"
@@ -80,14 +83,22 @@ export const Keys = () => {
         <button type="button" data-testid="remove" onClick={() => setTasks((t) => t.filter((_, i) => i !== Math.floor(t.length / 2)))}>
           Remove the middle one
         </button>
-        <button type="button" data-testid="reset" onClick={() => setTasks(START)}>
-          Reset
+        <button
+          type="button"
+          data-testid="reset"
+          title="Puts the tasks back and mounts the lists again, so the counters and the ticks start over"
+          onClick={() => {
+            setTasks(START);
+            setRun((r) => r + 1);
+          }}
+        >
+          Start over
         </button>
       </p>
       <div className="three">
         {MODES.map(({ mode, kind, title, says }) => (
           <Panel key={mode} kind={kind} title={title} says={says}>
-            <List mode={mode} tasks={tasks} />
+            <List key={run} mode={mode} tasks={tasks} />
           </Panel>
         ))}
       </div>
