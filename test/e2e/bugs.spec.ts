@@ -8,11 +8,11 @@ type Scenario = 'idle' | 'typing' | 'tabs';
 
 const scenarios: Record<Scenario, (page: Page) => Promise<void>> = {
   idle: (page) => page.waitForTimeout(1500),
-  typing: (page) => page.getByTestId('amount').pressSequentially('12345', { delay: 60 }),
+  typing: (page) => page.getByTestId('message').pressSequentially('12345', { delay: 60 }),
   tabs: async (page) => {
     for (let i = 0; i < 3; i++) {
-      await page.getByTestId('tab-orders').click();
-      await page.getByTestId('tab-positions').click();
+      await page.getByTestId('tab-people').click();
+      await page.getByTestId('tab-chat').click();
     }
   },
 };
@@ -20,7 +20,7 @@ const scenarios: Record<Scenario, (page: Page) => Promise<void>> = {
 /** Runs the scenario on the fixture with the bug on or off and returns what the recorder saw. */
 async function record(page: Page, scenario: Scenario, bugs: Bug | ''): Promise<RecordingV1> {
   await page.goto(bugs ? `/bug/${bugs}?tick=150` : `/app?tick=150`);
-  await page.getByTestId('balance').waitFor();
+  await page.getByTestId('unread').waitFor();
   await page.waitForTimeout(300);
   // The page always has the recorder; its global is declared optional for pages without the plugin.
   await page.evaluate(() => (window.__REACT_PERF_RECORDER__ as RecorderGlobal).engine.start({ source: 'e2e', highlight: false }));
@@ -43,116 +43,116 @@ const selector = (rec: RecordingV1, name: string) =>
 test.describe('seeded re-render bugs', () => {
   test('a component subscribed to a whole store object', async ({ page }) => {
     const rec = await record(page, 'idle', 'whole-object');
-    const balance = root(rec, 'Balance');
+    const balance = root(rec, 'Unread');
     expect(balance.hits).toBeGreaterThan(3);
     expect(balance.noDomChange).toBe(balance.hits);
-    expect(reasons(balance)[0]).toBe('external store #2 [useTerminalStore] selectAccount');
-    expect(chain(balance)).toMatch(/^useWholeAccountBalance › \[zustand\]/);
+    expect(reasons(balance)[0]).toBe('external store #2 [useChatStore] selectWorkspace');
+    expect(chain(balance)).toMatch(/^useWholeWorkspaceUnread › \[zustand\]/);
     expect(chain(balance)).toContain('src/components/Header.tsx:');
-    expect(causes(balance)).toContain('zustand:markets/tick');
+    expect(causes(balance)).toContain('zustand:feed/tick');
 
-    expect(root(await record(page, 'idle', ''), 'Balance')).toBeUndefined();
+    expect(root(await record(page, 'idle', ''), 'Unread')).toBeUndefined();
   });
 
   test('a live subscription where a value is only read at render time', async ({ page }) => {
     const rec = await record(page, 'idle', 'live-subscription');
-    const amount = root(rec, 'AmountInput');
-    expect(reasons(amount)[0]).toMatch(/^external store #\d+ \[priceStore\]/);
-    expect(chain(amount)).toMatch(/^useLiveTrade › \[zustand\]/);
+    const amount = root(rec, 'MessageInput');
+    expect(reasons(amount)[0]).toMatch(/^external store #\d+ \[presenceStore\]/);
+    expect(chain(amount)).toMatch(/^useLivePresence › \[zustand\]/);
     // The price store, not the one the rest of the page listens to.
-    expect(causes(amount)).toEqual(expect.arrayContaining(['zustand:priceStore.setState']));
-    expect(causes(amount)).not.toContain('zustand:markets/tick');
+    expect(causes(amount)).toEqual(expect.arrayContaining(['zustand:presenceStore.setState']));
+    expect(causes(amount)).not.toContain('zustand:feed/tick');
 
-    expect(root(await record(page, 'idle', ''), 'AmountInput')).toBeUndefined();
+    expect(root(await record(page, 'idle', ''), 'MessageInput')).toBeUndefined();
   });
 
   test('fieldState renders a field on every errors event of the form', async ({ page }) => {
     const rec = await record(page, 'typing', 'field-state');
-    const stops = rootsNamed(rec, 'StopInput');
+    const stops = rootsNamed(rec, 'MetaInput');
     expect(stops).toHaveLength(2);
     expect(reasons(stops[0])[0]).toMatch(/^state #\d+$/);
-    expect(chain(stops[0])).toMatch(/^useStopWithFieldState › \[react-hook-form\] useController/);
-    expect(chain(stops[0], 'short')).toMatch(/^useStopWithFieldState › react-hook-form\.useController/);
+    expect(chain(stops[0])).toMatch(/^useMetaWithFieldState › \[react-hook-form\] useController/);
+    expect(chain(stops[0], 'short')).toMatch(/^useMetaWithFieldState › react-hook-form\.useController/);
     expect(causes(stops[0])).toContain('core:input input');
     expect(stops[0].noDomChange).toBe(stops[0].hits);
 
-    expect(rootsNamed(await record(page, 'typing', ''), 'StopInput')).toHaveLength(0);
+    expect(rootsNamed(await record(page, 'typing', ''), 'MetaInput')).toHaveLength(0);
   });
 
   test('watch() in the form root renders every field on every keystroke', async ({ page }) => {
     const rec = await record(page, 'typing', 'form-watch');
-    const form = root(rec, 'OrderForm');
+    const form = root(rec, 'Composer');
     expect(chain(form)).toMatch(/^\[react-hook-form\] useForm/);
     expect(form.perHit).toBeGreaterThan(5);
-    expect(component(rec, 'StopInput')?.reasons.map(([text]) => text)).toContain('parent: props equal');
+    expect(component(rec, 'MetaInput')?.reasons.map(([text]) => text)).toContain('parent: props equal');
 
-    expect(root(await record(page, 'typing', ''), 'OrderForm')).toBeUndefined();
+    expect(root(await record(page, 'typing', ''), 'Composer')).toBeUndefined();
   });
 
   test('one memo slot shared by rows with different arguments', async ({ page }) => {
     const rec = await record(page, 'idle', 'memo-cache-slot');
-    expect(selector(rec, 'selectPositionInfo')).toMatchObject({ thrash: true });
-    expect(reasons(root(rec, 'PositionRow'))).toContainEqual(expect.stringContaining('SAME-CONTENT'));
-    expect(rec.plugins['proxy-memoize'].highlights?.join(' ')).toContain('selectPositionInfo');
+    expect(selector(rec, 'selectMessageInfo')).toMatchObject({ thrash: true });
+    expect(reasons(root(rec, 'MessageRow'))).toContainEqual(expect.stringContaining('SAME-CONTENT'));
+    expect(rec.plugins['proxy-memoize'].highlights?.join(' ')).toContain('selectMessageInfo');
 
     const clean = await record(page, 'idle', '');
-    expect(selector(clean, 'selectPositionInfo')).toMatchObject({ thrash: false });
-    expect(reasons(root(clean, 'PositionRow'))).not.toContainEqual(expect.stringContaining('SAME-CONTENT'));
+    expect(selector(clean, 'selectMessageInfo')).toMatchObject({ thrash: false });
+    expect(reasons(root(clean, 'MessageRow'))).not.toContainEqual(expect.stringContaining('SAME-CONTENT'));
   });
 
   test('a selector that builds a new array on every call', async ({ page }) => {
     const rec = await record(page, 'idle', 'new-array-selector');
-    const table = root(rec, 'PositionTable');
-    expect(reasons(table)[0]).toBe('external store #2 SAME-CONTENT [useTerminalStore] selectFreshIds');
-    expect(chain(table)).toContain('src/components/Positions.tsx:');
+    const table = root(rec, 'MessageList');
+    expect(reasons(table)[0]).toBe('external store #2 SAME-CONTENT [useChatStore] selectFreshIds');
+    expect(chain(table)).toContain('src/components/Messages.tsx:');
 
-    expect(root(await record(page, 'idle', ''), 'PositionTable')).toBeUndefined();
+    expect(root(await record(page, 'idle', ''), 'MessageList')).toBeUndefined();
   });
 
   test('a JSX element built in render defeats memo', async ({ page }) => {
     const rec = await record(page, 'typing', 'inline-jsx-prop');
-    expect(component(rec, 'ChangeRow')?.reasons.map(([text]) => text)).toContain('parent: props same: title');
+    expect(component(rec, 'StatRow')?.reasons.map(([text]) => text)).toContain('parent: props same: title');
 
     const clean = await record(page, 'typing', '');
-    expect(component(clean, 'ChangeRow')?.reasons.map(([text]) => text)).not.toContain('parent: props same: title');
+    expect(component(clean, 'StatRow')?.reasons.map(([text]) => text)).not.toContain('parent: props same: title');
   });
 
   test('a context value built inline in a provider that renders often', async ({ page }) => {
     const rec = await record(page, 'idle', 'inline-context');
-    const badge = root(rec, 'CurrencyBadge');
+    const badge = root(rec, 'TimezoneBadge');
     expect(reasons(badge)[0]).toBe('context SettingsContext SAME-CONTENT');
     expect(chain(badge)).toMatch(/^useSettings › Context @ src\/components\/Settings\.tsx:/);
     expect(badge.noDomChange).toBe(badge.hits);
 
-    expect(root(await record(page, 'idle', ''), 'CurrencyBadge')).toBeUndefined();
+    expect(root(await record(page, 'idle', ''), 'TimezoneBadge')).toBeUndefined();
   });
 
   test('a layout hook that reads the URL renders the page on every navigation', async ({ page }) => {
     const rec = await record(page, 'tabs', 'router-in-layout');
-    const view = root(rec, 'TradeView');
+    const view = root(rec, 'ChatView');
     expect(reasons(view)).toContain('context Location');
     expect(chain(view)).toMatch(/^useLayoutWithParams › \[react-router-dom\] useSearchParams/);
     expect(causes(view)).toContain('core:navigation push');
-    expect(view.perHit).toBeGreaterThan(root(rec, 'OrdersPanel')?.perHit ?? 0);
+    expect(view.perHit).toBeGreaterThan(root(rec, 'ChatPanel')?.perHit ?? 0);
 
-    expect(root(await record(page, 'tabs', ''), 'TradeView')).toBeUndefined();
+    expect(root(await record(page, 'tabs', ''), 'ChatView')).toBeUndefined();
   });
 
   test('an exact value where only a rounded one is shown', async ({ page }) => {
     const rec = await record(page, 'idle', 'exact-value');
-    const bar = root(rec, 'HealthBar');
-    expect(reasons(bar)[0]).toBe('external store #2 [useTerminalStore] selectHealth');
+    const bar = root(rec, 'SyncBar');
+    expect(reasons(bar)[0]).toBe('external store #2 [useChatStore] selectSynced');
     expect(bar.noDomChange).toBe(bar.hits);
     expect(rec.totals.rendersWithoutDom).toBeGreaterThan(0);
 
-    expect(root(await record(page, 'idle', ''), 'HealthBar')).toBeUndefined();
+    expect(root(await record(page, 'idle', ''), 'SyncBar')).toBeUndefined();
   });
 
   test('a component declared inside a render is remounted every time', async ({ page }) => {
     const rec = await record(page, 'idle', 'nested-component');
-    expect(root(rec, 'PositionRow').mounts).toBeGreaterThan(0);
-    expect(component(rec, 'NestedPnl')).toMatchObject({ renders: 0 });
-    expect(component(rec, 'NestedPnl')!.mounts).toBeGreaterThan(0);
+    expect(root(rec, 'MessageRow').mounts).toBeGreaterThan(0);
+    expect(component(rec, 'NestedStatus')).toMatchObject({ renders: 0 });
+    expect(component(rec, 'NestedStatus')!.mounts).toBeGreaterThan(0);
     expect(rec.dom.child).toBeGreaterThan(0);
 
     const clean = await record(page, 'idle', '');
@@ -162,31 +162,31 @@ test.describe('seeded re-render bugs', () => {
 
   test('a custom hook keeping a ticking state its caller never shows', async ({ page }) => {
     const rec = await record(page, 'idle', 'hidden-hook-state');
-    const badge = root(rec, 'FundingBadge');
+    const badge = root(rec, 'TypingBadge');
     expect(reasons(badge)[0]).toBe('state #0');
-    expect(chain(badge)).toMatch(/^useFundingSoonByClock › useNow › State @ src\/components\/FundingBadge\.tsx:/);
+    expect(chain(badge)).toMatch(/^useTypingByClock › useNow › State @ src\/components\/TypingBadge\.tsx:/);
     expect(badge.noDomChange).toBe(badge.hits);
     // The timer is named, and only the component it updated gets it.
-    expect(causes(badge)).toEqual(['core:timer setInterval @ src/components/FundingBadge.tsx']);
-    expect(causes(root(rec, 'FundingCountdown'))).toEqual(['core:timer setInterval @ src/components/FundingCountdown.tsx']);
+    expect(causes(badge)).toEqual(['core:timer setInterval @ src/components/TypingBadge.tsx']);
+    expect(causes(root(rec, 'AwayCountdown'))).toEqual(['core:timer setInterval @ src/components/AwayCountdown.tsx']);
 
-    expect(root(await record(page, 'idle', ''), 'FundingBadge')).toBeUndefined();
+    expect(root(await record(page, 'idle', ''), 'TypingBadge')).toBeUndefined();
   });
 
   test('state copied from props in an effect costs a second commit', async ({ page }) => {
     const rec = await record(page, 'tabs', 'effect-derived-state');
     const clean = await record(page, 'tabs', '');
-    const hits = (r: RecordingV1) => root(r, 'OrdersPanel').hits;
+    const hits = (r: RecordingV1) => root(r, 'ChatPanel').hits;
     expect(hits(rec)).toBeGreaterThan(hits(clean));
-    expect(root(rec, 'OrdersPanel').noDomChange).toBeGreaterThan(0);
+    expect(root(rec, 'ChatPanel').noDomChange).toBeGreaterThan(0);
     // Nothing else explains the second commit, so the cause names the effect that asked for it.
-    expect(causes(root(rec, 'OrdersPanel'))).toContain('core:effect @ src/components/OrdersPanel.tsx');
-    expect(rec.causes.find((c) => c.key === 'core:effect @ src/components/OrdersPanel.tsx')!.commits).toBeGreaterThan(1);
+    expect(causes(root(rec, 'ChatPanel'))).toContain('core:effect @ src/components/ChatPanel.tsx');
+    expect(rec.causes.find((c) => c.key === 'core:effect @ src/components/ChatPanel.tsx')!.commits).toBeGreaterThan(1);
   });
 
   test('the report keeps the app’s components apart from the packages’', async ({ page }) => {
     const rec = await record(page, 'tabs', '');
-    expect(component(rec, 'PositionRow')).not.toHaveProperty('library');
+    expect(component(rec, 'MessageRow')).not.toHaveProperty('library');
     expect(component(rec, 'RenderedRoute')).toMatchObject({ library: true });
     // The app's own come first, whatever a package renders more often.
     const first = rec.components.findIndex((c) => c.library);
@@ -198,10 +198,10 @@ test.describe('seeded re-render bugs', () => {
     const keys = rec.causes.map((c) => c.key);
     expect(keys).toEqual(
       expect.arrayContaining([
-        'zustand:markets/tick',
-        'zustand:priceStore.setState',
+        'zustand:feed/tick',
+        'zustand:presenceStore.setState',
         'core:message Worker',
-        'core:timer setInterval @ src/components/FundingCountdown.tsx',
+        'core:timer setInterval @ src/components/AwayCountdown.tsx',
       ])
     );
     expect(keys.some((k) => k.startsWith('react-query:'))).toBe(true);

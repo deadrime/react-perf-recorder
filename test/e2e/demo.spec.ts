@@ -10,7 +10,7 @@ test('the demo cards lead into the app with one bug on, and back', async ({ page
   expect(links.every(([id, href]) => href === `/bug/${id}`)).toBe(true);
 
   await page.locator('.card[data-bug="hidden-hook-state"]').click();
-  await expect(page.getByTestId('balance')).toBeVisible();
+  await expect(page.getByTestId('unread')).toBeVisible();
   // The strip says which bug is on and what to do about it.
   await expect(page.getByTestId('strip')).toContainText('hidden-hook-state');
   await expect(page.getByTestId('strip')).toContainText('just wait');

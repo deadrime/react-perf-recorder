@@ -9,7 +9,11 @@ const useCountdown = (periodMs: number) => {
   return left;
 };
 
-export const FundingCountdown = () => {
+export const AwayCountdown = () => {
   const left = useCountdown(8000);
-  return <span data-testid="funding">funding in {(left / 1000).toFixed(2)}s</span>;
+  return (
+    <p className="side-line" data-testid="away">
+      away in <b>{(left / 1000).toFixed(2)}s</b>
+    </p>
+  );
 };

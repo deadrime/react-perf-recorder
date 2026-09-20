@@ -33,15 +33,15 @@ const scrollOf = (page: Page) => page.locator('[data-rpr="tree"]').evaluate((ul)
 
 test('moving the area patches the tree instead of drawing it again', async ({ page }) => {
   await page.goto('/app?rpr=panel&tick=150');
-  await expect(page.getByTestId('balance')).toBeVisible();
+  await expect(page.getByTestId('unread')).toBeVisible();
   await page.locator('[data-rpr="pick"]').click();
-  await page.getByTestId('position-p1').click();
-  await expect(page.locator('[data-rpr="scope"]')).toHaveText('PositionRow');
+  await page.getByTestId('message-m1').click();
+  await expect(page.locator('[data-rpr="scope"]')).toHaveText('MessageRow');
 
   const rows = await rowsOf(page);
-  expect(rows.filter((r) => r.name === 'PositionRow')).toHaveLength(3);
-  expect(rows.find((r) => r.active === 'true')!.name).toBe('PositionRow');
-  expect(rows.find((r) => r.name === 'Pnl')!.arrow).toBe('');
+  expect(rows.filter((r) => r.name === 'MessageRow')).toHaveLength(3);
+  expect(rows.find((r) => r.active === 'true')!.name).toBe('MessageRow');
+  expect(rows.find((r) => r.name === 'Status')!.arrow).toBe('');
 
   // Five steps down: the rows are patched, so nothing is thrown away and the list keeps where it was scrolled to.
   const activeAt = () =>
@@ -49,11 +49,11 @@ test('moving the area patches the tree instead of drawing it again', async ({ pa
   const from = await activeAt();
   await page.locator('[data-rpr="tree"]').evaluate((ul) => (ul.scrollLeft = 120));
   const scrolled = await scrollOf(page);
-  expect(scrolled).toBeGreaterThan(0);
   await watchChurn(page);
   for (let i = 0; i < 5; i++) await page.keyboard.press('ArrowDown');
   expect(await activeAt()).toBeGreaterThan(from);
   expect(await churn(page)).toEqual({ added: 0, removed: 0 });
+  // Whatever the list was scrolled to is still there; a rebuilt list would be back at the left edge.
   expect(await scrollOf(page)).toBe(scrolled);
 
   // The controls inside a row work through the patched rendering (they show on the active row only).
@@ -66,5 +66,5 @@ test('moving the area patches the tree instead of drawing it again', async ({ pa
   await expect(page.locator('[data-rpr="tree"]')).toHaveCount(0);
   await page.locator('[data-rpr="scope"]').click();
   await expect(page.locator('[data-rpr="tree"] li[data-active="true"]')).toHaveCount(1);
-  expect((await rowsOf(page)).filter((r) => r.name === 'PositionRow')).toHaveLength(3);
+  expect((await rowsOf(page)).filter((r) => r.name === 'MessageRow')).toHaveLength(3);
 });

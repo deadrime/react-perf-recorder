@@ -210,9 +210,8 @@ proxy-memoize plugin.
 ## Working on it
 
 `npm test` runs the unit tests, `npm run test:e2e` the browser ones. They run against the fixture app in
-`test/e2e/fixture-app`, which doubles as the demo: a small trading terminal with a store, a price feed and a form,
-and thirteen seeded re-render bugs, one per page (`/bug/whole-object`), with `/app` as the same app with none of
-them. `/` lists them as cards that say what to do on the page and what the recording should name, so a recording can
+`test/e2e/fixture-app`, which doubles as the demo: a small team chat with a store, a live feed and a composer, and
+thirteen seeded re-render bugs, one per page (`/bug/whole-object`), with `/app` as the same app with none of them. `/` lists them as cards that say what to do on the page and what the recording should name, so a recording can
 be checked against a known cause and against a clean run. It needs a dev server because the Vite plugin is half of
 what is under test — it injects the recorder, names the components, proxies `react-dom/client` and the stores, and
 stores the sessions.

@@ -1,23 +1,18 @@
 import { memoize, memoizeWithArgs } from 'proxy-memoize';
 import { bug } from '../bugs';
-import type { Terminal } from './terminal';
+import type { Chat } from './chat';
 
-export const selectAccount = (s: Terminal) => s.account;
-export const selectBalance = (s: Terminal) => s.account.balance;
-export const selectEquity = (s: Terminal) => s.account.equity;
-export const selectBtcPrice = (s: Terminal) => s.priceByTicker.BTC;
+export const selectWorkspace = (s: Chat) => s.workspace;
+export const selectUnread = (s: Chat) => s.workspace.unread;
+export const selectSynced = (s: Chat) => s.workspace.synced;
 
-export const selectPositionIds = memoize((s: Terminal) => Object.keys(s.positionById));
+export const selectMessageIds = memoize((s: Chat) => Object.keys(s.messageById));
 
 /** One cache slot by default: rows that call it with their own ids evict each other on every tick. */
-export const selectPositionInfo = memoizeWithArgs(
-  (s: Terminal, id: string) => {
-    const position = s.positionById[id];
-    const price = s.priceByTicker[position.ticker];
-    return { ...position, price, pnl: +((price - position.entry) * position.size).toFixed(2) };
+export const selectMessageInfo = memoizeWithArgs(
+  (s: Chat, id: string) => {
+    const message = s.messageById[id];
+    return { ...message, reactions: s.reactionsById[id] ?? 0, seen: message.sentAgo > 1 };
   },
   bug('memo-cache-slot') ? undefined : { size: 32 }
 );
-
-/** Around 80: equity over the balance with a margin buffer. */
-export const selectHealth = (s: Terminal) => Math.min(100, (s.account.equity / (s.account.balance * 1.2)) * 100);

@@ -55,13 +55,13 @@ describe('perfRecorder vite plugin', () => {
 
   it('names selectors, stores and memo components', async () => {
     const selectors = await server.transformRequest('/src/store/selectors.ts');
-    expect(selectors?.code).toContain('__rprNameMemoized(selectPositionIds, "selectPositionIds", "src/store/selectors.ts")');
-    expect(selectors?.code).toContain('__rprNameMemoized(selectPositionInfo, "selectPositionInfo", "src/store/selectors.ts")');
-    const store = await server.transformRequest('/src/store/terminal.ts');
-    expect(store?.code).toContain('__rprNameStore(useTerminalStore, "useTerminalStore")');
-    expect(store?.code).toContain('__rprNameStore(priceStore, "priceStore")');
-    const rows = await server.transformRequest('/src/components/Positions.tsx');
-    expect(rows?.code).toContain('PositionRow.displayName = "PositionRow"');
+    expect(selectors?.code).toContain('__rprNameMemoized(selectMessageIds, "selectMessageIds", "src/store/selectors.ts")');
+    expect(selectors?.code).toContain('__rprNameMemoized(selectMessageInfo, "selectMessageInfo", "src/store/selectors.ts")');
+    const store = await server.transformRequest('/src/store/chat.ts');
+    expect(store?.code).toContain('__rprNameStore(useChatStore, "useChatStore")');
+    expect(store?.code).toContain('__rprNameStore(presenceStore, "presenceStore")');
+    const rows = await server.transformRequest('/src/components/Messages.tsx');
+    expect(rows?.code).toContain('MessageRow.displayName = "MessageRow"');
   });
 
   it('writes a session: open, events, finish, with hook sites mapped to the source', async () => {
@@ -75,7 +75,7 @@ describe('perfRecorder vite plugin', () => {
     expect(opened.id).toMatch(/^\d{8}-\d{6}-Panel-panel-[0-9a-f]{4}$/);
     expect((await post(`sessions/${opened.id}/events`, { events: [{ k: 'commit', t: 1, n: 2 }] })).status).toBe(200);
 
-    const call = 'useTerminalStore(selectBalance)';
+    const call = 'useChatStore(selectUnread)';
     const header = (await server.transformRequest('/src/components/Header.tsx'))!;
     const lines = header.code.split('\n');
     const line = lines.findIndex((l) => l.includes(call)) + 1;
@@ -89,8 +89,8 @@ describe('perfRecorder vite plugin', () => {
       schema: 'react-perf-recorder/recording',
       roots: [
         {
-          name: 'Balance',
-          hooks: { 0: { path: ['useBalance', 'useBoundStore'], generated: { url: `${base}/src/components/Header.tsx`, line, column } } },
+          name: 'Unread',
+          hooks: { 0: { path: ['useUnread', 'useBoundStore'], generated: { url: `${base}/src/components/Header.tsx`, line, column } } },
         },
       ],
       outsideRoots: [],
@@ -99,7 +99,7 @@ describe('perfRecorder vite plugin', () => {
     const saved = JSON.parse(fs.readFileSync(path.join(finished.dir, 'recording.json'), 'utf8'));
     expect(saved.roots[0].hooks[0]).toMatchObject({
       site: `src/components/Header.tsx:${sourceLine}`,
-      code: 'return useTerminalStore(selectBalance);',
+      code: 'return useChatStore(selectUnread);',
     });
     const meta = JSON.parse(fs.readFileSync(path.join(finished.dir, 'session.json'), 'utf8'));
     expect(meta).toMatchObject({ status: 'done', events: 1 });

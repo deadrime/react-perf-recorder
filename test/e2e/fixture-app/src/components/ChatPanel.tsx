@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { bug } from '../bugs';
-import { OrdersTable, PositionTable } from './Positions';
+import { MessageList, PeopleList } from './Messages';
 
 export const useActiveTab = () => {
   const [params, setParams] = useSearchParams();
-  const tab = params.get('tab') === 'orders' ? 'orders' : 'positions';
+  const tab = params.get('tab') === 'people' ? 'people' : 'chat';
   return [tab, (next: string) => setParams((p) => ({ ...Object.fromEntries(p), tab: next }))] as const;
 };
 
@@ -22,19 +22,19 @@ function useShownTab(tab: string) {
 
 const useShown = bug('effect-derived-state') ? useShownTabFromEffect : useShownTab;
 
-export const OrdersPanel = () => {
+export const ChatPanel = () => {
   const [active, setTab] = useActiveTab();
   const tab = useShown(active);
   return (
-    <section data-testid="orders-panel">
-      <div role="tablist">
-        {['positions', 'orders'].map((name) => (
+    <section className="panel" data-testid="chat-panel">
+      <div className="tabs" role="tablist">
+        {['chat', 'people'].map((name) => (
           <button key={name} type="button" role="tab" aria-selected={tab === name} data-testid={`tab-${name}`} onClick={() => setTab(name)}>
             {name}
           </button>
         ))}
       </div>
-      {tab === 'positions' ? <PositionTable /> : <OrdersTable />}
+      {tab === 'chat' ? <MessageList /> : <PeopleList />}
     </section>
   );
 };
