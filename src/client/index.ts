@@ -10,7 +10,7 @@ import { actionText, hookText, reasonLine, summarize } from '../shared/summary';
 import { Panel } from '../ui/panel';
 
 const format = { summarize, reasonLine, hookText, actionText };
-import { takeRecordOnLoad, type Corner } from '../ui/storage';
+import { takeRecordOnLoad, type Corner, type RecordOnLoad } from '../ui/storage';
 
 export interface ClientConfig extends BootConfig {
   panel: false | { corner: Corner; highlight: boolean; shortcuts: { record: string; pick: string } };
@@ -38,12 +38,17 @@ declare global {
  * `?rpr=rec` records from the page's first commit. The engine boots before React, so it waits for a root to
  * appear; a cascade on mount is otherwise impossible to catch by hand.
  */
-function recordFromLoad(engine: Engine, pending: { names?: string[]; label?: string } | null) {
+function recordFromLoad(engine: Engine, pending: RecordOnLoad | null) {
   const deadline = Date.now() + 15_000;
   const tick = () => {
     if (engine.recording) return;
     try {
-      engine.start({ source: 'load', label: pending?.label || 'from page load', scope: pending?.names ? { names: pending.names } : null });
+      engine.start({
+        source: 'load',
+        label: pending?.label || 'from page load',
+        scope: pending?.names ? { names: pending.names } : null,
+        ...(pending?.watch?.length ? { watch: pending.watch } : {}),
+      });
     } catch (error) {
       // No root yet, or the area is not mounted yet: the proxy of createRoot and the poll try again.
       if (Date.now() < deadline) setTimeout(tick, 0);

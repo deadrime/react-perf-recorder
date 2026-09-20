@@ -338,13 +338,25 @@ export class Recorder {
       this.warnings.push('HMR update during the recording: commits around it include react-refresh work');
   }
 
+  /** What the panel shows while the recording runs: counters and the roots leading so far, with their reason. */
   live() {
+    const elapsedMs = Math.round(this.now());
     return {
       commits: this.totals.commits,
       commitsInScope: this.totals.commitsInScope,
       renders: this.totals.renders,
-      elapsedMs: Math.round(this.now()),
+      rendersPerSec: elapsedMs > 200 ? Math.round((this.totals.renders * 1000) / elapsedMs) : 0,
+      elapsedMs,
       scopeState: this.scope?.state ?? null,
+      topRoots: [...this.rootList]
+        .sort((a, b) => b.cascade - a.cascade)
+        .slice(0, 3)
+        .map((agg) => ({
+          name: agg.name,
+          hits: agg.hits,
+          perHit: agg.hits ? Math.round(agg.cascade / agg.hits) : 0,
+          reason: topEntries(agg.reasons, 1)[0]?.[0] ?? '',
+        })),
     };
   }
 

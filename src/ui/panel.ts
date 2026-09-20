@@ -52,6 +52,7 @@ export class Panel {
   private busy = false;
   private els!: {
     live: HTMLSpanElement;
+    liveRoots: HTMLDivElement;
     record: HTMLButtonElement;
     recordOnLoad: HTMLButtonElement;
     stop: HTMLButtonElement;
@@ -62,6 +63,7 @@ export class Panel {
     lastScope: HTMLButtonElement;
     highlight: HTMLInputElement;
     note: HTMLInputElement;
+    watch: HTMLDivElement;
     picker: HTMLDivElement;
     result: HTMLDivElement;
     message: HTMLDivElement;
@@ -140,7 +142,7 @@ export class Panel {
     const recordOnLoad = h(
       'button',
       { class: 'rec', 'data-rpr': 'record-on-load', title: 'Reload the page and record from its first render' },
-      '⟳ Rec on load'
+      '⟳ Load'
     );
     const stop = h('button', { class: 'stop', 'data-rpr': 'stop', title: `Stop (${this.options.shortcuts.record})` }, '■ Stop');
     const pick = h('button', { 'data-rpr': 'pick', title: `Pick an area (${this.options.shortcuts.pick})` }, '⌖ Area');
@@ -155,6 +157,8 @@ export class Panel {
       placeholder: 'what you are testing, e.g. typing the amount',
       title: 'Saved with the recording and shown in the list of recordings, so you and the agent can tell them apart',
     });
+    const watch = h('div', { class: 'row watch', 'data-rpr': 'watch' });
+    const liveRoots = h('div', { class: 'live-roots', 'data-rpr': 'live-roots' });
     const picker = h('div', { class: 'picker', 'data-rpr': 'picker' });
     const result = h('div', { class: 'result', 'data-rpr': 'result' });
     const message = h('div', { 'data-rpr': 'message' });
@@ -174,20 +178,43 @@ export class Panel {
         h('label', { class: 'toggle', title: 'Outline renders in the area, also between recordings' }, highlight, 'highlight')
       ),
       h('label', { class: 'row note' }, h('span', { class: 'muted' }, 'Note'), note),
+      watch,
+      liveRoots,
       picker,
       message,
       result
     );
     const dot = h('button', { class: 'dot', 'data-rpr': 'toggle', title: `react-perf-recorder (${this.options.shortcuts.record})` }, '●');
     const root = h('div', { class: 'rpr' }, dot, card);
-    this.els = { live, record, recordOnLoad, stop, pick, scope, copyScope, clearScope, lastScope, highlight, note, picker, result, message };
+    this.els = {
+      live,
+      liveRoots,
+      record,
+      recordOnLoad,
+      stop,
+      pick,
+      scope,
+      copyScope,
+      clearScope,
+      lastScope,
+      highlight,
+      note,
+      watch,
+      picker,
+      result,
+      message,
+    };
     highlight.checked = this.state.highlight;
     note.value = this.state.label;
     dot.addEventListener('click', () => this.setCollapsed(false));
     collapse.addEventListener('click', () => this.setCollapsed(true));
     record.addEventListener('click', () => void this.start());
     recordOnLoad.addEventListener('click', () => {
-      setRecordOnLoad({ ...(this.scope ? { names: scopeNames(this.scope) } : {}), label: this.state.label || 'from page load' });
+      setRecordOnLoad({
+        ...(this.scope ? { names: scopeNames(this.scope) } : {}),
+        ...(this.state.watch.length ? { watch: this.state.watch } : {}),
+        label: this.state.label || 'from page load',
+      });
       location.reload();
     });
     stop.addEventListener('click', () => void this.stop());
@@ -239,6 +266,7 @@ export class Panel {
     this.els.lastScope.hidden = Boolean(this.scope) || !this.state.lastScope || recording;
     this.els.lastScope.title = this.state.lastScope ? `Find ${this.state.lastScope.label} again` : '';
     this.els.scope.textContent = this.scope ? `${this.scope.name}` : 'Whole app';
+    this.renderWatch(recording);
     if (recording && !this.liveTimer) this.liveTimer = setInterval(() => this.updateLive(), 250);
     if (!recording && this.liveTimer) {
       clearInterval(this.liveTimer);
@@ -251,12 +279,37 @@ export class Panel {
     const live = this.engine.live();
     if (!live) {
       this.els.live.textContent = this.busy ? 'saving…' : '';
+      this.els.liveRoots.replaceChildren();
       return;
     }
     const seconds = (live.elapsedMs / 1000).toFixed(1);
-    this.els.live.textContent = `${seconds}s · C ${live.commitsInScope}/${live.commits} · R ${live.renders}`;
+    this.els.live.textContent = `${seconds}s · C ${live.commitsInScope}/${live.commits} · R ${live.renders} · ${live.rendersPerSec}/s`;
+    // Leading roots as they are: what is flashing right now, without stopping the recording.
+    this.els.liveRoots.replaceChildren(
+      ...live.topRoots.map((r) =>
+        h('div', { class: 'line' }, h('span', { class: 'n' }, r.name), ` ×${r.hits} · ${r.perHit}/hit `, h('span', { class: 'why' }, r.reason))
+      )
+    );
     this.els.scope.dataset.lost = String(live.scopeState === 'lost');
     if (live.scopeState === 'lost') this.els.scope.textContent = `${this.scope?.name ?? ''} (unmounted)`;
+  }
+
+  /** Names being followed, each removable; during a recording they are shown but not editable. */
+  private renderWatch(recording: boolean) {
+    const chips = this.state.watch.map((name) => {
+      const chip = h('button', { class: 'chip', 'data-rpr': 'watched', 'data-name': name, title: 'Stop following this component' }, `${name} ×`);
+      chip.disabled = recording;
+      chip.addEventListener('click', () => this.toggleWatch(name));
+      return chip;
+    });
+    this.els.watch.replaceChildren(...(chips.length ? [h('span', { class: 'muted' }, 'Watching:'), ...chips] : []));
+  }
+
+  private toggleWatch(name: string) {
+    this.state.watch = this.state.watch.includes(name) ? this.state.watch.filter((n) => n !== name) : [...this.state.watch, name].slice(0, 12);
+    this.persist();
+    this.sync();
+    this.picker.refresh();
   }
 
   private async start() {
@@ -266,7 +319,12 @@ export class Panel {
     this.say('');
     try {
       this.highlighter?.reset();
-      this.engine.start({ source: 'panel', scope: this.scope, label: this.state.label || undefined });
+      this.engine.start({
+        source: 'panel',
+        scope: this.scope,
+        label: this.state.label || undefined,
+        ...(this.state.watch.length ? { watch: this.state.watch } : {}),
+      });
     } catch (error) {
       this.say(String((error as Error)?.message ?? error), 'error');
     }
@@ -368,6 +426,12 @@ export class Panel {
     rows.forEach((row, i) => {
       const toggle = h('span', { class: 'toggle', 'data-rpr': 'expand' }, row.toggle === 'open' ? '▾' : row.toggle === 'closed' ? '▸' : '');
       const copy = h('span', { class: 'copy', 'data-rpr': 'copy-row', title: 'Copy for an AI assistant' }, '⧉');
+      const watching = this.state.watch.includes(row.owner.name);
+      const watch = h(
+        'span',
+        { class: 'watch-toggle', 'data-rpr': 'watch-toggle', 'data-on': String(watching), title: 'Follow this component through the recording' },
+        watching ? '◉' : '◎'
+      );
       const item = h(
         'li',
         { 'data-active': String(i === active), 'data-wrapper': String(row.owner.wrapper), 'data-name': row.owner.name },
@@ -375,12 +439,17 @@ export class Panel {
         h('span', { class: 'name' }, row.owner.name),
         // LRM marks keep `:line` at the end while the rtl box cuts the path from the left.
         h('span', { class: 'src', title: row.owner.source }, `\u200e${row.owner.source}\u200e`),
+        watch,
         copy
       );
       item.style.paddingLeft = `${4 + Math.min(row.depth, 24) * 10}px`;
       toggle.addEventListener('click', (e) => {
         e.stopPropagation();
         actions.toggle(i);
+      });
+      watch.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.toggleWatch(row.owner.name);
       });
       copy.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -432,6 +501,22 @@ export class Panel {
           a.latencyMs ? ` · ${a.latencyMs}ms` : '',
           a.topRoot ? ` · ` : '',
           a.topRoot ? why(a.topRoot) : ''
+        )
+      )
+    );
+    const roots = [...rec.roots, ...rec.outsideRoots];
+    section(
+      'Watched',
+      Object.entries(rec.watch ?? {}).map(([name, w]) =>
+        line(
+          n(w.renders),
+          ` renders of ${name}${w.mounted !== 1 ? ` (${w.mounted} mounted)` : ''} `,
+          why(
+            w.byRoot
+              .map(([index, count]) => `${count}× ${index === null ? 'unknown root' : roots[index]?.name ?? '?'}`)
+              .slice(0, 3)
+              .join('; ')
+          )
         )
       )
     );

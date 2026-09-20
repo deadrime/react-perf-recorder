@@ -7,6 +7,8 @@ export interface PanelState {
   highlight: boolean;
   showWrappers: boolean;
   label: string;
+  /** Components followed by name through a recording: renders and which root pulled each one. */
+  watch: string[];
   lastScope: { names: string[]; label: string } | null;
 }
 
@@ -15,6 +17,7 @@ const ON_LOAD_KEY = 'react-perf-recorder:record-on-load';
 
 export interface RecordOnLoad {
   names?: string[];
+  watch?: string[];
   label?: string;
 }
 
@@ -44,6 +47,7 @@ export const defaults = (corner: Corner, highlight: boolean): PanelState => ({
   highlight,
   showWrappers: false,
   label: '',
+  watch: [],
   lastScope: null,
 });
 

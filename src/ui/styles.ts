@@ -34,6 +34,15 @@ input[type="text"] { width: 100%; font: inherit; color: inherit; background: #1b
 .line .n { color: #ffd60a; }
 .line .why { color: #9fb7ff; }
 .line button { padding: 0 6px; margin-left: 4px; }
+.watch { gap: 4px; }
+.chip { padding: 1px 6px; border-radius: 10px; background: #23232a; color: #c9c9d1; }
+.chip:disabled { cursor: default; opacity: .7; }
+.picker li .watch-toggle { flex: none; color: #8c8c96; visibility: hidden; }
+.picker li .watch-toggle[data-on="true"] { visibility: visible; color: #ffd60a; }
+.picker li:hover .watch-toggle, .picker li[data-active="true"] .watch-toggle { visibility: visible; }
+.picker li .watch-toggle:hover { color: #fff; }
+.live-roots { margin: 4px 0; }
+.live-roots .line { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .picker ul { list-style: none; margin: 4px 0; padding: 0; max-height: 280px; overflow: auto; }
 .picker li { padding: 2px 6px; border-radius: 4px; cursor: pointer; display: flex; gap: 4px; align-items: baseline; }
 .picker li:hover { background: #2a2f3a; }

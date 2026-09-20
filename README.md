@@ -12,6 +12,9 @@ Think of it as [react-grab](https://github.com/aidenybai/react-grab) for re-rend
 
 - **Cascade roots** — a component that rendered while its parent did not: where a render started, how many renders
   it pulled (`perHit`), how many instances fired at once.
+- **The app's components apart from the packages'** — a component's own file, or the file of the JSX it rendered,
+  says which it is; the app's own lead the report, the picker tree hides package internals, and an outline is
+  labelled with the app's component rather than the UI-kit wrapper above it.
 - **Reasons**
   - `state #2`, `external store #3 [useStore] selectPrice`, `context Theme`, `props: value | same: style, onClick`;
   - `SAME-CONTENT` — a new reference with the same content, almost always a subscription bug rather than new data;
@@ -25,7 +28,9 @@ Think of it as [react-grab](https://github.com/aidenybai/react-grab) for re-rend
   unstable `key` remounts its subtree on every render.
 - **Causes** — what scheduled each commit, aimed at the components it actually updated: store actions with the keys
   they changed, query cache events, timers (`core:timer setInterval useCountdown @ src/hooks/useCountdown.ts`),
-  socket and worker messages (`core:message WebSocket`), navigations, user input.
+  socket and worker messages (`core:message WebSocket`), navigations, user input. What none of them explains is
+  read off the stack at the moment React is told about the update: `core:effect @ src/hooks/useSync.ts`,
+  `core:update onMessage @ src/socket.ts`, `core:update refCallback (package)`.
 - **User actions** — clicks, typing (length only; secrets never), keys, scroll. The recording is cut into
   _action → consequences_ segments: renders per typed character, reaction vs background, input latency (Event Timing).
 - **An area** — pick a component on the page and record only inside it; renders that come from outside are
@@ -72,9 +77,12 @@ picks an area. In automated browsers (`navigator.webdriver`) the panel is hidden
 | `panel`      | `{ corner: 'bottom-left', highlight: true, shortcuts }`                                  | `false` — engine only                                                                                          |
 | `engine`     | `{ bigCommit: 150, timelineLimit: 5000, maxDurationMs: 600000, timers: true }`           | `timers: false` leaves `setTimeout`, `setInterval` and `requestAnimationFrame` unwrapped, and timer causes out |
 
-**The panel.** `● Rec` records, `⟳ Rec on load` reloads the page and records from its first render (the area and
-the note survive the reload; `?rpr=rec` does the same from a script or a link). `⌖ Area` picks the part of the page to look at. The area's name opens the tree
-again — parents above it, `→` opens the components inside — and `⧉` copies the area as text for an assistant
+**The panel.** `● Rec` records, `⟳ Load` reloads the page and records from its first render (the area, the note and
+the watched components survive the reload; `?rpr=rec` does the same from a script or a link). `⌖ Area` picks the part
+of the page to look at. While a recording runs, the panel names the roots leading so far, so what is flashing right
+now is readable without stopping. The area's name opens the tree
+again — parents above it, `→` opens the components inside, `◎` follows a component by name through the recording
+(renders and which root pulled it) — and `⧉` copies the area as text for an assistant
 (component, file and line, the path above it, its DOM, what is inside, the `scope` for scripts). `Note` is saved
 with the recording and shown in `list_recordings`. `highlight` outlines renders in the area, both while recording
 and between recordings; a recording made with it on says so in its warnings, because drawing costs frame time.

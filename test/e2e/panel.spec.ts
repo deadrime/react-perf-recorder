@@ -111,6 +111,30 @@ test('picks an area from the tree: parents above, components inside, and the are
   expect(recording.components.map((c) => c.name)).not.toContain('ConnectionStatus');
 });
 
+test('follows a component picked in the tree and shows the leading roots live', async ({ page }) => {
+  const before = sessions();
+  await open(page);
+  await page.locator('[data-rpr="pick"]').click();
+  await page.getByTestId('position-p1').click();
+  await page.locator('[data-rpr="tree"] li[data-name="PositionRow"] [data-rpr="watch-toggle"]').click();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('[data-rpr="watch"] [data-name="PositionRow"]')).toBeVisible();
+
+  await page.locator('[data-rpr="record"]').click();
+  // While it records, the panel names the roots leading so far.
+  await expect(page.locator('[data-rpr="live-roots"]')).toContainText('PositionRow');
+  await expect(page.locator('[data-rpr="live-roots"]')).toContainText('external store');
+  await page.locator('[data-rpr="stop"]').click();
+  const { recording } = await newRecording(before);
+  expect(recording.watch?.PositionRow.renders).toBeGreaterThan(0);
+  expect(recording.watch?.PositionRow.mounted).toBe(3);
+  await expect(page.locator('[data-rpr="result"]')).toContainText('Watched');
+
+  // The chip removes it again.
+  await page.locator('[data-rpr="watch"] [data-name="PositionRow"]').click();
+  await expect(page.locator('[data-rpr="watch"] [data-name="PositionRow"]')).toHaveCount(0);
+});
+
 test('copies the area for an assistant', async ({ page }) => {
   await open(page);
   await page.locator('[data-rpr="pick"]').click();
