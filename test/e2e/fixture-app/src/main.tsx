@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { createBrowserRouter, RouterProvider } from 'react-router-dom';
 import './app.css';
 import { Layout } from './components/ChatView';
+import { BasicsPage } from './basics';
 import { Catalogue } from './Demo';
 import { connectFeed } from './feed';
 
@@ -12,6 +13,7 @@ const router = createBrowserRouter([
   { path: '/', element: <Catalogue /> },
   { path: '/app', element: <Layout /> },
   { path: '/bug/:id', element: <Layout /> },
+  { path: '/basics/:id', element: <BasicsPage /> },
 ]);
 
 connectFeed();

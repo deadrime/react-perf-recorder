@@ -1,3 +1,4 @@
+import { BASICS } from './basics';
 import { BUGS, SCENARIOS, enabledBugs, type Bug } from './bugs';
 
 /**
@@ -27,6 +28,7 @@ body { margin: 0; background: #131317; }
 .demo .card .meta { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 2px 12px; margin-top: auto; padding-top: 2px;
   color: #8c8c96; font-size: 12px; }
 .demo .card .try { color: #ffd60a; }
+.demo .section { margin: 26px 0 10px; font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: #8c8c96; }
 `;
 
 /** The strip sits on the app's own page, which is left unstyled on purpose: it may not touch anything but itself. */
@@ -68,6 +70,7 @@ export const Catalogue = () => (
       <a className="clean" href="/app">
         ▷ Open the app with no bugs — the baseline
       </a>
+      <h2 className="section">In a real app</h2>
       <div className="cards">
         {(Object.keys(BUGS) as Bug[]).map((id) => (
           <a className="card" href={href(id)} key={id} data-bug={id}>
@@ -81,19 +84,33 @@ export const Catalogue = () => (
           </a>
         ))}
       </div>
+      <h2 className="section">The textbook ones</h2>
+      <p>Two versions of one widget side by side, one of them wrong. Turn on <code>highlight</code> and press the button.</p>
+      <div className="cards">
+        {Object.entries(BASICS).map(([id, basic]) => (
+          <a className="card" href={`/basics/${id}`} key={id} data-basic={id}>
+            <h2>{basic.title}</h2>
+            <p className="what">{basic.what}</p>
+          </a>
+        ))}
+      </div>
     </div>
   </>
 );
 
-/** On the app itself: which bug is on, what to do about it, and the way back to the cards. */
-export const BugStrip = () => {
+/** On every page but the front one: what is being shown here, and the way back to the cards. */
+export const BugStrip = ({ note }: { note?: string }) => {
   const on = enabledBugs();
   return (
     <>
       <style>{STRIP_STYLES}</style>
       <div className="strip" data-testid="strip">
         <a href="/">← all bugs</a>
-        {on.length === 0 ? (
+        {note ? (
+          <span>
+            <b>{note}</b>
+          </span>
+        ) : on.length === 0 ? (
           <span>no bug is on — this is the clean baseline</span>
         ) : (
           on.map((id) => (

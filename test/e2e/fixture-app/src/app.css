@@ -344,3 +344,165 @@ input {
   border-radius: 8px;
   background: #16161b;
 }
+
+/* Basics: one textbook mistake per page, the broken and the fixed version side by side. */
+.basics {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 20px 20px 48px;
+}
+
+.basics h1 {
+  margin: 0 0 6px;
+  font-size: 20px;
+}
+
+.basics .what {
+  margin: 0 0 14px;
+  max-width: 90ch;
+  color: #b9b9c2;
+}
+
+.basics code {
+  color: var(--warm);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 14px;
+}
+
+.bar button {
+  padding: 7px 14px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--accent);
+  color: #fff;
+  cursor: pointer;
+}
+
+.bar button + button {
+  background: #2a2a33;
+  color: var(--text);
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.two,
+.three {
+  display: grid;
+  gap: 12px;
+}
+
+.two {
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+}
+
+.three {
+  grid-template-columns: repeat(auto-fit, minmax(270px, 1fr));
+}
+
+.case {
+  padding: 12px 14px 10px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--card);
+}
+
+.case h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 8px;
+  font-size: 14px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.case .mark {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+}
+
+.case.broken {
+  border-color: #4a2a30;
+}
+
+.case.broken .mark {
+  background: #3a2028;
+  color: #ff8a80;
+}
+
+.case.fixed {
+  border-color: #23472f;
+}
+
+.case.fixed .mark {
+  background: #163124;
+  color: #5ddc9a;
+}
+
+.case .says {
+  margin: 10px 0 0;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+  color: #9fb7ff;
+  font-size: 12px;
+}
+
+.rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.rows li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 4px;
+  border-bottom: 1px solid #23232b;
+}
+
+.rows li:last-child {
+  border-bottom: 0;
+}
+
+.rows .grow {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rows button {
+  padding: 2px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.count {
+  flex: none;
+  min-width: 82px;
+  text-align: right;
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.count[data-count='1'] {
+  color: #5ddc9a;
+}
