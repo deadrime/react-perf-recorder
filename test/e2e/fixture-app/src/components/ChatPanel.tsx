@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { memo, useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { bug } from '../bugs';
 import { MessageList, PeopleList } from './Messages';
@@ -6,7 +6,9 @@ import { MessageList, PeopleList } from './Messages';
 export const useActiveTab = () => {
   const [params, setParams] = useSearchParams();
   const tab = params.get('tab') === 'people' ? 'people' : 'chat';
-  return [tab, (next: string) => setParams((p) => ({ ...Object.fromEntries(p), tab: next }))] as const;
+  // The setter is the same function every time, so a tab only renders when its own `active` changes.
+  const select = useCallback((next: string) => setParams((p) => ({ ...Object.fromEntries(p), tab: next })), [setParams]);
+  return [tab, select] as const;
 };
 
 /** The shown tab copied into state by an effect: one more commit after every switch. */
@@ -22,6 +24,13 @@ function useShownTab(tab: string) {
 
 const useShown = bug('effect-derived-state') ? useShownTabFromEffect : useShownTab;
 
+/** A tab is a component of its own, as it is in any app: it renders when its own state changes, not the panel's. */
+const Tab = memo(({ name, active, onPick }: { name: string; active: boolean; onPick: (name: string) => void }) => (
+  <button type="button" role="tab" aria-selected={active} data-testid={`tab-${name}`} onClick={() => onPick(name)}>
+    {name}
+  </button>
+));
+
 export const ChatPanel = () => {
   const [active, setTab] = useActiveTab();
   const tab = useShown(active);
@@ -29,9 +38,7 @@ export const ChatPanel = () => {
     <section className="panel" data-testid="chat-panel">
       <div className="tabs" role="tablist">
         {['chat', 'people'].map((name) => (
-          <button key={name} type="button" role="tab" aria-selected={tab === name} data-testid={`tab-${name}`} onClick={() => setTab(name)}>
-            {name}
-          </button>
+          <Tab key={name} name={name} active={tab === name} onPick={setTab} />
         ))}
       </div>
       {tab === 'chat' ? <MessageList /> : <PeopleList />}

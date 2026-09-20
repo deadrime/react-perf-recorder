@@ -87,3 +87,21 @@ test('packages and providers each hide behind a checkbox of their own', async ({
   await page.locator('[data-rpr="show-library"]').check();
   expect(await names()).toContain('RenderedRoute');
 });
+
+test('hovering shows the box the click would leave', async ({ page }) => {
+  await page.goto('/app?rpr=panel&tick=150');
+  await expect(page.getByTestId('unread')).toBeVisible();
+  await page.locator('[data-rpr="pick"]').click();
+  await page.getByTestId('tab-people').hover();
+  const box = (page: Page) =>
+    page.evaluate(() => {
+      const el = document.querySelector('[data-react-perf-recorder]')!.shadowRoot!.querySelector('.box')!;
+      const r = el.getBoundingClientRect();
+      return { tag: el.querySelector('.tag')!.textContent, w: Math.round(r.width) };
+    });
+  const hovered = await box(page);
+  await page.getByTestId('tab-people').click();
+  // The same component, the same box: the outline under the cursor is the choice, not the element it sits on.
+  await expect(page.locator('[data-rpr="scope"]')).toHaveText(hovered.tag!);
+  expect((await box(page)).w).toBe(hovered.w);
+});

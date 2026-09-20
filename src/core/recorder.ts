@@ -540,7 +540,9 @@ export class Recorder {
         // The outline says the app's component, not the UI-kit wrapper it happens to sit under.
         if (highlight && isComposite(f) && (!nextPending || (nextPending[2] && !isLibraryFiber(f)))) nextPending = [name, f, isLibraryFiber(f)];
       }
-      if (nextPending && (isHost(f) || f.tag === Tag.HostText)) {
+      // A package's own render is outlined only when nothing of the app's is above it — a router re-rendering
+      // would otherwise draw a box over the whole page, on top of the ones worth looking at.
+      if (nextPending && !nextPending[2] && (isHost(f) || f.tag === Tag.HostText)) {
         const el = isHost(f) ? (f.stateNode as Element) : (f.stateNode as Text).parentElement;
         if (el) c.pairs.push([el, nextPending[0], nextPending[1]]);
         nextPending = null;

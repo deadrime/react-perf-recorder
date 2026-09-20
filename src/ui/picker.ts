@@ -149,9 +149,11 @@ export class Picker {
     if (this.frozen || this.isOwn(event)) return;
     const el = this.elementAt(event.clientX, event.clientY);
     if (!el) return;
-    this.shown = null;
     const owner = this.engine.owners(el).find((o) => !this.engine.hidden(o, this.filters()));
-    this.drawBox([el.getBoundingClientRect()], owner ? owner.name : el.tagName.toLowerCase());
+    // The box a click would leave, not the element under the cursor: hovering is the preview of the choice.
+    if (owner) return this.outline(owner.fiber, owner.name);
+    this.shown = null;
+    this.drawBox([el.getBoundingClientRect()], el.tagName.toLowerCase());
   }
 
   private onPress(event: MouseEvent) {
