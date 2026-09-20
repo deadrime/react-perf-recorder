@@ -51,7 +51,7 @@ export class Panel {
     this.shadow.append(style, this.container);
     this.state = loadState(defaults(options.corner, options.highlight));
     this.handlers = this.buildHandlers();
-    this.picker = new Picker(this.shadow, this.host, engine, () => this.state.showWrappers, {
+    this.picker = new Picker(this.shadow, this.host, engine, () => ({ library: this.state.showLibrary, providers: this.state.showProviders }), {
       showTree: (rows, active, actions) => this.showTree(rows, active, actions),
       preview: (owner) => this.setScope(this.engine.scopeFromFiber(owner.fiber)),
       done: (owner) => this.onPicked(owner),
@@ -330,10 +330,12 @@ export class Panel {
       rows,
       active,
       actions,
-      showLibrary: this.state.showWrappers,
+      showLibrary: this.state.showLibrary,
+      showProviders: this.state.showProviders,
       watched: this.state.watch,
-      onShowLibrary: (on) => {
-        this.state.showWrappers = on;
+      onShow: (what, on) => {
+        if (what === 'library') this.state.showLibrary = on;
+        else this.state.showProviders = on;
         this.persist();
         this.picker.refresh();
       },

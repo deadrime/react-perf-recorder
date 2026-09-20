@@ -203,7 +203,7 @@ export interface RecordingV1 {
     mounts?: number;
     /** A component of a package: the app's own come first in the list. */
     library?: true;
-    /** A styling wrapper or a provider, by the `wrapperPattern` of the build: listed after the app's own. */
+    /** An unnamed wrapper of the app or a component that only hands a context down: listed after the app's own. */
     wrapper?: true;
     withoutDom: number;
     byParent: number;

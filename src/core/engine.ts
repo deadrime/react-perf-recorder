@@ -33,10 +33,19 @@ export interface StartOptions extends Omit<RecordOptions, 'scope'> {
   save?: boolean;
 }
 
+/** What the tree may hide: components of packages, providers, and the app's own unnamed wrappers. */
+export interface Shown {
+  library: boolean;
+  providers: boolean;
+}
+
 export interface Owner {
   name: string;
   source: string;
+  /** An unnamed component the app left for the pattern to name: `Anonymous`, `Memo`, `ForwardRef`. */
   wrapper: boolean;
+  /** Hands a context down and nothing else. */
+  provider: boolean;
   /** A component of a package, not of the app: no `_debugSource`, or a file under node_modules. */
   library: boolean;
   fiber: Fiber;
@@ -252,18 +261,21 @@ export class Engine {
     return {
       name,
       source: sourceOf(fiber, this.config.projectRoot),
-      wrapper: this.wrapperRe.test(name) || isProvider(name) || wrapsProvider(fiber),
+      wrapper: this.wrapperRe.test(name),
+      provider: isProvider(name) || wrapsProvider(fiber),
       library: isLibraryFiber(fiber),
       fiber,
     };
   }
 
-  /** Nearest components below one; without wrappers the walk goes through them and through package internals. */
-  childOwners(fiber: Fiber, withWrappers: boolean): Owner[] {
-    return compositeChildren(
-      fiber,
-      (f) => !withWrappers && (this.wrapperRe.test(nameOf(f) ?? '') || isProvider(nameOf(f) ?? '') || isLibraryFiber(f))
-    ).map((f) => this.ownerOf(f));
+  /** Nearest components below one; what is hidden is walked through, not stopped at. */
+  childOwners(fiber: Fiber, shown: Shown): Owner[] {
+    return compositeChildren(fiber, (f) => this.hidden(this.ownerOf(f), shown)).map((f) => this.ownerOf(f));
+  }
+
+  /** A component the tree leaves out: the checkboxes decide, and an unnamed wrapper follows the library one. */
+  hidden(owner: Owner, shown: Shown): boolean {
+    return (!shown.library && (owner.library || owner.wrapper)) || (!shown.providers && owner.provider);
   }
 
   scopeFromFiber(fiber: Fiber): ScopeHandle {
@@ -271,7 +283,7 @@ export class Engine {
   }
 
   scopeFromElement(el: Element, level = 0): ScopeHandle {
-    const owners = this.owners(el).filter((o) => !o.wrapper && !o.library);
+    const owners = this.owners(el).filter((o) => !o.wrapper && !o.library && !o.provider);
     const owner = owners[Math.min(level, owners.length - 1)];
     if (!owner) throw new RecorderError('SCOPE_NOT_FOUND', 'no React component owns this element');
     return this.scopeFromFiber(owner.fiber);

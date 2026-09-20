@@ -14,8 +14,8 @@ Think of it as [react-grab](https://github.com/aidenybai/react-grab) for re-rend
   it pulled (`perHit`), how many instances fired at once.
 - **The app's components apart from the packages'** — the file of the element a component rendered says which it
   is, so a UI kit's own components are found without listing their names; the app's own lead the report, the picker
-  tree hides package internals and the providers that only hand a context down, and an outline is labelled with the
-  app's component rather than the UI-kit wrapper above it.
+  tree hides package internals and the providers that only hand a context down, each behind a checkbox of its own,
+  and an outline is labelled with the app's component rather than the UI-kit wrapper above it.
 - **Reasons**
   - `state #2`, `external store #3 [useStore] selectPrice`, `context Theme`, `props: value | same: style, onClick`;
   - `SAME-CONTENT` — a new reference with the same content, almost always a subscription bug rather than new data;

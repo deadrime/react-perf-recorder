@@ -8,9 +8,10 @@ export interface TreeProps {
   rows: TreeRow[];
   active: number;
   showLibrary: boolean;
+  showProviders: boolean;
   watched: readonly string[];
   actions: TreeActions;
-  onShowLibrary(on: boolean): void;
+  onShow(what: 'library' | 'providers', on: boolean): void;
   onWatch(name: string): void;
   onCopy(owner: Owner): void;
 }
@@ -41,7 +42,7 @@ function Row({ row, active, watching, onSelect, onHover, onToggle, onWatch, onCo
   return (
     <li
       data-active={String(active)}
-      data-wrapper={String(owner.wrapper)}
+      data-wrapper={String(owner.wrapper || owner.provider || owner.library)}
       data-name={owner.name}
       style={{ paddingLeft: indentOf(row.depth) }}
       onClick={onSelect}
@@ -82,9 +83,23 @@ export function Tree(p: TreeProps): JSX.Element {
     <>
       <div class="row">
         <span class="muted">Record inside:</span>
-        <label class="toggle" title="Show styling wrappers, providers and components of packages">
-          <input type="checkbox" checked={p.showLibrary} onChange={(e) => p.onShowLibrary((e.target as HTMLInputElement).checked)} />
-          show library
+        <label class="toggle" title="Show components that come from packages, and the app's own unnamed wrappers">
+          <input
+            type="checkbox"
+            data-rpr="show-library"
+            checked={p.showLibrary}
+            onChange={(e) => p.onShow('library', (e.target as HTMLInputElement).checked)}
+          />
+          library
+        </label>
+        <label class="toggle" title="Show the components that only hand a context down">
+          <input
+            type="checkbox"
+            data-rpr="show-providers"
+            checked={p.showProviders}
+            onChange={(e) => p.onShow('providers', (e.target as HTMLInputElement).checked)}
+          />
+          providers
         </label>
       </div>
       <ul data-rpr="tree" ref={list} onMouseLeave={() => p.actions.leave()}>

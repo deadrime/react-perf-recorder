@@ -5,7 +5,8 @@ export interface PanelState {
   collapsed: boolean;
   corner: Corner;
   highlight: boolean;
-  showWrappers: boolean;
+  showLibrary: boolean;
+  showProviders: boolean;
   label: string;
   /** Components followed by name through a recording: renders and which root pulled each one. */
   watch: string[];
@@ -46,7 +47,8 @@ export const defaults = (corner: Corner, highlight: boolean): PanelState => ({
   collapsed: false,
   corner,
   highlight,
-  showWrappers: false,
+  showLibrary: false,
+  showProviders: false,
   label: '',
   watch: [],
   lastScope: null,

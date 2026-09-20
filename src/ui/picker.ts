@@ -1,5 +1,5 @@
 import { nearestHosts, type Fiber } from '../core/fiber';
-import type { Engine, Owner } from '../core/engine';
+import type { Engine, Owner, Shown } from '../core/engine';
 
 export interface TreeRow {
   owner: Owner;
@@ -58,7 +58,7 @@ export class Picker {
     private shadow: ShadowRoot,
     private host: Element,
     private engine: Engine,
-    private showWrappers: () => boolean,
+    private filters: () => Shown,
     private callbacks: PickerCallbacks
   ) {
     this.box = document.createElement('div');
@@ -105,7 +105,7 @@ export class Picker {
     this.finish(null);
   }
 
-  /** Wrappers were shown or hidden: rebuild the path around the active component. */
+  /** A filter was switched: rebuild the path around the active component. */
   refresh() {
     if (this.frozen && this.current) this.build(this.engine.ownersOfFiber(this.current.owner.fiber), this.current.owner.fiber);
   }
@@ -150,7 +150,7 @@ export class Picker {
     const el = this.elementAt(event.clientX, event.clientY);
     if (!el) return;
     this.shown = null;
-    const owner = this.engine.owners(el).find((o) => !o.wrapper && !o.library);
+    const owner = this.engine.owners(el).find((o) => !this.engine.hidden(o, this.filters()));
     this.drawBox([el.getBoundingClientRect()], owner ? owner.name : el.tagName.toLowerCase());
   }
 
@@ -190,8 +190,8 @@ export class Picker {
 
   /** `owners` nearest first; the tree shows them from the app root down, the focus (or the nearest component) active. */
   private build(owners: Owner[], focus: Fiber | null) {
-    const withWrappers = this.showWrappers();
-    const path = owners.filter((o) => withWrappers || (!o.wrapper && !o.library) || (focus && sameFiber(o.fiber, focus))).reverse();
+    const shown = this.filters();
+    const path = owners.filter((o) => !this.engine.hidden(o, shown) || (focus && sameFiber(o.fiber, focus))).reverse();
     if (!path.length) return;
     let parent: Node | null = null;
     this.root = null;
@@ -206,7 +206,7 @@ export class Picker {
     nodes[nodes.length - 1].open = false;
     const target = focus
       ? nodes.find((n) => sameFiber(n.owner.fiber, focus))
-      : [...nodes].reverse().find((n) => !n.owner.wrapper && !n.owner.library);
+      : [...nodes].reverse().find((n) => !this.engine.hidden(n.owner, shown));
     this.current = target ?? nodes[nodes.length - 1];
     this.frozen = true;
     // The neighbourhood of the picked component, not just the path to it: its siblings and what is inside it.
@@ -220,7 +220,7 @@ export class Picker {
     if (node.full) return;
     const kept = node.children;
     node.children = this.engine
-      .childOwners(node.owner.fiber, this.showWrappers())
+      .childOwners(node.owner.fiber, this.filters())
       .map((owner) => kept.find((k) => sameFiber(k.owner.fiber, owner.fiber)) ?? { owner, parent: node, children: [], full: false, open: false });
     // The next step of the path can sit under a wrapper that the walk passed: keep it listed.
     for (const k of kept) if (!node.children.includes(k)) node.children.push(k);

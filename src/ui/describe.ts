@@ -25,12 +25,13 @@ function pageUrl(): string {
  * the DOM it renders, what is inside, and the scope to pass to the recorder's scripts.
  */
 export function describeArea(engine: Engine, fiber: Fiber): string {
-  const owners = engine.ownersOfFiber(fiber).filter((o) => !o.wrapper && !o.library);
+  const owners = engine.ownersOfFiber(fiber).filter((o) => !o.wrapper && !o.library && !o.provider);
   const self = engine.ownerOf(fiber);
   const path = owners.map((o) => o.name).reverse();
   const hosts = nearestHosts(fiber, 50);
   const counts = new Map<string, number>();
-  for (const child of engine.childOwners(fiber, false)) counts.set(child.name, (counts.get(child.name) ?? 0) + 1);
+  for (const child of engine.childOwners(fiber, { library: false, providers: false }))
+    counts.set(child.name, (counts.get(child.name) ?? 0) + 1);
   const inside = [...counts]
     .slice(0, 10)
     .map(([name, n]) => (n > 1 ? `${name} ×${n}` : name))

@@ -68,3 +68,22 @@ test('moving the area patches the tree instead of drawing it again', async ({ pa
   await expect(page.locator('[data-rpr="tree"] li[data-active="true"]')).toHaveCount(1);
   expect((await rowsOf(page)).filter((r) => r.name === 'MessageRow')).toHaveLength(3);
 });
+
+test('packages and providers each hide behind a checkbox of their own', async ({ page }) => {
+  await page.goto('/app?rpr=panel&tick=150');
+  await expect(page.getByTestId('unread')).toBeVisible();
+  await page.locator('[data-rpr="pick"]').click();
+  await page.locator('[data-testid="message-m1"] .text').click();
+  const names = () => page.locator('[data-rpr="tree"] li').evaluateAll((els) => els.map((el) => (el as HTMLElement).dataset.name));
+
+  // By default the path is the app's own components: no router internals, no component that only holds a context.
+  expect(await names()).not.toContain('SettingsProvider');
+  expect(await names()).not.toContain('RenderedRoute');
+
+  await page.locator('[data-rpr="show-providers"]').check();
+  expect(await names()).toContain('SettingsProvider');
+  expect(await names()).not.toContain('RenderedRoute');
+
+  await page.locator('[data-rpr="show-library"]').check();
+  expect(await names()).toContain('RenderedRoute');
+});

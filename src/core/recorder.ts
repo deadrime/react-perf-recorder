@@ -27,6 +27,7 @@ import {
   isHost,
   isLibraryFiber,
   isProvider,
+  wrapsProvider,
   nameOf,
   nearestHosts,
   reactVersion,
@@ -238,6 +239,11 @@ export class Recorder {
     causesDropped: 0,
     lanes: {} as Record<string, number>,
   };
+
+  /** Left out of a path: an unnamed wrapper, a component that only hands a context down, a package's own. */
+  private structural(name: string, f: Fiber): boolean {
+    return this.wrapperRe.test(name) || isProvider(name) || wrapsProvider(f) || isLibraryFiber(f);
+  }
 
   constructor(private deps: RecorderDeps, private options: RecordOptions) {
     this.config = deps.config;
@@ -463,7 +469,7 @@ export class Recorder {
     const names: string[] = [];
     for (let i = upTo - 1; i >= 0 && names.length < 4; i--) {
       const name = nameOf(fibers[i]);
-      if (name && !this.wrapperRe.test(name) && !isProvider(name) && !isLibraryFiber(fibers[i])) names.push(name);
+      if (name && !this.structural(name, fibers[i])) names.push(name);
     }
     return names.join(' < ');
   }
@@ -544,7 +550,7 @@ export class Recorder {
       const untouched = this.prune && f.alternate !== null && f.child === f.alternate.child;
       if (f.child && !untouched) {
         const childPath =
-          name && !this.wrapperRe.test(name) && !isProvider(name) && !isLibraryFiber(f)
+          name && !this.structural(name, f)
             ? [name, ...currentPath.split(' < ').filter(Boolean)].slice(0, 4).join(' < ')
             : currentPath;
         stack.push([f.child, rendered, childPath, rendered ? key : currentKey, nextPending, zone]);
@@ -559,7 +565,7 @@ export class Recorder {
         renders: 0,
         mounts: 0,
         library: isLibraryFiber(f),
-        wrapper: this.wrapperRe.test(name) || isProvider(name),
+        wrapper: this.wrapperRe.test(name) || isProvider(name) || wrapsProvider(f),
         withoutDom: 0,
         byParent: 0,
         memo: f.tag === Tag.MemoComponent || f.tag === Tag.SimpleMemoComponent,
