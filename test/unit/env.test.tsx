@@ -39,6 +39,8 @@ describe('app code and packages', () => {
     rendered._debugOwner = owner;
     expect(isLibraryFiber(owner)).toBe(false);
     expect(isLibraryFiber(fiber(null))).toBe(true);
+    // Written in app JSX but defined in a package: what it returned has no dev information at all.
+    expect(isLibraryFiber(fiber('/proj/src/components/Row.tsx', {}))).toBe(true);
   });
 });
 

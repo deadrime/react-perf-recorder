@@ -88,29 +88,26 @@ export const isProvider = (name: string) => name.startsWith('Provider(');
 const libraryByType = new WeakMap<object, boolean>();
 
 /**
- * A component of the app or of a package. Only files built with the dev JSX transform carry `_debugSource`, and
- * packages ship compiled. React itself creates some elements — a route's, a lazy one, a provider's child — and
- * those have no source of their own, so the JSX the component rendered answers instead.
+ * A component of the app or of a package. `_debugSource` on a fiber says where the component was *used*, so a
+ * UI-kit component written in app JSX looks like the app's own; where it is *defined* shows in the element it
+ * returns. App code is built with the dev JSX transform and its elements carry a source and an owner, packages
+ * ship compiled and theirs carry neither.
  */
 export function isLibraryFiber(f: Fiber): boolean {
   const type = (typeof f.type === 'function' || (f.type && typeof f.type === 'object') ? f.type : null) as object | null;
   const known = type ? libraryByType.get(type) : undefined;
   if (known !== undefined) return known;
-  let library = true;
-  const own = f._debugSource?.fileName;
-  if (own) library = libraryOf(own) !== null;
-  else {
-    for (let child = f.child, depth = 0; child && depth < 4; child = child.child, depth++) {
-      const owner = child._debugOwner;
-      if (owner !== f && owner !== f.alternate) continue;
-      const file = child._debugSource?.fileName;
-      if (!file) continue;
-      library = libraryOf(file) !== null;
-      break;
-    }
-  }
+  const library = definedInPackage(f);
   if (type) libraryByType.set(type, library);
   return library;
+}
+
+function definedInPackage(f: Fiber): boolean {
+  // The element under the component — the one it returned, or the children it passed through. App code is built
+  // with the dev transform and its elements carry the file they were written in; a package's do not.
+  const child = f.child;
+  const file = (child ?? f)._debugSource?.fileName;
+  return !file || libraryOf(file) !== null;
 }
 
 export function sourceOf(f: Fiber, root = ''): string {

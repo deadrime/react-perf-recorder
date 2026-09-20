@@ -12,8 +12,8 @@ Think of it as [react-grab](https://github.com/aidenybai/react-grab) for re-rend
 
 - **Cascade roots** — a component that rendered while its parent did not: where a render started, how many renders
   it pulled (`perHit`), how many instances fired at once.
-- **The app's components apart from the packages'** — a component's own file, or the file of the JSX it rendered,
-  says which it is; the app's own lead the report, the picker tree hides package internals, and an outline is
+- **The app's components apart from the packages'** — the file of the element a component rendered says which it
+  is, so a UI kit's own components are found without listing their names; the app's own lead the report, the picker tree hides package internals, and an outline is
   labelled with the app's component rather than the UI-kit wrapper above it.
 - **Reasons**
   - `state #2`, `external store #3 [useStore] selectPrice`, `context Theme`, `props: value | same: style, onClick`;
@@ -66,16 +66,16 @@ picks an area. In automated browsers (`navigator.webdriver`) the panel is hidden
 
 ### Options
 
-| Option       | Default                                                                                  |                                                                                                                |
-| ------------ | ---------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| `outDir`     | `REACT_PERF_RECORDER_DIR`, then `.agent-artifacts/perf-recorder`                         | Sessions folder, relative to the root or absolute                                                              |
-| `enabled`    | dev server only, not under Vitest                                                        |                                                                                                                |
-| `maxBytes`   | 64 MB                                                                                    | Largest request, the final recording included                                                                  |
-| `retain`     | `{ sessions: 100, bytes: 500 MB }`                                                       | Oldest sessions go first                                                                                       |
-| `actions`    | `{ values: false, secretSelector: '[data-rpr-secret]' }`                                 | `values: true` records typed values; passwords and one-time codes never                                        |
-| `components` | `{ include: ['src/**/*.{tsx,jsx}'], wrappers: ['memo', 'forwardRef', 'createContext'] }` | Adds `displayName` to `const X = memo(…)` and contexts; `wrapperPattern` hides UI-kit wrappers from paths      |
-| `panel`      | `{ corner: 'bottom-left', highlight: true, shortcuts }`                                  | `false` — engine only                                                                                          |
-| `engine`     | `{ bigCommit: 150, timelineLimit: 5000, maxDurationMs: 600000, timers: true }`           | `timers: false` leaves `setTimeout`, `setInterval` and `requestAnimationFrame` unwrapped, and timer causes out |
+| Option       | Default                                                                                  |                                                                                                                                                                                                                    |
+| ------------ | ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `outDir`     | `REACT_PERF_RECORDER_DIR`, then `.agent-artifacts/perf-recorder`                         | Sessions folder, relative to the root or absolute                                                                                                                                                                  |
+| `enabled`    | dev server only, not under Vitest                                                        |                                                                                                                                                                                                                    |
+| `maxBytes`   | 64 MB                                                                                    | Largest request, the final recording included                                                                                                                                                                      |
+| `retain`     | `{ sessions: 100, bytes: 500 MB }`                                                       | Oldest sessions go first                                                                                                                                                                                           |
+| `actions`    | `{ values: false, secretSelector: '[data-rpr-secret]' }`                                 | `values: true` records typed values; passwords and one-time codes never                                                                                                                                            |
+| `components` | `{ include: ['src/**/*.{tsx,jsx}'], wrappers: ['memo', 'forwardRef', 'createContext'] }` | Adds `displayName` to `const X = memo(…)` and contexts. Components of packages are found on their own, so `wrapperPattern` is only for the names an app leaves empty: `^(Anonymous\|ForwardRef\|Memo)$` by default |
+| `panel`      | `{ corner: 'bottom-left', highlight: true, shortcuts }`                                  | `false` — engine only                                                                                                                                                                                              |
+| `engine`     | `{ bigCommit: 150, timelineLimit: 5000, maxDurationMs: 600000, timers: true }`           | `timers: false` leaves `setTimeout`, `setInterval` and `requestAnimationFrame` unwrapped, and timer causes out                                                                                                     |
 
 **The panel.** `● Rec` records, `⟳ Load` reloads the page and records from its first render (the area, the note and
 the watched components survive the reload; `?rpr=rec` does the same from a script or a link). `⌖ Area` picks the part

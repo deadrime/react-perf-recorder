@@ -463,7 +463,7 @@ export class Recorder {
     const names: string[] = [];
     for (let i = upTo - 1; i >= 0 && names.length < 4; i--) {
       const name = nameOf(fibers[i]);
-      if (name && !this.wrapperRe.test(name) && !isProvider(name)) names.push(name);
+      if (name && !this.wrapperRe.test(name) && !isProvider(name) && !isLibraryFiber(fibers[i])) names.push(name);
     }
     return names.join(' < ');
   }
@@ -544,7 +544,7 @@ export class Recorder {
       const untouched = this.prune && f.alternate !== null && f.child === f.alternate.child;
       if (f.child && !untouched) {
         const childPath =
-          name && !this.wrapperRe.test(name) && !isProvider(name)
+          name && !this.wrapperRe.test(name) && !isProvider(name) && !isLibraryFiber(f)
             ? [name, ...currentPath.split(' < ').filter(Boolean)].slice(0, 4).join(' < ')
             : currentPath;
         stack.push([f.child, rendered, childPath, rendered ? key : currentKey, nextPending, zone]);

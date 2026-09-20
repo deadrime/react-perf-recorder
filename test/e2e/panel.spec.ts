@@ -83,8 +83,9 @@ test('picks an area from the tree: parents above, components inside, and the are
   await page.locator('[data-rpr="pick"]').click();
   await page.getByTestId('position-p1').hover();
   await page.getByTestId('position-p1').click();
-  // The path from the app root down to the row, the row active.
-  await expect(tree(page).first()).toHaveAttribute('data-name', 'QueryClientProvider');
+  // The path from the app's own root down to the row, the row active; the router and the query client are packages.
+  await expect(tree(page).first()).toHaveAttribute('data-name', 'Layout');
+  await expect(page.locator('[data-rpr="tree"] li[data-name="RenderedRoute"]')).toHaveCount(0);
   await expect(tree(page).locator('[data-active="true"]')).toHaveCount(0);
   await expect(page.locator('[data-rpr="tree"] li[data-name="PositionRow"]')).toHaveAttribute('data-active', 'true');
   // Right opens what is inside the row.
