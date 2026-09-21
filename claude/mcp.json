@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "react-perf-recorder": {
+      "command": "node",
+      "args": ["node_modules/react-perf-recorder/dist/cli.js", "mcp"]
+    }
+  }
+}

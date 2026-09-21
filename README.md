@@ -91,6 +91,17 @@ recording (renders and which root pulled it), and `⧉` copies the area as text 
 with the recording and shown in `list_recordings`. `highlight` outlines renders in the area, both while recording
 and between recordings; a recording made with it on says so in its warnings, because drawing costs frame time.
 
+## With an assistant
+
+```sh
+npx react-perf-recorder init-claude
+```
+
+Copies a skill and an agent into `.claude/` and adds the MCP server to `.mcp.json`. The skill says how to record
+and how to read a recording; the agent records a scenario and answers with the cascade root, the hook behind it
+and the file to change. `--force` overwrites files that are already there, and nothing else in `.mcp.json` is
+touched.
+
 ## Sessions
 
 `<outDir>/<id>/`:

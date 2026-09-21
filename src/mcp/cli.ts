@@ -1,3 +1,5 @@
+import { installClaude } from './install';
+import path from 'node:path';
 import { runStdio, section } from './server';
 import { findSession, listSessions, readRecording, resolveDir, waitForSession } from './store';
 import { summarize } from '../shared/summary';
@@ -13,6 +15,11 @@ const dir = resolveDir(flag('dir'));
 async function main() {
   if (command === 'mcp') {
     await runStdio(dir);
+    return;
+  }
+  if (command === 'init-claude') {
+    const root = args[1] && !args[1].startsWith('--') ? path.resolve(args[1]) : process.cwd();
+    installClaude(root, args.includes('--force'));
     return;
   }
   if (command === 'list') {
@@ -45,6 +52,8 @@ async function main() {
   list    sessions, newest first  [--limit 20]
   show    one session  [id|latest] [--section summary|actions|roots|components|causes|plugins|…] [--top 10]
   pull    wait for the next finished recording and print its summary  [--timeout ms]
+
+  init-claude  copy the skill and the agent into <dir>/.claude and register the MCP server  [dir] [--force]
 
 Sessions folder: --dir, then REACT_PERF_RECORDER_DIR, then ./.agent-artifacts/perf-recorder (${dir})`);
 }
