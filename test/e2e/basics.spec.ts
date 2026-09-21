@@ -108,3 +108,44 @@ test('two values in one context wake up both readers', async ({ page }) => {
   expect(await countsOf(page, 'broken')).toEqual([2, 2]);
   expect(await countsOf(page, 'fixed')).toEqual([1, 2]);
 });
+
+test('a store wakes whoever asked for more than is on the screen', async ({ page }) => {
+  await page.goto('/basics/subscriptions');
+  await page.waitForTimeout(2000);
+  const [broken, fixed] = [await countsOf(page, 'broken'), await countsOf(page, 'fixed')];
+  // Three pairs: the whole object, a fresh array, the exact number — each renders on every push on the left.
+  expect(broken).toHaveLength(3);
+  expect(broken.every((n) => n > 2)).toBe(true);
+  expect(fixed).toEqual([1, 1, 1]);
+});
+
+test('an effect that copies props into state costs a second render', async ({ page }) => {
+  await page.goto('/basics/effect');
+  await page.getByTestId('first').pressSequentially('Anna', { delay: 80 });
+  // Four keystrokes: two renders each on the left, one each on the right.
+  const [broken, fixed] = [await countsOf(page, 'broken'), await countsOf(page, 'fixed')];
+  expect(broken[0]).toBe(fixed[0] + 4);
+});
+
+test('a component declared inside a render is mounted again every time', async ({ page }) => {
+  await page.goto('/basics/nested');
+  await page.getByTestId('note-in-one').fill('mine');
+  await page.getByTestId('note-one').fill('mine');
+  await page.getByTestId('render').click();
+  // The note typed on the left is gone with the row that held it; on the right both the row and the note are there.
+  expect(await page.getByTestId('note-in-one').inputValue()).toBe('');
+  expect(await page.getByTestId('note-one').inputValue()).toBe('mine');
+  const mounts = await page.locator('[data-case="broken"] [data-mounts]').evaluateAll((els) => els.map((el) => Number((el as HTMLElement).dataset.mounts)));
+  expect(mounts.every((n) => n > 2)).toBe(true);
+});
+
+test('children handed in as a prop skip the parent’s renders', async ({ page }) => {
+  await page.goto('/basics/children');
+  await page.waitForTimeout(2200);
+  const [broken, fixed] = [await countsOf(page, 'broken'), await countsOf(page, 'fixed')];
+  // Both clocks ticked; only the report on the left ticked with it.
+  expect(broken[0]).toBeGreaterThan(1);
+  expect(fixed[0]).toBeGreaterThan(1);
+  expect(broken[1]).toBe(broken[0]);
+  expect(fixed[1]).toBe(1);
+});

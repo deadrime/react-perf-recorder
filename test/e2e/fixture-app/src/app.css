@@ -520,3 +520,20 @@ input {
   font-variant-numeric: tabular-nums;
   color: var(--text);
 }
+
+.basics h3.pair {
+  margin: 18px 0 6px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.rows input {
+  width: 110px;
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #16161b;
+  color: var(--text);
+}

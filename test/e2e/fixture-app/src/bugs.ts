@@ -117,17 +117,17 @@ export const BUGS: Record<Bug, BugCard> = {
     file: 'src/components/ChatView.tsx',
   },
   'exact-value': {
-    title: 'An exact value where a rounded one is shown',
-    what: 'The sync bar subscribes to the exact percentage but draws it in steps of ten, so most updates change nothing.',
+    title: 'An exact clock where a handful of words is shown',
+    what: 'The time under a message subscribes to the clock itself, although it only ever prints "4 minutes ago".',
     scenario: 'wait',
-    shows: 'SyncBar renders again and again with no DOM change at all — the clearest case of wasted work.',
-    file: 'src/components/Header.tsx',
+    shows: 'TimeAgo renders every second with no DOM change at all — the clearest case of wasted work.',
+    file: 'src/components/TimeAgo.tsx',
   },
   'nested-component': {
     title: 'A component declared inside a render',
     what: 'A component defined in the body of another one is a new type on every render, so React remounts its subtree.',
     scenario: 'wait',
-    shows: 'NestedStatus that mounts but never renders, and DOM nodes added and removed on a page that only changes text.',
+    shows: 'NestedCount that mounts but never renders, and DOM nodes added and removed on a page that only changes text.',
     file: 'src/components/Messages.tsx',
   },
   'hidden-hook-state': {

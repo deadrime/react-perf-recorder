@@ -1,6 +1,10 @@
 import { useParams } from 'react-router-dom';
 import { BugStrip } from '../Demo';
+import { Children } from './Children';
 import { Contexts } from './Contexts';
+import { Effects } from './Effects';
+import { Nested } from './Nested';
+import { Subscriptions } from './Subscriptions';
 import { Keys } from './Keys';
 import { MemoCallback } from './MemoCallback';
 import { Props } from './Props';
@@ -38,6 +42,26 @@ export const BASICS: Record<string, BasicsCase> = {
     title: 'one context for two unrelated things',
     what: 'Two values in one context wake up both readers; two contexts wake up the one whose value changed.',
     element: Contexts,
+  },
+  subscriptions: {
+    title: 'subscribe to what you show',
+    what: 'The whole object, a fresh array, the exact number — three ways to ask a store for more than is on the screen.',
+    element: Subscriptions,
+  },
+  effect: {
+    title: 'derive it while you render',
+    what: 'State copied from props in an effect costs a second commit and leaves the screen one render behind.',
+    element: Effects,
+  },
+  nested: {
+    title: 'a component declared inside a render',
+    what: 'A new component type every render: React unmounts the old subtree, loses its state and rebuilds the DOM.',
+    element: Nested,
+  },
+  children: {
+    title: 'children come in as a prop, and skip',
+    what: 'An element made by a component that did not render is reused as it is — the way to skip a subtree without memo.',
+    element: Children,
   },
 };
 

@@ -49,8 +49,8 @@ export const Catalogue = () => (
     <div className="demo">
       <h1>react-perf-recorder — demo</h1>
       <p>
-        A small trading terminal with a store, a price feed, a form and thirteen re-render bugs, each the kind any
-        React app can grow. Open one, record a few seconds, and read what the recorder says about it.
+        A small team chat with a store, a live feed and a composer, carrying thirteen re-render bugs of the kind any
+        React app grows. Open one, record a few seconds, and read what the recorder says about it.
       </p>
       <ol className="steps">
         <li>
