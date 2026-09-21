@@ -1,6 +1,42 @@
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Case, Panel, RenderCount, useRenderCount } from './Case';
 
+const CARD_BROKEN = `
+const Card = () => {
+  const [params] = useSearchParams();   // ← the whole card is subscribed to the URL
+  const folder = params.get('folder');
+
+  return (
+    <ul>
+      <li>folder: {folder}</li>
+      {LETTERS.map((subject) => <Letter key={subject} subject={subject} />)}
+    </ul>
+  );
+};`;
+
+const CARD_FIXED = `
+const FolderName = () => {
+  const [params] = useSearchParams();   // ← only the line that prints it
+  return <>folder: {params.get('folder')}</>;
+};
+
+const Card = () => (
+  <ul>
+    <li><FolderName /></li>
+    {LETTERS.map((subject) => <Letter key={subject} subject={subject} />)}
+  </ul>
+);`;
+
+const GO_BROKEN = `
+const GoToSent = () => {
+  const navigate = useNavigate();   // ← nothing from the URL is shown, and it still subscribes
+
+  return <button onClick={() => navigate({ search: '?folder=sent' })}>go to sent</button>;
+};`;
+
+const GO_FIXED = `
+const GoToSent = () => <a href="?folder=sent">go to sent</a>;   // ← no hook, no subscription`;
+
 const FOLDERS = ['inbox', 'sent', 'spam'];
 const LETTERS = ['Invoice for March', 'Re: the picker tree', 'Your weekly digest'];
 
@@ -111,21 +147,41 @@ export const Router = () => {
     >
       <Toolbar />
       <div className="two">
-        <Panel kind="broken" title="useSearchParams() in the card" says="The recorder says: context Location on the card, and every letter under it in the cascade.">
+        <Panel
+          kind="broken"
+          title="useSearchParams() in the card"
+          says="The recorder says: context Location on the card, and every letter under it in the cascade."
+          code={CARD_BROKEN}
+        >
           <WholeCard />
         </Panel>
-        <Panel kind="fixed" title="useSearchParams() in the line" says="The recorder says: one render of the line that shows the folder, and nothing else.">
+        <Panel
+          kind="fixed"
+          title="useSearchParams() in the line"
+          says="The recorder says: one render of the line that shows the folder, and nothing else."
+          code={CARD_FIXED}
+        >
           <CardWithLeaf />
         </Panel>
       </div>
       <h3 className="pair">and the button that only navigates</h3>
       <div className="two">
-        <Panel kind="broken" title="useNavigate()" says="A component that never shows the URL still renders on every navigation.">
+        <Panel
+          kind="broken"
+          title="useNavigate()"
+          says="A component that never shows the URL still renders on every navigation."
+          code={GO_BROKEN}
+        >
           <ul className="rows">
             <NavigatingButton />
           </ul>
         </Panel>
-        <Panel kind="fixed" title="a plain link" says="The same navigation, written as the browser understands it: no subscription at all.">
+        <Panel
+          kind="fixed"
+          title="a plain link"
+          says="The same navigation, written as the browser understands it: no subscription at all."
+          code={GO_FIXED}
+        >
           <ul className="rows">
             <PlainLink />
           </ul>

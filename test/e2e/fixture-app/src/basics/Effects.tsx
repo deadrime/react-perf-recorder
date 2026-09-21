@@ -1,6 +1,21 @@
 import { useEffect, useState } from 'react';
 import { Case, Panel, RenderCount, useRenderCount } from './Case';
 
+const BROKEN = `
+const Greeting = ({ first, last }) => {
+  const [full, setFull] = useState('');
+  useEffect(() => setFull(\`\${first} \${last}\`.trim()), [first, last]);   // ← a render, then another one
+
+  return <p>Hello, {full}</p>;
+};`;
+
+const FIXED = `
+const Greeting = ({ first, last }) => {
+  const full = \`\${first} \${last}\`.trim();   // ← worked out while rendering
+
+  return <p>Hello, {full}</p>;
+};`;
+
 /** The greeting copied into state by an effect: React renders, runs the effect, and renders again. */
 const ByEffect = ({ first, last }: { first: string; last: string }) => {
   const [full, setFull] = useState('');
@@ -56,10 +71,20 @@ export const Effects = () => {
         </label>
       </p>
       <div className="two">
-        <Panel kind="broken" title="useEffect + useState" says="The recorder says: a second commit after every keystroke, caused by core:effect.">
+        <Panel
+          kind="broken"
+          title="useEffect + useState"
+          says="The recorder says: a second commit after every keystroke, caused by core:effect."
+          code={BROKEN}
+        >
           <ByEffect first={first} last={last} />
         </Panel>
-        <Panel kind="fixed" title="worked out in render" says="The recorder says: one commit per keystroke, and nothing to explain.">
+        <Panel
+          kind="fixed"
+          title="worked out in render"
+          says="The recorder says: one commit per keystroke, and nothing to explain."
+          code={FIXED}
+        >
           <WhileRendering first={first} last={last} />
         </Panel>
       </div>

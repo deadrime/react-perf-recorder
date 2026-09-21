@@ -6,6 +6,26 @@ interface Person {
   name: string;
 }
 
+const BROKEN = `
+const Row = memo(({ person, onPick }) => …);
+
+const List = () => {
+  const [picked, setPicked] = useState(null);
+  const onPick = (id) => setPicked(id);   // ← a new function on every render of List
+
+  return PEOPLE.map((person) => <Row key={person.id} person={person} onPick={onPick} />);
+};`;
+
+const FIXED = `
+const Row = memo(({ person, onPick }) => …);
+
+const List = () => {
+  const [picked, setPicked] = useState(null);
+  const onPick = useCallback((id) => setPicked(id), []);   // ← the same function every time
+
+  return PEOPLE.map((person) => <Row key={person.id} person={person} onPick={onPick} />);
+};`;
+
 const PEOPLE: Person[] = [
   { id: 'a', name: 'Anna' },
   { id: 'b', name: 'Boris' },
@@ -79,10 +99,20 @@ export const MemoCallback = () => {
         <span className="muted">clicked {ticks}×</span>
       </p>
       <div className="two">
-        <Panel kind="broken" title="onPick written in render" says="The recorder says: parent: props same: onPick — the prop changed identity, not content.">
+        <Panel
+          kind="broken"
+          title="onPick written in render"
+          says="The recorder says: parent: props same: onPick — the prop changed identity, not content."
+          code={BROKEN}
+        >
           <List key={run} stable={false} ticks={ticks} />
         </Panel>
-        <Panel kind="fixed" title="onPick from useCallback" says="The recorder says nothing about these rows: they never render again.">
+        <Panel
+          kind="fixed"
+          title="onPick from useCallback"
+          says="The recorder says nothing about these rows: they never render again."
+          code={FIXED}
+        >
           <List key={run} stable ticks={ticks} />
         </Panel>
       </div>

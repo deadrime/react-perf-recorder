@@ -5,7 +5,7 @@ import { createFilter } from '../../src/vite/helpers/filter';
 
 const namesIn = (code: string) => {
   const named = addComponentNames(code);
-  return named ? Array.from(named.slice(code.length).matchAll(/^if \((\w+) && !\1\.displayName\)/gm), (match) => match[1]) : [];
+  return named ? Array.from(named.slice(code.length).matchAll(/^if \(\(typeof (\w+) === "function"/gm), (match) => match[1]) : [];
 };
 
 describe('addComponentNames', () => {
@@ -25,9 +25,19 @@ describe('addComponentNames', () => {
     expect(namesIn(code)).toEqual(['PriceCell', 'Row', 'Field', 'Select', 'Header', 'ThemeContext', 'FormContext']);
   });
 
+  it('is harmless when the declaration is only in a string', () => {
+    // A code sample in a doc block or on a demo page reads like a declaration: whatever the name turns out to be —
+    // missing, or a string — the line the transform adds must not throw.
+    const code = ['const SAMPLE = `', 'const AppContext = createContext({});', '`;', 'export const Real = memo(() => null);'].join('\n');
+    expect(namesIn(code)).toContain('Real');
+    const named = addComponentNames(code)!;
+    // Never a bare mention of the name: reading an undeclared one throws, `typeof` does not.
+    for (const name of namesIn(code)) expect(named).toContain(`if ((typeof ${name} === "function" || (typeof ${name} === "object" && ${name} !== null))`);
+  });
+
   it('keeps an existing displayName', () => {
     expect(addComponentNames("export const Foo = memo(() => null);\nFoo.displayName = 'Custom';")).toContain(
-      'if (Foo && !Foo.displayName) Foo.displayName = "Foo";'
+      'if ((typeof Foo === "function" || (typeof Foo === "object" && Foo !== null)) && !Foo.displayName) Foo.displayName = "Foo";'
     );
   });
 

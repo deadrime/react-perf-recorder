@@ -547,3 +547,56 @@ input {
 .rows .link {
   color: var(--accent);
 }
+
+/* The code behind a case, folded away until it is asked for. */
+.code {
+  margin-top: 8px;
+}
+
+.code summary {
+  color: var(--muted);
+  font-size: 12px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.code summary::before {
+  content: '▸ ';
+}
+
+.code[open] summary::before {
+  content: '▾ ';
+}
+
+.code summary:hover {
+  color: var(--text);
+}
+
+.code pre {
+  margin: 6px 0 0;
+  padding: 8px 0;
+  border-radius: 8px;
+  background: #16161b;
+  overflow-x: auto;
+  font: 12px/1.6 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color: #c8c8d2;
+}
+
+.code .line {
+  display: block;
+  padding: 0 10px;
+  border-left: 2px solid transparent;
+  white-space: pre;
+}
+
+.code .bad {
+  border-left-color: #ff8a80;
+  background: rgba(255, 138, 128, 0.08);
+  color: #ffd7d3;
+}
+
+.case.fixed .code .bad {
+  border-left-color: #5ddc9a;
+  background: rgba(93, 220, 154, 0.08);
+  color: #cdf5e1;
+}

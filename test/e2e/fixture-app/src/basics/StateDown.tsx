@@ -1,6 +1,31 @@
 import { useEffect, useState } from 'react';
 import { Case, Panel, RenderCount, useRenderCount } from './Case';
 
+const BROKEN = `
+const Card = () => {
+  const now = useSecond();   // ← the clock is the card's own state
+
+  return (
+    <>
+      <p>{now.toLocaleTimeString()}</p>
+      <ul>{ITEMS.map((text) => <Item key={text} text={text} />)}</ul>
+    </>
+  );
+};`;
+
+const FIXED = `
+const Clock = () => {
+  const now = useSecond();   // ← the clock is the state of the thing that shows it
+  return <span>{now.toLocaleTimeString()}</span>;
+};
+
+const Card = () => (
+  <>
+    <p><Clock /></p>
+    <ul>{ITEMS.map((text) => <Item key={text} text={text} />)}</ul>
+  </>
+);`;
+
 const ITEMS = ['Write the release notes', 'Review the picker tree', 'Record the page load', 'Answer the thread'];
 
 /** Not memo: most lists are not, which is exactly why it matters where the ticking state lives. */
@@ -84,10 +109,20 @@ export const StateDown = () => (
     }
   >
     <div className="two">
-      <Panel kind="broken" title="useState in the card" says="The recorder says: the card is a cascade root every second, and nothing but the clock changed in the DOM.">
+      <Panel
+        kind="broken"
+        title="useState in the card"
+        says="The recorder says: the card is a cascade root every second, and nothing but the clock changed in the DOM."
+        code={BROKEN}
+      >
         <CardWithClock />
       </Panel>
-      <Panel kind="fixed" title="useState in <Clock />" says="The recorder says: Clock renders every second and pulls one render with it — the list is not in the cascade at all.">
+      <Panel
+        kind="fixed"
+        title="useState in <Clock />"
+        says="The recorder says: Clock renders every second and pulls one render with it — the list is not in the cascade at all."
+        code={FIXED}
+      >
         <CardWithOwnClock />
       </Panel>
     </div>

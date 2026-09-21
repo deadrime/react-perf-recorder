@@ -1,6 +1,24 @@
 import { useState } from 'react';
 import { Case, MountCount, Panel, RenderCount, useRenderCount } from './Case';
 
+const BROKEN = `
+const List = ({ ticks }) => {
+  const Row = ({ label }) => {          // ← declared in the body: a new type on every render
+    const [note, setNote] = useState('');
+    return <li>{label} <input value={note} onInput={…} /></li>;
+  };
+
+  return <ul><Row label="one" /><Row label="two" /></ul>;
+};`;
+
+const FIXED = `
+const Row = ({ label }) => {            // ← declared once, outside
+  const [note, setNote] = useState('');
+  return <li>{label} <input value={note} onInput={…} /></li>;
+};
+
+const List = ({ ticks }) => <ul><Row label="one" /><Row label="two" /></ul>;`;
+
 let mountsInside = 0;
 let mountsOutside = 0;
 
@@ -67,10 +85,20 @@ export const Nested = () => {
         <span className="muted">clicked {ticks}×</span>
       </p>
       <div className="two">
-        <Panel kind="broken" title="const Row = () => … inside" says="The recorder says: mounts, and DOM nodes added and removed on a page where nothing was added.">
+        <Panel
+          kind="broken"
+          title="const Row = () => … inside"
+          says="The recorder says: mounts, and DOM nodes added and removed on a page where nothing was added."
+          code={BROKEN}
+        >
           <Inside ticks={ticks} />
         </Panel>
-        <Panel kind="fixed" title="the same component outside" says="The recorder says: two renders and no mounts — the rows are the rows they were.">
+        <Panel
+          kind="fixed"
+          title="the same component outside"
+          says="The recorder says: two renders and no mounts — the rows are the rows they were."
+          code={FIXED}
+        >
           <Stable ticks={ticks} />
         </Panel>
       </div>

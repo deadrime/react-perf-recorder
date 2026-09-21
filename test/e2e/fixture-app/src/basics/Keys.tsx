@@ -31,6 +31,21 @@ function useMountNumber(mode: Mode, id: string) {
 
 type Mode = 'index' | 'id' | 'random';
 
+const CODE: Record<Mode, string> = {
+  index: `
+{tasks.map((task, index) => (
+  <Row key={index} task={task} />   // ← the key is the place in the list, not the task
+))}`,
+  id: `
+{tasks.map((task) => (
+  <Row key={task.id} task={task} />   // ← the key is the task itself
+))}`,
+  random: `
+{tasks.map((task) => (
+  <Row key={Math.random()} task={task} />   // ← a key that never matches anything again
+))}`,
+};
+
 const MODES: Array<{ mode: Mode; kind: 'broken' | 'fixed'; title: string; says: string }> = [
   {
     mode: 'index',
@@ -115,7 +130,7 @@ export const Keys = () => {
       </p>
       <div className="three">
         {MODES.map(({ mode, kind, title, says }) => (
-          <Panel key={mode} kind={kind} title={title} says={says}>
+          <Panel key={mode} kind={kind} title={title} says={says} code={CODE[mode]}>
             <List key={run} mode={mode} tasks={tasks} />
           </Panel>
         ))}

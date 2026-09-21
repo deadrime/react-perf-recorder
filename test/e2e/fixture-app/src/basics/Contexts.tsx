@@ -6,6 +6,23 @@ interface Both {
   theme: string;
 }
 
+const BROKEN = `
+const AppContext = createContext({ user, theme });   // ← two unrelated things in one context
+
+const Who = () => <li>signed in as {useContext(AppContext).user}</li>;
+const Swatch = () => <li>theme: {useContext(AppContext).theme}</li>;
+
+// changing the theme gives both of them a new context value`;
+
+const FIXED = `
+const UserContext = createContext(user);     // ← one context per thing
+const ThemeContext = createContext(theme);
+
+const Who = () => <li>signed in as {useContext(UserContext)}</li>;
+const Swatch = () => <li>theme: {useContext(ThemeContext)}</li>;
+
+// changing the theme reaches the reader of the theme`;
+
 const BothContext = createContext<Both>({ user: 'Anna', theme: 'dark' });
 const UserContext = createContext('Anna');
 const ThemeContext = createContext('dark');
@@ -79,12 +96,22 @@ export const Contexts = () => {
         </button>
       </p>
       <div className="two">
-        <Panel kind="broken" title="{ user, theme } in one context" says="The recorder says: context BothContext on a reader whose own value never changed.">
+        <Panel
+          kind="broken"
+          title="{ user, theme } in one context"
+          says="The recorder says: context BothContext on a reader whose own value never changed."
+          code={BROKEN}
+        >
           <TogetherProvider user={user} theme={theme}>
             {TOGETHER}
           </TogetherProvider>
         </Panel>
-        <Panel kind="fixed" title="a context each" says="The recorder says: only the reader of the context that changed, and only when it changed.">
+        <Panel
+          kind="fixed"
+          title="a context each"
+          says="The recorder says: only the reader of the context that changed, and only when it changed."
+          code={FIXED}
+        >
           <UserContext.Provider value={user}>
             <ThemeContext.Provider value={theme}>{APART}</ThemeContext.Provider>
           </UserContext.Provider>

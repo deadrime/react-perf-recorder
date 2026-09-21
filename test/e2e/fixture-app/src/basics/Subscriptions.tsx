@@ -55,18 +55,49 @@ const RoundedNumber = () => <Line what="progress" value={`${useStore(shop, (s) =
 const PAIRS = [
   {
     title: 'the whole object, or the field',
-    broken: { title: 's.profile', says: 'A new object every time, the same name inside it.', el: <WholeObject /> },
-    fixed: { title: 's.profile.name', says: 'A string: it wakes the line when the name changes.', el: <OneField /> },
+    broken: {
+      title: 's.profile',
+      says: 'A new object every time, the same name inside it.',
+      el: <WholeObject />,
+      code: `const name = useStore(shop, (s) => s.profile).name;   // ← the object, to show one field of it`,
+    },
+    fixed: {
+      title: 's.profile.name',
+      says: 'A string: it wakes the line when the name changes.',
+      el: <OneField />,
+      code: `const name = useStore(shop, (s) => s.profile.name);   // ← a string, compared by value`,
+    },
   },
   {
     title: 'a new array on every call',
-    broken: { title: 's.tags.filter(…)', says: 'filter() returns a new array, so the check never finds them equal.', el: <FreshArray /> },
-    fixed: { title: 's.tags', says: 'The array the store holds, compared by identity as it should be.', el: <SameArray /> },
+    broken: {
+      title: 's.tags.filter(…)',
+      says: 'filter() returns a new array, so the check never finds them equal.',
+      el: <FreshArray />,
+      code: `const tags = useStore(shop, (s) => s.tags.filter(Boolean));   // ← a new array on every call`,
+    },
+    fixed: {
+      title: 's.tags',
+      says: 'The array the store holds, compared by identity as it should be.',
+      el: <SameArray />,
+      code: `const tags = useStore(shop, (s) => s.tags);   // ← the array the store already has`,
+    },
   },
   {
     title: 'the exact number, or the one on the screen',
-    broken: { title: 's.progress', says: 'Renders on every nudge and draws the same 40%.', el: <ExactNumber /> },
-    fixed: { title: 'rounded in the selector', says: 'Renders when the tens change, which is rarely.', el: <RoundedNumber /> },
+    broken: {
+      title: 's.progress',
+      says: 'Renders on every nudge and draws the same 40%.',
+      el: <ExactNumber />,
+      code: `const exact = useStore(shop, (s) => s.progress);   // ← the exact number
+const shown = Math.round(exact / 10) * 10;                 // rounded after the subscription`,
+    },
+    fixed: {
+      title: 'rounded in the selector',
+      says: 'Renders when the tens change, which is rarely.',
+      el: <RoundedNumber />,
+      code: `const shown = useStore(shop, (s) => Math.round(s.progress / 10) * 10);   // ← rounded inside it`,
+    },
   },
 ];
 
@@ -86,10 +117,10 @@ export const Subscriptions = () => {
         <div key={pair.title}>
           <h3 className="pair">{pair.title}</h3>
           <div className="two">
-            <Panel kind="broken" title={pair.broken.title} says={pair.broken.says}>
+            <Panel kind="broken" title={pair.broken.title} says={pair.broken.says} code={pair.broken.code}>
               <ul className="rows">{pair.broken.el}</ul>
             </Panel>
-            <Panel kind="fixed" title={pair.fixed.title} says={pair.fixed.says}>
+            <Panel kind="fixed" title={pair.fixed.title} says={pair.fixed.says} code={pair.fixed.code}>
               <ul className="rows">{pair.fixed.el}</ul>
             </Panel>
           </div>

@@ -19,6 +19,25 @@ const Card = memo(({ name, style, tags }: CardProps) => {
   );
 });
 
+const BROKEN = `
+{NAMES.map((name) => (
+  <Card
+    key={name}
+    name={name}
+    style={{ paddingLeft: 10 }}   // ← a new object on every render
+    tags={['design', filter]}     // ← and a new array
+  />
+))}`;
+
+const FIXED = `
+const STYLE = { paddingLeft: 10 };   // ← written once, outside the component
+
+const Stable = ({ filter }) => {
+  const tags = useMemo(() => ['design', filter], [filter]);   // ← remembered until the filter changes
+
+  return NAMES.map((name) => <Card key={name} name={name} style={STYLE} tags={tags} />);
+};`;
+
 // Outside the component: written once, the same object forever.
 const STYLE = { paddingLeft: 10 };
 const NAMES = ['Anna', 'Boris', 'Chen'];
@@ -79,10 +98,20 @@ export const Props = () => {
         <span className="muted">rendered {ticks}×</span>
       </p>
       <div className="two">
-        <Panel kind="broken" title="style={{…}} tags={[…]}" says="The recorder says: parent: props same: style, tags — same content, new references.">
+        <Panel
+          kind="broken"
+          title="style={{…}} tags={[…]}"
+          says="The recorder says: parent: props same: style, tags — same content, new references."
+          code={BROKEN}
+        >
           <Inline key={run} filter={filter} />
         </Panel>
-        <Panel kind="fixed" title="a constant and a useMemo" says="The recorder says nothing until the tag really changes, and then it names it: parent: props tags.">
+        <Panel
+          kind="fixed"
+          title="a constant and a useMemo"
+          says="The recorder says nothing until the tag really changes, and then it names it: parent: props tags."
+          code={FIXED}
+        >
           <Stable key={run} filter={filter} />
         </Panel>
       </div>

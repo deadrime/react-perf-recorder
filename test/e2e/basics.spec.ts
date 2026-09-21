@@ -179,3 +179,14 @@ test('a form left to the DOM does not render while you type', async ({ page }) =
   // The controlled one renders the whole form on every letter.
   expect(await countsOf(page, 'broken')).toEqual(before.map((n) => n + 2));
 });
+
+test('every case can show the code behind it, with the line that matters marked', async ({ page }) => {
+  for (const id of ['memo', 'keys', 'props', 'state', 'context', 'subscriptions', 'effect', 'nested', 'children', 'router', 'form']) {
+    await page.goto(`/basics/${id}`);
+    const folded = page.locator('.code');
+    await expect(folded.first()).toBeVisible();
+    // Each case shows its own snippet, and each snippet points at the line the page is about.
+    expect(await folded.count()).toBe(await page.locator('[data-case]').count());
+    expect(await page.locator('.code .bad').count()).toBeGreaterThan(0);
+  }
+});

@@ -29,12 +29,43 @@ export const Case = ({ title, what, children }: { title: string; what: ReactNode
   </div>
 );
 
-export const Panel = ({ kind, title, says, children }: { kind: 'broken' | 'fixed'; title: string; says: string; children: ReactNode }) => (
+/** The shape of the code, with the line that matters marked by a `// ←` comment. */
+const Code = ({ source }: { source: string }) => (
+  <details className="code">
+    <summary>the code</summary>
+    <pre>
+      {source
+        .trim()
+        .split('\n')
+        .map((line, i) => (
+          <span key={i} className={line.includes('// ←') ? 'line bad' : 'line'}>
+            {line}
+            {'\n'}
+          </span>
+        ))}
+    </pre>
+  </details>
+);
+
+export const Panel = ({
+  kind,
+  title,
+  says,
+  code,
+  children,
+}: {
+  kind: 'broken' | 'fixed';
+  title: string;
+  says: string;
+  code?: string;
+  children: ReactNode;
+}) => (
   <section className={`case ${kind}`} data-case={kind}>
     <h2>
       <span className="mark">{kind === 'broken' ? '✗' : '✓'}</span> {title}
     </h2>
     {children}
     <p className="says">{says}</p>
+    {code ? <Code source={code} /> : null}
   </section>
 );

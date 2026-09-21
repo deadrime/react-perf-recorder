@@ -1,6 +1,34 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { Case, Panel, RenderCount, useRenderCount } from './Case';
 
+const BROKEN = `
+const Frame = () => {
+  const now = useSecond();
+
+  return (
+    <>
+      <p>{now.toLocaleTimeString()}</p>
+      <Report />   // ← a new element on every tick, so the report renders with the clock
+    </>
+  );
+};
+
+<Frame />`;
+
+const FIXED = `
+const Frame = ({ children }) => {
+  const now = useSecond();
+
+  return (
+    <>
+      <p>{now.toLocaleTimeString()}</p>
+      {children}   // ← the element the parent made, reused as it is
+    </>
+  );
+};
+
+<Frame><Report /></Frame>`;
+
 /** Expensive only in the story; here it just counts how often it was asked to render. */
 const Report = () => (
   <li>
@@ -59,10 +87,20 @@ export const Children = () => (
     }
   >
     <div className="two">
-      <Panel kind="broken" title="<Frame /> renders <Report />" says="The recorder says: the report renders once a second, with parent: props equal.">
+      <Panel
+        kind="broken"
+        title="<Frame /> renders <Report />"
+        says="The recorder says: the report renders once a second, with parent: props equal."
+        code={BROKEN}
+      >
         <FrameThatRenders />
       </Panel>
-      <Panel kind="fixed" title="<Frame>{<Report />}</Frame>" says="The recorder says nothing about the report: it is not in the cascade.">
+      <Panel
+        kind="fixed"
+        title="<Frame>{<Report />}</Frame>"
+        says="The recorder says nothing about the report: it is not in the cascade."
+        code={FIXED}
+      >
         <FrameWithChildren>
           <Report />
         </FrameWithChildren>
