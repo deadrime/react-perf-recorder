@@ -537,3 +537,13 @@ input {
   background: #16161b;
   color: var(--text);
 }
+
+.rows .label {
+  width: 42px;
+  flex: none;
+  color: var(--muted);
+}
+
+.rows .link {
+  color: var(--accent);
+}

@@ -214,7 +214,7 @@ proxy-memoize plugin.
 `npm test` runs the unit tests, `npm run test:e2e` the browser ones. They run against the fixture app in
 `test/e2e/fixture-app`, which doubles as the demo: a small team chat with a store, a live feed and a composer, and
 thirteen seeded re-render bugs, one per page (`/bug/whole-object`), with `/app` as the same app with none of them,
-and nine textbook mistakes on bare pages of their own (`/basics/memo`, `/basics/keys`, `/basics/subscriptions` …),
+and eleven textbook mistakes on bare pages of their own (`/basics/memo`, `/basics/keys`, `/basics/subscriptions` …),
 each showing the broken and the fixed version of one widget side by side, with the renders and the mounts counted on
 every row. `/` lists them as cards that say what to do on the page and what the recording should name, so a recording can
 be checked against a known cause and against a clean run. It needs a dev server because the Vite plugin is half of

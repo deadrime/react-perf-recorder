@@ -149,3 +149,33 @@ test('children handed in as a prop skip the parent’s renders', async ({ page }
   expect(broken[1]).toBe(broken[0]);
   expect(fixed[1]).toBe(1);
 });
+
+test('only what shows the URL renders when the URL changes', async ({ page }) => {
+  await page.goto('/basics/router');
+  await page.getByTestId('folder-sent').click();
+  await page.getByTestId('folder-spam').click();
+  const [broken, fixed] = [await countsOf(page, 'broken'), await countsOf(page, 'fixed')];
+  // Left: the card read the URL, so the card and every letter under it rendered twice more.
+  expect(broken.slice(0, 4)).toEqual([3, 3, 3, 3]);
+  // Right: the line that prints the folder rendered; the letters did not.
+  expect(fixed.slice(0, 4)).toEqual([3, 1, 1, 1]);
+  // A component with nothing but useNavigate still renders on every navigation; a link does not.
+  expect(broken[4]).toBe(3);
+  expect(fixed[4]).toBe(1);
+});
+
+test('a form left to the DOM does not render while you type', async ({ page }) => {
+  await page.goto('/basics/form');
+  const start = await countsOf(page, 'fixed');
+  await page.getByTestId('u-title').pressSequentially('Hi', { delay: 40 });
+  await page.getByTestId('u-note').pressSequentially('abc', { delay: 40 });
+  const typed = await countsOf(page, 'fixed');
+  // The fields never rendered; the preview rendered once per letter of the field it watches, and not for the other.
+  expect(typed.slice(0, 2)).toEqual(start.slice(0, 2));
+  expect(typed[2]).toBe(start[2] + 2);
+
+  const before = await countsOf(page, 'broken');
+  await page.getByTestId('c-title').pressSequentially('Hi', { delay: 40 });
+  // The controlled one renders the whole form on every letter.
+  expect(await countsOf(page, 'broken')).toEqual(before.map((n) => n + 2));
+});

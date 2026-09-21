@@ -1,0 +1,87 @@
+import { useState, type ReactNode } from 'react';
+import { useForm, useWatch, type Control } from 'react-hook-form';
+import { Case, Panel, RenderCount, useRenderCount } from './Case';
+
+interface Values {
+  title: string;
+  note: string;
+}
+
+const Field = ({ label, children }: { label: string; children: ReactNode }) => (
+  <li>
+    <span className="label">{label}</span>
+    {children}
+    <RenderCount n={useRenderCount()} />
+  </li>
+);
+
+/** Every keystroke goes through the form's own state, so the whole form renders with it. */
+const ControlledForm = () => {
+  const [values, setValues] = useState<Values>({ title: '', note: '' });
+  return (
+    <ul className="rows">
+      <Field label="title">
+        <input data-testid="c-title" value={values.title} onInput={(e) => setValues((v) => ({ ...v, title: (e.target as HTMLInputElement).value }))} />
+      </Field>
+      <Field label="note">
+        <input data-testid="c-note" value={values.note} onInput={(e) => setValues((v) => ({ ...v, note: (e.target as HTMLInputElement).value }))} />
+      </Field>
+      <li>
+        <span className="grow">
+          preview: <b>{values.title || '…'}</b>
+        </span>
+        <RenderCount n={useRenderCount()} />
+      </li>
+    </ul>
+  );
+};
+
+/** Only the preview asks for the value, and it asks for one field of it. */
+const Preview = ({ control }: { control: Control<Values> }) => {
+  const title = useWatch({ control, name: 'title' });
+  return (
+    <li>
+      <span className="grow">
+        preview: <b>{title || '…'}</b>
+      </span>
+      <RenderCount n={useRenderCount()} />
+    </li>
+  );
+};
+
+const UncontrolledForm = () => {
+  const { register, control } = useForm<Values>({ defaultValues: { title: '', note: '' } });
+  return (
+    <ul className="rows">
+      <Field label="title">
+        <input data-testid="u-title" {...register('title')} />
+      </Field>
+      <Field label="note">
+        <input data-testid="u-note" {...register('note')} />
+      </Field>
+      <Preview control={control} />
+    </ul>
+  );
+};
+
+export const Forms = () => (
+  <Case
+    title="a form that does not render while you type"
+    what={
+      <>
+        Two forms with the same two fields and a preview of the title. On the left every keystroke is state in the
+        form, so the form and both fields render on each letter. On the right the fields are left to the DOM —{' '}
+        <code>register</code> — and only the preview subscribes, to the one field it prints.
+      </>
+    }
+  >
+    <div className="two">
+      <Panel kind="broken" title="useState in the form" says="The recorder says: the form is a cascade root on every keystroke, with parent: props equal below it.">
+        <ControlledForm />
+      </Panel>
+      <Panel kind="fixed" title="register + useWatch" says="The recorder says: the preview renders, once per letter of the field it watches. The other field never does.">
+        <UncontrolledForm />
+      </Panel>
+    </div>
+  </Case>
+);
