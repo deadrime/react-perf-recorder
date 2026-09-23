@@ -21,6 +21,18 @@ const SCROLL_GAP_MS = 300;
 const INTERACTIVE =
   'button, a, [role="button"], [role="tab"], [role="menuitem"], [role="option"], [role="checkbox"], [role="switch"], label, input, select, textarea, summary, [data-testid]';
 
+/**
+ * The first words of an element, read text node by text node until there are enough: `textContent` of a page-sized
+ * element builds the whole page as a string, in a listener that runs before the app's own. The page itself has none.
+ */
+function shortText(el: Element, max: number): string {
+  if (el === document.body || el === document.documentElement) return '';
+  const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+  let text = '';
+  for (let node = walker.nextNode(); node && text.length < max * 2; node = walker.nextNode()) text += ` ${node.nodeValue ?? ''}`;
+  return text.replace(/\s+/g, ' ').trim().slice(0, max);
+}
+
 export function isSecretField(el: Element, secretSelector: string): boolean {
   if (secretSelector && el.matches(secretSelector)) return true;
   if (el instanceof HTMLInputElement && el.type === 'password') return true;
@@ -88,8 +100,8 @@ export class ActionTracker {
     const role = el.getAttribute('role');
     if (role) target.role = role;
     if (!(el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement)) {
-      const text = el.textContent?.replace(/\s+/g, ' ').trim();
-      if (text) target.text = text.slice(0, 40);
+      const text = shortText(el, 40);
+      if (text) target.text = text;
     }
     const id = el.getAttribute('id');
     if (id) target.id = id;

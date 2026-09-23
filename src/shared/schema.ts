@@ -313,6 +313,8 @@ export interface SessionMeta {
   plugins: PluginInfo[];
   events: number;
   reloads: number;
+  /** What a listing shows of a finished recording, so listing does not read every recording through. */
+  listing?: { durationMs: number; actions: number; commits: number; renders: number; topRoot: string | null };
 }
 
 /** One line of `events.ndjson`. Roots and reasons are sent as dictionaries once, then referenced by index. */

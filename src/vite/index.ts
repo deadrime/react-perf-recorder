@@ -39,16 +39,32 @@ export function resolveOutDir(root: string, outDir: string | undefined): string 
   return path.resolve(root, dir);
 }
 
+/** A module's map, parsed once while the module is the same: a recording maps hundreds of positions in a few files. */
+const traceMaps = new WeakMap<object, TraceMap>();
+const fileLines = new Map<string, { mtimeMs: number; lines: string[] }>();
+
+function linesOf(file: string): string[] {
+  const mtimeMs = fs.statSync(file).mtimeMs;
+  const cached = fileLines.get(file);
+  if (cached?.mtimeMs === mtimeMs) return cached.lines;
+  if (fileLines.size > 200) fileLines.clear();
+  const lines = fs.readFileSync(file, 'utf8').split('\n');
+  fileLines.set(file, { mtimeMs, lines });
+  return lines;
+}
+
 async function mapSite(server: ViteDevServer, root: string, url: string, line: number, column: number) {
   const parsed = new URL(url, 'http://localhost');
   const mod = await server.moduleGraph.getModuleByUrl(parsed.pathname + parsed.search);
   const map = mod?.transformResult?.map as ConstructorParameters<typeof TraceMap>[0] | null | undefined;
   if (!mod?.file || !map) return null;
-  const pos = originalPositionFor(new TraceMap(map), { line, column: Math.max(0, column - 1) });
+  let traced = traceMaps.get(map as object);
+  if (!traced) traceMaps.set(map as object, (traced = new TraceMap(map)));
+  const pos = originalPositionFor(traced, { line, column: Math.max(0, column - 1) });
   if (pos.line == null) return null;
   const file = pos.source ? (path.isAbsolute(pos.source) ? pos.source : path.resolve(path.dirname(mod.file), pos.source)) : mod.file;
   const real = fs.existsSync(file) ? file : mod.file;
-  const code = fs.readFileSync(real, 'utf8').split('\n')[pos.line - 1]?.trim().slice(0, 140);
+  const code = linesOf(real)[pos.line - 1]?.trim().slice(0, 140);
   return { site: `${path.relative(root, real).replace(/\\/g, '/')}:${pos.line}`, ...(code ? { code } : {}) };
 }
 

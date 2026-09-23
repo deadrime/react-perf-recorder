@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { compareRecordings } from '../shared/compare';
 import { actionText, hookOf, hookText, reasonsById, rootLine, summarize, textOf, type HookMode } from '../shared/summary';
 import type { RecordingV2 } from '../shared/schema';
+import { listingOf } from '../shared/listing';
 import { planReplay } from '../shared/replay';
 import { recordPage } from './record';
 import { findSession, listSessions, readRecording, waitForSession } from './store';
@@ -33,11 +34,6 @@ const SECTIONS = [
 const json = (value: unknown) => ({ content: [{ type: 'text' as const, text: JSON.stringify(value, null, 1) }] });
 
 /** What the leading root gave as its reason, in words: the listing carries ids into nothing otherwise. */
-function topReason(rec: RecordingV2): string {
-  const id = rec.roots[0]?.reasons[0]?.[0];
-  const reason = id === undefined ? undefined : reasonsById(rec.reasons).get(id);
-  return reason ? textOf(reason) : '';
-}
 
 export function section(rec: RecordingV2 & { id?: string; status?: string }, name: string, top: number, offset: number, hooks: HookMode = 'full') {
   const page = <T>(list: T[]) => ({ total: list.length, offset, items: list.slice(offset, offset + top) });
@@ -184,7 +180,8 @@ export function createServer(dir: string) {
         dir,
         total: sessions.length,
         recordings: sessions.slice(0, limit).map((s) => {
-          const rec = s.hasRecording || s.status !== 'done' ? readRecording(s) : null;
+          // A finished session says it all in its metadata; older ones and running ones are read through.
+          const listing = s.meta.listing ?? (s.hasRecording || s.status !== 'done' ? listingOf(readRecording(s)) : null);
           return {
             id: s.id,
             status: s.status,
@@ -193,11 +190,11 @@ export function createServer(dir: string) {
             ...(s.meta.label ? { label: s.meta.label } : {}),
             url: s.meta.page.url,
             area: s.meta.scope?.name ?? 'whole app',
-            durationSec: rec ? +(rec.durationMs / 1000).toFixed(1) : null,
-            actions: rec?.actions.length ?? 0,
-            commits: rec?.totals.commitsInScope ?? 0,
-            renders: rec?.totals.renders ?? 0,
-            topRoot: rec?.roots[0] ? `${rec.roots[0].name} ×${rec.roots[0].hits} · ${topReason(rec)}` : null,
+            durationSec: listing ? +(listing.durationMs / 1000).toFixed(1) : null,
+            actions: listing?.actions ?? 0,
+            commits: listing?.commits ?? 0,
+            renders: listing?.renders ?? 0,
+            topRoot: listing?.topRoot ?? null,
             plugins: s.meta.plugins.map((p) => p.name),
             bytes: s.bytes,
           };

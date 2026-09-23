@@ -2,6 +2,7 @@ import { randomBytes } from 'node:crypto';
 import fs from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import path from 'node:path';
+import { listingOf } from '../shared/listing';
 import { CLIENT_HEADER, ENDPOINT, SESSION_SCHEMA, type RecordingV2, type SessionEvent, type SessionMeta } from '../shared/schema';
 
 export interface SessionStoreOptions {
@@ -119,6 +120,7 @@ export class SessionStore {
     // Read after the wait: events may have been appended to the session while the sites were mapped.
     const meta = this.readMeta(dir);
     meta.status = 'done';
+    meta.listing = listingOf(recording);
     meta.updatedAt = new Date().toISOString();
     writeAtomic(path.join(dir, 'session.json'), JSON.stringify(meta, null, 2));
     this.tokens.delete(id);

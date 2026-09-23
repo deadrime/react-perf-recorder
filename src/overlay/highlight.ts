@@ -197,7 +197,7 @@ export class Highlighter implements HighlightSink {
       if (labelled.size < 60 && (!labelled.has(at) || (f.mounted && !mountedAt.has(at))) && f.w > 24) {
         labelled.add(at);
         if (f.mounted) mountedAt.add(at);
-        const width = ctx.measureText(label).width + 6;
+        const width = this.widthOf(ctx, label) + 6;
         const y = f.y > 14 ? f.y - 14 : f.y;
         ctx.fillStyle = `rgba(${r},${g},${b},${alpha * 0.9})`;
         ctx.fillRect(f.x, y, width, 14);
@@ -209,6 +209,18 @@ export class Highlighter implements HighlightSink {
     this.costMs += performance.now() - started;
     if (this.flashes.size) requestAnimationFrame(() => this.draw());
     else this.drawing = false;
+  }
+
+  /** Labels repeat from frame to frame while a box fades: measured once each. */
+  private readonly labelWidths = new Map<string, number>();
+
+  private widthOf(ctx: CanvasRenderingContext2D, label: string): number {
+    let width = this.labelWidths.get(label);
+    if (width === undefined) {
+      if (this.labelWidths.size > 500) this.labelWidths.clear();
+      this.labelWidths.set(label, (width = ctx.measureText(label).width));
+    }
+    return width;
   }
 
   /** A box around everything a picked component draws, in the colour of picking, and its label above. */
