@@ -12,6 +12,8 @@ const names = new WeakMap<StoreApi, string>();
 const shallowInner = new WeakMap<Function, Function>();
 const eventByState = new WeakMap<object, { type: string }>();
 let anonymous = 0;
+/** Set while a recording runs: a store made from now on — a lazy module, one per component — is followed at once. */
+let follow: ((api: StoreApi) => void) | null = null;
 
 const apiOf = (value: unknown): StoreApi | null => {
   const candidate = value as Partial<StoreApi> | null;
@@ -23,6 +25,7 @@ function register(result: unknown) {
   if (api && !apiByGetState.has(api.getState)) {
     apiByGetState.set(api.getState, api);
     stores.add(new WeakRef(api));
+    follow?.(api);
   }
   return result;
 }
@@ -103,23 +106,25 @@ export default definePlugin((options: { devtools?: boolean } | null) => {
     start(session) {
       counts.clear();
       actions = 0;
-      for (const ref of stores) {
-        const api = ref.deref();
-        if (!api) {
-          stores.delete(ref);
-          continue;
-        }
-        const name = storeName(api);
+      follow = (api) => {
+        // The name is read when the store changes: `nameStore` runs after `create`, at the end of its module.
         unsubscribes.push(
           api.subscribe((state, prev) => {
+            const name = storeName(api);
             counts.set(name, (counts.get(name) ?? 0) + 1);
             const event = session.emitCause({ type: `${name}.setState`, changes: changedKeys(prev, state), data: { store: name }, aim: true });
             if (event && state && typeof state === 'object') eventByState.set(state as object, event);
           })
         );
+      };
+      for (const ref of stores) {
+        const api = ref.deref();
+        if (api) follow(api);
+        else stores.delete(ref);
       }
     },
     stop() {
+      follow = null;
       unsubscribes.splice(0).forEach((unsubscribe) => unsubscribe());
       const list = [...counts].sort((a, b) => b[1] - a[1]);
       return {

@@ -56,4 +56,25 @@ describe('zustand plugin runtime', () => {
     expect(reasonsOf(rec, rec.roots[0])[0]).toMatch(/^external store #\d \[ammPriceStore\] useShallow\(selectPrice\)$/);
     expect(rec.causes.map((c) => c.key)).toContain('zustand:ammPriceStore.setState');
   });
+
+  it('follows several stores, and one made while the recording runs', () => {
+    const host = new PluginHost([[plugin, null]]);
+    host.setupAll();
+    const a = wrapCreate(createStore)<{ n: number }>()(() => ({ n: 0 }));
+    const b = wrapCreate(createStore)<{ n: number }>()(() => ({ n: 0 }));
+    nameStore(a, 'aStore');
+    nameStore(b, 'bStore');
+    host.start({ scope: null, findFibers: () => [] }, performance.now());
+    // Made after the start, the way a store per component or a lazily loaded module is.
+    const late = wrapCreate(createStore)<{ n: number }>()(() => ({ n: 0 }));
+    nameStore(late, 'lateStore');
+    a.setState({ n: 1 });
+    b.setState({ n: 1 });
+    late.setState({ n: 1 });
+    expect(host.drain().map((e) => e.type)).toEqual(['aStore.setState', 'bStore.setState', 'lateStore.setState']);
+    host.stop({ scope: null, findFibers: () => [] });
+    // Nothing is followed once the recording is over.
+    late.setState({ n: 2 });
+    expect(host.drain()).toEqual([]);
+  });
 });
