@@ -89,8 +89,7 @@ export function scanModule(code: string, callees: string[], { allowReactPrefix =
   for (const statement of body) {
     const declaration = statement.type === 'ExportNamedDeclaration' ? statement.declaration : statement;
     if (declaration?.type === 'VariableDeclaration' && declaration.kind !== 'var') {
-      for (const d of declaration.declarations)
-        if (d.id.type === 'Identifier' && isCall(d.init) && !names.includes(d.id.name)) names.push(d.id.name);
+      for (const d of declaration.declarations) if (d.id.type === 'Identifier' && isCall(d.init) && !names.includes(d.id.name)) names.push(d.id.name);
     }
     if (statement.type === 'ExportDefaultDeclaration') {
       const e = statement.declaration;

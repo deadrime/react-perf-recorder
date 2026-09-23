@@ -83,7 +83,7 @@ export const BUGS: Record<Bug, BugCard> = {
   },
   'memo-cache-slot': {
     title: 'One memo slot for rows with different arguments',
-    what: 'memoizeWithArgs keeps a single cache slot, and three message rows call it with three ids in turn.',
+    what: 'The rows share one memoizeWithArgs with its default single slot and call it with their ids in turn.',
     scenario: 'wait',
     shows: 'The proxy-memoize section marks selectMessageInfo as thrash, and the rows re-render with SAME-CONTENT.',
     file: 'src/store/selectors.ts',

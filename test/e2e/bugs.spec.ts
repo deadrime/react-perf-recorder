@@ -39,6 +39,24 @@ const chain = (rec: RecordingV2, r: RootStat, mode: HookMode = 'full') => hookTe
 const selector = (rec: RecordingV2, name: string) =>
   (rec.plugins['proxy-memoize'].data as { selectors: Array<{ name: string; thrash: boolean }> }).selectors.find((s) => s.name === name);
 
+test('the clean chat is still the baseline after a tab has been open for a while', async ({ page }) => {
+  // A fast clock: 45 messages arrive in about ten seconds, and a reaction lands every 25ms.
+  await page.goto('/app?tick=5');
+  await expect
+    .poll(
+      () =>
+        page.locator('[data-testid^="message-m"]').evaluateAll((els) => Math.max(...els.map((e) => Number(e.getAttribute('data-testid')!.slice(9))))),
+      { timeout: 20_000 }
+    )
+    .toBeGreaterThan(45);
+  await page.evaluate(() => (window.__REACT_PERF_RECORDER__ as RecorderGlobal).engine.start({ source: 'e2e', highlight: false }));
+  await page.waitForTimeout(1500);
+  const rec: RecordingV2 = await page.evaluate(() => (window.__REACT_PERF_RECORDER__ as RecorderGlobal).engine.stop());
+  expect(rec.totals.commits).toBeGreaterThan(20);
+  expect(rec.totals.rendersWithoutDom).toBe(0);
+  expect((rec.plugins['proxy-memoize'].data as { selectors: Array<{ thrash: boolean }> }).selectors.some((s) => s.thrash)).toBe(false);
+});
+
 /** Each test seeds one anti-pattern and checks the recording names it, and that a clean run does not. */
 test.describe('seeded re-render bugs', () => {
   test('a component subscribed to a whole store object', async ({ page }) => {
@@ -96,7 +114,8 @@ test.describe('seeded re-render bugs', () => {
     expect(rec.plugins['proxy-memoize'].highlights?.join(' ')).toContain('selectMessageInfo');
 
     const clean = await record(page, 'idle', '');
-    expect(selector(clean, 'selectMessageInfo')).toMatchObject({ thrash: false });
+    // The clean rows keep a memoized selector each; none of them thrashes.
+    expect((clean.plugins['proxy-memoize'].data as { selectors: Array<{ thrash: boolean }> }).selectors.some((s) => s.thrash)).toBe(false);
     expect(reasons(clean, root(clean, 'Status'))).not.toContainEqual(expect.stringContaining('SAME-CONTENT'));
   });
 

@@ -48,6 +48,13 @@ type Slice<T> = StateCreator<Chat, [['zustand/devtools', never]], [], T>;
 
 const minutes = (n: number) => Date.now() - n * 60_000;
 
+/** The chat keeps the latest messages only: a tab left open for an hour is the same page as a fresh one. */
+export const MAX_MESSAGES = 24;
+let lastId = 3; // after the three the chat starts with
+const newId = () => `m${++lastId}`;
+const withMessage = (all: Record<string, Message>, message: Message) =>
+  Object.fromEntries([...Object.entries(all), [message.id, message] as const].slice(-MAX_MESSAGES));
+
 const feed: Slice<FeedSlice> = (set) => ({
   reactionsById: { m1: 2, m2: 0, m3: 5 },
   tick: (step) =>
@@ -61,9 +68,9 @@ const feed: Slice<FeedSlice> = (set) => ({
           next.reactionsById = { ...s.reactionsById, [id]: (s.reactionsById[id] ?? 0) + 1 };
         }
         if (step % ARRIVAL_EVERY === 0) {
-          const id = `m${Object.keys(s.messageById).length + 1}`;
+          const id = newId();
           const text = ARRIVALS[Math.floor(step / ARRIVAL_EVERY - 1) % ARRIVALS.length];
-          next.messageById = { ...s.messageById, [id]: { id, from: senderAt(step), text, sentAt: Date.now() } };
+          next.messageById = withMessage(s.messageById, { id, from: senderAt(step), text, sentAt: Date.now() });
           next.workspace = { ...next.workspace!, unread: s.workspace.unread + 1 };
         }
         return next;
@@ -98,8 +105,8 @@ const messages: Slice<MessagesSlice> = (set) => ({
   send: (text) =>
     set(
       (s) => {
-        const id = `m${Object.keys(s.messageById).length + 1}`;
-        return { messageById: { ...s.messageById, [id]: { id, from: 'Anna', text, sentAt: Date.now() } } };
+        const id = newId();
+        return { messageById: withMessage(s.messageById, { id, from: 'Anna', text, sentAt: Date.now() }) };
       },
       false,
       'messages/send'
