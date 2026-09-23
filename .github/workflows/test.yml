@@ -20,6 +20,8 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run test:19
+      # The e2e run loads what was built: engine.iife.js into a page, the CLI as an MCP server.
+      - run: npm run build
       - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e
       - uses: actions/upload-artifact@v4
