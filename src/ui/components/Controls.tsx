@@ -18,13 +18,8 @@ const PickIcon = () => (
   </svg>
 );
 
-/** What the outlines on the page mean: said where they are switched on, since nothing on the page can say it. */
-const HIGHLIGHT_LEGEND =
-  'Outline renders on the page, also between recordings. Green: a few renders in a row, yellow: often, red: all the ' +
-  'time; grey: the render changed nothing in the DOM. ×N counts the renders of that streak.';
-
 /**
- * One row: record, the area, the outlines. The area is a single pill — Pick when there is none, and once there is
+ * One row: record and the area. The area is a single pill — Pick when there is none, and once there is
  * one, its name to move it through the tree, ⧉ to copy it and × to go back to the whole app — so what a recording
  * is about sits next to the button that starts it, not on a row of its own.
  */
@@ -99,10 +94,21 @@ export function Controls({ p }: { p: PanelViewProps }): JSX.Element {
           ×
         </button>
       </span>
-      <label class="toggle highlight-toggle" title={HIGHLIGHT_LEGEND}>
-        <input type="checkbox" data-rpr="highlight" checked={p.highlight} onChange={(e) => p.on.setHighlight((e.target as HTMLInputElement).checked)} />
-        highlight
-      </label>
     </div>
+  );
+}
+
+/** What the outlines on the page mean: said where they are switched on, since nothing on the page can say it. */
+const HIGHLIGHT_LEGEND =
+  'Outline renders on the page, also between recordings. Green: a few renders in a row, yellow: often, red: all the ' +
+  'time; grey: the render changed nothing in the DOM. ×N counts the renders of that streak.';
+
+/** The outlines are on or off for the page, recording or not, so the switch sits in the header rather than with the recording's controls. */
+export function HighlightToggle({ p }: { p: PanelViewProps }): JSX.Element {
+  return (
+    <label class="toggle highlight-toggle" title={HIGHLIGHT_LEGEND}>
+      <input type="checkbox" data-rpr="highlight" checked={p.highlight} onChange={(e) => p.on.setHighlight((e.target as HTMLInputElement).checked)} />
+      highlight
+    </label>
   );
 }

@@ -3,7 +3,7 @@ import { render, type JSX } from 'preact';
 import type { Engine, Saved } from '../../core/engine';
 import { dockStyle } from '../dock';
 import type { Corner, Offset } from '../storage';
-import { Controls } from './Controls';
+import { Controls, HighlightToggle } from './Controls';
 import { Result } from './Result';
 import { whatOf } from './Stats';
 import { Tree, type TreeProps } from './Tree';
@@ -144,6 +144,7 @@ const View = (p: PanelViewProps): JSX.Element => (
           <span class="brand-name">Perf Recorder</span>
         </span>
         <span class="live">{liveText(p)}</span>
+        <HighlightToggle p={p} />
         <button type="button" title="Collapse" aria-label="Collapse the panel" data-rpr="collapse" onClick={() => p.on.setCollapsed(true)}>
           –
         </button>

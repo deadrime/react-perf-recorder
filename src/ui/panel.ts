@@ -434,7 +434,7 @@ export class Panel {
   private onDragStart(down: PointerEvent) {
     const handle = down.currentTarget as HTMLElement;
     const fromDot = handle.classList.contains('dot');
-    if (!fromDot && (down.target as Element).closest('button')) return;
+    if (!fromDot && (down.target as Element).closest('button, label')) return;
     const root = handle.closest('.rpr') as HTMLElement | null;
     if (!root) return;
     const rect = root.getBoundingClientRect();
