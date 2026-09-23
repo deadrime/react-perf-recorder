@@ -101,13 +101,14 @@ export class SessionStore {
     return Boolean(token) && this.tokens.get(id) === token;
   }
 
-  append(id: string, events: SessionEvent[]) {
+  /** `unloaded`: the page went away mid-recording and sent what it had by beacon; a normal stop ends in finish. */
+  append(id: string, events: SessionEvent[], unloaded = false) {
     const dir = this.sessionDir(id);
     const meta = this.readMeta(dir);
     if (events.length) fs.appendFileSync(path.join(dir, 'events.ndjson'), `${events.map((e) => JSON.stringify(e)).join('\n')}\n`);
     meta.events += events.length;
     meta.updatedAt = new Date().toISOString();
-    if (meta.status === 'recording' && events.some((e) => e.k === 'end')) meta.status = 'interrupted';
+    if (meta.status === 'recording' && unloaded) meta.status = 'interrupted';
     writeAtomic(path.join(dir, 'session.json'), JSON.stringify(meta, null, 2));
   }
 
@@ -268,7 +269,7 @@ export function createMiddleware(store: SessionStore, base: string, version: str
       if (!action) return send(res, 200, store.open(body));
       if (action === 'events') {
         if (!Array.isArray(body.events)) return send(res, 400, { error: 'events must be an array' });
-        store.append(id, body.events);
+        store.append(id, body.events, url.searchParams.get('end') === '1');
         return send(res, 200, { ok: true });
       }
       if (body.recording?.schema !== 'react-perf-recorder/recording') return send(res, 400, { error: 'not a recording' });

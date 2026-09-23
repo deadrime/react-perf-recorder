@@ -120,6 +120,14 @@ describe('perfRecorder vite plugin', () => {
     expect(meta).toMatchObject({ status: 'done', events: 1 });
   });
 
+  it('a stop that sends its last events before finishing is not an interrupted session', async () => {
+    const opened = await (await post('sessions', { source: 'panel' })).json();
+    // What a normal stop does: the queue, with the end event, goes out as events; finish comes after.
+    expect((await post(`sessions/${opened.id}/events`, { events: [{ k: 'end', atMs: 5 }] })).status).toBe(200);
+    const meta = JSON.parse(fs.readFileSync(path.join(outDir, opened.id, 'session.json'), 'utf8'));
+    expect(meta.status).toBe('recording');
+  });
+
   it('refuses writes without its header and lets a beacon in with the session token', async () => {
     expect((await post('sessions', {}, { 'content-type': 'text/plain' })).status).toBe(415);
     const opened = await (await post('sessions', { source: 'panel' })).json();
