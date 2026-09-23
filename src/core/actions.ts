@@ -188,7 +188,8 @@ export class ActionTracker {
 
   private onInput(event: Event) {
     const el = event.target as Element;
-    if (!(el instanceof Element)) return;
+    // Checkboxes, radios and selects fire `input` too: they are recorded by their click or change, not as typing.
+    if (!(el instanceof Element) || !(isTextField(el) || (el as HTMLElement).isContentEditable)) return;
     const now = Math.round(this.now());
     if (this.typing && this.typing.el === el && now - this.typing.action.endMs < TYPING_GAP_MS) {
       const action = this.typing.action;
