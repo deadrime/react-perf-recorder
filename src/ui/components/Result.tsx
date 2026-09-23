@@ -5,6 +5,7 @@ import type { Saved } from '../../core/engine';
 import type { RootStat } from '../../shared/schema';
 import { hookOf, reasonsById, summarize } from '../../shared/summary';
 import { downloadJson } from '../download';
+import { Compare, compareNote, type Comparison } from './Compare';
 import { Kpis, Notice, ReasonLine, StatCard, type Badge, type Kpi, type StatReason } from './Stats';
 import { causeColour, Timeline } from './Timeline';
 
@@ -29,7 +30,19 @@ const SLOW_MS = 100;
  * The summary shown after Stop: the answer first — the root that cost most, why, and where — then what to read it
  * against, then the parts that explain it. A pure function of the recording, summarized once and redrawn for free.
  */
-export function Result({ rec, onDismiss, wide, onWide }: { rec: Saved; onDismiss: () => void; wide: boolean; onWide: () => void }): JSX.Element {
+export function Result({
+  rec,
+  compared,
+  onDismiss,
+  wide,
+  onWide,
+}: {
+  rec: Saved;
+  compared?: Comparison | null;
+  onDismiss: () => void;
+  wide: boolean;
+  onWide: () => void;
+}): JSX.Element {
   const s = useMemo(() => summarize(rec, 5), [rec]);
   const t = s.totals;
   const roots = useMemo(() => [...rec.roots, ...rec.outsideRoots], [rec]);
@@ -105,6 +118,12 @@ export function Result({ rec, onDismiss, wide, onWide }: { rec: Saved; onDismiss
             <Notice key={w} text={w} />
           ))}
         </div>
+      ) : null}
+
+      {compared ? (
+        <Fold id="compare" title="Before → after" note={compareNote(compared)}>
+          <Compare c={compared} />
+        </Fold>
       ) : null}
 
       {s.actions.length ? (

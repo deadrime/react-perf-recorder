@@ -208,6 +208,14 @@ button.icon { padding: 3px 7px; }
 
 /* The report: the answer first, then what to read it against, then the parts that explain it, folded. */
 .verdict { margin-top: 8px; }
+.cmp-row { display: flex; align-items: baseline; gap: 6px; padding: 2px 0; font-variant-numeric: tabular-nums; }
+.cmp-what { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-2); }
+.cmp-times, .cmp-unit, .cmp-only { color: var(--muted); font-size: 11px; }
+.cmp-value { color: var(--text-strong); font-weight: 600; white-space: nowrap; }
+.cmp-pct { min-width: 38px; text-align: right; color: var(--muted); font-size: 11px; }
+.cmp-pct[data-tone="good"] { color: var(--good); }
+.cmp-pct[data-tone="bad"] { color: var(--bad); }
+.cmp-only { margin: 4px 0 0; }
 .verdict-title { margin: 10px 0 2px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
 .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(74px, 1fr)); gap: 4px; }
 .kpi { display: flex; flex-direction: column; padding: 5px 8px; border: 1px solid var(--rule); border-radius: 6px; background: var(--raised); }

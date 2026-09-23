@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { aggregateEvents } from '../../src/shared/aggregate';
-import { compareRecordings } from '../../src/shared/compare';
+import { compareDigests, compareRecordings, digestOf } from '../../src/shared/compare';
 import { summarize } from '../../src/shared/summary';
 import type { SessionEvent, SessionMeta } from '../../src/shared/schema';
 
@@ -46,7 +46,8 @@ describe('partial recordings and comparison', () => {
     const after = aggregateEvents({ ...meta, id: '20260919-120100-app-panel-beef' }, events(3));
     const result = compareRecordings(before, after);
     expect(result.roots[0]).toMatchObject({ root: 'Row', status: 'changed', perHit: { before: 30, after: 3, delta: -27, pct: -90 } });
-    expect(result.actions[0]).toMatchObject({ action: 'click «refresh»', renders: { before: 60, after: 6 } });
+    // The reaction to the click only: the commit at 900ms came from no event and is background.
+    expect(result.actions[0]).toMatchObject({ action: 'click «refresh»', per: 'action', renders: { before: 30, after: 3 } });
     expect(result.warnings).toContain('a partial recording is compared: hook names, components and plugin sections may be missing');
     expect(result.comparable).toBe(true);
   });
@@ -66,5 +67,25 @@ describe('partial recordings and comparison', () => {
     const result = compareRecordings(before, after);
     expect(result.comparable).toBe(false);
     expect(result.warnings.some((w) => w.startsWith('highlight was on only after'))).toBe(true);
+  });
+
+  it('compares the same actions by their median, however many times each was done', () => {
+    const clicks = (times: number, renders: number): SessionEvent[] => [
+      { k: 'root', i: 0, key: 'List|src/List.tsx:1|App', name: 'List', source: 'src/List.tsx:1', path: 'App' },
+      ...Array.from({ length: times }, (_, i): SessionEvent[] => [
+        { k: 'action', action: { id: i + 1, kind: 'click', atMs: 100 + i * 2000, endMs: 100 + i * 2000, target: { tag: 'button', text: 'Add', component: 'Todo' } } },
+        { k: 'commit', t: 110 + i * 2000, n: renders + (i % 2), event: 'click', roots: [[0, renders, []]] },
+      ]).flat(),
+      { k: 'commit', t: 50, n: 4, roots: [[0, 4, []]] },
+      { k: 'end', atMs: 100 + times * 2000 },
+    ];
+    const before = digestOf(aggregateEvents(meta, clicks(3, 40)));
+    const after = digestOf(aggregateEvents({ ...meta, id: 'b' }, clicks(6, 6)));
+    expect(before.actions[0]).toMatchObject({ what: 'click «Add» in Todo', n: 3, per: 'action', renders: 40 });
+    const result = compareDigests(before, after);
+    expect(result.comparable).toBe(true);
+    expect(result.actions[0]).toMatchObject({ times: { before: 3, after: 6 }, renders: { before: 40, after: 6.5, pct: -84 } });
+    expect(result.unmatched).toEqual({ before: [], after: [] });
+    expect(compareDigests(before, { ...after, area: 'Todo' }).comparable).toBe(false);
   });
 });

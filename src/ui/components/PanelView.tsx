@@ -4,6 +4,7 @@ import type { Engine, Saved } from '../../core/engine';
 import { dockStyle } from '../dock';
 import type { Corner, Offset } from '../storage';
 import { Controls, HighlightToggle } from './Controls';
+import type { Comparison } from './Compare';
 import { Result } from './Result';
 import { whatOf } from './Stats';
 import { Tree, type TreeProps } from './Tree';
@@ -57,6 +58,8 @@ export interface PanelViewProps {
   message: { text: string; kind: 'error' | 'notice' | 'muted' };
   tree: TreeProps | null;
   result: Saved | null;
+  /** The result against the recording before it, when there is something to set side by side. */
+  compared: Comparison | null;
   on: PanelHandlers;
 }
 
@@ -172,7 +175,7 @@ const View = (p: PanelViewProps): JSX.Element => (
         {p.message.text}
       </div>
       <div class="result" data-rpr="result">
-        {p.result ? <Result rec={p.result} onDismiss={p.on.dismissResult} wide={p.wide} onWide={() => p.on.setWide(!p.wide)} /> : null}
+        {p.result ? <Result rec={p.result} compared={p.compared} onDismiss={p.on.dismissResult} wide={p.wide} onWide={() => p.on.setWide(!p.wide)} /> : null}
       </div>
     </div>
   </div>

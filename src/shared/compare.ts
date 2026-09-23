@@ -52,40 +52,140 @@ function compareRoots(a: RootStat[], b: RootStat[], msA: number, msB: number, ma
     .slice(0, top);
 }
 
-const actionKey = (a: ActionRecord) => `${a.kind}|${a.target?.testId ?? a.target?.name ?? a.target?.label ?? a.target?.text ?? a.target?.tag ?? ''}`;
+/** What an action is, whichever time it was done: its kind, its element and the component it is in. */
+const actionKey = (a: ActionRecord) =>
+  `${a.kind}|${a.target?.component ?? ''}|${a.target?.testId ?? a.target?.name ?? a.target?.label ?? a.target?.text ?? a.target?.tag ?? ''}`;
 
-function compareActions(a: RecordingV2, b: RecordingV2) {
-  const pick = (rec: RecordingV2) => {
-    const byKey = new Map<string, Array<{ action: ActionRecord; renders: number; perChar?: number; latency?: number }>>();
-    const actions = new Map(rec.actions.map((x) => [x.id, x]));
-    for (const s of rec.segments) {
-      const action = actions.get(s.action);
-      if (!action) continue;
-      const list = byKey.get(actionKey(action)) ?? [];
-      list.push({ action, renders: s.renders, perChar: s.perChar?.renders, latency: s.latency?.duration });
-      byKey.set(actionKey(action), list);
-    }
-    return byKey;
-  };
-  const x = pick(a);
-  const y = pick(b);
-  const out = [];
-  for (const [key, list] of x) {
-    const other = y.get(key) ?? [];
-    for (let i = 0; i < Math.min(list.length, other.length); i++) {
-      out.push({
-        action: actionText(other[i].action),
-        renders: delta(list[i].renders, other[i].renders),
-        ...(list[i].perChar !== undefined || other[i].perChar !== undefined
-          ? { rendersPerChar: delta(list[i].perChar ?? null, other[i].perChar ?? null) }
-          : {}),
-        ...(list[i].latency !== undefined || other[i].latency !== undefined
-          ? { latencyMs: delta(list[i].latency ?? null, other[i].latency ?? null) }
-          : {}),
-      });
-    }
+const median = (values: number[]) => {
+  if (!values.length) return 0;
+  const sorted = values.slice().sort((x, y) => x - y);
+  const mid = sorted.length >> 1;
+  return sorted.length % 2 ? sorted[mid] : +((sorted[mid - 1] + sorted[mid]) / 2).toFixed(1);
+};
+
+/** The cost of one kind of action: renders per time it was done (per character for typing), and its latency. */
+export interface ActionCost {
+  key: string;
+  what: string;
+  /** How many times it was done. */
+  n: number;
+  per: 'action' | 'char';
+  renders: number;
+  latencyMs?: number;
+}
+
+/**
+ * What a recording cost, in a form two recordings compare in however many times a button was pressed and however
+ * long each one ran: the median of each action, and the renders nobody asked for per second. Small enough to keep
+ * in the page's session storage until the next recording.
+ */
+export interface Digest {
+  id?: string;
+  createdAt: string;
+  path: string;
+  area: string | null;
+  durationMs: number;
+  actions: ActionCost[];
+  /** Renders outside the reactions to actions: timers, sockets, stores, per second. */
+  backgroundPerSec: number;
+  wastedPerSec: number;
+}
+
+const pathOf = (url: string) => {
+  try {
+    return new URL(url || 'http://x').pathname;
+  } catch {
+    return url;
   }
-  return out.slice(0, 20);
+};
+
+export function digestOf(rec: RecordingV2 & { id?: string }): Digest {
+  const actions = new Map(rec.actions.map((x) => [x.id, x]));
+  const groups = new Map<string, { what: string; typing: boolean; renders: number[]; chars: number; latency: number[] }>();
+  let reacted = 0;
+  for (const s of rec.segments) {
+    const action = actions.get(s.action);
+    reacted += s.reaction.renders;
+    if (!action) continue;
+    const key = actionKey(action);
+    const group = groups.get(key) ?? { what: actionText({ ...action, value: undefined, chars: undefined }), typing: action.kind === 'typing', renders: [], chars: 0, latency: [] };
+    group.renders.push(s.reaction.renders);
+    group.chars += action.chars ?? 0;
+    if (s.latency) group.latency.push(s.latency.duration);
+    groups.set(key, group);
+  }
+  const seconds = Math.max(rec.durationMs, 1) / 1000;
+  return {
+    ...(rec.id ? { id: rec.id } : {}),
+    createdAt: rec.createdAt,
+    path: pathOf(rec.page.url),
+    area: rec.scope?.name ?? null,
+    durationMs: rec.durationMs,
+    actions: [...groups].map(([key, g]) => ({
+      key,
+      what: g.typing ? g.what.replace(/^typing 0 chars/, 'typing') : g.what,
+      n: g.renders.length,
+      // Typing is priced per character: two runs never type the same amount, and a keystroke is what gets repeated.
+      per: g.typing && g.chars ? ('char' as const) : ('action' as const),
+      renders: g.typing && g.chars ? +(g.renders.reduce((x, y) => x + y, 0) / g.chars).toFixed(1) : median(g.renders),
+      ...(g.latency.length ? { latencyMs: Math.round(median(g.latency)) } : {}),
+    })),
+    backgroundPerSec: +(Math.max(0, rec.totals.renders - reacted) / seconds).toFixed(1),
+    wastedPerSec: +(rec.totals.rendersWithoutDom / seconds).toFixed(1),
+  };
+}
+
+export interface ActionChange {
+  action: string;
+  per: 'action' | 'char';
+  times: { before: number; after: number };
+  renders: Delta;
+  latencyMs?: Delta;
+}
+
+export interface DigestComparison {
+  /** Same page and area: the numbers below mean something side by side. */
+  comparable: boolean;
+  warnings: string[];
+  actions: ActionChange[];
+  /** Done in one of the two recordings only. */
+  unmatched: { before: string[]; after: string[] };
+  backgroundPerSec: Delta;
+  wastedPerSec: Delta;
+}
+
+/** The same actions side by side, the biggest change first; what was done in one run only is listed, not compared. */
+export function compareDigests(a: Digest, b: Digest): DigestComparison {
+  const warnings: string[] = [];
+  if (a.path !== b.path) warnings.push(`page differs: ${a.path} vs ${b.path}`);
+  if (a.area !== b.area) warnings.push(`area differs: ${a.area ?? 'whole app'} vs ${b.area ?? 'whole app'}`);
+  const after = new Map(b.actions.map((x) => [x.key, x]));
+  const matched = new Set<string>();
+  const actions: ActionChange[] = [];
+  for (const x of a.actions) {
+    const y = after.get(x.key);
+    if (!y || x.per !== y.per) continue;
+    matched.add(x.key);
+    actions.push({
+      action: y.what,
+      per: y.per,
+      times: { before: x.n, after: y.n },
+      renders: delta(x.renders, y.renders),
+      ...(x.latencyMs !== undefined || y.latencyMs !== undefined ? { latencyMs: delta(x.latencyMs ?? null, y.latencyMs ?? null) } : {}),
+    });
+  }
+  const size = (c: ActionChange) => Math.abs(c.renders.delta ?? 0);
+  return {
+    comparable: warnings.length === 0,
+    warnings,
+    actions: actions.sort((p, q) => size(q) - size(p)),
+    unmatched: {
+      before: a.actions.filter((x) => !matched.has(x.key)).map((x) => x.what),
+      after: b.actions.filter((x) => !matched.has(x.key)).map((x) => x.what),
+    },
+    backgroundPerSec: delta(a.backgroundPerSec, b.backgroundPerSec),
+    wastedPerSec: delta(a.wastedPerSec, b.wastedPerSec),
+  };
 }
 
 /** Before/after of two recordings, per second where durations differ; warns when they were not taken alike. */
@@ -153,7 +253,7 @@ export function compareRecordings(a: RecordingV2, b: RecordingV2, options: Compa
       })
       .sort((p, q) => Math.abs(q.commitsPerSec.delta ?? 0) - Math.abs(p.commitsPerSec.delta ?? 0))
       .slice(0, top),
-    actions: compareActions(a, b),
+    actions: compareDigests(digestOf(a), digestOf(b)).actions,
     plugins,
   };
 }

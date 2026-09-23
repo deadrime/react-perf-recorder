@@ -1,3 +1,5 @@
+import type { Digest } from '../shared/compare';
+
 export type Corner = 'bottom-left' | 'bottom-right' | 'top-left' | 'top-right';
 
 /** How far the panel sits from its corner's two edges, in pixels. */
@@ -25,6 +27,18 @@ export interface PanelState {
 
 const KEY = 'react-perf-recorder:v1';
 const ON_LOAD_KEY = 'react-perf-recorder:record-on-load';
+const PREVIOUS_KEY = 'react-perf-recorder:previous';
+
+/** The digest of the last recording in this tab: the next one is compared with it, across reloads and HMR. */
+export function takePrevious(next: Digest): Digest | null {
+  try {
+    const raw = sessionStorage.getItem(PREVIOUS_KEY);
+    sessionStorage.setItem(PREVIOUS_KEY, JSON.stringify(next));
+    return raw ? (JSON.parse(raw) as Digest) : null;
+  } catch {
+    return null;
+  }
+}
 
 export interface RecordOnLoad {
   names?: string[];

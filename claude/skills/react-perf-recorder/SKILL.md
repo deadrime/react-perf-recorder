@@ -71,7 +71,7 @@ a session is masked, in the path, the query and the fragment alike. Driving the 
 | `list_recordings` | sessions, newest first: status (`recording`, `done`, `interrupted`), area, commits, renders, top root |
 | `get_recording` | `id` (`latest`, `latest-1`) and `section`; `hooks: 'short'` cuts hook chains at the library call |
 | `wait_for_recording` | waits for a person to finish (`until: 'done'`) or start (`'started'`) one; two minutes by default |
-| `compare_recordings` | before and after: totals per second and per commit, roots that appeared, left or changed, causes, the same actions, plugin metrics; warns about a different viewport, page, area or conditions |
+| `compare_recordings` | before and after: totals per second and per commit, roots that appeared, left or changed, causes, the same actions (median per time done, per character for typing), plugin metrics; warns about a different viewport, page, area or conditions |
 
 **One call usually holds the whole answer.** The default `summary` carries the totals, the cascade roots with the
 reason, the hook chain and the `file:line` behind each one, what scheduled the commits, the costliest actions and

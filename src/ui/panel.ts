@@ -8,7 +8,9 @@ import { describeArea } from './describe';
 import { Picker, type TreeActions, type TreeRow } from './picker';
 import { matches } from './shortcuts';
 import { dockOf, dockStyle } from './dock';
-import { defaults, loadState, saveState, setRecordOnLoad, type Corner, type PanelState } from './storage';
+import { compareDigests, digestOf } from '../shared/compare';
+import type { Comparison } from './components/Compare';
+import { defaults, loadState, saveState, setRecordOnLoad, takePrevious, type Corner, type PanelState } from './storage';
 import { STYLES } from './styles';
 
 export interface PanelOptions {
@@ -143,6 +145,7 @@ export class Panel {
       dragStart: (event) => this.onDragStart(event),
       dismissResult: () => {
         this.result = null;
+        this.compared = null;
         this.sync();
       },
     };
@@ -255,6 +258,7 @@ export class Panel {
       message: this.message,
       tree: this.tree,
       result: this.result,
+      compared: this.compared,
       on: this.handlers,
     };
   }
@@ -285,12 +289,16 @@ export class Panel {
     this.sync();
   }
 
+  /** The last recording against the one before it in this tab, when they are of the same page and area. */
+  private compared: Comparison | null = null;
+
   private async stop() {
     if (!this.engine.recording) return;
     this.busy = true;
     this.sync();
     try {
       this.result = await this.engine.stop();
+      this.compared = compareWithPrevious(this.result);
     } catch (error) {
       this.say(String((error as Error)?.message ?? error), 'error');
     } finally {
@@ -500,4 +508,15 @@ export class Panel {
   private persist() {
     saveState(this.state);
   }
+}
+
+/** Worth a place in the report only when the two runs share something to set side by side. */
+function compareWithPrevious(rec: Saved): Comparison | null {
+  const digest = digestOf(rec);
+  const previous = takePrevious(digest);
+  if (!previous || (previous.id && previous.id === digest.id)) return null;
+  const result = compareDigests(previous, digest);
+  const wastedMoved = Math.abs(result.wastedPerSec.delta ?? 0) >= 1;
+  if (!result.comparable || (!result.actions.length && !wastedMoved)) return null;
+  return { ...result, since: previous.createdAt };
 }

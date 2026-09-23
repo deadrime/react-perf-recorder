@@ -127,6 +127,6 @@ describe('MCP server', () => {
       after: '20260919-110000-OrderForm-panel-bbbb',
     });
     expect(result.roots[0]).toMatchObject({ root: 'Amount', perHit: { before: 80, after: 8 } });
-    expect(result.actions[0].rendersPerChar).toMatchObject({ before: 80, after: 8 });
+    expect(result.actions[0]).toMatchObject({ per: 'char', renders: { before: 80, after: 8 } });
   });
 });

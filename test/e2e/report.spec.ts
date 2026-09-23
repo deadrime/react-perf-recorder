@@ -105,3 +105,36 @@ test('Show all puts the tracks back as the report opened them', async ({ page })
   await page.locator('[data-rpr="tl-overview"]').dblclick();
   await expect.poll(width).toBeCloseTo(fit, 0);
 });
+
+test('a second recording of the same page is set against the first, per click, however many clicks', async ({ page }) => {
+  const switchTabs = (times: number) => async () => {
+    for (let i = 0; i < times; i++) {
+      await page.getByTestId('tab-people').click();
+      await page.getByTestId('tab-chat').click();
+    }
+  };
+  // The first recording in a tab has nothing to be compared with.
+  await recordFromPanel(page, '/app?rpr=panel&tick=150', switchTabs(1));
+  await expect(page.locator('details[data-fold="compare"]')).toHaveCount(0);
+
+  // Three round trips against one: the rows are per click, and say how many there were.
+  await recordFromPanel(page, '/app?rpr=panel&tick=150', switchTabs(3));
+  const compare = page.locator('details[data-fold="compare"]');
+  await expect(compare).toHaveAttribute('open', '');
+  await expect(compare.locator('summary')).toContainText(/vs \d/);
+  const people = compare.locator('[data-rpr="cmp-row"]', { hasText: '«tab-people»' });
+  await expect(people.locator('.cmp-times')).toHaveText('1× · 3×');
+  await expect(people.locator('.cmp-unit')).toHaveText('/click');
+  // Nothing changed in the code between the runs: the clicks cost the same.
+  const [before, after] = ((await people.locator('.cmp-value').textContent()) ?? '').split(' → ').map(Number);
+  expect(after).toBe(before);
+  await expect(compare.locator('[data-rpr="cmp-row"]', { hasText: 'wasted renders' })).toHaveCount(1);
+
+  // Another page is not compared with this one.
+  await page.goto('/basics/cache?rpr=panel');
+  await page.locator('[data-rpr="record"]').click();
+  await page.waitForTimeout(500);
+  await page.locator('[data-rpr="stop"]').click();
+  await expect(page.locator('[data-rpr="result"]')).toContainText('saved');
+  await expect(page.locator('details[data-fold="compare"]')).toHaveCount(0);
+});
