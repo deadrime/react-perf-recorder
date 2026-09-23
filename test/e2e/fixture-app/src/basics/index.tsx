@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import { BugStrip } from '../Demo';
+import { Cache } from './Cache';
 import { Children } from './Children';
 import { Contexts } from './Contexts';
 import { Effects } from './Effects';
@@ -11,6 +12,8 @@ import { Subscriptions } from './Subscriptions';
 import { Keys } from './Keys';
 import { MemoCallback } from './MemoCallback';
 import { Props } from './Props';
+import { ReadWhenNeeded } from './ReadWhenNeeded';
+import { Refs } from './Refs';
 import { StateDown } from './StateDown';
 
 export interface BasicsCase {
@@ -33,23 +36,38 @@ export const BASICS: Record<string, BasicsCase> = {
   },
   props: {
     title: 'a new object is a new prop',
-    what: 'An object or an array written inside the render is a new one every time, and memo has nothing to compare.',
+    what: 'An object, an array or a JSX element written inside the render is a new one every time, and memo has nothing to compare.',
     element: Props,
   },
   state: {
     title: 'state belongs to the smallest component that shows it',
-    what: 'A clock ticking in a card renders the whole card; the same clock in a component of its own renders itself.',
+    what: 'A clock ticking in a card renders the whole card — and hidden in a custom hook, it renders whoever calls the hook.',
     element: StateDown,
   },
+  ref: {
+    title: 'a value nobody draws belongs in a ref',
+    what: 'State for a value only a handler reads renders for nothing; a ref holds it quietly, and keeps a handler stable too.',
+    element: Refs,
+  },
   context: {
-    title: 'one context for two unrelated things',
-    what: 'Two values in one context wake up both readers; two contexts wake up the one whose value changed.',
+    title: 'who a context wakes up',
+    what: 'Two unrelated values in one context, or a value object built in the provider: readers render with nothing new to show.',
     element: Contexts,
   },
   subscriptions: {
     title: 'subscribe to what you show',
     what: 'The whole object, a fresh array, the exact number — three ways to ask a store for more than is on the screen.',
     element: Subscriptions,
+  },
+  snapshot: {
+    title: 'read it when you need it',
+    what: 'A value used only in a click handler needs no subscription: reading the store at the click costs no renders at all.',
+    element: ReadWhenNeeded,
+  },
+  cache: {
+    title: 'a cache smaller than the data',
+    what: 'A selector cached by argument, with fewer slots than rows, evicts itself: every row gets a new object with the same content.',
+    element: Cache,
   },
   effect: {
     title: 'derive it while you render',

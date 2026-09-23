@@ -4,6 +4,12 @@ import { expect, test, type Page } from '@playwright/test';
 const countsOf = (page: Page, side: 'broken' | 'fixed') =>
   page.locator(`[data-case="${side}"] .count`).evaluateAll((els) => els.map((el) => Number((el as HTMLElement).dataset.count)));
 
+/** The counters of one pair, on a page that shows more than one mistake. */
+const countsIn = (page: Page, pair: string, side: 'broken' | 'fixed') =>
+  page
+    .locator(`[data-pair="${pair}"] [data-case="${side}"] .count`)
+    .evaluateAll((els) => els.map((el) => Number((el as HTMLElement).dataset.count)));
+
 test('memo only skips a child when the handler it gets stays the same', async ({ page }) => {
   await page.goto('/basics/memo');
   await expect(page.getByTestId('render')).toBeVisible();
@@ -78,19 +84,22 @@ test('an object written in render is a new prop every time', async ({ page }) =>
   await page.goto('/basics/props');
   for (let i = 0; i < 3; i++) await page.getByTestId('render').click();
   // The panel rendered four times; on the left the cards came along, on the right they did not.
-  expect(await countsOf(page, 'broken')).toEqual([4, 4, 4]);
-  expect(await countsOf(page, 'fixed')).toEqual([1, 1, 1]);
+  expect(await countsIn(page, 'objects', 'broken')).toEqual([4, 4, 4]);
+  expect(await countsIn(page, 'objects', 'fixed')).toEqual([1, 1, 1]);
+  // A JSX element is an object as well: made in render, it is a new prop for the memo badge every time.
+  expect(await countsIn(page, 'element', 'broken')).toEqual([4, 4, 4]);
+  expect(await countsIn(page, 'element', 'fixed')).toEqual([1, 1, 1]);
 
   // When the tag really changes, both sides render — that is the render nobody argues with.
   await page.getByTestId('filter').click();
-  expect(await countsOf(page, 'fixed')).toEqual([2, 2, 2]);
+  expect(await countsIn(page, 'objects', 'fixed')).toEqual([2, 2, 2]);
 });
 
 test('a clock in its own component leaves the card alone', async ({ page }) => {
   await page.goto('/basics/state');
   const clocks = async () => ({
-    broken: await countsOf(page, 'broken'),
-    fixed: await countsOf(page, 'fixed'),
+    broken: await countsIn(page, 'where', 'broken'),
+    fixed: await countsIn(page, 'where', 'fixed'),
   });
   const before = await clocks();
   await page.waitForTimeout(2200);
@@ -101,12 +110,99 @@ test('a clock in its own component leaves the card alone', async ({ page }) => {
   expect(after.fixed[0]).toBeGreaterThan(before.fixed[0]);
 });
 
+test('a clock kept in a hook renders whoever calls it', async ({ page }) => {
+  await page.goto('/basics/state');
+  // The deadline passes two seconds in; by three and a half the clock has ticked on past it.
+  await page.waitForTimeout(3500);
+  const [broken] = await countsIn(page, 'hook', 'broken');
+  const [fixed] = await countsIn(page, 'hook', 'fixed');
+  expect(broken).toBeGreaterThan(3);
+  // The hook that keeps the answer: the first render and the one when the answer flipped.
+  expect(fixed).toBe(2);
+  await expect(page.locator('[data-pair="hook"] [data-case="fixed"]')).toContainText('overdue');
+});
+
 test('two values in one context wake up both readers', async ({ page }) => {
   await page.goto('/basics/context');
   await page.getByTestId('theme').click();
   // Left: the reader of the user renders although the user did not change. Right: only the theme reader.
-  expect(await countsOf(page, 'broken')).toEqual([2, 2]);
-  expect(await countsOf(page, 'fixed')).toEqual([1, 2]);
+  expect(await countsIn(page, 'split', 'broken')).toEqual([2, 2]);
+  expect(await countsIn(page, 'split', 'fixed')).toEqual([1, 2]);
+});
+
+test('a value object built in the provider wakes every reader each time it renders', async ({ page }) => {
+  await page.goto('/basics/context');
+  await page.waitForTimeout(2300);
+  const providers = await page
+    .locator('[data-pair="inline"] [data-provider-renders]')
+    .evaluateAll((els) => els.map((el) => Number((el as HTMLElement).dataset.providerRenders)));
+  // Both providers render with the clock above them, the same number of times.
+  expect(providers[0]).toBeGreaterThan(2);
+  expect(providers[1]).toBe(providers[0]);
+  // On the left the readers render with their provider; on the right they have not rendered since they mounted.
+  expect((await countsIn(page, 'inline', 'broken')).every((n) => n > 2)).toBe(true);
+  expect(await countsIn(page, 'inline', 'fixed')).toEqual([1, 1]);
+  // The pair above has no clock over it, and nothing reaches it.
+  expect(await countsIn(page, 'split', 'broken')).toEqual([1, 1]);
+
+  // A real change of the theme reaches both sides, and both of them show it.
+  await page.getByTestId('theme').click();
+  await expect(page.locator('[data-pair="inline"] [data-case="broken"]')).toContainText('theme: light');
+  await expect(page.locator('[data-pair="inline"] [data-case="fixed"]')).toContainText('theme: light');
+  expect(await countsIn(page, 'inline', 'fixed')).toEqual([2, 2]);
+});
+
+test('a value read in the handler costs no subscription', async ({ page }) => {
+  await page.goto('/basics/snapshot');
+  await page.waitForTimeout(1800);
+  const [broken] = await countsOf(page, 'broken');
+  const [fixed] = await countsOf(page, 'fixed');
+  expect(broken).toBeGreaterThan(2);
+  expect(fixed).toBe(1);
+  // Both of them still send who was typing: the one that never subscribed asked at the moment of the click.
+  await page.getByTestId('send-subscribed').click();
+  await page.getByTestId('send-read').click();
+  await expect(page.getByTestId('sent-subscribed')).toContainText('sent while');
+  await expect(page.getByTestId('sent-read')).toContainText('sent while');
+});
+
+test('a cache with fewer slots than rows evicts itself on every update', async ({ page }) => {
+  await page.goto('/basics/cache');
+  await page.waitForTimeout(1800);
+  const [broken, fixed] = [await countsOf(page, 'broken'), await countsOf(page, 'fixed')];
+  expect(broken).toHaveLength(4);
+  expect(broken.every((n) => n > 2)).toBe(true);
+  expect(fixed).toEqual([1, 1, 1, 1]);
+});
+
+test('a value nobody draws, kept in state, renders on every change of it', async ({ page }) => {
+  await page.goto('/basics/ref');
+  const sweep = async (id: string) => {
+    const pad = (await page.getByTestId(id).boundingBox())!;
+    await page.mouse.move(pad.x + 10, pad.y + 10);
+    await page.mouse.move(pad.x + pad.width - 10, pad.y + 40, { steps: 15 });
+  };
+  await sweep('pad-state');
+  await sweep('pad-ref');
+  const [broken] = await countsIn(page, 'spot', 'broken');
+  const [fixed] = await countsIn(page, 'spot', 'fixed');
+  expect(broken).toBeGreaterThan(10);
+  expect(fixed).toBe(1);
+  // The ref still knows where the pointer was: pinning works the same on both.
+  await page.getByTestId('pin-ref').click();
+  await expect(page.getByTestId('pinned-ref')).toContainText('pinned at');
+});
+
+test('a handler that reads the latest value through a ref stays the same handler', async ({ page }) => {
+  await page.goto('/basics/ref');
+  await page.getByTestId('text-deps').pressSequentially('hello', { delay: 30 });
+  await page.getByTestId('text-ref').pressSequentially('hello', { delay: 30 });
+  // The memo button: a new handler on every letter on the left, the same one on the right.
+  expect(await countsIn(page, 'latest', 'broken')).toEqual([6]);
+  expect(await countsIn(page, 'latest', 'fixed')).toEqual([1]);
+  // And it still sends what was typed last.
+  await page.getByTestId('send-ref').click();
+  await expect(page.getByTestId('sent-ref')).toHaveText('sent: hello');
 });
 
 test('a store wakes whoever asked for more than is on the screen', async ({ page }) => {
@@ -181,7 +277,7 @@ test('a form left to the DOM does not render while you type', async ({ page }) =
 });
 
 test('every case can show the code behind it, with the line that matters marked', async ({ page }) => {
-  for (const id of ['memo', 'keys', 'props', 'state', 'context', 'subscriptions', 'effect', 'nested', 'children', 'router', 'form']) {
+  for (const id of ['memo', 'keys', 'props', 'state', 'ref', 'context', 'subscriptions', 'snapshot', 'cache', 'effect', 'nested', 'children', 'router', 'form']) {
     await page.goto(`/basics/${id}`);
     const folded = page.locator('.code');
     await expect(folded.first()).toBeVisible();

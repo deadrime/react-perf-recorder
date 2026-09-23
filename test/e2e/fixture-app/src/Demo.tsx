@@ -1,5 +1,5 @@
 import { BASICS } from './basics';
-import { BUGS, SCENARIOS, enabledBugs, type Bug } from './bugs';
+import { BUGS, SCENARIOS, enabledBugs } from './bugs';
 
 /**
  * The fixture doubles as the demo: every seeded bug is a card that opens the app with that bug on, says what to do
@@ -15,20 +15,19 @@ body { margin: 0; background: #131317; }
 .demo code { color: #ffd60a; }
 .demo .steps { margin: 0 0 24px; padding-left: 18px; color: #b9b9c2; }
 .demo .steps li { margin: 3px 0; }
-.demo .clean { display: inline-block; margin-bottom: 26px; padding: 8px 12px; border: 1px solid #45454f; border-radius: 8px;
-  background: #23232a; color: #e8e8ea; text-decoration: none; }
-.demo .clean:hover { background: #2f2f38; }
 .demo .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 12px; }
+.demo .sandbox { display: flex; align-items: baseline; gap: 10px; margin: 0 0 26px; padding: 10px 14px; border: 1px solid #0a84ff;
+  border-radius: 10px; background: rgba(10,132,255,.08); color: #e8e8ea; text-decoration: none; }
+.demo .sandbox:hover { background: rgba(10,132,255,.16); }
+.demo .sandbox b { color: #fff; }
+.demo .sandbox span { color: #b9b9c2; }
+.demo .section { margin: 0 0 6px; font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: #8c8c96; }
+.demo .section + p { margin-bottom: 12px; }
 .demo .card { display: flex; flex-direction: column; gap: 7px; padding: 12px 14px; border: 1px solid #3a3a44; border-radius: 10px;
   background: rgba(36,36,42,.6); color: inherit; text-decoration: none; }
 .demo .card:hover { border-color: #0a84ff; background: rgba(46,46,56,.75); }
 .demo .card h2 { font-size: 14px; margin: 0; color: #fff; }
 .demo .card .what { color: #b9b9c2; margin: 0; }
-.demo .card .shows { color: #9fb7ff; margin: 0; }
-.demo .card .meta { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 2px 12px; margin-top: auto; padding-top: 2px;
-  color: #8c8c96; font-size: 12px; }
-.demo .card .try { color: #ffd60a; }
-.demo .section { margin: 26px 0 10px; font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: #8c8c96; }
 `;
 
 /** The strip sits on the app's own page, which is left unstyled on purpose: it may not touch anything but itself. */
@@ -41,51 +40,45 @@ const STRIP_STYLES = `
 .strip .try { color: #ffd60a; }
 `;
 
-const href = (id: Bug) => `/bug/${id}`;
-
+/**
+ * The front page is the textbook cases only. The chat with its seeded bugs (`/app`, `/bug/<flag>`) is still served —
+ * the e2e tests record it, and a link or a recording can point at it — but it is not how a person meets the tool:
+ * a real app's bug is learnt faster from the two-widget version of the same mistake.
+ */
 export const Catalogue = () => (
   <>
     <style>{DEMO_STYLES}</style>
     <div className="demo">
       <h1>react-perf-recorder — demo</h1>
       <p>
-        A small team chat with a store, a live feed and a composer, carrying thirteen re-render bugs of the kind any
-        React app grows. Open one, record a few seconds, and read what the recorder says about it.
+        Textbook re-render mistakes, each on a page of its own: the broken and the fixed version of one widget side by
+        side, with the renders and the mounts counted on every row. Open one, record a few seconds, and read what the
+        recorder says about it.
       </p>
       <ol className="steps">
         <li>
-          Open a card — the app runs with that bug on. The recorder's panel is in the corner (<code>Alt+Shift+R</code>{' '}
-          opens and closes it).
+          Open a card. The recorder's panel is in the corner (<code>Alt+Shift+R</code> opens and closes it) — drag it
+          anywhere, it sticks to the nearer side.
         </li>
         <li>
-          Press <code>● Rec</code>, do what the card asks, press <code>■ Stop</code>. The summary names the cascade
-          roots and why they rendered.
+          Press <code>● Rec</code>, press the button on the page, press <code>■ Stop</code>. The summary names the
+          cascade roots and why they rendered.
         </li>
         <li>
-          Turn on <code>highlight</code> to see the renders outlined live, and <code>⌖ Area</code> to record one part
-          of the page only.
+          Turn on <code>highlight</code> to see the renders outlined live, and <code>⌖ Pick</code> to record one of the
+          two versions only.
         </li>
-        <li>Record the clean app the same way and compare: that is the before-and-after a fix should produce.</li>
       </ol>
-      <a className="clean" href="/app">
-        ▷ Open the app with no bugs — the baseline
+      {/* The chat with no bug on: a real-looking app to try the recorder on, with no answer waiting to be found. */}
+      <a className="sandbox" href="/app" data-testid="sandbox">
+        <b>▷ Sandbox</b>
+        <span>a small team chat with a store, a live feed and a form — open it and record whatever you like</span>
       </a>
-      <h2 className="section">In a real app</h2>
-      <div className="cards">
-        {(Object.keys(BUGS) as Bug[]).map((id) => (
-          <a className="card" href={href(id)} key={id} data-bug={id}>
-            <h2>{BUGS[id].title}</h2>
-            <p className="what">{BUGS[id].what}</p>
-            <p className="shows">{BUGS[id].shows}</p>
-            <span className="meta">
-              <span className="try">try: {SCENARIOS[BUGS[id].scenario].short}</span>
-              <span>{BUGS[id].file}</span>
-            </span>
-          </a>
-        ))}
-      </div>
       <h2 className="section">The textbook ones</h2>
-      <p>Two versions of one widget side by side, one of them wrong. Turn on <code>highlight</code> and press the button.</p>
+      <p>
+        Two versions of one widget side by side, one of them wrong, with the renders counted on every row. Turn on{' '}
+        <code>highlight</code> and press the button.
+      </p>
       <div className="cards">
         {Object.entries(BASICS).map(([id, basic]) => (
           <a className="card" href={`/basics/${id}`} key={id} data-basic={id}>
@@ -105,13 +98,13 @@ export const BugStrip = ({ note }: { note?: string }) => {
     <>
       <style>{STRIP_STYLES}</style>
       <div className="strip" data-testid="strip">
-        <a href="/">← all bugs</a>
+        <a href="/">← all cases</a>
         {note ? (
           <span>
             <b>{note}</b>
           </span>
         ) : on.length === 0 ? (
-          <span>no bug is on — this is the clean baseline</span>
+          <span>sandbox — a small team chat to try the recorder on: record anything, nothing here is broken on purpose</span>
         ) : (
           on.map((id) => (
             <span key={id}>

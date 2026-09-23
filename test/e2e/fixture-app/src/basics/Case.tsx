@@ -69,3 +69,14 @@ export const Panel = ({
     {code ? <Code source={code} /> : null}
   </section>
 );
+
+/**
+ * One of several mistakes a case shows, under a heading of its own: the broken and the fixed version side by side.
+ * `id` names the pair, so a test can read the counters of one pair without counting the others.
+ */
+export const Pair = ({ id, title, children }: { id: string; title: string; children: ReactNode }) => (
+  <div data-pair={id}>
+    <h3 className="pair">{title}</h3>
+    <div className="two">{children}</div>
+  </div>
+);

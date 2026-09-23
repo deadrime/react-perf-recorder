@@ -1,5 +1,5 @@
-import { memo, useMemo, useState } from 'react';
-import { Case, Panel, RenderCount, useRenderCount } from './Case';
+import { memo, useMemo, useState, type ReactNode } from 'react';
+import { Case, Pair, Panel, RenderCount, useRenderCount } from './Case';
 
 interface CardProps {
   name: string;
@@ -38,6 +38,16 @@ const Stable = ({ filter }) => {
   return NAMES.map((name) => <Card key={name} name={name} style={STYLE} tags={tags} />);
 };`;
 
+const BROKEN_ELEMENT = `
+{NAMES.map((name) => (
+  <Badge key={name} name={name} icon={<Star />} />   // ← <Star /> is an object, and a new one every render
+))}`;
+
+const FIXED_ELEMENT = `
+const STAR = <Star />;   // ← one element, made once
+
+{NAMES.map((name) => <Badge key={name} name={name} icon={STAR} />)}`;
+
 // Outside the component: written once, the same object forever.
 const STYLE = { paddingLeft: 10 };
 const NAMES = ['Anna', 'Boris', 'Chen'];
@@ -63,6 +73,40 @@ const Stable = ({ filter }: { filter: string }) => {
   );
 };
 
+const Star = () => <span aria-hidden="true">★</span>;
+
+/** Takes an icon as an element: a slot, the way a button, a menu item or a card header does. */
+const Badge = memo(({ name, icon }: { name: string; icon: ReactNode }) => {
+  const renders = useRenderCount();
+  return (
+    <li>
+      <span className="grow">
+        {icon} {name}
+      </span>
+      <RenderCount n={renders} />
+    </li>
+  );
+});
+
+// The element itself, made once: JSX is a call that returns an object, and this is the object.
+const STAR = <Star />;
+
+const InlineIcon = () => (
+  <ul className="rows">
+    {NAMES.map((name) => (
+      <Badge key={name} name={name} icon={<Star />} />
+    ))}
+  </ul>
+);
+
+const HoistedIcon = () => (
+  <ul className="rows">
+    {NAMES.map((name) => (
+      <Badge key={name} name={name} icon={STAR} />
+    ))}
+  </ul>
+);
+
 export const Props = () => {
   const [ticks, setTicks] = useState(0);
   const [run, setRun] = useState(0);
@@ -72,15 +116,16 @@ export const Props = () => {
       title="a new object is a new prop"
       what={
         <>
-          Both lists pass a <code>style</code> and a list of tags to the same <code>memo</code> card. Nothing about them
-          changes when the panel renders — but on the left they are written inside the render, so every render builds a
-          new object and a new array, and <code>memo</code> has nothing to hold on to.
+          Every list passes its <code>memo</code> rows something that does not change when the panel renders — but on
+          the left it is written inside the render, so every render builds a new one, and <code>memo</code> has nothing
+          to hold on to. An object, an array, and — the one nobody sees — a JSX element: <code>{'<Star />'}</code> is
+          an object too.
         </>
       }
     >
       <p className="bar">
         <button type="button" data-testid="render" onClick={() => setTicks((t) => t + 1)}>
-          Render both panels
+          Render the panels
         </button>
         <button type="button" data-testid="filter" onClick={() => setFilter((f) => (f === 'open' ? 'done' : 'open'))}>
           Change the tag ({filter})
@@ -97,7 +142,7 @@ export const Props = () => {
         </button>
         <span className="muted">rendered {ticks}×</span>
       </p>
-      <div className="two">
+      <Pair id="objects" title="an object or an array">
         <Panel
           kind="broken"
           title="style={{…}} tags={[…]}"
@@ -114,7 +159,20 @@ export const Props = () => {
         >
           <Stable key={run} filter={filter} />
         </Panel>
-      </div>
+      </Pair>
+      <Pair id="element" title="an element is an object too">
+        <Panel
+          kind="broken"
+          title="icon={<Star />}"
+          says="The recorder says: parent: props same: icon — the badge got a new element that draws the same star."
+          code={BROKEN_ELEMENT}
+        >
+          <InlineIcon key={run} />
+        </Panel>
+        <Panel kind="fixed" title="icon={STAR}" says="The recorder says nothing: the same element every time, so memo skips the badge." code={FIXED_ELEMENT}>
+          <HoistedIcon key={run} />
+        </Panel>
+      </Pair>
     </Case>
   );
 };

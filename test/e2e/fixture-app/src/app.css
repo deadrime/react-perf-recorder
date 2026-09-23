@@ -600,3 +600,30 @@ input {
   background: rgba(93, 220, 154, 0.08);
   color: #cdf5e1;
 }
+
+/* A surface to move the pointer over: what happens to its position is the whole point of the ref case. */
+.pad {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  height: 110px;
+  padding: 10px;
+  border: 1px dashed var(--line);
+  border-radius: 10px;
+  color: var(--muted);
+  font-size: 12px;
+  user-select: none;
+}
+
+.pad .grow {
+  flex: 1;
+}
+
+.pad button {
+  padding: 4px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
