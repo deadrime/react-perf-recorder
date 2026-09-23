@@ -194,3 +194,25 @@ test('a commit picked on the timeline outlines its components on the page, until
   await page.locator('.result-bar button', { hasText: 'Dismiss' }).click();
   expect(await pinned()).toBe(0);
 });
+
+test('Repeat replays in the area the report was recorded in, not the one the panel shows now', async ({ page }) => {
+  await page.goto('/app?rpr=panel&tick=150');
+  await expect(page.getByTestId('unread')).toBeVisible();
+  await page.locator('[data-rpr="pick"]').click();
+  await page.getByTestId('messages').click();
+  await page.locator('[data-rpr="tree"] li[data-name="MessageList"]').click();
+  await expect(page.locator('[data-rpr="scope"]')).toHaveText('MessageList');
+  await page.locator('[data-rpr="record"]').click();
+  await page.getByTestId('tab-people').click();
+  await page.getByTestId('tab-chat').click();
+  await page.locator('[data-rpr="stop"]').click();
+  await expect(page.locator('[data-rpr="result"]')).toContainText('saved');
+
+  // Back to the whole app, then Repeat: the replay still records MessageList, so the two compare.
+  await page.locator('[data-rpr="clear-scope"]').click();
+  await expect(page.locator('[data-rpr="scope"]')).toBeHidden();
+  await page.locator('[data-rpr="repeat"]').click();
+  await expect(page.locator('[data-rpr="result"]')).toContainText('saved', { timeout: 15_000 });
+  await expect(page.locator('[data-rpr="scope"]')).toHaveText('MessageList');
+  await expect(page.locator('details[data-fold="compare"]')).toBeVisible();
+});

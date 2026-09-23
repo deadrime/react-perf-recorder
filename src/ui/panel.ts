@@ -156,9 +156,9 @@ export class Panel {
   }
 
   /** The area, the note and the watched components are put aside, so the reloaded page can pick the recording up. */
-  private reloadIntoRecording(replay?: ReplayPlan) {
+  private reloadIntoRecording(replay?: ReplayPlan, names = this.scope ? scopeNames(this.scope) : null) {
     setRecordOnLoad({
-      ...(this.scope ? { names: scopeNames(this.scope) } : {}),
+      ...(names ? { names } : {}),
       ...(this.state.watch.length ? { watch: this.state.watch } : {}),
       label: replay ? `replay of ${replay.from ?? 'the last recording'}` : (NOTE_IN_PANEL && this.state.label) || 'from page load',
       ...(replay ? { replay } : {}),
@@ -317,7 +317,8 @@ export class Panel {
     if (!this.result || this.engine.recording) return;
     const plan = planReplay(this.result);
     if (!plan.steps.length) return;
-    this.reloadIntoRecording(plan);
+    // The area the report was recorded in, whatever the panel shows now: a replay of another area compares nothing.
+    this.reloadIntoRecording(plan, this.resultArea);
   }
 
   /** Where a replay is: the header says it instead of the running numbers. */
@@ -334,6 +335,9 @@ export class Panel {
     if (failure) this.say(failure, 'error');
   }
 
+  /** The component path of the area the report was recorded in. */
+  private resultArea: string[] | null = null;
+
   /** The last recording against the one before it in this tab, when they are of the same page and area. */
   private compared: Comparison | null = null;
 
@@ -342,6 +346,8 @@ export class Panel {
     this.busy = true;
     this.sync();
     try {
+      // The area cannot change while recording: at stop it is the report's, kept for its Repeat.
+      this.resultArea = this.scope ? scopeNames(this.scope) : null;
       this.result = await this.engine.stop();
       this.compared = compareWithPrevious(this.result);
     } catch (error) {
