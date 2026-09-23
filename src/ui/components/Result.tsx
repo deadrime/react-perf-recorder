@@ -214,7 +214,7 @@ export function Result({ rec, onDismiss, wide, onWide }: { rec: Saved; onDismiss
               <span class="who">{name}</span>
               {plugin.highlights.slice(0, 3).map((text) => (
                 // A cache smaller than the arguments it is called with is the one line here that is always a bug.
-                <span class="badge" key={text} data-tone={/> cache size/.test(text) ? 'warn' : undefined}>
+                <span class="badge" key={text} data-tone={/cache size/.test(text) ? 'warn' : undefined}>
                   {text}
                 </span>
               ))}

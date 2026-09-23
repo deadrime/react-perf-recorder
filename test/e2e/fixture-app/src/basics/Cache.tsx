@@ -1,5 +1,5 @@
-import { useEffect } from 'react';
-import { memoizeWithArgs } from 'proxy-memoize';
+import { useEffect, useMemo } from 'react';
+import { memoize, memoizeWithArgs } from 'proxy-memoize';
 import { useStore } from 'zustand';
 import { createStore } from 'zustand/vanilla';
 import { Case, Panel, RenderCount, useRenderCount } from './Case';
@@ -13,10 +13,14 @@ const selectTask = memoizeWithArgs(
 const Task = ({ id }) => <li>{useStore(board, (s) => selectTask(s, id)).title}</li>;`;
 
 const FIXED = `
-const selectTask = memoizeWithArgs(
-  (s, id) => ({ ...s.tasks[id], id }),
-  { size: 50 }   // ← room for every row there can be, not every row there is today
-);`;
+const Task = ({ id }) => {
+  // ← a selector of the row's own: one answer to keep, and nobody else's to push it out
+  const selectTask = useMemo(() => memoize((s) => ({ ...s.tasks[id], id })), [id]);
+  return <li>{useStore(board, selectTask).title}</li>;
+};
+
+// A bigger size only puts it off: every recompute takes a slot, and a row's
+// answer goes once it is the oldest, however many slots there are.`;
 
 interface Task {
   title: string;
@@ -48,11 +52,15 @@ const useUpdates = () =>
   }, []);
 
 /**
- * The same selector twice, cached by the row's id. proxy-memoize remembers which fields an answer read, so a store
+ * One selector for every row, cached by the row's id. proxy-memoize remembers which fields an answer read, so a store
  * update that touched none of them gives the row the answer it had — if that answer is still in the cache.
  */
 const selectTight = memoizeWithArgs((s: Board, id: string) => ({ ...s.tasks[id], id }), { size: 2 });
-const selectRoomy = memoizeWithArgs((s: Board, id: string) => ({ ...s.tasks[id], id }), { size: 50 });
+/** The row's own selector: nothing else writes to its cache, so its answer stays until the task changes. */
+const useOwnTask = (id: string) => {
+  const selectTask = useMemo(() => memoize((s: Board) => ({ ...s.tasks[id], id })), [id]);
+  return useStore(board, selectTask);
+};
 
 const Row = ({ task, renders }: { task: Task; renders: number }) => (
   <li>
@@ -65,7 +73,7 @@ const Row = ({ task, renders }: { task: Task; renders: number }) => (
 );
 
 const TightRow = ({ id }: { id: string }) => <Row task={useStore(board, (s) => selectTight(s, id))} renders={useRenderCount()} />;
-const RoomyRow = ({ id }: { id: string }) => <Row task={useStore(board, (s) => selectRoomy(s, id))} renders={useRenderCount()} />;
+const OwnRow = ({ id }: { id: string }) => <Row task={useOwnTask(id)} renders={useRenderCount()} />;
 
 export const Cache = () => {
   useUpdates();
@@ -75,9 +83,11 @@ export const Cache = () => {
       what={
         <>
           Four rows read their task through one memoized selector, cached by the row's id. The store updates twice a
-          second with something no row shows, so every row should keep its answer — and on the right it does. On the
-          left the cache has two slots for four ids: each row evicts another row's answer, every call computes a new
-          object, and every row renders. It is the bug of a list that outgrew the cache it was written with.
+          second with something no row shows, so every row should keep its answer. On the left the cache has two slots
+          for four ids: each row evicts another row's answer, every call computes a new object, and every row renders.
+          More slots only put it off — the cache is a ring, every recompute takes a slot, and an answer still in use
+          goes once it is the oldest. On the right each row has a selector of its own, and nothing pushes its answer
+          out.
         </>
       }
     >
@@ -94,10 +104,10 @@ export const Cache = () => {
             ))}
           </ul>
         </Panel>
-        <Panel kind="fixed" title="{ size: 50 }" says="The recorder says nothing: every row gets back the object it already had." code={FIXED}>
+        <Panel kind="fixed" title="a selector per row" says="The recorder says nothing: every row gets back the object it already had." code={FIXED}>
           <ul className="rows">
             {IDS.map((id) => (
-              <RoomyRow key={id} id={id} />
+              <OwnRow key={id} id={id} />
             ))}
           </ul>
         </Panel>

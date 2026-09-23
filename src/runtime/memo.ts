@@ -9,7 +9,13 @@ export interface MemoStat {
   nestedCalls: number;
   recomputesOnArgSwitch: number;
   distinctArgs: number;
-  /** A size-limited cache evicted by alternating arguments: rows, cells or two forms sharing one memoized selector. */
+  /**
+   * Recomputes for arguments whose answer had already been pushed out of the cache: `size` other answers were stored
+   * since theirs. The cache is a ring, so this happens with more slots than argument sets too, once enough recomputes
+   * have gone round it.
+   */
+  evictions: number;
+  /** A size-limited cache that keeps pushing out answers still in use: rows, cells or two forms sharing one selector. */
   thrash: boolean;
 }
 
@@ -25,6 +31,9 @@ interface MemoRecord {
   recomputesOnArgSwitch: number;
   distinct: Set<string>;
   lastKey: string | null;
+  evictions: number;
+  /** For each argument set, how many recomputes there had been when its answer was stored. */
+  storedAt: Map<string, number>;
 }
 
 export interface MemoInstrumentation {
@@ -85,6 +94,8 @@ export function createMemoInstrumentation(): MemoInstrumentation {
         recomputesOnArgSwitch: 0,
         distinct: new Set(),
         lastKey: null,
+        evictions: 0,
+        storedAt: new Map(),
       };
       const inner = function (this: unknown, ...innerArgs: unknown[]) {
         if (state.on) rec.recomputes++;
@@ -108,7 +119,12 @@ export function createMemoInstrumentation(): MemoInstrumentation {
           state.depth--;
           if (!nested) {
             const key = argsKey(callArgs);
-            if (rec.recomputes > before && rec.lastKey !== null && key !== rec.lastKey) rec.recomputesOnArgSwitch++;
+            if (rec.recomputes > before) {
+              if (rec.lastKey !== null && key !== rec.lastKey) rec.recomputesOnArgSwitch++;
+              const stored = rec.storedAt.get(key);
+              if (stored !== undefined && before - stored >= rec.size) rec.evictions++;
+              if (rec.storedAt.size < MAX_DISTINCT || rec.storedAt.has(key)) rec.storedAt.set(key, rec.recomputes);
+            }
             rec.lastKey = key;
             if (rec.distinct.size < MAX_DISTINCT) rec.distinct.add(key);
           }
@@ -144,7 +160,16 @@ export function createMemoInstrumentation(): MemoInstrumentation {
     },
     start() {
       for (const rec of records())
-        Object.assign(rec, { calls: 0, recomputes: 0, nestedCalls: 0, recomputesOnArgSwitch: 0, distinct: new Set(), lastKey: null });
+        Object.assign(rec, {
+          calls: 0,
+          recomputes: 0,
+          nestedCalls: 0,
+          recomputesOnArgSwitch: 0,
+          distinct: new Set(),
+          lastKey: null,
+          evictions: 0,
+          storedAt: new Map(),
+        });
       state.on = true;
       state.depth = 0;
     },
@@ -167,12 +192,14 @@ export function createMemoInstrumentation(): MemoInstrumentation {
           nestedCalls: 0,
           recomputesOnArgSwitch: 0,
           distinctArgs: 0,
+          evictions: 0,
           thrash: false,
         };
         stat.calls += rec.calls;
         stat.recomputes += rec.recomputes;
         stat.nestedCalls += rec.nestedCalls;
         stat.recomputesOnArgSwitch += rec.recomputesOnArgSwitch;
+        stat.evictions += rec.evictions;
         stat.distinctArgs = Math.max(stat.distinctArgs, rec.distinct.size);
         merged.set(key, stat);
       }
@@ -180,7 +207,11 @@ export function createMemoInstrumentation(): MemoInstrumentation {
         .map((stat) => ({
           ...stat,
           hitRate: stat.calls ? +(1 - stat.recomputes / stat.calls).toFixed(3) : 0,
-          thrash: stat.recomputes >= 10 && stat.recomputesOnArgSwitch / stat.recomputes >= 0.5 && stat.distinctArgs > stat.size,
+          // More argument sets than slots, recomputing as they alternate; or answers pushed out while still in use,
+          // which a ring with room for every argument set does too.
+          thrash:
+            stat.recomputes >= 10 &&
+            ((stat.recomputesOnArgSwitch / stat.recomputes >= 0.5 && stat.distinctArgs > stat.size) || stat.evictions / stat.recomputes >= 0.25),
         }))
         .sort((a, b) => b.recomputes - a.recomputes);
     },

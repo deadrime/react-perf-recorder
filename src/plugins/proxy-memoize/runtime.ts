@@ -15,7 +15,11 @@ export default definePlugin(() => ({
     return {
       version: 1,
       highlights: [
-        ...thrash.slice(0, 5).map((s) => `${s.name}: ${s.recomputes}/${s.calls} recomputes, ${s.distinctArgs} argument sets > cache size ${s.size}`),
+        ...thrash.slice(0, 5).map((s) =>
+          s.distinctArgs > s.size
+            ? `${s.name}: ${s.recomputes}/${s.calls} recomputes, ${s.distinctArgs} argument sets > cache size ${s.size}`
+            : `${s.name}: ${s.recomputes}/${s.calls} recomputes, ${s.evictions} after the answer was pushed out of cache size ${s.size} (${s.distinctArgs} argument sets)`
+        ),
         ...selectors
           .filter((s) => !s.thrash)
           .slice(0, 3)
