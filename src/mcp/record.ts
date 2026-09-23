@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import type { RecordingV2 } from '../shared/schema';
+import type { ReplayPlan } from '../shared/replay';
 import { safeUrl } from '../shared/url';
 
 /**
@@ -9,7 +10,8 @@ import { safeUrl } from '../shared/url';
  * before and after — costs two calls instead of a hand-written browser driver.
  */
 export interface RecordPageOptions {
-  url: string;
+  /** Optional with `replay`: the page the replayed recording was made on. */
+  url?: string;
   /** How long to record once the page is ready; ignored when a script says when to stop. */
   ms?: number;
   label?: string;
@@ -18,6 +20,11 @@ export interface RecordPageOptions {
   watch?: string[];
   /** A module whose default export gets the Playwright page; it runs while the recording is on. */
   script?: string;
+  /**
+   * A recording to do again: its actions, at its pace, from the page load — the same scenario a person recorded,
+   * after a change of the code. Instead of `script`.
+   */
+  replay?: ReplayPlan & { url?: string };
   /** Record from the first commit of the page load, rather than from a page that has settled. */
   fromLoad?: boolean;
   viewport?: string;
@@ -110,6 +117,11 @@ const ENGINE = 'window.__REACT_PERF_RECORDER__';
  */
 export async function recordPage(options: RecordPageOptions, sessionsDir: string): Promise<RecordPageResult> {
   const { chromium } = await loadPlaywright();
+  const given = options.url ?? options.replay?.url;
+  // A recording keeps its url with the tokens masked: a masked one cannot be opened, the caller has to give it.
+  if (!given || given.includes('***')) throw new Error('url is needed: the recording to replay does not carry a usable one');
+  const url: string = given;
+  options = { ...options, url, ...(options.replay ? { fromLoad: options.fromLoad ?? true } : {}) };
   const ms = Math.max(200, options.ms ?? 3000);
   const timeout = options.timeoutMs ?? 30_000;
   const warnings: string[] = [];
@@ -133,7 +145,7 @@ export async function recordPage(options: RecordPageOptions, sessionsDir: string
     }
     // A link that signs the browser in — `/debug/<jwt>`, a magic link — is opened first and is never recorded.
     if (options.via) await page.goto(options.via, { waitUntil: 'load' });
-    const requested = options.fromLoad ? withLoadFlag(options.url) : options.url;
+    const requested = options.fromLoad ? withLoadFlag(url) : url;
     await page.goto(requested, { waitUntil: 'load' });
     try {
       // The client script is injected at the top of <head>, so by `load` it has either booted or never will:
@@ -143,14 +155,14 @@ export async function recordPage(options: RecordPageOptions, sessionsDir: string
       // Two very different failures look the same from here, so the message names both.
       const landed = page.url();
       throw new Error(
-        samePage(options.url, landed)
+        samePage(url, landed)
           ? `the recorder is not on ${landed}: the Vite plugin is not in this dev server, or the page is a production build`
-          : `${safeUrl(options.url)} went to ${safeUrl(landed)} — it is behind a sign-in. Open it through a link that signs in ` +
+          : `${safeUrl(url)} went to ${safeUrl(landed)} — it is behind a sign-in. Open it through a link that signs in ` +
             '(`via`), with a session saved once by `react-perf-recorder login <url>`, or with `cdp` against a browser you are ' +
             'already signed in to — or ask the person to record it from the panel.'
       );
     }
-    if (!samePage(options.url, page.url())) warnings.push(`asked for ${safeUrl(options.url)}, recorded ${safeUrl(page.url())}`);
+    if (!samePage(url, page.url())) warnings.push(`asked for ${safeUrl(url)}, recorded ${safeUrl(page.url())}`);
 
     // A name is the form an agent has at hand: it read the component's file, so it knows what the component is called.
     const scope = typeof options.scope === 'string' ? { names: [options.scope] } : options.scope;
@@ -175,7 +187,10 @@ export async function recordPage(options: RecordPageOptions, sessionsDir: string
         throw new Error(`${first}${names.length ? `; the page has ${names.slice(0, 20).join(', ')}` : ''}`);
       }
     }
-    if (options.script) {
+    if (options.replay) {
+      await page.evaluate(`${ENGINE}.replay(${JSON.stringify(options.replay)})`);
+      if (options.replay.skipped.length) warnings.push(`not replayed: ${options.replay.skipped.join('; ')}`);
+    } else if (options.script) {
       const module = (await import(/* @vite-ignore */ path.isAbsolute(options.script) ? options.script : path.resolve(options.script))) as {
         default?: (page: unknown) => Promise<void> | void;
       };
@@ -191,7 +206,7 @@ export async function recordPage(options: RecordPageOptions, sessionsDir: string
     return {
       id: saved.id,
       url: safeUrl(page.url()),
-      requested: safeUrl(options.url),
+      requested: safeUrl(url),
       durationSec: +(rec.durationMs / 1000).toFixed(1),
       commits: rec.totals.commitsInScope,
       renders: rec.totals.renders,

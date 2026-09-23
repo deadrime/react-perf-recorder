@@ -138,3 +138,28 @@ test('a second recording of the same page is set against the first, per click, h
   await expect(page.locator('[data-rpr="result"]')).toContainText('saved');
   await expect(page.locator('details[data-fold="compare"]')).toHaveCount(0);
 });
+
+test('Repeat reloads, does the same actions again and sets the two side by side', async ({ page }) => {
+  await recordFromPanel(page, '/app?rpr=panel&tick=150', async () => {
+    await page.getByTestId('tab-people').click();
+    await page.getByTestId('tab-chat').click();
+    await page.getByTestId('message').pressSequentially('hey', { delay: 50 });
+  });
+  const first = ((await page.locator('.result-bar .saved').textContent()) ?? '').replace('saved ', '');
+  await page.locator('[data-rpr="repeat"]').click();
+  // The page reloads into a recording and the header says where the replay is.
+  await expect(page.locator('header .live')).toContainText(/replaying \d of 3/, { timeout: 10_000 });
+  await expect(page.locator('[data-rpr="result"]')).toContainText('saved', { timeout: 15_000 });
+  const compare = page.locator('details[data-fold="compare"]');
+  const people = compare.locator('[data-rpr="cmp-row"]', { hasText: '«tab-people»' });
+  await expect(people.locator('.cmp-times')).toHaveText('1× · 1×');
+  // Nothing changed in the code: the replayed click costs what the person's did.
+  const [before, after] = ((await people.locator('.cmp-value').textContent()) ?? '').split(' → ').map(Number);
+  expect(before).toBeGreaterThan(0);
+  expect(after).toBe(before);
+  await expect(compare.locator('[data-rpr="cmp-row"]', { hasText: 'typing' }).locator('.cmp-times')).toHaveText('1× · 1×');
+  const second = ((await page.locator('.result-bar .saved').textContent()) ?? '').replace('saved ', '');
+  expect(second).not.toBe(first);
+  // What was typed is not kept, so the replay types as many characters of its own.
+  await expect(page.getByTestId('message')).toHaveValue('xxx');
+});

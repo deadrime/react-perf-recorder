@@ -111,8 +111,15 @@ after which the DOM did not change), the slowest action — and the root to fix,
 opened on its reason, hook chain and line. When no root wasted a render, the block says which rendered most
 instead of calling it a cause. Warnings come right under it, then the actions, the other roots and the timeline;
 the causes above the tracks are their colour legend, and pressing one lights up the commits it caused. Components
-and plugin notes start folded. The id, `Copy id`, `Download`, `⤢ Wide` and `Dismiss` stay at the bottom of the
-panel however far the report is scrolled.
+and plugin notes start folded. The id, `Copy id`, `↻ Repeat`, `Download`, `⤢ Wide` and `Dismiss` stay at the
+bottom of the panel however far the report is scrolled.
+
+**Before → after.** A second recording on the same page and area is set against the one before it in the tab: the
+same actions side by side, as renders per time each was done (per character for typing), so the two runs need not
+press a button the same number of times. `↻ Repeat` makes them the same anyway: it reloads the page and does the
+report's actions again at their pace — the clicks, the keys, as many characters as were typed — while recording.
+Events are dispatched the way a browser dispatches a person's, so React schedules the work as it did the first time;
+a step whose element is gone stops the replay and says which one.
 
 ## With an assistant
 
@@ -146,7 +153,7 @@ from its events.
 | -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `list_recordings`    | Newest first, with status, area, commits, renders, the top root                                                                                                                                                                                                   |
 | `get_recording`      | `id` (`latest`, `latest-1`), `section`: `summary` (default), `actions`, `roots`, `outside`, `causes`, `components`, `timeline`, `frames`, `plugins`, `plugin:<name>`…; `hooks: 'short'` prints hook chains up to the library API instead of down to the primitive |
-| `record_page`        | Opens a page in a browser of its own, records it and returns the session id — so a fix can be measured: record, change the code, record again, `compare_recordings`. `ms`, `scope` (a component's name, a path, or a selector), `watch`, `script`, `fromLoad`, `viewport`, `throttle`, `state`, `cdp`, `via`        |
+| `record_page`        | Opens a page in a browser of its own, records it and returns the session id — so a fix can be measured: record, change the code, record again, `compare_recordings`. `ms`, `scope` (a component's name, a path, or a selector), `watch`, `script`, `replay` (a recording id: do its actions again), `fromLoad`, `viewport`, `throttle`, `state`, `cdp`, `via` |
 | `wait_for_recording` | Blocks until the user finishes a recording (`until: 'done'`) or starts one                                                                                                                                                                                        |
 | `compare_recordings` | Before/after: totals, roots, causes, the same actions, plugin metrics; warns when runs differ                                                                                                                                                                     |
 

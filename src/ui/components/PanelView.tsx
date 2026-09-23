@@ -20,6 +20,8 @@ export const NOTE_IN_PANEL = false;
 export interface PanelHandlers {
   record(): void;
   recordOnLoad(): void;
+  /** Reload and do the report's actions again, recording. */
+  repeat(): void;
   stop(): void;
   pick(): void;
   editScope(): void;
@@ -60,12 +62,14 @@ export interface PanelViewProps {
   result: Saved | null;
   /** The result against the recording before it, when there is something to set side by side. */
   compared: Comparison | null;
+  replaying: { at: number; of: number } | null;
   on: PanelHandlers;
 }
 
 /** The running line in the header, in words: a letter per number saved no room and cost every reader a guess. */
-const liveText = ({ live, busy, scope }: PanelViewProps) => {
+const liveText = ({ live, busy, scope, replaying }: PanelViewProps) => {
   if (!live) return busy ? 'saving…' : '';
+  if (replaying) return `replaying ${replaying.at} of ${replaying.of} · ${live.renders} renders`;
   const commits = scope ? `${live.commitsInScope}/${live.commits} commits in area` : `${live.commits} commits`;
   return `${(live.elapsedMs / 1000).toFixed(1)}s · ${commits} · ${live.renders} renders · ${live.rendersPerSec}/s`;
 };
@@ -175,7 +179,7 @@ const View = (p: PanelViewProps): JSX.Element => (
         {p.message.text}
       </div>
       <div class="result" data-rpr="result">
-        {p.result ? <Result rec={p.result} compared={p.compared} onDismiss={p.on.dismissResult} wide={p.wide} onWide={() => p.on.setWide(!p.wide)} /> : null}
+        {p.result ? <Result rec={p.result} compared={p.compared} onRepeat={p.on.repeat} onDismiss={p.on.dismissResult} wide={p.wide} onWide={() => p.on.setWide(!p.wide)} /> : null}
       </div>
     </div>
   </div>

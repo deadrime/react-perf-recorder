@@ -2,6 +2,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test } from '@playwright/test';
 import { recordPage } from '../../src/mcp/record';
+import { compareRecordings } from '../../src/shared/compare';
+import { planReplay } from '../../src/shared/replay';
 import type { RecordingV2 } from '../../src/shared/schema';
 import { SESSIONS_DIR } from '../../playwright.config';
 
@@ -43,4 +45,34 @@ test('an area that is not on the page answers with the ones that are', async ({ 
 
 test('says what is wrong instead of recording the wrong page', async () => {
   await expect(recordPage({ url: 'data:text/html,<h1>no react here', ms: 300 }, SESSIONS_DIR)).rejects.toThrow(/the recorder is not on/);
+});
+
+test('replays what a recording did, from the page load, at its pace', async ({ baseURL, page }) => {
+  // The original: a person on the panel switching tabs and typing.
+  await page.goto(`${baseURL}/app?rpr=panel&tick=150`);
+  await expect(page.getByTestId('unread')).toBeVisible();
+  await page.locator('[data-rpr="record"]').click();
+  await page.getByTestId('tab-people').click();
+  await page.getByTestId('tab-chat').click();
+  await page.getByTestId('message').pressSequentially('hello', { delay: 50 });
+  await page.locator('[data-rpr="stop"]').click();
+  await expect(page.locator('[data-rpr="result"]')).toContainText('saved');
+  const id = ((await page.locator('.result-bar .saved').textContent()) ?? '').replace('saved ', '');
+  const original = saved(id);
+
+  const result = await recordPage({ replay: { ...planReplay({ ...original, id }), url: original.page.url } }, SESSIONS_DIR);
+  const again = saved(result.id!);
+  const kinds = (rec: RecordingV2) => rec.actions.map((a) => [a.kind, a.target?.testId, a.chars ?? null]);
+  // The same actions, in the same order, with the same number of keystrokes.
+  expect(kinds(again)).toEqual(kinds(original));
+  expect(again.totals.mounts).toBeGreaterThan(10);
+  const cmp = compareRecordings(original, again);
+  const people = cmp.actions.find((a) => a.action.includes('tab-people'))!;
+  expect(people.times).toEqual({ before: 1, after: 1 });
+  // A click made by the replay is a click to the recording: its renders are the reaction to it, as they were.
+  expect(people.renders.after).toBe(people.renders.before);
+  expect(people.renders.after).toBeGreaterThan(0);
+  // And a replayed keystroke is scheduled by React as a person's is: the same renders per character.
+  const typing = cmp.actions.find((a) => a.per === 'char')!;
+  expect(typing.renders.after).toBe(typing.renders.before);
 });

@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { compareRecordings } from '../shared/compare';
 import { actionText, hookOf, hookText, reasonsById, rootLine, summarize, textOf, type HookMode } from '../shared/summary';
 import type { RecordingV2 } from '../shared/schema';
+import { planReplay } from '../shared/replay';
 import { recordPage } from './record';
 import { findSession, listSessions, readRecording, waitForSession } from './store';
 
@@ -241,9 +242,9 @@ export function createServer(dir: string) {
     'record_page',
     {
       description:
-        'Records a page in a browser of its own and returns the session id, so a fix can be measured: record, change the code, record again with the same arguments, then compare_recordings. Needs the dev server running with the Vite plugin and playwright installed in the project. A page behind a sign-in needs a session: `react-perf-recorder login <url>` once (a headed browser, the person signs in), or cdp to record in a browser they are already signed in to. A scenario of clicks and typing goes in a script module; without one it records ms of the page as it is, and fromLoad records the page load itself.',
+        'Records a page in a browser of its own and returns the session id, so a fix can be measured: record, change the code, record again with the same arguments, then compare_recordings. Needs the dev server running with the Vite plugin and playwright installed in the project. A page behind a sign-in needs a session: `react-perf-recorder login <url>` once (a headed browser, the person signs in), or cdp to record in a browser they are already signed in to. A scenario of clicks and typing goes in a script module, or replay does again what a recording did — the person\'s own clicks and typing, at their pace, from the page load; without either it records ms of the page as it is, and fromLoad records the page load itself.',
       inputSchema: {
-        url: z.string().describe('The page to open, on the dev server.'),
+        url: z.string().optional().describe('The page to open, on the dev server. With replay, the recording\'s page when left out.'),
         ms: z.number().int().min(200).max(60_000).optional(),
         label: z.string().optional().describe('What this run is, e.g. "before" and "after".'),
         scope: z
@@ -254,6 +255,12 @@ export function createServer(dir: string) {
           ),
         watch: z.array(z.string()).optional(),
         script: z.string().optional().describe('A module with `export default async (page) => {…}`, run while recording.'),
+        replay: z
+          .string()
+          .optional()
+          .describe(
+            'A recording id (or "latest") whose actions to do again, from the page load and in its area: record it after the fix, then compare_recordings with the original.'
+          ),
         fromLoad: z.boolean().optional().describe('Record from the first commit of the page load.'),
         viewport: z.string().optional().describe('1280x800; keep it the same across runs that will be compared.'),
         throttle: z.number().min(1).max(20).optional().describe('CPU slowdown, 4 = four times slower.'),
@@ -265,7 +272,14 @@ export function createServer(dir: string) {
           .describe('A url to open first that signs the browser in — a debug or magic link. It is not recorded, and its token is never stored.'),
       },
     },
-    async (args) => json(await recordPage(args, dir))
+    async ({ replay, ...args }) => {
+      if (!replay) return json(await recordPage(args, dir));
+      const rec = readRecording(findSession(dir, replay));
+      const plan = planReplay({ ...rec, id: rec.id ?? replay });
+      if (!plan.steps.length) throw new Error(`${replay} has no actions to replay${plan.skipped.length ? `: ${plan.skipped.join('; ')}` : ''}`);
+      const scope = args.scope ?? rec.scope?.name;
+      return json(await recordPage({ ...args, ...(scope ? { scope } : {}), replay: { ...plan, url: rec.page.url } }, dir));
+    }
   );
 
   server.registerTool(

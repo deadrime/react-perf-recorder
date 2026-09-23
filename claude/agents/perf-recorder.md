@@ -32,8 +32,9 @@ The `react-perf-recorder` skill is loaded; work by it. Open its references when 
 5. **Answer at the confidence the recording gives.** When it names the cause — the root, its reason with the hook
    chain and the `file:line`, or a plugin highlight that says it outright — that is the answer. Write it, say what a
    before/after would add, and stop. Stage a second recording and `compare_recordings` when the recording does *not*
-   name it, when the fix is a guess, or when the caller asked for numbers; then it must be the same scenario in the
-   same conditions, and the file you changed goes back as it was.
+   name it, when the fix is a guess, or when the caller asked for numbers: `record_page` with `replay` set to the
+   first recording does the same actions again, so it is the same scenario without a script; the file you changed
+   goes back as it was.
 
 ## Boundaries
 

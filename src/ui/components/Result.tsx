@@ -6,6 +6,7 @@ import type { RootStat } from '../../shared/schema';
 import { hookOf, reasonsById, summarize } from '../../shared/summary';
 import { downloadJson } from '../download';
 import { Compare, compareNote, type Comparison } from './Compare';
+import { planReplay } from '../../shared/replay';
 import { Kpis, Notice, ReasonLine, StatCard, type Badge, type Kpi, type StatReason } from './Stats';
 import { causeColour, Timeline } from './Timeline';
 
@@ -33,12 +34,14 @@ const SLOW_MS = 100;
 export function Result({
   rec,
   compared,
+  onRepeat,
   onDismiss,
   wide,
   onWide,
 }: {
   rec: Saved;
   compared?: Comparison | null;
+  onRepeat?: () => void;
   onDismiss: () => void;
   wide: boolean;
   onWide: () => void;
@@ -97,6 +100,7 @@ export function Result({
   // Roots have cards of their own above; the list below is the rest of what rendered.
   const others = appComponents.filter((c) => !rootNames.has(c.name));
   const causes = useMemo(() => new Map(s.topCauses.map((c) => [c.key, c.keys])), [s]);
+  const plan = useMemo(() => planReplay(rec), [rec]);
 
   return (
     <>
@@ -247,6 +251,19 @@ export function Result({
         {rec.id ? (
           <button type="button" onClick={() => void navigator.clipboard?.writeText(rec.id ?? '')}>
             Copy id
+          </button>
+        ) : null}
+        {onRepeat && plan.steps.length ? (
+          <button
+            type="button"
+            class="repeat"
+            data-rpr="repeat"
+            title={`Reload the page and do these ${plan.steps.length} actions again at the same pace, recording — to see what a change of the code did${
+              plan.skipped.length ? `. Not repeated: ${plan.skipped.join('; ')}` : ''
+            }`}
+            onClick={onRepeat}
+          >
+            ↻ Repeat
           </button>
         ) : null}
         <button type="button" onClick={() => downloadJson(rec)}>

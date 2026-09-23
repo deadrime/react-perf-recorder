@@ -19,12 +19,14 @@ for one machine, one browser and one moment, and they rot into lies. Numbers bel
 | The person reproduces the problem in their own browser | Ask them to press **Rec**, do the thing, press **Stop**. Meanwhile call `wait_for_recording`, then `get_recording`. |
 | You drive the page yourself                            | `record_page` — one call, one recording; a scenario of clicks goes in a `script` module.                            |
 | The problem is the page load                           | `?rpr=rec` in the URL, or the panel's `↺` next to `● Rec`: recording starts before the first commit.                  |
-| Before and after a fix                                 | Two recordings in the same conditions → `compare_recordings`.                                                       |
+| Before and after a fix                                 | `record_page` with `replay: <id of the recording with the problem>` after the change → `compare_recordings`.        |
 
 The panel is hidden in automated browsers (`navigator.webdriver`) unless the URL says `?rpr=panel`; the shortcuts
 work either way.
 
-**Measuring a fix** is `record_page` twice with the same arguments, the change in between, then `compare_recordings`.
+**Measuring a fix** is `record_page` with `replay` set to the recording that showed the problem — the person's own
+clicks and typing, done again from the page load, in the same area — then `compare_recordings` with that one. No
+script to write. Without a recording to replay, `record_page` twice with the same arguments, the change in between.
 It needs the dev server up and `playwright` in the project.
 
 **One component, not the whole page.** When the ask is about a particular component, read its file, take the name

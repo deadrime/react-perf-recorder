@@ -9,6 +9,7 @@ import { Picker, type TreeActions, type TreeRow } from './picker';
 import { matches } from './shortcuts';
 import { dockOf, dockStyle } from './dock';
 import { compareDigests, digestOf } from '../shared/compare';
+import { planReplay, type ReplayPlan } from '../shared/replay';
 import type { Comparison } from './components/Compare';
 import { defaults, loadState, saveState, setRecordOnLoad, takePrevious, type Corner, type PanelState } from './storage';
 import { STYLES } from './styles';
@@ -125,6 +126,7 @@ export class Panel {
     return {
       record: () => void this.start(),
       recordOnLoad: () => this.reloadIntoRecording(),
+      repeat: () => this.repeat(),
       stop: () => void this.stop(),
       pick: () => this.togglePicker(),
       editScope: () => this.editScope(),
@@ -152,11 +154,12 @@ export class Panel {
   }
 
   /** The area, the note and the watched components are put aside, so the reloaded page can pick the recording up. */
-  private reloadIntoRecording() {
+  private reloadIntoRecording(replay?: ReplayPlan) {
     setRecordOnLoad({
       ...(this.scope ? { names: scopeNames(this.scope) } : {}),
       ...(this.state.watch.length ? { watch: this.state.watch } : {}),
-      label: (NOTE_IN_PANEL && this.state.label) || 'from page load',
+      label: replay ? `replay of ${replay.from ?? 'the last recording'}` : (NOTE_IN_PANEL && this.state.label) || 'from page load',
+      ...(replay ? { replay } : {}),
     });
     location.reload();
   }
@@ -259,6 +262,7 @@ export class Panel {
       tree: this.tree,
       result: this.result,
       compared: this.compared,
+      replaying: this.replaying,
       on: this.handlers,
     };
   }
@@ -287,6 +291,28 @@ export class Panel {
       this.say(String((error as Error)?.message ?? error), 'error');
     }
     this.sync();
+  }
+
+  /** Reloads and does the actions of the report again, recording: the same scenario after a change of the code. */
+  private repeat() {
+    if (!this.result || this.engine.recording) return;
+    const plan = planReplay(this.result);
+    if (!plan.steps.length) return;
+    this.reloadIntoRecording(plan);
+  }
+
+  /** Where a replay is: the header says it instead of the running numbers. */
+  private replaying: { at: number; of: number } | null = null;
+
+  replayProgress(at: number | null, of = 0) {
+    this.replaying = at === null ? null : { at, of };
+    this.sync();
+  }
+
+  /** A replay has done its steps: stop as Stop does, and say why if it could not finish them. */
+  async finish(failure: string | null) {
+    await this.stop();
+    if (failure) this.say(failure, 'error');
   }
 
   /** The last recording against the one before it in this tab, when they are of the same page and area. */

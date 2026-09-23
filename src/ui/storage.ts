@@ -1,4 +1,5 @@
 import type { Digest } from '../shared/compare';
+import type { ReplayPlan } from '../shared/replay';
 
 export type Corner = 'bottom-left' | 'bottom-right' | 'top-left' | 'top-right';
 
@@ -44,6 +45,8 @@ export interface RecordOnLoad {
   names?: string[];
   watch?: string[];
   label?: string;
+  /** The steps of a recording to do again once the page is up. */
+  replay?: ReplayPlan;
 }
 
 /** The panel asks for a reload that records from the first render; the flag is consumed by the next boot. */
