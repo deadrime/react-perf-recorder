@@ -69,8 +69,10 @@ export function inspectHooks(fiber: Fiber): InspectedHooks | null {
       const h = stateHook('Reducer');
       return [h?.memoizedState, noop];
     },
+    // A copy: a component that writes its ref in render would otherwise leave this run's noop setters in the real one.
     useRef: function __rpr_useRef() {
-      return stateHook('Ref')?.memoizedState ?? { current: undefined };
+      const real = stateHook('Ref')?.memoizedState as { current?: unknown } | undefined;
+      return { current: real?.current };
     },
     useEffect: function __rpr_useEffect() {
       stateHook('Effect');

@@ -115,6 +115,33 @@ describe('Recorder', () => {
     expect(rec.totals.rendersWithoutDom).toBe(0);
   });
 
+  it('naming the hooks at stop leaves the refs a component writes in render as they were', () => {
+    let close!: () => void;
+    let tick!: Setter;
+    // The useLatest of ahooks and react-use: the latest handler written into a ref on every render.
+    const Menu = () => {
+      const [open, setOpen] = useState(true);
+      const [, setTick] = useState(0);
+      tick = setTick;
+      const latest = useRef(() => {});
+      latest.current = () => setOpen(false);
+      // Handed out by an effect, as a memoized callback reading the ref would be: the inspection runs no effects.
+      useEffect(() => {
+        close = () => latest.current();
+      }, []);
+      return <p data-testid="menu">{open ? 'open' : 'closed'}</p>;
+    };
+    mount(<Menu />);
+    const { recorder } = makeRecorder();
+    recorder.start();
+    flush(() => tick(1));
+    const rec = recorder.stop();
+    expect(rec.roots[0].name).toBe('Menu');
+    // Its hooks were named by running Menu once more; the handler in its ref must still close it.
+    flush(() => close());
+    expect(document.querySelector('[data-testid="menu"]')!.textContent).toBe('closed');
+  });
+
   it('counts the first update after mount', () => {
     let show!: Setter;
     let bumpChild!: Setter;
