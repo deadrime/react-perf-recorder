@@ -33,7 +33,17 @@ Think of it as [react-grab](https://github.com/aidenybai/react-grab) for re-rend
   is not blamed for a commit another write caused. What none of them explains is
   read off the stack at the moment React is told about the update: `core:effect @ src/hooks/useSync.ts`,
   `core:update onMessage @ src/socket.ts`, `core:update refCallback (package)`.
-- **User actions** — clicks, typing (length only; secrets never), keys, scroll. The recording is cut into
+- **The recording in time** — tracks over one axis, the way a profiler shows them: the actions, every commit, and a
+  lane per cascade root saying where that component rendered. A bar is a commit — as wide as React took, as tall as
+  it rendered, coloured by what woke it. Clicking one opens it: causes, roots and the reason each gave. Clicking an
+  action lights up every commit it is answerable for and says what it cost — commits, renders, the time to paint —
+  with a line per commit to step into. Above the tracks the whole recording sits in one row with a box around the
+  part being looked at: drag across it to look closer, drag the tracks to move sideways, turn the wheel to zoom
+  around the pointer. With nothing picked, the panel says what is in the window — commits, renders, the roots and
+  the causes that fill it — and a checkbox drops the commits that changed nothing on the screen.
+- **User actions** — clicks, typing (length only; secrets never), keys, scroll. A click says which element it landed
+  on: the selector, which one of the like-named it was, the component and the file it was written in, and the
+  commits it led to. The recording is cut into
   _action → consequences_ segments: renders per typed character, reaction vs background, input latency (Event Timing).
 - **An area** — pick a component on the page and record only inside it; renders that come from outside are
   attributed to the component above that started them. While nothing is recorded, renders inside the area are
@@ -64,7 +74,9 @@ export default defineConfig({
 ```
 
 Open the dev page. The panel sits in a corner; **Alt+Shift+R** starts and stops a recording, **Alt+Shift+S**
-picks an area. In automated browsers (`navigator.webdriver`) the panel is hidden unless the URL has `?rpr=panel`.
+picks an area. Drag it by its header, or the dot it collapses to by itself: it sticks to the nearest edge — the
+same gap from any of the four — at the place along it you let go, and the card opens away from that corner. In automated browsers (`navigator.webdriver`) the panel is
+hidden unless the URL has `?rpr=panel`.
 
 ### Options
 
@@ -79,17 +91,28 @@ picks an area. In automated browsers (`navigator.webdriver`) the panel is hidden
 | `panel`      | `{ corner: 'bottom-left', highlight: true, shortcuts }`                                  | `false` — engine only                                                                                                                                                                                              |
 | `engine`     | `{ bigCommit: 150, timelineLimit: 5000, maxDurationMs: 600000, timers: true }`           | `timers: false` leaves `setTimeout`, `setInterval` and `requestAnimationFrame` unwrapped, and timer causes out                                                                                                     |
 
-**The panel.** `● Rec` records, `⟳ Load` reloads the page and records from its first render (the area, the note and
-the watched components survive the reload; `?rpr=rec` does the same from a script or a link). `⌖ Area` picks the part
-of the page to look at: one click on the page takes the component under the cursor as the area and opens the tree
+**The panel** is one row. `● Rec` records, `↺` reloads the page and records from its first render (the area, the
+note and the watched components survive the reload; `?rpr=rec` does the same from a script or a link). Next to it
+the area: `⌖ Pick` while it is the whole app; once a component is picked, its name, `⧉` and `×` to go back to the
+whole app. `⌖ Pick` picks the part of the page to look at — with no area yet it opens the tree of the whole app at its top, so a component can
+be chosen from the tree as well as from the page: one click on the page takes the component under the cursor as the area and opens the tree
 around it — its parents above, its neighbours and what is inside it — so the area can be moved without picking again.
 `↑`/`↓` move it, `→` goes inside, `←` goes up, `Enter` or a click on a row keeps it, `Esc` puts back the area that was
 there before. While a recording runs, the panel names the roots leading so far, so what is flashing right
 now is readable without stopping. The area's name opens the tree again, `◎` follows a component by name through the
 recording (renders and which root pulled it), and `⧉` copies the area as text for an assistant
-(component, file and line, the path above it, its DOM, what is inside, the `scope` for scripts). `Note` is saved
-with the recording and shown in `list_recordings`. `highlight` outlines renders in the area, both while recording
+(component, file and line, the path above it, its DOM, what is inside, the `scope` for scripts). A recording's
+`label` — what the run was about, shown in `list_recordings` — comes from scripts and `record_page`; the panel's note
+field is off for now, so panel recordings arrive without one. `highlight` outlines renders in the area, both while recording
 and between recordings; a recording made with it on says so in its warnings, because drawing costs frame time.
+
+**The report** after Stop leads with the answer: a row of numbers — commits, renders, the wasted ones (renders
+after which the DOM did not change), the slowest action — and the root to fix, the one whose renders changed nothing on the screen most often,
+opened on its reason, hook chain and line. When no root wasted a render, the block says which rendered most
+instead of calling it a cause. Warnings come right under it, then the actions, the other roots and the timeline;
+the causes above the tracks are their colour legend, and pressing one lights up the commits it caused. Components
+and plugin notes start folded. The id, `Copy id`, `Download`, `⤢ Wide` and `Dismiss` stay at the bottom of the
+panel however far the report is scrolled.
 
 ## With an assistant
 
@@ -123,11 +146,27 @@ from its events.
 | -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `list_recordings`    | Newest first, with status, area, commits, renders, the top root                                                                                                                                                                                                   |
 | `get_recording`      | `id` (`latest`, `latest-1`), `section`: `summary` (default), `actions`, `roots`, `outside`, `causes`, `components`, `timeline`, `frames`, `plugins`, `plugin:<name>`…; `hooks: 'short'` prints hook chains up to the library API instead of down to the primitive |
+| `record_page`        | Opens a page in a browser of its own, records it and returns the session id — so a fix can be measured: record, change the code, record again, `compare_recordings`. `ms`, `scope` (a component's name, a path, or a selector), `watch`, `script`, `fromLoad`, `viewport`, `throttle`, `state`, `cdp`, `via`        |
 | `wait_for_recording` | Blocks until the user finishes a recording (`until: 'done'`) or starts one                                                                                                                                                                                        |
 | `compare_recordings` | Before/after: totals, roots, causes, the same actions, plugin metrics; warns when runs differ                                                                                                                                                                     |
 
 The folder comes from `--dir`, then `REACT_PERF_RECORDER_DIR`, then `./.agent-artifacts/perf-recorder`.
-`react-perf-recorder list` and `react-perf-recorder pull` do the same from a shell.
+`react-perf-recorder list`, `pull` and `record` do the same from a shell.
+
+`record_page` needs the dev server running and `playwright` installed in the project — it is never a dependency of
+this package, and its absence is said out loud rather than worked around. `scope: 'MessageList'` records one
+component: the name it is exported under is enough, and an area that is not mounted answers with the names that
+are.
+
+A page behind a sign-in has three ways in. `via` opens a link that signs the browser in first — a debug url with a
+token in it, a magic link — and records the page after it. `react-perf-recorder login <url>` keeps a session for
+every later run: a real browser to sign in by hand, or `--for <selector>` / `--wait <ms>` when the link signs
+itself in; `--state <file>` points elsewhere. `--cdp http://localhost:9222` records in a browser you already have
+open and signed in, and that browser is never closed by us. A page that redirects to a login says so instead of
+recording the login form.
+
+Whatever the route, **a token never reaches a recording**: every url a session keeps — the page it was made on,
+its conditions, each navigation — is masked first, in the path (`/debug/***`), the query and the fragment.
 
 ## From scripts
 
@@ -140,7 +179,7 @@ rec.id; // saved session id
 
 `engine.start()`/`engine.stop()`, `scope: { selector, component?, level? } | { names: [...] }`, `zones`,
 `highlight: false` for timing runs. `window.__REACT_PERF_RECORDER__.format` prints reasons and hook chains the way
-the panel and the MCP server do (`reasonLine(root, reason, 'short' | 'full')`). Pages without the Vite plugin can load `react-perf-recorder/engine.iife.js` (core only: no plugins, no saving).
+the panel and the MCP server do (`reasonLine(root, reason, hits, 'short' | 'full')`). Pages without the Vite plugin can load `react-perf-recorder/engine.iife.js` (core only: no plugins, no saving).
 
 ## Plugins
 
@@ -191,18 +230,25 @@ proxy-memoize plugin.
 
 ## How it works
 
-- Commits are caught by a setter on `FiberRoot.current`: React 18 assigns it once per commit. The DevTools hook is
-  left to its owners (react-grab, React DevTools).
+- Commits are caught by a setter on `FiberRoot.current`: React assigns it once per commit. The lanes of that commit
+  are the bits it took back off `pendingLanes` on the way in. The DevTools hook is left to its owners (react-grab,
+  React DevTools).
 - A fiber rendered when its props, hook list or context dependency list changed since the last commit it was seen
   in; untouched subtrees (`child === alternate.child`) are skipped.
 - Hook names come from re-running the component with a stand-in dispatcher, as React DevTools does — only on Stop,
-  only for components in the report, never inside a commit.
+  only for components in the report, never inside a commit. The stand-in knows React 19's hooks too (`use`,
+  `useActionState`, `useOptimistic`, `useMemoCache`), and a component that calls `use()` on a pending promise is
+  named up to that call.
+- A component's file comes from the fiber on React 18 and from its owner stack on React 19, where the position is
+  the built module's: the dev server maps it back, for the panel while you work and for the session when it is
+  saved.
 - A component that rendered while its parent handed it the same props (`children` passed through, equal props to
   `memo`) is a root of its own: the parent did not cause that render.
 - Timers are wrapped once at page boot, so intervals started on mount are seen too; a callback becomes a cause only
   when React marked new work during it, and the cause goes to the components that work belongs to.
 - The app's `react-dom/client` is proxied so the recorder learns about a root the moment `createRoot` returns —
-  that is what makes recording from the page load possible.
+  that is what makes recording from the page load possible. The import is rewritten in the app's own source, so an
+  alias on `react-dom` or a pre-bundled copy cannot quietly take the proxy out of the way.
 - The overlay skips elements the person cannot see (`checkVisibility`): a closed menu or popover still renders, and
   its renders are in the recording, but its boxes would pile up unpositioned in a corner.
 - The panel is state plus a preact view in a shadow root on `<html>` (bundled into the client, ~20 KB of the dev
@@ -213,7 +259,9 @@ proxy-memoize plugin.
 
 ## Limits
 
-- React 18 dev builds; React 19 is best effort.
+- React 18.2+ and 19.1+, dev builds. React 19.0 is not supported: it dropped `_debugSource` before owner stacks
+  landed in 19.1, so there is no file for a component and no way to tell the app's own from a package's; a recording
+  made there says so in its warnings.
 - Store writes that did not lead to a commit in the area are not recorded — there is no store journal by design.
 - Two timers that update the same component between commits are attributed to the first of them.
 - `export default memo(() => …)` without a `const`, nested `memo`, zustand v5 selectors are not named.
@@ -225,10 +273,10 @@ proxy-memoize plugin.
 `npm test` runs the unit tests, `npm run test:e2e` the browser ones. They run against the fixture app in
 `test/e2e/fixture-app`, which doubles as the demo: a small team chat with a store, a live feed and a composer, and
 thirteen seeded re-render bugs, one per page (`/bug/whole-object`), with `/app` as the same app with none of them,
-and eleven textbook mistakes on bare pages of their own (`/basics/memo`, `/basics/keys`, `/basics/subscriptions` …),
+and fourteen textbook mistakes on bare pages of their own (`/basics/memo`, `/basics/ref`, `/basics/cache` …),
 each showing the broken and the fixed version of one widget side by side, with the renders and the mounts counted on
-every row. `/` lists them as cards that say what to do on the page and what the recording should name, so a recording can
-be checked against a known cause and against a clean run. It needs a dev server because the Vite plugin is half of
+every row. `/` lists the textbook cases and links the clean chat as a sandbox to play with; the bug pages are left
+off it — they are for the tests, which check a recording against a known cause and against a clean run. It needs a dev server because the Vite plugin is half of
 what is under test — it injects the recorder, names the components, proxies `react-dom/client` and the stores, and
 stores the sessions.
 

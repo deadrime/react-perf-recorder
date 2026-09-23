@@ -20,7 +20,8 @@ const recording = await page.evaluate(async () => {
 
 - `engine.record(ms, options)` is start, wait, stop in one call; `engine.last` keeps the last recording.
 - Options: `scope` (an area — `{ names: ['OrdersPanel', 'PositionTable'] }` or `{ selector }`), `watch` (component
-  names to follow), `label`, `highlight`, `dom`, `frames`, `hookNames`, `prune`.
+  names to follow), `zones` (named parts of the page, by selector), `label`, `highlight`, `frames`, `hookNames`,
+  `prune`, `actions`, `bigCommit`, `timeline` (how many commits to keep), `meta`.
 - The answer carries `id`: read the whole thing later with `get_recording`, and compare two runs with
   `compare_recordings`.
 - No engine on the page means the Vite plugin is not there — say so instead of measuring something else.
