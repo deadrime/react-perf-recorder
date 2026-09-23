@@ -3,6 +3,7 @@ import path from 'node:path';
 import type { RecordingV2 } from '../shared/schema';
 import type { ReplayPlan } from '../shared/replay';
 import { safeUrl } from '../shared/url';
+import { ON_LOAD_KEY } from '../ui/storage';
 
 /**
  * Recording a page without a person at the keyboard: open it, wait for the engine the Vite plugin puts there,
@@ -105,6 +106,7 @@ interface PageLike {
   waitForFunction(fn: string, arg?: unknown, options?: unknown): Promise<unknown>;
   evaluate<T>(fn: string | ((arg: never) => T), arg?: unknown): Promise<T>;
   waitForTimeout(ms: number): Promise<void>;
+  addInitScript<T>(fn: (arg: T) => void, arg: T): Promise<void>;
   setDefaultTimeout(ms: number): void;
   close(): Promise<void>;
 }
@@ -145,6 +147,24 @@ export async function recordPage(options: RecordPageOptions, sessionsDir: string
     }
     // A link that signs the browser in — `/debug/<jwt>`, a magic link — is opened first and is never recorded.
     if (options.via) await page.goto(options.via, { waitUntil: 'load' });
+    // A name is the form an agent has at hand: it read the component's file, so it knows what the component is called.
+    const scope = typeof options.scope === 'string' ? { names: [options.scope] } : options.scope;
+    const start = {
+      source: 'script:record',
+      ...(options.label ? { label: options.label } : {}),
+      ...(scope ? { scope } : {}),
+      ...(options.watch?.length ? { watch: options.watch } : {}),
+      highlight: false,
+    };
+    // A recording from the load starts in the page before this script can say anything: what it should be about
+    // is left where the panel's own load button leaves it, for the page to pick up as it boots.
+    if (options.fromLoad) await page.addInitScript(({ key, value }) => {
+      try {
+        sessionStorage.setItem(key, value);
+      } catch {
+        // No storage: the page records the whole app, and the check below says so.
+      }
+    }, { key: ON_LOAD_KEY, value: JSON.stringify(start) });
     const requested = options.fromLoad ? withLoadFlag(url) : url;
     await page.goto(requested, { waitUntil: 'load' });
     try {
@@ -164,17 +184,17 @@ export async function recordPage(options: RecordPageOptions, sessionsDir: string
     }
     if (!samePage(url, page.url())) warnings.push(`asked for ${safeUrl(url)}, recorded ${safeUrl(page.url())}`);
 
-    // A name is the form an agent has at hand: it read the component's file, so it knows what the component is called.
-    const scope = typeof options.scope === 'string' ? { names: [options.scope] } : options.scope;
-    const start = {
-      source: 'script:record',
-      ...(options.label ? { label: options.label } : {}),
-      ...(scope ? { scope } : {}),
-      ...(options.watch?.length ? { watch: options.watch } : {}),
-      highlight: false,
-    };
-    // A page-load recording is already running by the time the engine exists; anything else starts here.
-    if (!options.fromLoad) {
+    // A page-load recording starts once its area is mounted; one that never does is the same dead end as below.
+    if (options.fromLoad) {
+      const started = await page
+        .waitForFunction(`${ENGINE}.engine.recording`, undefined, { timeout: Math.min(timeout, 5000) })
+        .then(() => true)
+        .catch(() => false);
+      if (!started) {
+        const names = await page.evaluate<string[]>(`${ENGINE}.engine.componentNames()`).catch(() => []);
+        throw new Error(`the recording from the page load did not start${scope ? `: ${JSON.stringify(scope)} is not mounted` : ''}${names.length ? `; the page has ${names.slice(0, 20).join(', ')}` : ''}`);
+      }
+    } else {
       try {
         await page.evaluate(`${ENGINE}.engine.start(${JSON.stringify(start)})`);
       } catch (error) {

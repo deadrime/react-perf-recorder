@@ -76,3 +76,22 @@ test('replays what a recording did, from the page load, at its pace', async ({ b
   const typing = cmp.actions.find((a) => a.per === 'char')!;
   expect(typing.renders.after).toBe(typing.renders.before);
 });
+
+test('a recording from the page load keeps the area, the label and what to watch', async ({ baseURL }) => {
+  const result = await recordPage(
+    { url: `${baseURL}/app?tick=120`, fromLoad: true, ms: 800, scope: 'MessageList', label: 'after', watch: ['Status'] },
+    SESSIONS_DIR
+  );
+  const rec = saved(result.id!);
+  expect(rec.scope?.name).toBe('MessageList');
+  expect(rec.label).toBe('after');
+  expect(Object.keys(rec.watch ?? {})).toEqual(['Status']);
+  // A measuring run draws no outlines.
+  expect(rec.warnings.some((w) => w.startsWith('highlight was on'))).toBe(false);
+});
+
+test('a recording from the page load of an area that never mounts says what the page has', async ({ baseURL }) => {
+  await expect(recordPage({ url: `${baseURL}/app?tick=120`, fromLoad: true, ms: 500, scope: 'NoSuchThing' }, SESSIONS_DIR)).rejects.toThrow(
+    /did not start.*NoSuchThing.*the page has .*MessageList/
+  );
+});

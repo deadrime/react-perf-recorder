@@ -1,5 +1,6 @@
 import type { Digest } from '../shared/compare';
 import type { ReplayPlan } from '../shared/replay';
+import type { ScopeSpec } from '../core/engine';
 
 export type Corner = 'bottom-left' | 'bottom-right' | 'top-left' | 'top-right';
 
@@ -27,7 +28,7 @@ export interface PanelState {
 }
 
 const KEY = 'react-perf-recorder:v1';
-const ON_LOAD_KEY = 'react-perf-recorder:record-on-load';
+export const ON_LOAD_KEY = 'react-perf-recorder:record-on-load';
 const PREVIOUS_KEY = 'react-perf-recorder:previous';
 
 /** The digest of the last recording in this tab: the next one is compared with it, across reloads and HMR. */
@@ -43,8 +44,12 @@ export function takePrevious(next: Digest): Digest | null {
 
 export interface RecordOnLoad {
   names?: string[];
+  /** Any area the engine takes — a name path, a selector — for a script that asks for one. */
+  scope?: ScopeSpec;
   watch?: string[];
   label?: string;
+  source?: string;
+  highlight?: boolean;
   /** The steps of a recording to do again once the page is up. */
   replay?: ReplayPlan;
 }

@@ -64,13 +64,12 @@ function recordFromLoad(engine: Engine, pending: RecordOnLoad | null, panel: Pan
     if (engine.recording) return;
     try {
       engine.start({
-        source: 'load',
+        source: pending?.source ?? 'load',
         label: pending?.label || 'from page load',
-        scope: pending?.names ? { names: pending.names } : null,
+        scope: pending?.scope ?? (pending?.names ? { names: pending.names } : null),
         ...(pending?.watch?.length ? { watch: pending.watch } : {}),
-        // `?rpr=rec` is how a script asks, and a script is measuring: outlines cost frame time. The panel's own
-        // load button comes through `pending` and keeps whatever the person set.
-        ...(pending ? {} : { highlight: false }),
+        // A script is measuring, and outlines cost frame time; the panel's load button keeps what the person set.
+        ...(!pending || pending.highlight === false ? { highlight: false } : {}),
       });
       if (pending?.replay) void replayThenStop(engine, pending.replay, panel);
     } catch (error) {
