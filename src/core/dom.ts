@@ -10,9 +10,8 @@ export interface DomCounts {
 }
 
 /**
- * One MutationObserver on body. In a commit, `takeForCommit()` drains the mutations of its mutation phase and marks
- * every fiber above a changed node: a rendered component outside that set changed nothing in the DOM. Mutations
- * between commits (layout effects, imperative updates) reach the async callback and are only counted.
+ * `takeForCommit()` marks every fiber above a node changed in this commit's mutation phase. Mutations between
+ * commits (layout effects, imperative updates) are only counted.
  */
 export class DomWatcher {
   readonly counts: DomCounts = { text: 0, attr: 0, child: 0 };
@@ -67,9 +66,8 @@ export class DomWatcher {
   }
 
   /**
-   * Whether the writes to a node left it different from how the batch found it: the oldest value they overwrote
-   * against the one it holds now. React 19 blanks a form field's `name` and writes it straight back on every render
-   * of it, two writes that end where they started, and a component whose render only did that changed nothing.
+   * Compares the oldest overwritten value with the current one: React 19 blanks a form field's `name` and writes
+   * it straight back on every render, two writes that change nothing.
    */
   private changedSomething(m: MutationRecord, before: Map<Node, Map<string, string | null>>): boolean {
     if (m.type === 'childList') return true;
@@ -77,10 +75,7 @@ export class DomWatcher {
     return (oldest === undefined ? m.oldValue : oldest) !== this.valueNow(m);
   }
 
-  /**
-   * Every component above a node changed something on the screen. One half of each pair is enough, since readers
-   * look at both; host fibers are skipped, as nobody asks about them — they are most of the walk.
-   */
+  /** One half of each fiber pair is enough, as readers check both; host fibers are skipped, nobody asks about them. */
   private mark(node: Node, touched: Set<Fiber>) {
     for (let f = fiberFromNode(node); f; f = f.return) {
       if (isHost(f) || f.tag === Tag.HostText) continue;

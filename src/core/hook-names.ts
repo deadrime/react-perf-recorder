@@ -158,8 +158,8 @@ export function inspectHooks(fiber: Fiber): InspectedHooks | null {
       stateHook('EffectEvent');
       return typeof callback === 'function' ? callback : noop;
     },
-    // The compiler's cache lives on the fiber's update queue, not in the hook list, so it takes no cell. The
-    // sentinel is what React fills a fresh cache with, and it makes the compiled body recompute rather than read.
+    // The compiler's cache lives on the fiber's update queue, not in the hook list, so it takes no cell; the
+    // sentinel makes the compiled body recompute rather than read.
     useMemoCache: function __rpr_useMemoCache(size: number) {
       return new Array(typeof size === 'number' ? size : 0).fill(MEMO_CACHE_SENTINEL);
     },

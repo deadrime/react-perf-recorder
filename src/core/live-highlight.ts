@@ -10,9 +10,8 @@ const PERFORMED_WORK = 1;
 const ranNow = (f: Fiber) => f.alternate !== null && isComposite(f) && (f.flags & PERFORMED_WORK) !== 0;
 
 /**
- * Outlines renders while nothing is being recorded: no snapshots, reasons or aggregates, only the PerformedWork
- * flag and a subtree walk that skips untouched children. A recording takes the commit hook over; the engine
- * restarts this after it.
+ * Outlines renders while nothing is being recorded, from the PerformedWork flag alone. A recording takes the
+ * commit hook over; the engine restarts this after it.
  */
 export class LiveHighlight {
   private hook: CommitHook | null = null;

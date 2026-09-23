@@ -107,8 +107,7 @@ input[type="checkbox"]:focus-visible { outline: 1px solid var(--focus); outline-
 .rpr[data-collapsed="true"] .card { display: none; }
 /* Wherever the panel is docked, the card stays on the screen: it opens into the room beside and below or above it. */
 .card { width: 420px; max-width: calc(100vw - var(--rpr-x, 12px) - 24px); max-height: min(70vh, calc(100vh - var(--rpr-y, 12px) - 24px)); overflow: auto; background: var(--card); border: 1px solid var(--edge); border-radius: 10px; padding: 8px 10px; box-shadow: 0 8px 28px rgba(0,0,0,.45); }
-/* The title bar is what the card is dragged by, so it takes the card's own padding as grab area: a press a couple
-   of pixels above the title is still a press on the handle. */
+/* The title bar is the drag handle, so it takes the card's own padding as grab area. */
 header { display: flex; align-items: center; gap: 8px; margin: -8px -10px 6px; padding: 8px 10px 2px; cursor: move; user-select: none; touch-action: none; }
 /* The name, with a pulse on a chart for a mark: red and beating while a recording runs. */
 .brand { display: inline-flex; align-items: center; gap: 7px; }
@@ -128,7 +127,7 @@ header .live { flex: 1; color: var(--muted-soft); white-space: nowrap; overflow:
 .note input { flex: 1; }
 
 /* Timeline: tracks over one axis — the actions, every commit, and a lane per cascade root. */
-/* Dragging is how it is read, so nothing in it is selectable: a drag off the edge used to select the whole panel. */
+/* Nothing here is selectable: a drag off the edge would select the whole panel. */
 .tl-controls, .tl-overview, .tl-tracks { user-select: none; -webkit-user-select: none; }
 .tl-controls { gap: 4px; margin: 2px 0 4px; }
 .tl-controls button { padding: 0 6px; line-height: 16px; }

@@ -40,9 +40,8 @@ const KEYS = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Enter'];
 const sameFiber = (a: Fiber, b: Fiber) => a === b || a.alternate === b;
 
 /**
- * Picks the area to record, like the react-scan inspector: hover outlines the element and its component, a click
- * takes it as the area and opens the tree around it. ↑/↓ move the area, → goes inside, ← goes up, Enter or a click
- * on a row confirms, Esc puts the old area back; a click elsewhere on the page picks again.
+ * Picks the area to record: hover outlines a component, a click takes it and opens the tree around it.
+ * Arrows move through the tree, Enter or a row confirms, Esc puts the old area back.
  */
 export class Picker {
   active = false;
@@ -53,10 +52,7 @@ export class Picker {
   private previewed: Node | null = null;
   /** The next row the tree lands on is shown, not taken as the area. */
   private quietOpen = false;
-  /**
-   * The tree of the whole app is open and nothing has been chosen yet: the page still answers the pointer with the
-   * box a click would take, as it does before any tree is open, and the keys already move through the tree.
-   */
+  /** The whole app's tree is open and nothing is chosen yet: the page still answers the pointer, keys move in the tree. */
   private browsing = false;
   private frozen = false;
   private listeners: Array<[string, EventListener]> = [];
@@ -105,9 +101,8 @@ export class Picker {
   }
 
   /**
-   * Opens the tree on a component, e.g. the current area, to move from it instead of picking anew. `quiet` opens it
-   * without taking that component as the area: the tree of the whole app starts at its top, and the whole app stays
-   * the area until a row, a key or a click on the page says otherwise.
+   * Opens the tree on a component, to move from it instead of picking anew. `quiet` does not take it as the area:
+   * the whole app stays the area until a row, a key or a click says otherwise.
    */
   startAt(fiber: Fiber, { quiet = false }: { quiet?: boolean } = {}) {
     this.start();
@@ -120,10 +115,9 @@ export class Picker {
   }
 
   /**
-   * The whole app becomes the area and the tree stays open on it: its row above the components is the active one,
-   * the page answers the pointer again, and the next key goes back into the tree from its top.
+   * The whole app becomes the area and the tree stays open on it; the next key goes back into the tree from its top.
+   * False when there is no tree yet: the picker is still waiting for a click on the page.
    */
-  /** False when there is no tree to stay open on: the picker is still waiting for a click on the page. */
   release(): boolean {
     if (!this.active || !this.root) return false;
     this.current = this.previewed = this.root;

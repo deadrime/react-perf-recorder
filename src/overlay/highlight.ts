@@ -15,22 +15,14 @@ interface Flash {
   at: number;
 }
 
-/**
- * An outline holds still while the renders keep coming and only fades once they stop, so a component that renders
- * ten times a second is a steady box with a rising count — not a strobe. The colour says how often, the number says
- * how many; neither needs the box to blink.
- */
+/** An outline holds while renders keep coming and fades once they stop: a steady box, not a strobe. */
 const LIT_MS = 320;
 const FADE_MS = 420;
 /** Renders closer together than this are one streak, and the count keeps rising. */
 const STREAK_MS = LIT_MS + FADE_MS;
 const MAX_FLASHES = 300;
 
-/**
- * A closed menu or popover is often still in the DOM, unpositioned in the top-left corner: its renders are real,
- * but outlining them stacks boxes over the page. Rects come from an IntersectionObserver, so no layout is forced
- * here beyond the style check itself.
- */
+/** A closed menu or popover often stays in the DOM, unpositioned in the top-left: outlining it stacks boxes there. */
 const shown = (el: Element) => el.checkVisibility?.({ opacityProperty: true, visibilityProperty: true, contentVisibilityAuto: true }) ?? true;
 
 type Rgb = [number, number, number];
@@ -53,9 +45,8 @@ const rgbOf = (value: string, fallback: Rgb): Rgb => {
 };
 
 /**
- * Outlines of rendered components, like react-scan: one canvas, rectangles read through IntersectionObserver (no
- * forced layout), a box per element that holds while it keeps rendering, and `Name ×N` for the instance's render
- * count. Grey — the render changed nothing in the DOM.
+ * Outlines of rendered components on one canvas, `Name ×N` for the render count; grey when the DOM did not change.
+ * Rects come through IntersectionObserver, so drawing forces no layout.
  */
 export class Highlighter implements HighlightSink {
   enabled = true;

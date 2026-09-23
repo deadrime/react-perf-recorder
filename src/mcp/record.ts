@@ -7,8 +7,7 @@ import { ON_LOAD_KEY } from '../ui/storage';
 
 /**
  * Recording a page without a person at the keyboard: open it, wait for the engine the Vite plugin puts there,
- * record, and hand back the id the session was saved under. It exists so that proving a fix — the same scenario
- * before and after — costs two calls instead of a hand-written browser driver.
+ * record, and hand back the id the session was saved under.
  */
 export interface RecordPageOptions {
   /** Optional with `replay`: the page the replayed recording was made on. */
@@ -21,10 +20,7 @@ export interface RecordPageOptions {
   watch?: string[];
   /** A module whose default export gets the Playwright page; it runs while the recording is on. */
   script?: string;
-  /**
-   * A recording to do again: its actions, at its pace, from the page load — the same scenario a person recorded,
-   * after a change of the code. Instead of `script`.
-   */
+  /** A recording to do again: its actions, at its pace, from the page load. Instead of `script`. */
   replay?: ReplayPlan & { url?: string };
   /** Record from the first commit of the page load, rather than from a page that has settled. */
   fromLoad?: boolean;
@@ -62,8 +58,8 @@ export const defaultStatePath = (dir: string) => path.join(dir, 'auth.json');
 type Playwright = typeof import('playwright');
 
 /**
- * Playwright is the project's, never ours: a recorder must not drag a browser into every install. It is resolved
- * from wherever the command runs, and its absence is an answer, not a crash.
+ * Playwright is the project's, never a dependency: a recorder must not drag a browser into every install. Its
+ * absence is an answer, not a crash.
  */
 async function loadPlaywright(): Promise<Playwright> {
   for (const name of ['playwright', 'playwright-core']) {
@@ -172,7 +168,7 @@ export async function recordPage(options: RecordPageOptions, sessionsDir: string
     await page.goto(requested, { waitUntil: 'load' });
     try {
       // The client script is injected at the top of <head>, so by `load` it has either booted or never will:
-      // a few seconds of grace, not the navigation's whole budget. A page with no recorder should say so at once.
+      // a few seconds of grace, not the navigation's whole budget.
       await page.waitForFunction(`Boolean(${ENGINE}?.engine)`, undefined, { timeout: Math.min(timeout, 5000) });
     } catch {
       // Two very different failures look the same from here, so the message names both.

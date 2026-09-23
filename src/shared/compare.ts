@@ -79,9 +79,8 @@ export interface ActionCost {
 }
 
 /**
- * What a recording cost, in a form two recordings compare in however many times a button was pressed and however
- * long each one ran: the median of each action, and the renders nobody asked for per second. Small enough to keep
- * in the page's session storage until the next recording.
+ * What a recording cost, comparable whatever the number of presses and duration: the median of each action, and
+ * background renders per second. Small enough for the page's session storage.
  */
 export interface Digest {
   id?: string;

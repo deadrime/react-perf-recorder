@@ -21,7 +21,8 @@ import { hookCommits, hookOwner, laneLabel, RecorderError, type CommitHook, type
 import { DomWatcher, touchedHas } from './dom';
 import { FrameWatcher } from './env/frames';
 import { trackHistory } from './env/navigations';
-import { mountedInPlace,
+import {
+  mountedInPlace,
   findRoots,
   generatedSourceOf,
   hasProfileTimings,
@@ -76,10 +77,7 @@ export interface RecordOptions {
   bigCommit?: number;
   timeline?: number;
   meta?: Record<string, Primitive>;
-  /**
-   * Work out the reason of a render caused by its parent for the first instances of a component in a commit only:
-   * a list of thousands costs half as much to record, and the counts of renders stay exact.
-   */
+  /** Work out parent-caused reasons for the first instances of a component per commit only; render counts stay exact. */
   sampleReasons?: boolean;
 }
 
@@ -155,7 +153,6 @@ interface CommitState {
   touched: Set<Fiber>;
 }
 
-/** `pending` carries the component an outline will be labelled with, and whether it is a package's own. */
 /** The app's components above a fiber, nearest first, shared by every fiber below: text only when a root needs it. */
 interface PathRef {
   name: string;
@@ -171,6 +168,7 @@ function pathText(ref: PathRef | null, base: string[]): string {
   return names.join(' < ');
 }
 
+/** `pending` carries the component an outline will be labelled with, and whether it is a package's own. */
 type StackItem = [
   fiber: Fiber,
   parentRendered: boolean,
@@ -219,7 +217,7 @@ const median = (xs: number[]) => {
   return Math.round(gaps[Math.floor(gaps.length / 2)]);
 };
 
-const topEntries = <K,>(map: Map<K, number>, n: number): Array<[K, number]> => [...map].sort((a, b) => b[1] - a[1]).slice(0, n);
+const topEntries = <K>(map: Map<K, number>, n: number): Array<[K, number]> => [...map].sort((a, b) => b[1] - a[1]).slice(0, n);
 
 /** One recording: from start() to stop(). */
 export class Recorder {
@@ -280,8 +278,10 @@ export class Recorder {
     lanes: {} as Record<string, number>,
   };
 
-  /** Left out of a path: an unnamed wrapper, a component that only hands a context down, a package's own. */
-  /** By the component's type: the answer is the same for every instance, and asked for every one. */
+  /**
+   * Left out of a path: an unnamed wrapper, a provider-only component, a package's own. Cached by type, as the
+   * answer is the same for every instance.
+   */
   private readonly structuralByType = new WeakMap<object, boolean>();
 
   private structural(name: string, f: Fiber): boolean {
@@ -858,13 +858,8 @@ export class Recorder {
   }
 
   /**
-   * Components that got updates since the last commit and were not claimed by an earlier timer: a second timer
-   * that updates another component in an already pending lane adds no lane bits, only a fiber.
-   *
-   * React 18 marks the path to an updated fiber with childLanes as it schedules, so the walk can stay narrow. React
-   * 19 leaves that until the render, and a narrow walk finds nobody — so the first time the narrow one comes back
-   * empty where the whole tree has an answer, the walk stays wide for the rest of the session. Wide costs about
-   * 35µs per thousand fibers, which is the price of naming what woke a component at all.
+   * Unclaimed fibers updated since the last commit. React 19 sets childLanes only at render, so once a narrow walk
+   * misses what a wide one finds, the walk stays wide.
    */
   private freshUpdates(claim = true): Set<Fiber> {
     const lanes = this.roots.reduce((all, root) => all | (root.pendingLanes ?? 0), 0);
@@ -1210,12 +1205,14 @@ export class Recorder {
       warnings: [
         ...this.warnings,
         ...([...this.components.values()].some((comp) => comp.sampled)
-          ? [`reasons of renders caused by a parent were worked out for ${SAMPLED_PARENTS} instances of a component a commit: their counts are a sample`]
+          ? [
+              `reasons of renders caused by a parent were worked out for ${SAMPLED_PARENTS} instances of a component a commit: their counts are a sample`,
+            ]
           : []),
         ...(sourcesUnavailable()
           ? [
               `React ${reactVersion() ?? '19.0'} tells nothing about where a component comes from: no files, and the app's own ` +
-                'components cannot be told from a package\'s. React 19.1 or newer brings both back.',
+                "components cannot be told from a package's. React 19.1 or newer brings both back.",
             ]
           : []),
         ...(this.highlighted ? ['highlight was on: drawing the outlines costs main-thread time, so timings and long frames read high'] : []),

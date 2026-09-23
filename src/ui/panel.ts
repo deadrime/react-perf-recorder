@@ -24,9 +24,8 @@ export interface PanelOptions {
 type Message = PanelViewProps['message'];
 
 /**
- * Everything the panel knows lives here; the markup is a preact view of it (`components/PanelView.tsx`),
- * redrawn from `sync()`.
- * The view is rendered into the panel's own shadow root, never into the page: the app's React never sees it.
+ * The panel's state; the markup is a preact view of it (`components/PanelView.tsx`), redrawn from `sync()`.
+ * The view lives in the panel's own shadow root, so the app's React never sees it.
  */
 export class Panel {
   readonly host: HTMLDivElement;
@@ -187,18 +186,16 @@ export class Panel {
   }
 
   /**
-   * The clipboard is written in the same task as the click, never after an await: a copy that leaves the user's
-   * gesture is a copy browsers may refuse. On React 19 the file's line comes from the dev server, and picking the
-   * area is what asked for it — by the time anyone reaches this button the answer is in.
+   * The clipboard is written in the same task as the click, never after an await: browsers may refuse a copy
+   * that leaves the user's gesture.
    */
   private copyArea(fiber: Fiber, key: string) {
     void this.copy(describeArea(this.engine, fiber), key);
   }
 
   /**
-   * The area picked before the page reloaded, found again by its component path once the app has rendered it — the
-   * way the corner and the highlight are remembered. A page that does not have that component leaves the whole app
-   * as the area and says nothing; a recording that has already started is left as it began.
+   * The area picked before the reload, found again by its component path once the app renders it.
+   * A page without that component keeps the whole app as the area, silently.
    */
   private restoreScope() {
     const last = this.state.lastScope;
@@ -387,10 +384,9 @@ export class Panel {
     }
     this.setCollapsed(false);
     this.rememberScope();
-    // With no area yet, the tree of the whole app opens at its top: a component can be chosen from the tree as well
-    // as from the page, and the whole app stays the area until one is.
+    // With no area yet, the whole app's tree opens at its top; the whole app stays the area until a row is chosen.
     const top = this.scope ? null : this.engine.topComponent({ library: this.state.showLibrary, providers: this.state.showProviders });
-    // Two short lines: the one thing to do, then the keys. The page ignores the clicks meanwhile.
+    // The page ignores the clicks meanwhile.
     this.say(
       `Click ${top ? 'an element or a row' : 'an element'} to take it as the area.\n↑↓ move · →← in and out · Enter keep · Esc cancel`,
       'muted'
@@ -520,10 +516,8 @@ export class Panel {
   }
 
   /**
-   * Dragging stays out of the view: it moves the panel by inline styles, which no render touches, and on release
-   * the edge it landed by becomes state, with the place along that edge. The card is dragged by its header, the
-   * dot by itself — and the dot is a button, so the drag only takes over once the pointer has really moved, and
-   * the click that opens the panel is swallowed only then.
+   * Dragging moves the panel by inline styles, which no render touches; on release the dock becomes state.
+   * The dot is a button, so the drag takes over only once the pointer has really moved.
    */
   private onDragStart(down: PointerEvent) {
     const handle = down.currentTarget as HTMLElement;

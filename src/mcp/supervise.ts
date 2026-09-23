@@ -14,14 +14,8 @@ const parse = (line: string): Message | null => {
 };
 
 /**
- * `mcp --reload`: the MCP server for a checkout of this repository, where `dist/cli.js` is rebuilt under a running
- * assistant. A server keeps the code it started with, and until someone reconnects it reads recordings with
- * yesterday's code — once that meant reason ids where words should be. So the client talks to this process instead,
- * and the server runs as its child: when the file changes the child is started again, handed the client's own
- * `initialize` once more (its answer goes nowhere, the client already has one), and the client is told the tools
- * may have changed. A call that was running when the file changed gets an error that says to call again.
- *
- * Messages are single JSON lines each way, which is how the stdio transport of MCP frames them.
+ * `mcp --reload`: a running server keeps the code it started with, so it runs as a child that is restarted when
+ * `dist/cli.js` changes and handed the client's `initialize` again; a call cut by the restart is told to call again.
  */
 export function superviseStdio(script: string, childArgs: string[]) {
   const pending = new Set<string | number>();

@@ -70,9 +70,8 @@ export function Result({
     return <StatCard key={root.key} name={root.name} source={root.source} badges={badges} reasons={stated(root, root)} openFirst={openFirst} />;
   };
 
-  // The answer. A root whose renders changed nothing on the screen is the one to fix, and the one with the most of
-  // them wasted comes first; with none of those, the report says which rendered most and does not call it a cause —
-  // two clicks on a tab render a lot, and rightly.
+  // A root whose renders changed nothing on screen is the one to fix; with none, the one that rendered most is not
+  // called a cause — two clicks on a tab render a lot, and rightly.
   const wasted = (r: RootStat) => r.noDomChange * r.perHit;
   const suspect = roots.filter((r) => r.noDomChange > 0).sort((a, b) => wasted(b) - wasted(a))[0];
   const lead = suspect ?? rec.roots[0] ?? rec.outsideRoots[0];

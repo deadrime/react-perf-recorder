@@ -189,7 +189,6 @@ function layout(rec: RecordingV2, causeKeys: Map<number, string>, zoom: number, 
   return { lanes, actions, ticks, width, scale, hidden };
 }
 
-/** What one commit did, in the words the report uses. */
 /** A cause as a chip in the colour its commits are drawn in, so the detail reads against the tracks. */
 const CauseChip = ({ id, keys }: { id: number; keys: Map<number, string> }) => {
   const key = keys.get(id);
@@ -407,9 +406,8 @@ function Overview({
 }
 
 /**
- * The recording in time, as tracks over one axis: the actions, every commit, and a lane per cascade root showing
- * where that component rendered. A bar is a commit — how wide is how long React took, how tall is how much rendered,
- * the colour is what woke it. Clicking one opens it underneath; clicking an action lights up its whole wake.
+ * The recording in time: the actions, every commit, and a lane per cascade root. A bar is a commit — its width how
+ * long React took, its height how much rendered, its colour what woke it.
  */
 export function Timeline({
   rec,
@@ -645,8 +643,7 @@ export function Timeline({
                   class="tl-band"
                   style={`left:${(pickedBar?.x ?? commit.atMs * scale) + (pickedBar?.w ?? 0) / 2}px;width:${Math.max(8, (pickedBar?.w ?? 2) + 6)}px`}
                 />
-                {/* Through the middle of the bar it belongs to, not the exact millisecond: the bar is a few pixels
-                    wide, and the line is one — so it is placed on the middle and pulled back by half of itself. */}
+                {/* Through the middle of the bar it belongs to, not the exact millisecond: the bar is a few pixels wide. */}
                 <span class="tl-cursor" style={`left:${(pickedBar?.x ?? commit.atMs * scale) + (pickedBar?.w ?? 0) / 2}px`} />
               </>
             ) : null}

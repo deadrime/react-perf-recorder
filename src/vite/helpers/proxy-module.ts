@@ -17,10 +17,8 @@ export interface ProxyHooks {
 }
 
 /**
- * The package a specifier stands for once Vite has had it: an alias turns `zustand` into a path, and the optimizer
- * turns it into `…/deps/zustand_vanilla.js` before any plugin of ours is asked. A proxy that only knew the bare name
- * would quietly stop applying in a monorepo, under a version matrix, or whenever a dep is pre-bundled first — the
- * store would lose its causes and the root its `createRoot`.
+ * The package a specifier stands for once Vite has had it: an alias or the optimizer (`…/deps/zustand_vanilla.js`)
+ * hides the bare name, and a proxy that only knew it would quietly stop applying.
  */
 function packageOf(id: string): string {
   const path = id.replace(/\?.*$/, '');

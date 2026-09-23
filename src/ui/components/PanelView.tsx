@@ -11,10 +11,7 @@ import { Tree, type TreeProps } from './Tree';
 
 export type Live = NonNullable<ReturnType<Engine['live']>>;
 
-/**
- * The note field is off: nobody has found a use for it yet. The label it wrote is still taken from scripts and the
- * record tool; the panel sends none while this is off, so a note typed long ago cannot ride along unseen.
- */
+/** The note field is off; the panel then sends no label, so a note typed long ago cannot ride along unseen. */
 export const NOTE_IN_PANEL = false;
 
 export interface PanelHandlers {

@@ -30,9 +30,8 @@ export function hookOwner(root: FiberRoot): string | null {
 }
 
 /**
- * Catches every commit through a setter on `root.current`: React assigns it exactly once per commit, after the
- * mutation phase and before layout effects. The DevTools hook is not used: react-grab's bippy owns it, and polling
- * `root.current` once per frame loses commits because current and alternate swap.
+ * Catches every commit through a setter on `root.current`, which React assigns once per commit before layout
+ * effects. Not the DevTools hook: react-grab's bippy owns it.
  */
 export function hookCommits(
   roots: FiberRoot[],
@@ -69,10 +68,8 @@ export function hookCommits(
     set.owner = `react-perf-recorder:${owner}`;
     Object.defineProperty(root, 'current', { configurable: true, enumerable: true, get: () => current, set });
 
-    // Both halves of a commit's story are on `pendingLanes`: React sets the bits of an update when it marks work,
-    // and takes the committed ones back in `markRootFinished`, just before it assigns `root.current`. So the lanes
-    // of a commit are the bits that went away since the last one — which is also the only way to have them on
-    // React 19.1+, where `finishedLanes` is a local of the renderer and no longer a field of the root.
+    // A commit's lanes are the bits `markRootFinished` cleared from `pendingLanes` since the last one; React 19.1+
+    // has no `finishedLanes` on the root to read instead.
     const pendingDescriptor = Object.getOwnPropertyDescriptor(root, 'pendingLanes');
     let pendingLanes = root.pendingLanes ?? 0;
     const hasPending = pendingDescriptor && 'value' in pendingDescriptor && pendingDescriptor.configurable;

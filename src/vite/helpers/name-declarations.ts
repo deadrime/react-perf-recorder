@@ -69,9 +69,8 @@ function calleeName(callee: Node, allowReactPrefix: boolean): string | null {
 }
 
 /**
- * Reads the module and finds what a call to one of `callees` is assigned to at its top level. It is parsed, not
- * searched: a declaration written in a string, a template or a comment is text, and one inside a function is not
- * the module's to name.
+ * Finds what a call to one of `callees` is assigned to at the module's top level. Parsed, not searched: a declaration
+ * in a string, a template or a comment is text.
  */
 export function scanModule(code: string, callees: string[], { allowReactPrefix = false, file }: ScanOptions = {}): ModuleScan {
   if (!callees.length || !callees.some((c) => code.includes(c))) return EMPTY;
@@ -114,7 +113,7 @@ export function appendLines(code: string, lines: string[]): string | null {
 }
 
 /**
- * A call on a found name that cannot throw: a name the module does not have after all — TypeScript's `declare`, a
- * transform after ours — is skipped rather than breaking the module that was being named.
+ * A call on a found name that cannot throw: a name the module does not have after all (TypeScript's `declare`, a
+ * later transform) is skipped rather than breaking the module.
  */
 export const ifDeclared = (name: string, call: string) => `if (typeof ${name} !== "undefined") ${call}`;

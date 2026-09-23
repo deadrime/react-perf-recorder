@@ -2,9 +2,8 @@ import { parseStack } from './stack';
 import type { Fiber } from './fiber';
 
 /**
- * Everything that differs between React majors lives here, and nothing else knows there is a difference. Which way
- * React answers is told by what it offers on the fiber, not by its version — the version decides one thing only,
- * the lane bits, because those moved rather than disappeared.
+ * Everything that differs between React majors lives here. The fiber's own fields tell which way React answers;
+ * the version decides only the lane bits, because those moved rather than disappeared.
  */
 
 export interface Site {
@@ -23,10 +22,7 @@ const ownerStackSites = new WeakMap<Error, Site | null>();
 let sawSite = false;
 let sawFiberWithoutSite = false;
 
-/**
- * Where the element of a fiber was written. React 18 keeps it on the fiber (`_debugSource`); React 19.1 dropped that
- * and instead hangs an owner stack there, whose first frame is React's own `jsxDEV` and whose second is the JSX.
- */
+/** Where the element of a fiber was written: `_debugSource` on React 18, the owner stack's second frame on 19.1+. */
 export function siteOf(f: Fiber): Site | null {
   const legacy = f._debugSource;
   if (legacy?.fileName) {
@@ -44,10 +40,7 @@ export function siteOf(f: Fiber): Site | null {
   return null;
 }
 
-/**
- * Read the way React reads its own owner stacks (`formatOwnerStack`), `prepareStackTrace` turned off so that no
- * other tool reformats them on the way out. The first read of a stack is what costs; the result is kept per Error.
- */
+/** `prepareStackTrace` is turned off so no other tool reformats the stack; the first read costs, so it is kept. */
 function ownerStackSite(error: Error): Site | null {
   const known = ownerStackSites.get(error);
   if (known !== undefined) return known;
@@ -71,9 +64,8 @@ function ownerStackSite(error: Error): Site | null {
 }
 
 /**
- * True when this React tells nothing about where components come from — React 19.0, which dropped `_debugSource`
- * before owner stacks landed in 19.1. Without it there is no file for a component and no way to tell the app's own
- * components from a package's, so the recording says so instead of quietly reporting empty sources.
+ * True when React tells nothing about where components come from — 19.0 dropped `_debugSource` before owner stacks
+ * landed in 19.1 — so the recording says so instead of quietly reporting empty sources.
  */
 export function sourcesUnavailable(): boolean {
   return sawFiberWithoutSite && !sawSite;
@@ -91,11 +83,7 @@ export function contextOf(f: Fiber): { displayName?: string } | null {
   return (type?._context ?? type ?? null) as { displayName?: string } | null;
 }
 
-/**
- * Hooks that read something already there and take no cell of the hook list: `useContext`, `useDebugValue`, and
- * React 19's `use`, `useMemoCache` (it lives on the fiber's update queue) and `useHostTransitionStatus`, which is
- * what `useFormStatus` calls. React keeps `use` and the last two out of `_debugHookTypes` as well.
- */
+/** Hooks that take no cell of the hook list; `useMemoCache` lives on the fiber's update queue instead. */
 const HOOKS_WITHOUT_CELLS = new Set(['useContext', 'useDebugValue', 'use', 'useMemoCache', 'useHostTransitionStatus', 'useFormStatus']);
 
 /** The few that take more than one: the store hook plus its subscribing effect, and so on. */
@@ -169,9 +157,8 @@ interface DevtoolsHook {
 const captured = new Set<Renderer>();
 
 /**
- * Remembers every renderer React injects into the DevTools hook. The hook's own `renderers` map is not reliable: the
- * React Refresh hook (Vite's react plugins) counts injections without storing them. Must run before react-dom loads;
- * installs a minimal hook when there is none, otherwise wraps the existing `inject` and keeps its behaviour.
+ * Remembers every renderer React injects: the React Refresh hook counts injections without storing them in
+ * `renderers`. Must run before react-dom loads.
  */
 export function captureRenderers() {
   const target = globalThis as { __REACT_DEVTOOLS_GLOBAL_HOOK__?: DevtoolsHook & Record<string, unknown> };

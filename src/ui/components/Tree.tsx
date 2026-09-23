@@ -90,9 +90,8 @@ function Row({ row, active, watching, onSelect, onHover, onToggle, onWatch, onCo
 }
 
 /**
- * The component tree of the picker. Preact patches the rows in place — moving the area with the arrows must not throw
- * the list away, or the place it is scrolled to goes with it. It lives in the panel's shadow root and never in the
- * page, so the app's own React knows nothing about it.
+ * The component tree of the picker. Rows are patched in place: moving the area with the arrows must not throw the
+ * list away, or the place it is scrolled to goes with it.
  */
 export function Tree(p: TreeProps): JSX.Element {
   const list = useRef<HTMLUListElement>(null);

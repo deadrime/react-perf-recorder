@@ -33,8 +33,6 @@ const SECTIONS = [
 
 const json = (value: unknown) => ({ content: [{ type: 'text' as const, text: JSON.stringify(value, null, 1) }] });
 
-/** What the leading root gave as its reason, in words: the listing carries ids into nothing otherwise. */
-
 export function section(rec: RecordingV2 & { id?: string; status?: string }, name: string, top: number, offset: number, hooks: HookMode = 'full') {
   const page = <T>(list: T[]) => ({ total: list.length, offset, items: list.slice(offset, offset + top) });
   const ms = rec.durationMs;

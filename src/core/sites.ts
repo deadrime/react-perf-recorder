@@ -26,10 +26,7 @@ export function onSitesMapped(listener: () => void) {
   return () => listeners.delete(listener);
 }
 
-/**
- * The file and line of a built position, once the dev server has said; until then nothing, and the position is put
- * in the queue for the next batch. React 18 needs none of this — its fibers carry the original position already.
- */
+/** The file and line of a built position once the dev server has said; until then nothing, and it is queued. */
 export function mappedSite(position: Position): string | undefined {
   const key = positionKey(position);
   const site = known.get(key);
@@ -56,8 +53,7 @@ export async function mappedSites(): Promise<void> {
 
 function schedule() {
   if (scheduled || inFlight) return;
-  // The next tick, not later: everything a tree or a commit asks for lands in one request, and a person who picks
-  // an area and reaches for Copy finds the line already there.
+  // The next tick, not later: a tree's or a commit's positions go in one request, and the line is there before Copy.
   scheduled = setTimeout(() => {
     scheduled = null;
     void flush();

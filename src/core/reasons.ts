@@ -48,9 +48,8 @@ export function snapshotOf(f: Fiber): Snapshot {
 }
 
 /**
- * A render gives a function with hooks a new hook list and any context reader a new dependency list; a memo component
- * that only reads a context keeps its props and state objects, so the context list is what shows its render.
- * Bailouts copy the list pointer, so skipped fibers compare equal.
+ * A memo component that only reads a context keeps its props and state, so only the new context list shows its
+ * render. Bailouts copy the list pointer, so skipped fibers compare equal.
  */
 export function didRender(prev: Snapshot | undefined, f: Fiber): boolean {
   return (
@@ -156,9 +155,8 @@ export function parentReason(prev: Snapshot, f: Fiber, describe: Describer): Rea
 }
 
 /**
- * `_debugHookTypes` lists the hook calls a component made, the ones that take no cell of the hook list included,
- * and some take more than one cell — `useSyncExternalStore` takes the store and its effect, `useActionState` three.
- * So the cells are counted off as the list is read, and the hook holding cell `index` is the answer.
+ * `_debugHookTypes` includes hooks that take no cell of the hook list, and some take several (`useSyncExternalStore`
+ * two, `useActionState` three), so cells are counted off to find the hook holding cell `index`.
  */
 export function hookTypeAt(f: Fiber, index: number): string | undefined {
   const types = f._debugHookTypes;

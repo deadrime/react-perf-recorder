@@ -10,9 +10,8 @@ export interface MemoStat {
   recomputesOnArgSwitch: number;
   distinctArgs: number;
   /**
-   * Recomputes for arguments whose answer had already been pushed out of the cache: `size` other answers were stored
-   * since theirs. The cache is a ring, so this happens with more slots than argument sets too, once enough recomputes
-   * have gone round it.
+   * Recomputes for arguments whose answer was already pushed out: `size` other answers were stored since theirs.
+   * The cache is a ring, so this happens even with more slots than argument sets.
    */
   evictions: number;
   /** A size-limited cache that keeps pushing out answers still in use: rows, cells or two forms sharing one selector. */

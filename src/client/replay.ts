@@ -123,9 +123,8 @@ async function perform(step: ReplayStep, el: Element, cancelled: () => boolean) 
 }
 
 /**
- * Does the steps of a recording again, at its pace: the same gaps between actions, the same speed of typing, the
- * same tail after the last one. A step whose element never shows up stops the replay with the step named, rather
- * than clicking something else.
+ * Does the steps of a recording again, at its pace. A step whose element never shows up stops the replay with
+ * the step named, rather than clicking something else.
  */
 export async function replay(plan: ReplayPlan, options: ReplayOptions = {}): Promise<void> {
   try {

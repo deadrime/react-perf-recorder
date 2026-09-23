@@ -3,10 +3,7 @@ import { libraryOf, parseStack } from '../stack';
 const EFFECT_FRAMES = /flushPassiveEffects|flushPendingEffects|commitPassiveMount|commitHookEffectList/;
 const REACT_FRAMES = /^(react-dom|react|scheduler)$/;
 
-/**
- * V8 keeps 10 frames by default, and React 19 runs an effect through more wrappers than that before reaching the
- * app's code — the frames that say "this update came from an effect" would fall off the end of the stack.
- */
+/** V8 keeps 10 frames by default; React 19's effect wrappers would push the effect frames off the end. */
 function captureStack(): string {
   const holder = Error as ErrorConstructor & { stackTraceLimit?: number };
   const limit = holder.stackTraceLimit;

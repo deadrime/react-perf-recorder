@@ -100,9 +100,8 @@ export function hookOf(root: RootStat, reason: ReasonInfo | undefined) {
 const names = (list: string[] | undefined, max = 5) => (list ?? []).slice(0, max).join(', ');
 
 /**
- * The sentence behind a reason — `state #2 SAME-CONTENT`, `parent: props price | same: style` — built from its
- * fields, in one place, so the panel, the MCP server and an agent all read the same words and none of them has to
- * take the sentence apart again.
+ * The sentence behind a reason — `state #2 SAME-CONTENT`, `parent: props price | same: style` — built in one place
+ * so the panel, the MCP server and an agent all read the same words.
  */
 export function reasonText(reason: Omit<ReasonInfo, 'i' | 'text'>): string {
   const mark = reason.sameContent ? ' SAME-CONTENT' : '';

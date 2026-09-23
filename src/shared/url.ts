@@ -1,8 +1,6 @@
 /**
- * A recording keeps the page it was made on, and that url is read by whoever opens the file — a teammate, an
- * agent, a chat. Plenty of dev setups carry the session in the url itself: a debug link with a JWT in the path, a
- * magic link, `?access_token=…`. None of that belongs in a file that gets passed around, and none of it is needed
- * to tell one recording from another, so it is masked on the way in — everywhere a url is stored.
+ * Recordings get passed around, and dev urls often carry a session (a JWT in the path, `?access_token=…`):
+ * every stored url is masked on the way in.
  */
 
 const JWT = /^eyJ[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,}$/;

@@ -99,11 +99,7 @@ function wrap(kind: Kind) {
   target[kind] = wrapped;
 }
 
-/**
- * Wraps the page's timers once, at boot: intervals set up on mount must be wrapped before a recording starts to be
- * seen at all. Outside a recording a wrapped callback costs one check; the scheduling call keeps an Error whose
- * stack is read only for a callback that scheduled a React update.
- */
+/** Wraps the page's timers once, at boot: intervals set up on mount are not seen unless wrapped before recording. */
 export function installTimers() {
   if (installed || typeof window === 'undefined') return;
   installed = true;

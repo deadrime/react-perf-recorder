@@ -17,23 +17,23 @@ export function scopeFromFiber(target: Fiber, projectRoot = ''): ScopeHandle {
 }
 
 /**
- * The component path of a scope, e.g. ['OrdersPanel', 'PositionTable']: what `scopeFromNames` finds again after a
- * reload or a remount, and what the panel stores instead of a fiber. Components without a name of their own are
- * left out — `Anonymous` and `Memo` would match anything.
+ * The component path of a scope, e.g. ['OrdersPanel', 'PositionTable'], found again after a reload. Unnamed
+ * components are left out: `Anonymous` and `Memo` would match anything.
  */
 export function scopeNames(scope: ScopeHandle, depth = 6): string[] {
-  return scope.chain
-    // A context provider is not a component to find again: on React 19 it is the context object itself and has a
-    // name, so it used to land in the path, and the path then matched nothing — the area was lost on every reload.
-    .filter((f) => !isProviderTag(f.tag) && !isConsumerTag(f.tag))
-    .map((f) => {
-      const t = f.type;
-      if (typeof t === 'function') return t.displayName || t.name;
-      if (t && typeof t === 'object') return t.displayName || t.render?.displayName || t.render?.name || t.type?.displayName || t.type?.name;
-      return null;
-    })
-    .filter((n): n is string => Boolean(n))
-    .slice(-depth);
+  return (
+    scope.chain
+      // On React 19 a provider is the context object and has a name; in the path it would match nothing after a reload.
+      .filter((f) => !isProviderTag(f.tag) && !isConsumerTag(f.tag))
+      .map((f) => {
+        const t = f.type;
+        if (typeof t === 'function') return t.displayName || t.name;
+        if (t && typeof t === 'object') return t.displayName || t.render?.displayName || t.render?.name || t.type?.displayName || t.type?.name;
+        return null;
+      })
+      .filter((n): n is string => Boolean(n))
+      .slice(-depth)
+  );
 }
 
 export interface ChainVisit {

@@ -1,11 +1,8 @@
 import type { Corner, Offset } from './storage';
 
 /**
- * Where the panel lands when it is let go of. It is dragged anywhere and sticks to the edge it is nearest to —
- * always the same gap from it, whichever of the four that is — at the place along that edge it was dropped at, so
- * it never sits half off the screen and never covers the middle of the page. The corner it hangs from also says
- * which way the card opens: a panel near the top grows down, one near the bottom grows up, one near the right
- * grows to the left.
+ * Where the dropped panel lands: on its nearest edge, at the gap, where it was let go along that edge.
+ * The corner it hangs from also sets which way the card opens.
  */
 export interface Dock {
   corner: Corner;

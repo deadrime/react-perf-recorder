@@ -33,9 +33,8 @@ const SAME_GESTURE_MS = 100;
 const MAX_LEAD_MS = 2000;
 
 /**
- * The actions of a recording as steps to do again. A click and the submit or change it set off are one gesture:
- * the click is done, and the browser does the rest, as it did the first time. What cannot be done again — going
- * back and forward, a select without its value — is listed, not guessed.
+ * The actions of a recording as steps to do again. A click and the submit or change it set off are one gesture;
+ * what cannot be done again is listed in `skipped`, not guessed.
  */
 export function planReplay(rec: Pick<RecordingV2, 'actions' | 'durationMs'> & { id?: string }): ReplayPlan {
   const actions = rec.actions.slice().sort((a, b) => a.atMs - b.atMs);

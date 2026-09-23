@@ -13,9 +13,8 @@ export interface CauseInput {
   changes?: Array<{ key: string; prev: unknown; next: unknown }>;
   data?: Record<string, Primitive>;
   /**
-   * The event is emitted after React has been told about the update — a store's own subscriber runs after the
-   * components' — so the recorder can see which components it woke, and blame nobody else for the commit. Leave it
-   * out when the event runs ahead of React, as a query cache or a navigation does.
+   * Emitted after React was told of the update, so the recorder can see which components it woke.
+   * Leave it out when the event runs ahead of React, as a query cache or a navigation does.
    */
   aim?: true;
 }

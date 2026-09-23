@@ -182,9 +182,8 @@ export const Kpis = ({ items }: { items: Kpi[] }): JSX.Element => (
 );
 
 /**
- * One component of the report: its name and numbers on the head, under it a row per reason it rendered for.
- * The row says what changed; the hooks it came through and the line to open are one click away, so the reading
- * stays short and nothing has to be taken apart by eye.
+ * One component of the report: its name and numbers on the head, a row per reason under it; the hooks and the line
+ * to open are one click away, so the reading stays short.
  */
 export function StatCard({
   name,

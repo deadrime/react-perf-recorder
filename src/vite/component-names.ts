@@ -25,12 +25,8 @@ export function nameOfFile(file: string): string | null {
 }
 
 /**
- * `const Row = memo(...)` → `if (!Row.displayName) Row.displayName = "Row";` at the end of the module. Without it a
- * memo over an arrow function shows up as `Memo`/`Anonymous`, and a context as `(unnamed)`. `export default
- * memo(...)` is named after its file: the call is kept in a local on the way to the export, on the same line.
- *
- * The module is parsed, so strings, templates, comments and nested declarations are not mistaken for declarations;
- * the `typeof` guard still keeps a name that holds something other than a component harmless.
+ * `const Row = memo(...)` → `if (!Row.displayName) Row.displayName = "Row";`, so a memo over an arrow function is not
+ * `Memo`/`Anonymous`. `export default memo(...)` is named after its file.
  */
 export function addComponentNames(code: string, wrappers: string[] = DEFAULT_WRAPPERS, file?: string): string | null {
   const { names, defaultCall } = scanModule(code, wrappers, { allowReactPrefix: true, file });

@@ -25,9 +25,8 @@ export interface VitePluginLike {
 }
 
 /**
- * A plugin of the recorder. Both halves are optional: `vite` hooks run only in the dev server (the core wraps them
- * with `apply: serve`), `runtime` is a module imported into the page before the app, whose default export is a
- * `definePlugin` factory called with `options`.
+ * A plugin of the recorder. Both halves are optional: `vite` hooks run only in the dev server, `runtime` is a module
+ * imported into the page before the app, whose default export is a `definePlugin` factory called with `options`.
  */
 export interface PerfRecorderPlugin {
   name: string;

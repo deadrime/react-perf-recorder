@@ -19,9 +19,8 @@ const PickIcon = () => (
 );
 
 /**
- * One row: record and the area. The area is a single pill — Pick when there is none, and once there is
- * one, its name to move it through the tree, ⧉ to copy it and × to go back to the whole app — so what a recording
- * is about sits next to the button that starts it, not on a row of its own.
+ * One row: record and the area, the area a single pill, so what a recording is about sits next to the button that
+ * starts it.
  */
 export function Controls({ p }: { p: PanelViewProps }): JSX.Element {
   const scoped = Boolean(p.scope);

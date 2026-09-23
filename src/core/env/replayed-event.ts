@@ -16,10 +16,8 @@ function install() {
 }
 
 /**
- * Dispatches an event the way a browser would for a person. A browser runs React's microtasks while the event is
- * still being dispatched, so React sees `window.event` and gives the update — and what its effects set off — the
- * priority of an input. A script's dispatch returns first: React would see no event and schedule the rest later,
- * so a replay would measure a different app. `window.event` is kept until the microtasks have run.
+ * Dispatches an event the way a browser would for a person: `window.event` is kept until the microtasks have run,
+ * or React gives the update a lower priority than an input's and a replay measures a different app.
  */
 export function dispatchAsUser(target: EventTarget, event: Event) {
   install();

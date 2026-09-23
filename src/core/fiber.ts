@@ -112,14 +112,11 @@ export function wrapsProvider(f: Fiber): boolean {
   return Boolean(child && !child.sibling && isProvider(nameOf(child) ?? ''));
 }
 
-/** `src/pages/Trade/Row.tsx:42`: relative to the project root when known, else from the last `/src/`. */
 const libraryByType = new WeakMap<object, boolean>();
 
 /**
- * A component of the app or of a package. The site of a fiber says where the component was *used*, so a UI-kit
- * component written in app JSX looks like the app's own; where it is *defined* shows in the element it returns.
- * The file comes from `_debugSource` on React 18 and from the owner stack on React 19.1+; either way it is the
- * file that answers, so a package's own components are found without listing their names.
+ * A component of the app or of a package. A fiber's site is where it was *used*, so a UI-kit component in app JSX
+ * looks like the app's own; where it is *defined* shows in the element it returns.
  */
 export function isLibraryFiber(f: Fiber): boolean {
   const type = (typeof f.type === 'function' || (f.type && typeof f.type === 'object') ? f.type : null) as object | null;
@@ -138,9 +135,8 @@ function definedInPackage(f: Fiber): boolean {
 }
 
 /**
- * `src/components/Row.tsx:42`. React 19 answers with a position in the module the dev server built, which only a
- * source map turns back into a line of the file, so until that happens the line is left off rather than guessed;
- * `generatedSourceOf` carries the position the server maps when the recording is saved.
+ * `src/components/Row.tsx:42`. On React 19 the position is in the built module, so until the dev server maps it
+ * the line is left off rather than guessed.
  */
 export function sourceOf(f: Fiber, root = ''): string {
   const site = siteOf(f);

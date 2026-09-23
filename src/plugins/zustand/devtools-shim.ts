@@ -13,9 +13,8 @@ type Extension = ((...args: unknown[]) => unknown) & { connect?(options?: unknow
 const KEY = '__REDUX_DEVTOOLS_EXTENSION__';
 
 /**
- * zustand's devtools middleware sends every named `set()` to the Redux DevTools extension. The shim stands in for it
- * to read action names; a real extension, even one injected later, still receives everything. The shim is callable
- * like the extension's store enhancer, so legacy Redux code keeps working.
+ * Stands in for the Redux DevTools extension to read the action names of zustand's devtools middleware; a real
+ * extension, even one injected later, still receives everything. Callable like its store enhancer, for legacy Redux.
  */
 export function installDevtoolsShim(onSend: Send) {
   const target = window as unknown as Record<string, unknown>;

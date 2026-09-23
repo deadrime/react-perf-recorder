@@ -128,10 +128,7 @@ export class SessionStore {
     return { id, dir, sites };
   }
 
-  /**
-   * The panel asking, while nothing is being recorded: the file and line of positions it has on the page. React 19
-   * gives a component's site as a position in the built module, and only the dev server holds the map back.
-   */
+  /** The panel asking outside a recording: React 19 gives a component's site as a built position, and only the dev server can map it. */
   async mapPositions(positions: Array<{ url: string; line: number; column: number }>): Promise<Record<string, string>> {
     const mapSite = this.options.mapSite;
     const out: Record<string, string> = {};
@@ -144,10 +141,7 @@ export class SessionStore {
     return out;
   }
 
-  /**
-   * Turns built positions back into lines of the files they were written in: the call site of every hook, and on
-   * React 19 the component's own site too, which the page can only know as a position in the served module.
-   */
+  /** Turns built positions back into source lines: every hook's call site, and on React 19 the component's own. */
   private async mapSites(recording: RecordingV2): Promise<Record<string, { site: string; code?: string }>> {
     const sites: Record<string, { site: string; code?: string }> = {};
     const mapSite = this.options.mapSite;
@@ -247,7 +241,6 @@ const send = (res: ServerResponse, status: number, body: unknown) => {
 };
 
 /**
- * `POST sessions`, `POST sessions/:id/events`, `POST sessions/:id/finish`, `GET health` under `{base}__react-perf-recorder`.
  * Writes need our header with a JSON content type: a cross-origin page cannot send that without a preflight, which
  * this server never answers. `sendBeacon` cannot set headers, so a page unload proves itself with the session token.
  */
