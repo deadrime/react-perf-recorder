@@ -19,15 +19,24 @@ for one machine, one browser and one moment, and they rot into lies. Numbers bel
 | The person reproduces the problem in their own browser | Ask them to press **Rec**, do the thing, press **Stop**. Meanwhile call `wait_for_recording`, then `get_recording`. |
 | You drive the page yourself                            | `record_page` — one call, one recording; a scenario of clicks goes in a `script` module.                            |
 | The problem is the page load                           | `?rpr=rec` in the URL, or the panel's `↺` next to `● Rec`: recording starts before the first commit.                  |
-| Before and after a fix                                 | `record_page` with `replay: <id of the recording with the problem>` after the change → `compare_recordings`.        |
+| Before and after a fix, nothing waits on the network  | `record_page` with `replay: <id of the recording with the problem>` after the change → `compare_recordings`.        |
+| Before and after a fix, actions wait on requests       | Two `record_page` runs with the same `script`, the change in between; compare them yourself (see below).            |
 
 The panel is hidden in automated browsers (`navigator.webdriver`) unless the URL says `?rpr=panel`; the shortcuts
 work either way.
 
 **Measuring a fix** is `record_page` with `replay` set to the recording that showed the problem — the person's own
 clicks and typing, done again from the page load, in the same area — then `compare_recordings` with that one. No
-script to write. Without a recording to replay, `record_page` twice with the same arguments, the change in between.
-It needs the dev server up and `playwright` in the project.
+script to write. It needs the dev server up and `playwright` in the project.
+
+A replay keeps the person's pauses; it does not wait for data. Use it when what follows the actions happens in the
+page: tabs, client-side filters and sorting, typing, forms that are not sent, modals, toggles, store updates. When
+an action waits on a request — server search, paging, saving, loading on click, a sign-in — write a `script` that
+waits for what shows the data is there (the list, the spinner gone), not for a time, run `record_page` with it before
+and after the change, and compare the two yourself: the data and the response times can differ between runs, and
+the answer says which numbers that may have moved. The recording tells the two apart: renders inside an action's
+segment that came without an event (its `background`), or `query:` causes from the react-query plugin, mean the
+action waited on the network.
 
 **One component, not the whole page.** When the ask is about a particular component, read its file, take the name
 it is exported under, and pass it as the area: `scope: 'MessageList'`. Only what renders inside it is recorded, and

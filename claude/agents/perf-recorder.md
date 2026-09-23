@@ -33,8 +33,10 @@ The `react-perf-recorder` skill is loaded; work by it. Open its references when 
    chain and the `file:line`, or a plugin highlight that says it outright — that is the answer. Write it, say what a
    before/after would add, and stop. Stage a second recording and `compare_recordings` when the recording does *not*
    name it, when the fix is a guess, or when the caller asked for numbers: `record_page` with `replay` set to the
-   first recording does the same actions again, so it is the same scenario without a script; the file you changed
-   goes back as it was.
+   first recording does the same actions again, so it is the same scenario without a script. A replay keeps the
+   person's pauses and does not wait for data, so when the actions wait on requests, write a `script` that waits for
+   the data to show, record before and after with it, and say which numbers the data or the network may have moved.
+   The file you changed goes back as it was.
 
 ## Boundaries
 
