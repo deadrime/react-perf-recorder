@@ -1,6 +1,6 @@
 import { hookCommits, hookOwner, type CommitHook, type CommitInfo } from './commit-hook';
 import { DomWatcher } from './dom';
-import { findRoots, hostRootOf, isComposite, isHost, isLibraryFiber, nameOf, Tag, type Fiber, type FiberRoot } from './fiber';
+import { findRoots, hostRootOf, isComposite, isHost, isLibraryFiber, mountedInPlace, nameOf, Tag, type Fiber, type FiberRoot } from './fiber';
 import type { HighlightSink } from './recorder';
 import { ScopeTracker, type ScopeHandle } from './scope';
 
@@ -48,6 +48,7 @@ export class LiveHighlight {
     }
     const pairs: Array<[Element, string, Fiber]> = [];
     const withoutDom = new Set<Fiber>();
+    const mounted = new Set<Fiber>();
     // [name, fiber, from a package]: a box says the app's own component, and none at all for a package's — a
     // router re-rendering would otherwise draw over the whole page.
     const stack: Array<[Fiber, [string, Fiber, boolean] | null]> = [[start, null]];
@@ -57,6 +58,9 @@ export class LiveHighlight {
       if (ranNow(f) && (!pending || (pending[2] && !isLibraryFiber(f)))) {
         next = [nameOf(f) ?? 'Anonymous', f, isLibraryFiber(f)];
         if (!touched.has(f)) withoutDom.add(f);
+      } else if (!pending && mountedInPlace(f)) {
+        next = [nameOf(f) ?? 'Anonymous', f, isLibraryFiber(f)];
+        mounted.add(f);
       }
       if (next && !next[2] && (isHost(f) || f.tag === Tag.HostText)) {
         const el = isHost(f) ? (f.stateNode as Element) : (f.stateNode as Text).parentElement;
@@ -66,6 +70,6 @@ export class LiveHighlight {
       if (f !== start && f.sibling) stack.push([f.sibling, pending]);
       if (f.child && !(f.alternate && f.child === f.alternate.child)) stack.push([f.child, next]);
     }
-    if (pairs.length) this.sink.flash(pairs, withoutDom);
+    if (pairs.length) this.sink.flash(pairs, withoutDom, mounted);
   }
 }

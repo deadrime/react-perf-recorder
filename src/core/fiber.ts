@@ -72,6 +72,13 @@ export const isHost = (f: Fiber) => f.tag === Tag.HostComponent || f.tag === Tag
 
 export const isComposite = (f: Fiber) => typeof f.type === 'function' || Boolean(f.type?.render || f.type?.type);
 
+/**
+ * The top of a subtree mounted into a tree that was already there — a row added, a modal opened, or a component
+ * thrown away and mounted again. The page's own first mount, straight under the root, is not one.
+ */
+export const mountedInPlace = (f: Fiber) =>
+  f.alternate === null && isComposite(f) && f.return !== null && f.return.alternate !== null && f.return.tag !== Tag.HostRoot;
+
 /** Components that read hooks: functions, forwardRef and memo, but not classes. */
 export const hasHooks = (f: Fiber) =>
   f.tag === Tag.FunctionComponent || f.tag === Tag.ForwardRef || f.tag === Tag.SimpleMemoComponent || f.tag === Tag.IndeterminateComponent;

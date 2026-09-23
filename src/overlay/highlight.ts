@@ -9,6 +9,8 @@ interface Flash {
   name: string;
   count: number;
   wasted: boolean;
+  /** Mounted into the tree rather than rendered again: a dashed box. */
+  mounted?: boolean;
   /** When the element last rendered: a box is lit from there, not from the first render of a streak. */
   at: number;
 }
@@ -58,7 +60,7 @@ export class Highlighter implements HighlightSink {
   enabled = true;
   private readonly canvas: HTMLCanvasElement;
   private readonly ctx: CanvasRenderingContext2D | null;
-  private pending = new Map<Element, { name: string; count: number; wasted: boolean }>();
+  private pending = new Map<Element, { name: string; count: number; wasted: boolean; mounted?: boolean }>();
   /** Renders in a row with less than a fade between them: a steady ticker keeps counting up and turns red. */
   private counts = new WeakMap<Fiber, { n: number; at: number }>();
   /** One box per element, so a component rendering again refreshes its outline instead of stacking another. */
@@ -94,7 +96,7 @@ export class Highlighter implements HighlightSink {
     this.clear();
   }
 
-  flash(pairs: Array<[Element, string, Fiber]>, withoutDom: Set<Fiber>) {
+  flash(pairs: Array<[Element, string, Fiber]>, withoutDom: Set<Fiber>, mounted?: Set<Fiber>) {
     if (!this.enabled || !this.ctx) return;
     const now = performance.now();
     for (const [el, name, fiber] of pairs) {
@@ -104,10 +106,12 @@ export class Highlighter implements HighlightSink {
       this.counts.set(fiber, entry);
       if (fiber.alternate) this.counts.set(fiber.alternate, entry);
       const known = this.pending.get(el);
+      const isMount = mounted?.has(fiber) ?? false;
       this.pending.set(el, {
         name: known?.name ?? name,
         count: Math.max(count, known?.count ?? 0),
-        wasted: withoutDom.has(fiber) && (known?.wasted ?? true),
+        wasted: !isMount && withoutDom.has(fiber) && (known?.wasted ?? true),
+        mounted: isMount || (known?.mounted ?? false),
       });
     }
     if (!this.frameRequested) {
@@ -153,19 +157,26 @@ export class Highlighter implements HighlightSink {
     for (const [el, f] of this.flashes) if (now - f.at >= STREAK_MS) this.flashes.delete(el);
     this.clear();
     const labelled = new Set<string>();
+    const mountedAt = new Set<string>();
     ctx.font = '11px ui-monospace, SFMono-Regular, Menlo, monospace';
-    for (const f of this.flashes.values()) {
+    // Mounts last, so their dashed box is on top of the parent's, and their label wins a corner they share.
+    const ordered = [...this.flashes.values()].sort((a, b) => Number(Boolean(b.mounted)) - Number(Boolean(a.mounted)));
+    for (const f of ordered.reverse()) {
       const age = now - f.at;
       // Full while it keeps rendering, and only then on its way out.
       const alpha = age <= LIT_MS ? 1 : Math.max(0, 1 - (age - LIT_MS) / FADE_MS);
       const [r, g, b] = this.colourOf(f.count, f.wasted);
       ctx.strokeStyle = `rgba(${r},${g},${b},${alpha})`;
       ctx.lineWidth = 1.5;
+      // A mount is not one more render of the same thing: dashed, and named for what happened.
+      ctx.setLineDash(f.mounted ? [5, 3] : []);
       ctx.strokeRect(f.x + 0.5, f.y + 0.5, Math.max(0, f.w - 1), Math.max(0, f.h - 1));
-      const label = `${f.name} ×${f.count}`;
+      ctx.setLineDash([]);
+      const label = f.mounted ? `${f.name} · mounted` : `${f.name} ×${f.count}`;
       const at = `${Math.round(f.x)}:${Math.round(f.y)}`;
-      if (labelled.size < 60 && !labelled.has(at) && f.w > 24) {
+      if (labelled.size < 60 && (!labelled.has(at) || (f.mounted && !mountedAt.has(at))) && f.w > 24) {
         labelled.add(at);
+        if (f.mounted) mountedAt.add(at);
         const width = ctx.measureText(label).width + 6;
         const y = f.y > 14 ? f.y - 14 : f.y;
         ctx.fillStyle = `rgba(${r},${g},${b},${alpha * 0.9})`;

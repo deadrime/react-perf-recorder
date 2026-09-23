@@ -21,7 +21,7 @@ import { hookCommits, hookOwner, laneLabel, RecorderError, type CommitHook, type
 import { DomWatcher } from './dom';
 import { FrameWatcher } from './env/frames';
 import { trackHistory } from './env/navigations';
-import {
+import { mountedInPlace,
   findRoots,
   generatedSourceOf,
   hasProfileTimings,
@@ -81,7 +81,8 @@ export interface RecordOptions {
 export interface HighlightSink {
   /** The panel's toggle; a recording draws and counts as highlighted only while it is on. */
   enabled?: boolean;
-  flash(pairs: Array<[Element, string, Fiber]>, withoutDom: Set<Fiber>): void;
+  /** `mounted`: the tops of subtrees mounted into the tree, outlined apart from renders. */
+  flash(pairs: Array<[Element, string, Fiber]>, withoutDom: Set<Fiber>, mounted?: Set<Fiber>): void;
   /** Time spent measuring and drawing outside commits since the last call. */
   takeCostMs?(): number;
 }
@@ -142,6 +143,7 @@ interface CommitState {
   outside: RootAgg | null;
   pairs: Array<[Element, string, Fiber]>;
   withoutDom: Set<Fiber>;
+  mounted: Set<Fiber>;
   touched: Set<Fiber>;
 }
 
@@ -428,6 +430,7 @@ export class Recorder {
       outside: null,
       pairs: [],
       withoutDom: new Set(),
+      mounted: new Set(),
       touched: this.dom.takeForCommit(),
     };
     if (this.scope) {
@@ -502,6 +505,11 @@ export class Recorder {
       let nextPending = pending;
       const zone = isHost(f) && this.zoneNodes.size ? this.zoneNodes.get(f.stateNode) ?? zoneTag : zoneTag;
       if (name && !prev && isComposite(f)) {
+        // A remount costs more than a render and changes no count of renders: it gets an outline of its own.
+        if (highlight && !nextPending && mountedInPlace(f)) {
+          nextPending = [name, f, isLibraryFiber(f)];
+          c.mounted.add(f);
+        }
         this.totals.mounts++;
         this.componentOf(name, f).mounts++;
         const agg = currentKey ? this.rootsByKey.get(currentKey) : undefined;
@@ -765,7 +773,7 @@ export class Recorder {
     });
     if (c.pairs.length && this.deps.highlight) {
       const started = performance.now();
-      this.deps.highlight.flash(c.pairs, c.withoutDom);
+      this.deps.highlight.flash(c.pairs, c.withoutDom, c.mounted);
       this.overlayMs += performance.now() - started;
     }
   }
