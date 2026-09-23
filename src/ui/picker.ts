@@ -123,8 +123,9 @@ export class Picker {
    * The whole app becomes the area and the tree stays open on it: its row above the components is the active one,
    * the page answers the pointer again, and the next key goes back into the tree from its top.
    */
-  release() {
-    if (!this.active || !this.root) return;
+  /** False when there is no tree to stay open on: the picker is still waiting for a click on the page. */
+  release(): boolean {
+    if (!this.active || !this.root) return false;
     this.current = this.previewed = this.root;
     this.quietOpen = false;
     this.browsing = true;
@@ -132,6 +133,7 @@ export class Picker {
     this.shown = null;
     this.callbacks.preview(null);
     this.render();
+    return true;
   }
 
   /** A filter was switched: rebuild the path around the active component. */

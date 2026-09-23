@@ -493,6 +493,23 @@ export function Timeline({
     () => layout(rec, causeKeys, zoom, onlyChanged, fitPx),
     [rec, causeKeys, zoom, onlyChanged, fitPx]
   );
+  // What is picked, outlined on the page as it is now: a commit's roots, or those of all an action's commits.
+  const [outlined, setOutlined] = useState<number | null>(null);
+  useEffect(() => {
+    if (!onOutline) return;
+    const commit = picked === null ? null : rec.commits.list[picked];
+    const action = pickedAction === null ? null : rec.actions.find((a) => a.id === pickedAction) ?? null;
+    let entries: Array<{ i: number; hits: number }> | null = null;
+    if (commit) entries = (commit.roots ?? []).map(({ i, hits }) => ({ i, hits }));
+    else if (action) {
+      const hits = new Map<number, number>();
+      const ids = new Set(action.commitIds ?? []);
+      for (const c of rec.commits.list) if (ids.has(c.i)) for (const r of c.roots ?? []) hits.set(r.i, (hits.get(r.i) ?? 0) + r.hits);
+      entries = [...hits].map(([i, n]) => ({ i, hits: n }));
+    }
+    setOutlined(entries?.length ? onOutline(entries) : (onOutline(null), null));
+  }, [picked, pickedAction]);
+  useEffect(() => () => void onOutline?.(null), []);
   if (!rec.commits.list.length) return null;
   /**
    * Zooming holds one moment still: the one under the pointer when the wheel turns, the middle of the view when a
@@ -559,21 +576,6 @@ export function Timeline({
       onScroll();
     });
   };
-  // What is picked, outlined on the page as it is now: a commit's roots, or those of all an action's commits.
-  const [outlined, setOutlined] = useState<number | null>(null);
-  useEffect(() => {
-    if (!onOutline) return;
-    let entries: Array<{ i: number; hits: number }> | null = null;
-    if (commit) entries = (commit.roots ?? []).map(({ i, hits }) => ({ i, hits }));
-    else if (action) {
-      const hits = new Map<number, number>();
-      const ids = new Set(action.commitIds ?? []);
-      for (const c of rec.commits.list) if (ids.has(c.i)) for (const r of c.roots ?? []) hits.set(r.i, (hits.get(r.i) ?? 0) + r.hits);
-      entries = [...hits].map(([i, n]) => ({ i, hits: n }));
-    }
-    setOutlined(entries?.length ? onOutline(entries) : (onOutline(null), null));
-  }, [picked, pickedAction]);
-  useEffect(() => () => void onOutline?.(null), []);
   const pickCommit = (i: number) => {
     setPicked(i);
     const owner = rec.commits.list[i]?.actionId;

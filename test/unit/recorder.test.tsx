@@ -3,9 +3,10 @@ import { createStore, useStore } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
 import { flushSync } from 'react-dom';
 import { findRoots, fiberFromNode } from '../../src/core/fiber';
+import { PluginHost } from '../../src/core/plugins';
 import { scopeFromFiber } from '../../src/core/scope';
 import { hookText } from '../../src/shared/summary';
-import { flush, makeRecorder, mount, reasonsOf } from './helpers';
+import { config, flush, makeRecorder, mount, reasonsOf } from './helpers';
 
 type Setter = (n: number) => void;
 
@@ -140,6 +141,55 @@ describe('Recorder', () => {
     // Its hooks were named by running Menu once more; the handler in its ref must still close it.
     flush(() => close());
     expect(document.querySelector('[data-testid="menu"]')!.textContent).toBe('closed');
+  });
+
+  it('finds each instance of a memo with a compare function once', async () => {
+    const { Engine } = await import('../../src/core/engine');
+    const Row = memo(
+      ({ n }: { n: number }) => <li>{n}</li>,
+      (a, b) => a.n === b.n
+    );
+    Row.displayName = 'Row';
+    (Row as unknown as { type: { displayName?: string } }).type.displayName = 'Row';
+    mount(
+      <ul>
+        <Row n={1} />
+        <Row n={2} />
+      </ul>
+    );
+    const engine = new Engine({ ...config, endpoint: null }, new PluginHost([]));
+    expect(engine.findComponents('Row')).toHaveLength(2);
+  });
+
+  it('keeps commit ids unique past the timeline limit, and points only at the commits it kept', () => {
+    let set!: Setter;
+    const Counter = () => {
+      const [n, setN] = useState(0);
+      set = setN;
+      return <b>{n}</b>;
+    };
+    mount(<Counter />);
+    const { recorder } = makeRecorder({ timeline: 3, bigCommit: 1 });
+    recorder.start();
+    for (let i = 1; i <= 6; i++) flush(() => set(i));
+    const rec = recorder.stop();
+    expect(rec.commits.truncated).toBe(true);
+    expect(rec.commits.list.map((c) => c.i)).toEqual([0, 1, 2]);
+    expect(rec.bigCommits).toEqual([0, 1, 2]);
+    expect(rec.totals.commits).toBe(6);
+  });
+
+  it('a recording that stops at the length limit is still handed to whoever waits for it', async () => {
+    const { Engine } = await import('../../src/core/engine');
+    mount(<p>page</p>);
+    const engine = new Engine({ ...config, endpoint: null, maxDurationMs: 30 }, new PluginHost([]));
+    const saved: unknown[] = [];
+    engine.onChange((state, rec) => state === 'saved' && saved.push(rec));
+    // Asked for longer than the limit allows: the limit stops it, and record() answers with that stop.
+    const rec = await engine.record(80, { source: 'test' });
+    expect(rec.schema).toBe('react-perf-recorder/recording');
+    expect(engine.recording).toBe(false);
+    expect(saved).toEqual([rec]);
   });
 
   it('counts the first update after mount', () => {

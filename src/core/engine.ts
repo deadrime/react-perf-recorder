@@ -97,7 +97,10 @@ export class Engine {
   private recordingScope: ScopeHandle | null = null;
   private writer: SessionWriter | null = null;
   private timer: ReturnType<typeof setTimeout> | null = null;
-  private listeners = new Set<(state: 'started' | 'stopped') => void>();
+  /** `saved`: a recording that stopped on its own at the length limit, once it is saved — no one else asked for it. */
+  private listeners = new Set<(state: 'started' | 'stopped' | 'saved', saved?: Saved) => void>();
+  /** The stop the length limit made, for whoever was waiting to stop it themselves. */
+  private autoStop: Promise<Saved> | null = null;
   private readonly wrapperRe: RegExp;
   private idle: { scope: ScopeSpec } | null = null;
   private idleHighlight: LiveHighlight | null = null;
@@ -130,7 +133,7 @@ export class Engine {
     return this.recordingScope;
   }
 
-  onChange(listener: (state: 'started' | 'stopped') => void) {
+  onChange(listener: (state: 'started' | 'stopped' | 'saved', saved?: Saved) => void) {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
   }
@@ -218,7 +221,11 @@ export class Engine {
         plugins: this.plugins.info(),
       });
     }
-    this.timer = setTimeout(() => void this.stop(), this.config.maxDurationMs);
+    this.autoStop = null;
+    this.timer = setTimeout(() => {
+      const stop = (this.autoStop = this.stop());
+      stop.then((saved) => this.listeners.forEach((l) => l('saved', saved))).catch(() => {});
+    }, this.config.maxDurationMs);
     this.listeners.forEach((l) => l('started'));
     return { scope: recorder.scopeInfo };
   }
@@ -253,6 +260,8 @@ export class Engine {
   async record(durationMs: number, options: StartOptions = {}): Promise<Saved> {
     this.start(options);
     await new Promise((resolve) => setTimeout(resolve, durationMs));
+    // Longer than the limit: the recording already stopped itself, and that stop is the answer.
+    if (!this.recorder && this.autoStop) return this.autoStop;
     return this.stop();
   }
 
@@ -299,7 +308,9 @@ export class Engine {
       const stack: Fiber[] = [root.current];
       while (stack.length && named.length < limit * 4) {
         const f = stack.pop()!;
-        if (nameOf(f) === name && isComposite(f)) named.push(f);
+        // `memo(Row, areEqual)` and `memo(forwardRef(Row))` are two fibers of one instance, both called Row.
+        const inner = f.return !== null && isComposite(f.return) && nameOf(f.return) === name;
+        if (nameOf(f) === name && isComposite(f) && !inner) named.push(f);
         if (f.sibling) stack.push(f.sibling);
         if (f.child) stack.push(f.child);
       }

@@ -62,7 +62,11 @@ export class Panel {
       preview: (owner) => this.setScope(owner ? this.engine.scopeFromFiber(owner.fiber) : null),
       done: (choice) => this.onPicked(choice),
     });
-    engine.onChange(() => this.adoptRecordingScope() || this.sync());
+    engine.onChange((state, saved) => {
+      // Stopped by the length limit rather than by Stop: the report still belongs in the panel.
+      if (state === 'saved' && saved && !this.busy) this.showResult(saved);
+      else if (!this.adoptRecordingScope()) this.sync();
+    });
     window.addEventListener('keydown', (e) => this.onShortcut(e), true);
     this.visible = this.initialVisibility();
     if (options.interrupted)
@@ -132,7 +136,12 @@ export class Panel {
       editScope: () => this.editScope(),
       copyScope: () => this.copyScope(),
       // With the tree open, × moves it to its Whole app row instead of leaving the old area active in it.
-      clearScope: () => (this.picker.active ? this.picker.release() : this.setScope(null)),
+      clearScope: () => {
+        if (this.picker.active && this.picker.release()) return;
+        // No tree yet: the picker only waits for a click, and × ends that wait along with the area.
+        if (this.picker.active) this.picker.cancel();
+        this.setScope(null);
+      },
       outlineScope: (on) => this.outlineScope(on),
       setHighlight: (on) => this.setHighlight(on),
       setNote: (text) => this.setNote(text),
@@ -335,6 +344,14 @@ export class Panel {
     if (failure) this.say(failure, 'error');
   }
 
+  private showResult(saved: Saved) {
+    // The area cannot change while recording: when it stops, it is the report's, kept for its Repeat.
+    this.resultArea = this.scope ? scopeNames(this.scope) : null;
+    this.result = saved;
+    this.compared = compareWithPrevious(saved);
+    this.sync();
+  }
+
   /** The component path of the area the report was recorded in. */
   private resultArea: string[] | null = null;
 
@@ -346,10 +363,7 @@ export class Panel {
     this.busy = true;
     this.sync();
     try {
-      // The area cannot change while recording: at stop it is the report's, kept for its Repeat.
-      this.resultArea = this.scope ? scopeNames(this.scope) : null;
-      this.result = await this.engine.stop();
-      this.compared = compareWithPrevious(this.result);
+      this.showResult(await this.engine.stop());
     } catch (error) {
       this.say(String((error as Error)?.message ?? error), 'error');
     } finally {

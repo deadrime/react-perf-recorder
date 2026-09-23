@@ -232,6 +232,8 @@ export class Recorder {
   private roots: FiberRoot[] = [];
   private conditions: Conditions = {};
   private truncated = false;
+  /** Commits so far, kept or not: the list stops at the timeline limit, the ids do not. */
+  private commitSeq = 0;
   private stopped = false;
   private overlayMs = 0;
   private highlighted = false;
@@ -741,7 +743,7 @@ export class Recorder {
     const roots = ranked.slice(0, 5).map(([agg, n]) => [agg.index, n] as [number, number]);
     const previous = this.commitList[this.commitList.length - 1];
     const record: CommitRecord = {
-      i: this.commitList.length,
+      i: this.commitSeq++,
       atMs: c.t,
       ...(previous ? { sinceMs: +(c.t - previous.atMs).toFixed(1) } : {}),
       renders: c.renders,
@@ -1035,8 +1037,10 @@ export class Recorder {
     const actionOfCommit = new Map<number, number>();
     for (const segment of segments) for (const i of segment.commitIds ?? []) actionOfCommit.set(i, segment.action);
     const commitsOfAction = new Map<number, number[]>(segments.map((s) => [s.action, s.commitIds ?? []]));
+    // Past the timeline limit a commit is counted but not kept: an id must lead to a commit in the list.
+    const kept = (i: number) => i < this.commitList.length;
     for (const action of actions) {
-      const ids = commitsOfAction.get(action.id);
+      const ids = commitsOfAction.get(action.id)?.filter(kept);
       if (ids?.length) action.commitIds = ids;
     }
     const commits = this.totals.commits;
@@ -1135,7 +1139,7 @@ export class Recorder {
         })),
         truncated: this.truncated,
       },
-      bigCommits: this.bigCommits,
+      bigCommits: this.bigCommits.filter((i) => i < this.commitList.length),
       frames: {
         longTasks: this.frames.longTasks,
         loaf: this.frames.loaf,
