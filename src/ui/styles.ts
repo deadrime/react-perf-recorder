@@ -230,6 +230,8 @@ button.icon { padding: 3px 7px; }
 .cmp-note { color: var(--muted); }
 .result-bar .repeat { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
 .result-bar .repeat:hover { background: color-mix(in srgb, var(--accent) 14%, var(--button)); }
+.tl-outlined { margin: 6px 0 0; font-size: 11px; color: var(--pick); }
+.tl-outlined[data-found="0"] { color: var(--muted); }
 .replay-bar { height: 2px; margin: -2px -10px 6px; background: var(--rule-soft); }
 .replay-bar i { display: block; height: 100%; background: var(--accent); transition: width .3s ease; }
 .verdict-title { margin: 10px 0 2px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }

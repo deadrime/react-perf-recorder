@@ -5,6 +5,7 @@ import {
   compositeChain,
   compositeChildren,
   currentOf,
+  isComposite,
   isLibraryFiber,
   fiberFromNode,
   findRoots,
@@ -286,6 +287,28 @@ export class Engine {
       }
     }
     return [...names];
+  }
+
+  /**
+   * Every instance of a component on the page now, found by its name and file. A line that moved since the
+   * recording (the code was edited) still finds it by the file; failing that, by the name alone.
+   */
+  findComponents(name: string, source?: string, limit = 50): Fiber[] {
+    const named: Fiber[] = [];
+    for (const root of findRoots()) {
+      const stack: Fiber[] = [root.current];
+      while (stack.length && named.length < limit * 4) {
+        const f = stack.pop()!;
+        if (nameOf(f) === name && isComposite(f)) named.push(f);
+        if (f.sibling) stack.push(f.sibling);
+        if (f.child) stack.push(f.child);
+      }
+    }
+    if (!source) return named.slice(0, limit);
+    const file = source.replace(/:\d+(:\d+)?$/, '');
+    const same = named.filter((f) => sourceOf(f, this.config.projectRoot) === source);
+    const sameFile = named.filter((f) => sourceOf(f, this.config.projectRoot).replace(/:\d+(:\d+)?$/, '') === file);
+    return (same.length ? same : sameFile.length ? sameFile : named).slice(0, limit);
   }
 
   /**

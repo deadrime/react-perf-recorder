@@ -145,7 +145,9 @@ export class Panel {
         this.sync();
       },
       dragStart: (event) => this.onDragStart(event),
+      outlineRoots: (entries) => this.outlineRoots(entries),
       dismissResult: () => {
+        this.highlighter?.pin([]);
         this.result = null;
         this.compared = null;
         this.sync();
@@ -291,6 +293,23 @@ export class Panel {
       this.say(String((error as Error)?.message ?? error), 'error');
     }
     this.sync();
+  }
+
+  /** The roots of a picked commit or action, on the page as it is now: every instance of each, labelled with its hits. */
+  private outlineRoots(entries: Array<{ i: number; hits: number }> | null): number {
+    const rec = this.result;
+    if (!entries || !rec) {
+      this.highlighter?.pin([]);
+      return 0;
+    }
+    const roots = [...rec.roots, ...rec.outsideRoots];
+    const items = entries.flatMap(({ i, hits }) => {
+      const root = roots[i];
+      if (!root) return [];
+      return this.engine.findComponents(root.name, root.source).map((fiber) => ({ fiber, label: `${root.name} ×${hits}` }));
+    });
+    this.highlighter?.pin(items);
+    return items.length;
   }
 
   /** Reloads and does the actions of the report again, recording: the same scenario after a change of the code. */

@@ -167,3 +167,30 @@ test('Repeat reloads, does the same actions again and sets the two side by side'
   // What was typed is not kept, so the replay types as many characters of its own.
   await expect(page.getByTestId('message')).toHaveValue('xxx');
 });
+
+test('a commit picked on the timeline outlines its components on the page, until the pick goes', async ({ page }) => {
+  await recordFromPanel(page, '/app?rpr=panel&tick=150', async () => {
+    await page.getByTestId('tab-people').click();
+    await page.getByTestId('tab-chat').click();
+    await page.getByTestId('message').pressSequentially('hi', { delay: 60 });
+  });
+  const pinned = () => page.evaluate(() => ((window as any).__REACT_PERF_RECORDER__.panel.highlighter.pinned as unknown[]).length);
+  expect(await pinned()).toBe(0);
+
+  // The last commit is from the typing: its roots are on the page, and they are outlined there.
+  await page.locator('.tl-bar').last().click();
+  const note = page.locator('[data-rpr="tl-outlined"]');
+  await expect(note).toContainText('outlined on the page');
+  const found = Number(await note.getAttribute('data-found'));
+  expect(found).toBeGreaterThan(0);
+  expect(await pinned()).toBe(found);
+
+  // Show all takes the pick away, and the outlines with it; so does closing the report.
+  await page.locator('[data-rpr="tl-reset"]').click();
+  await expect(note).toHaveCount(0);
+  expect(await pinned()).toBe(0);
+  await page.locator('.tl-bar').last().click();
+  await expect(note).toBeVisible();
+  await page.locator('.result-bar button', { hasText: 'Dismiss' }).click();
+  expect(await pinned()).toBe(0);
+});

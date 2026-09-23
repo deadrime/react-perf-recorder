@@ -35,6 +35,7 @@ export function Result({
   rec,
   compared,
   onRepeat,
+  onOutline,
   onDismiss,
   wide,
   onWide,
@@ -42,6 +43,7 @@ export function Result({
   rec: Saved;
   compared?: Comparison | null;
   onRepeat?: () => void;
+  onOutline?: (entries: Array<{ i: number; hits: number }> | null) => number;
   onDismiss: () => void;
   wide: boolean;
   onWide: () => void;
@@ -213,7 +215,7 @@ export function Result({
             ))}
           </div>
         ) : null}
-        <Timeline rec={rec} litCause={litCause} onReset={() => setLitCause(null)} />
+        <Timeline rec={rec} litCause={litCause} onReset={() => setLitCause(null)} onOutline={onOutline} />
       </Fold>
 
       {others.length || hidden ? (

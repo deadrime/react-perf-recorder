@@ -415,11 +415,14 @@ export function Timeline({
   rec,
   litCause = null,
   onReset,
+  onOutline,
 }: {
   rec: RecordingV2;
   litCause?: number | null;
   /** The report's own part of "show all": the cause lit in the legend above the tracks. */
   onReset?: () => void;
+  /** Outlines on the page the roots of what is picked, or nothing with null; answers how many it found there. */
+  onOutline?: (entries: Array<{ i: number; hits: number }> | null) => number;
 }): JSX.Element | null {
   const [picked, setPicked] = useState<number | null>(null);
   const [pickedAction, setPickedAction] = useState<number | null>(null);
@@ -556,6 +559,21 @@ export function Timeline({
       onScroll();
     });
   };
+  // What is picked, outlined on the page as it is now: a commit's roots, or those of all an action's commits.
+  const [outlined, setOutlined] = useState<number | null>(null);
+  useEffect(() => {
+    if (!onOutline) return;
+    let entries: Array<{ i: number; hits: number }> | null = null;
+    if (commit) entries = (commit.roots ?? []).map(({ i, hits }) => ({ i, hits }));
+    else if (action) {
+      const hits = new Map<number, number>();
+      const ids = new Set(action.commitIds ?? []);
+      for (const c of rec.commits.list) if (ids.has(c.i)) for (const r of c.roots ?? []) hits.set(r.i, (hits.get(r.i) ?? 0) + r.hits);
+      entries = [...hits].map(([i, n]) => ({ i, hits: n }));
+    }
+    setOutlined(entries?.length ? onOutline(entries) : (onOutline(null), null));
+  }, [picked, pickedAction]);
+  useEffect(() => () => void onOutline?.(null), []);
   const pickCommit = (i: number) => {
     setPicked(i);
     const owner = rec.commits.list[i]?.actionId;
@@ -679,6 +697,11 @@ export function Timeline({
           </div>
         </div>
       </div>
+      {outlined !== null ? (
+        <p class="tl-outlined" data-rpr="tl-outlined" data-found={outlined}>
+          {outlined ? `◻ outlined on the page: ${outlined}` : 'not on the page now'}
+        </p>
+      ) : null}
       {commit ? (
         <CommitDetail rec={rec} commit={commit} more={inBar - 1} />
       ) : action ? (

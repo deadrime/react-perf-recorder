@@ -1,4 +1,4 @@
-import type { Fiber } from '../core/fiber';
+import { currentOf, nearestHosts, type Fiber } from '../core/fiber';
 import type { HighlightSink } from '../core/recorder';
 
 interface Flash {
@@ -41,6 +41,7 @@ const PALETTE: Array<[string, Rgb]> = [
   ['--flash-new', [52, 199, 89]],
   ['--flash-often', [255, 204, 0]],
   ['--flash-hot', [255, 69, 58]],
+  ['--pick', [10, 132, 255]],
 ];
 
 /** A canvas takes no custom property, so each one is read from the panel once and kept as numbers. */
@@ -69,6 +70,8 @@ export class Highlighter implements HighlightSink {
   private drawing = false;
   private costMs = 0;
   private colours: Rgb[] = PALETTE.map(([, fallback]) => fallback);
+  /** Components picked on the report's timeline: outlined until the pick changes, whatever the highlight toggle says. */
+  private pinned: Array<{ fiber: Fiber; label: string }> = [];
 
   constructor(parent: ShadowRoot | Element) {
     const host = parent instanceof ShadowRoot ? parent.host : parent;
@@ -80,7 +83,24 @@ export class Highlighter implements HighlightSink {
     parent.appendChild(this.canvas);
     this.ctx = this.canvas.getContext('2d');
     this.resize();
-    window.addEventListener('resize', () => this.resize());
+    window.addEventListener('resize', () => {
+      this.resize();
+      this.redraw();
+    });
+    // A pinned box follows its element when the page scrolls under it.
+    window.addEventListener('scroll', () => this.redraw(), { capture: true, passive: true });
+  }
+
+  /** Outlines these components until the next call; an empty list takes them away. */
+  pin(items: Array<{ fiber: Fiber; label: string }>) {
+    this.pinned = items;
+    this.redraw();
+  }
+
+  private redraw() {
+    if (this.drawing) return;
+    this.drawing = true;
+    requestAnimationFrame(() => this.draw());
   }
 
   takeCostMs() {
@@ -185,9 +205,39 @@ export class Highlighter implements HighlightSink {
         ctx.fillText(label, f.x + 3, y + 11);
       }
     }
+    this.drawPinned(ctx);
     this.costMs += performance.now() - started;
     if (this.flashes.size) requestAnimationFrame(() => this.draw());
     else this.drawing = false;
+  }
+
+  /** A box around everything a picked component draws, in the colour of picking, and its label above. */
+  private drawPinned(ctx: CanvasRenderingContext2D) {
+    if (!this.pinned.length) return;
+    const [r, g, b] = this.colours[4];
+    ctx.font = '11px ui-monospace, SFMono-Regular, Menlo, monospace';
+    for (const { fiber, label } of this.pinned) {
+      const rects = nearestHosts(currentOf(fiber), 200)
+        .filter((el) => el.isConnected)
+        .map((el) => el.getBoundingClientRect())
+        .filter((rect) => rect.width || rect.height);
+      if (!rects.length) continue;
+      const x = Math.min(...rects.map((rect) => rect.left));
+      const y = Math.min(...rects.map((rect) => rect.top));
+      const w = Math.max(...rects.map((rect) => rect.right)) - x;
+      const h = Math.max(...rects.map((rect) => rect.bottom)) - y;
+      ctx.fillStyle = `rgba(${r},${g},${b},0.08)`;
+      ctx.fillRect(x, y, w, h);
+      ctx.strokeStyle = `rgb(${r},${g},${b})`;
+      ctx.lineWidth = 2;
+      ctx.strokeRect(x + 1, y + 1, Math.max(0, w - 2), Math.max(0, h - 2));
+      const width = ctx.measureText(label).width + 8;
+      const top = y > 16 ? y - 16 : y;
+      ctx.fillStyle = `rgb(${r},${g},${b})`;
+      ctx.fillRect(x, top, width, 16);
+      ctx.fillStyle = '#fff';
+      ctx.fillText(label, x + 4, top + 12);
+    }
   }
 
   /** Grey when the render changed nothing; otherwise green, amber and red by how often it came. */

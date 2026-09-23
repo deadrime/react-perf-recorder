@@ -37,6 +37,11 @@ export interface PanelHandlers {
   setWide(wide: boolean): void;
   dragStart(event: JSX.TargetedPointerEvent<HTMLElement>): void;
   dismissResult(): void;
+  /**
+   * Outlines on the page the roots of what is picked on the report's timeline — `[root index, hits]` — or takes the
+   * outlines away with null. Says how many components it found on the page now.
+   */
+  outlineRoots(entries: Array<{ i: number; hits: number }> | null): number;
 }
 
 export interface PanelViewProps {
@@ -184,7 +189,7 @@ const View = (p: PanelViewProps): JSX.Element => (
         {p.message.text}
       </div>
       <div class="result" data-rpr="result">
-        {p.result ? <Result rec={p.result} compared={p.compared} onRepeat={p.on.repeat} onDismiss={p.on.dismissResult} wide={p.wide} onWide={() => p.on.setWide(!p.wide)} /> : null}
+        {p.result ? <Result rec={p.result} compared={p.compared} onRepeat={p.on.repeat} onOutline={p.on.outlineRoots} onDismiss={p.on.dismissResult} wide={p.wide} onWide={() => p.on.setWide(!p.wide)} /> : null}
       </div>
     </div>
   </div>
