@@ -6,9 +6,7 @@ const countsOf = (page: Page, side: 'broken' | 'fixed') =>
 
 /** The counters of one pair, on a page that shows more than one mistake. */
 const countsIn = (page: Page, pair: string, side: 'broken' | 'fixed') =>
-  page
-    .locator(`[data-pair="${pair}"] [data-case="${side}"] .count`)
-    .evaluateAll((els) => els.map((el) => Number((el as HTMLElement).dataset.count)));
+  page.locator(`[data-pair="${pair}"] [data-case="${side}"] .count`).evaluateAll((els) => els.map((el) => Number((el as HTMLElement).dataset.count)));
 
 test('memo only skips a child when the handler it gets stays the same', async ({ page }) => {
   await page.goto('/basics/memo');
@@ -78,6 +76,41 @@ test('the front page leads to the basics and back', async ({ page }) => {
   await expect(page.getByTestId('strip')).toContainText('key');
   await page.getByTestId('strip').getByRole('link').click();
   await expect(page.locator('.card[data-basic="memo"]')).toBeVisible();
+});
+
+test('a row handed the selected id renders on every pick, a row handed the answer only when it changes', async ({ page }) => {
+  await page.goto('/basics/selection');
+  for (const id of ['drafts', 'sent', 'spam']) {
+    await page.getByTestId(`asking-${id}`).click();
+    await page.getByTestId(`told-${id}`).click();
+  }
+  // Three picks: every row on the left rendered with each of them.
+  expect(await countsOf(page, 'broken')).toEqual([4, 4, 4, 4, 4, 4]);
+  // On the right only the rows that were picked or unpicked: Drafts and Sent in and out, Spam in.
+  expect(await countsOf(page, 'fixed')).toEqual([1, 3, 3, 1, 2, 1]);
+});
+
+test('a useMemo whose dependency is written in render computes on every render', async ({ page }) => {
+  await page.goto('/basics/deps');
+  for (let i = 0; i < 3; i++) await page.getByTestId('render').click();
+  const computed = await page.locator('[data-computed]').evaluateAll((els) => els.map((el) => Number((el as HTMLElement).dataset.computed)));
+  // The page renders once to start with and three times more; the filter made once is filtered once.
+  expect(computed).toEqual([4, 1]);
+  expect(await countsOf(page, 'broken')).toEqual([4, 4, 4]);
+  expect(await countsOf(page, 'fixed')).toEqual([1, 1, 1]);
+});
+
+test('a dialog opened by the page renders the page; opened by its button, only the button', async ({ page }) => {
+  await page.goto('/basics/dialog');
+  for (const side of ['page', 'button']) {
+    for (let i = 0; i < 2; i++) {
+      await page.getByTestId(`help-${side}`).click();
+      await expect(page.getByTestId(`dialog-${side}`)).toBeVisible();
+      await page.getByTestId(`close-${side}`).click();
+    }
+  }
+  expect(await countsOf(page, 'broken')).toEqual([5, 5, 5]);
+  expect(await countsOf(page, 'fixed')).toEqual([1, 1, 1]);
 });
 
 test('an object written in render is a new prop every time', async ({ page }) => {
@@ -231,7 +264,9 @@ test('a component declared inside a render is mounted again every time', async (
   // The note typed on the left is gone with the row that held it; on the right both the row and the note are there.
   expect(await page.getByTestId('note-in-one').inputValue()).toBe('');
   expect(await page.getByTestId('note-one').inputValue()).toBe('mine');
-  const mounts = await page.locator('[data-case="broken"] [data-mounts]').evaluateAll((els) => els.map((el) => Number((el as HTMLElement).dataset.mounts)));
+  const mounts = await page
+    .locator('[data-case="broken"] [data-mounts]')
+    .evaluateAll((els) => els.map((el) => Number((el as HTMLElement).dataset.mounts)));
   expect(mounts.every((n) => n > 2)).toBe(true);
 });
 
@@ -277,7 +312,25 @@ test('a form left to the DOM does not render while you type', async ({ page }) =
 });
 
 test('every case can show the code behind it, with the line that matters marked', async ({ page }) => {
-  for (const id of ['memo', 'keys', 'props', 'state', 'ref', 'context', 'subscriptions', 'snapshot', 'cache', 'effect', 'nested', 'children', 'router', 'form']) {
+  for (const id of [
+    'memo',
+    'keys',
+    'props',
+    'state',
+    'ref',
+    'context',
+    'subscriptions',
+    'snapshot',
+    'cache',
+    'effect',
+    'nested',
+    'children',
+    'router',
+    'form',
+    'selection',
+    'deps',
+    'dialog',
+  ]) {
     await page.goto(`/basics/${id}`);
     const folded = page.locator('.code');
     await expect(folded.first()).toBeVisible();

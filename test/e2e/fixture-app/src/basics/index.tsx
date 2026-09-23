@@ -4,13 +4,16 @@ import { BugStrip } from '../Demo';
 import { Cache } from './Cache';
 import { Children } from './Children';
 import { Contexts } from './Contexts';
+import { Dialog } from './Dialog';
 import { Effects } from './Effects';
 import { Forms } from './Forms';
 import { Nested } from './Nested';
 import { Router } from './Router';
+import { Selection } from './Selection';
 import { Subscriptions } from './Subscriptions';
 import { Keys } from './Keys';
 import { MemoCallback } from './MemoCallback';
+import { MemoDeps } from './MemoDeps';
 import { Props } from './Props';
 import { ReadWhenNeeded } from './ReadWhenNeeded';
 import { Refs } from './Refs';
@@ -29,6 +32,11 @@ export const BASICS: Record<string, BasicsCase> = {
     what: 'A handler written in render gives memo a new prop every time, so the children it should have skipped render anyway.',
     element: MemoCallback,
   },
+  deps: {
+    title: 'a useMemo that never remembers',
+    what: 'A dependency written as an object in the render is new every time: the memo computes again and hands down a new array.',
+    element: MemoDeps,
+  },
   keys: {
     title: 'key: the position or the thing',
     what: 'key={index} matches rows by position: inserting one at the top re-renders every row below and moves their state to the next one.',
@@ -44,10 +52,20 @@ export const BASICS: Record<string, BasicsCase> = {
     what: 'A clock ticking in a card renders the whole card — and hidden in a custom hook, it renders whoever calls the hook.',
     element: StateDown,
   },
+  dialog: {
+    title: "a dialog's flag belongs to the dialog",
+    what: 'An open flag kept by the page renders the page and everything on it each time a dialog opens or closes.',
+    element: Dialog,
+  },
   ref: {
     title: 'a value nobody draws belongs in a ref',
     what: 'State for a value only a handler reads renders for nothing; a ref holds it quietly, and keeps a handler stable too.',
     element: Refs,
+  },
+  selection: {
+    title: 'pass the answer, not the question',
+    what: 'Every row handed the selected id renders on every pick; handed whether it is the one, two rows do.',
+    element: Selection,
   },
   context: {
     title: 'who a context wakes up',

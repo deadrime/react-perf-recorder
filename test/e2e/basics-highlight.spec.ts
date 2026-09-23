@@ -88,6 +88,30 @@ const CASES: Array<{ id: string; pairs?: string[]; act: (page: Page) => Promise<
     },
   },
   {
+    id: 'selection',
+    act: async (page) => {
+      for (const id of ['drafts', 'sent']) {
+        await page.getByTestId(`asking-${id}`).click();
+        await page.getByTestId(`told-${id}`).click();
+      }
+    },
+  },
+  {
+    id: 'deps',
+    act: async (page) => {
+      for (let i = 0; i < 3; i++) await page.getByTestId('render').click();
+    },
+  },
+  {
+    id: 'dialog',
+    act: async (page) => {
+      for (const side of ['page', 'button']) {
+        await page.getByTestId(`help-${side}`).click();
+        await page.getByTestId(`close-${side}`).click();
+      }
+    },
+  },
+  {
     id: 'form',
     act: async (page) => {
       await typeInto(page, 'u-title', 'Hi');

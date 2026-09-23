@@ -627,3 +627,57 @@ input {
   color: var(--text);
   cursor: pointer;
 }
+
+/* A row that can be picked: the whole title is the button, and the picked one says so. */
+.rows li.row button.grow {
+  background: none;
+  border: 0;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.rows li.row.on {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  border-radius: 6px;
+}
+
+/* A page of its own inside a case: a button, the dialog it opens, and a feed under them. */
+.stack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.stack > .rows {
+  align-self: stretch;
+}
+
+.dialog {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  align-self: stretch;
+  padding: 10px 12px;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+.stack > button,
+.dialog button {
+  padding: 6px 12px;
+  border: 0;
+  border-radius: 8px;
+  background: #2a2a33;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.stack > button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
