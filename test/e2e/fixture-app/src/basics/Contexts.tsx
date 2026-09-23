@@ -1,5 +1,5 @@
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { Case, Pair, Panel, RenderCount, useRenderCount } from './Case';
+import { createContext, useContext, useEffect, useMemo, type ReactNode } from 'react';
+import { Case, createDriver, Pair, Panel, RenderCount, useRenderCount } from './Case';
 
 interface Both {
   user: string;
@@ -134,63 +134,59 @@ const STABLE = (
   </ul>
 );
 
+const users = createDriver('Anna');
+const themes = createDriver('dark');
+/** One clock for both sides of the second pair, so their providers render together. */
+const seconds = createDriver(0);
+
+/** The page's user and theme, handed to a provider the way a page hands them down. */
+const Together = () => (
+  <TogetherProvider user={users.use()} theme={themes.use()}>
+    {TOGETHER}
+  </TogetherProvider>
+);
+const Apart = () => (
+  <UserContext.Provider value={users.use()}>
+    <ThemeContext.Provider value={themes.use()}>{APART}</ThemeContext.Provider>
+  </UserContext.Provider>
+);
+
 /**
- * Renders every second for a reason of its own and takes both providers with it: nothing in their value changes
- * on those renders, and that is what tells the two of them apart.
+ * A shell above the provider that renders every second for a reason of its own — a layout or a session shell
+ * high in an app — and takes the provider with it: nothing in its value changes on those renders, and that is what
+ * tells the two providers apart.
  */
-const UnderAClock = ({ user, theme }: Both) => {
-  const [, setTick] = useState(0);
-  useEffect(() => {
-    const id = setInterval(() => setTick((t) => t + 1), 1000);
-    return () => clearInterval(id);
-  }, []);
+const Shell = ({ provider: Provider, children }: { provider: typeof InlineProvider; children: ReactNode }) => {
+  seconds.use();
   return (
-    <>
-      <Panel
-        kind="broken"
-        title="value={{ user, theme }}"
-        says="The recorder says: context InlineContext SAME-CONTENT on both readers, every second — the same user and theme, in a new object."
-        code={BROKEN_INLINE}
-      >
-        <InlineProvider user={user} theme={theme}>
-          {INLINE}
-        </InlineProvider>
-      </Panel>
-      <Panel
-        kind="fixed"
-        title="useMemo(() => ({ user, theme }))"
-        says="The recorder says nothing while the provider renders on its own; when the theme really changes, both readers render — and show it."
-        code={FIXED_INLINE}
-      >
-        <StableProvider user={user} theme={theme}>
-          {STABLE}
-        </StableProvider>
-      </Panel>
-    </>
+    <Provider user={users.use()} theme={themes.use()}>
+      {children}
+    </Provider>
   );
 };
 
 export const Contexts = () => {
-  const [user, setUser] = useState('Anna');
-  const [theme, setTheme] = useState('dark');
+  useEffect(() => {
+    const id = setInterval(() => seconds.set((t) => t + 1), 1000);
+    return () => clearInterval(id);
+  }, []);
   return (
     <Case
       title="who a context wakes up"
       what={
         <>
-          Every reader of a context renders when its value changes, and <em>changes</em> means a new object, not new
-          content. So a context that carries two unrelated things wakes the reader of the other one, and a value object
-          built inside the provider wakes every reader each time the provider renders — with nothing new in it. In the
-          second pair a clock above the providers renders them every second, as a layout or a session shell high in
-          an app does; the user and the theme are the page's, so the buttons change them on both sides.
+          Every reader of a context renders when its value changes, and <em>changes</em> means a new object, not new content. So a context that
+          carries two unrelated things wakes the reader of the other one, and a value object built inside the provider wakes every reader each time
+          the provider renders — with nothing new in it. In the second pair a shell above each provider renders it every second, as a layout or a
+          session shell high in an app does; the user and the theme are the page's, so the buttons change them on both sides.
         </>
       }
     >
       <p className="bar">
-        <button type="button" data-testid="user" onClick={() => setUser((u) => (u === 'Anna' ? 'Boris' : 'Anna'))}>
+        <button type="button" data-testid="user" onClick={() => users.set((u) => (u === 'Anna' ? 'Boris' : 'Anna'))}>
           Change the user
         </button>
-        <button type="button" data-testid="theme" onClick={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}>
+        <button type="button" data-testid="theme" onClick={() => themes.set((t) => (t === 'dark' ? 'light' : 'dark'))}>
           Change the theme
         </button>
       </p>
@@ -201,9 +197,7 @@ export const Contexts = () => {
           says="The recorder says: context BothContext on a reader whose own value never changed."
           code={BROKEN}
         >
-          <TogetherProvider user={user} theme={theme}>
-            {TOGETHER}
-          </TogetherProvider>
+          <Together />
         </Panel>
         <Panel
           kind="fixed"
@@ -211,13 +205,26 @@ export const Contexts = () => {
           says="The recorder says: only the reader of the context that changed, and only when it changed."
           code={FIXED}
         >
-          <UserContext.Provider value={user}>
-            <ThemeContext.Provider value={theme}>{APART}</ThemeContext.Provider>
-          </UserContext.Provider>
+          <Apart />
         </Panel>
       </Pair>
       <Pair id="inline" title="a value object built in the provider">
-        <UnderAClock user={user} theme={theme} />
+        <Panel
+          kind="broken"
+          title="value={{ user, theme }}"
+          says="The recorder says: context InlineContext SAME-CONTENT on both readers, every second — the same user and theme, in a new object."
+          code={BROKEN_INLINE}
+        >
+          <Shell provider={InlineProvider}>{INLINE}</Shell>
+        </Panel>
+        <Panel
+          kind="fixed"
+          title="useMemo(() => ({ user, theme }))"
+          says="The recorder says nothing while the provider renders on its own; when the theme really changes, both readers render — and show it."
+          code={FIXED_INLINE}
+        >
+          <Shell provider={StableProvider}>{STABLE}</Shell>
+        </Panel>
       </Pair>
     </Case>
   );

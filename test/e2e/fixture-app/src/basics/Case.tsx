@@ -1,5 +1,27 @@
 import type { ReactNode } from 'react';
-import { useRef } from 'react';
+import { useRef, useSyncExternalStore } from 'react';
+
+/**
+ * What a case's buttons change, kept outside React. Only the components the lesson is about read it, so the page,
+ * the frames of the two versions and their code do not render with every press — with the outlines on, what lights
+ * up is what the lesson is about.
+ */
+export function createDriver<T>(initial: T) {
+  let value = initial;
+  const listeners = new Set<() => void>();
+  const subscribe = (listener: () => void) => {
+    listeners.add(listener);
+    return () => listeners.delete(listener);
+  };
+  return {
+    use: () => useSyncExternalStore(subscribe, () => value),
+    get: () => value,
+    set(next: T | ((current: T) => T)) {
+      value = typeof next === 'function' ? (next as (current: T) => T)(value) : next;
+      listeners.forEach((listener) => listener());
+    },
+  };
+}
 
 /** Renders so far, without causing one: a ref, not state. */
 export function useRenderCount() {

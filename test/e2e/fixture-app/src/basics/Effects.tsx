@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Case, Panel, RenderCount, useRenderCount } from './Case';
+import { Case, createDriver, Panel, RenderCount, useRenderCount } from './Case';
 
 const BROKEN = `
 const Greeting = ({ first, last }) => {
@@ -47,28 +47,34 @@ const WhileRendering = ({ first, last }: { first: string; last: string }) => {
   );
 };
 
+const first = createDriver('');
+const last = createDriver('');
+
+/** The two fields: a form above both greetings, which hands them the names. */
+const Field = ({ name, value }: { name: 'first' | 'last'; value: typeof first }) => (
+  <label className="field small">
+    <span>{name}</span>
+    <input data-testid={name} value={value.use()} onInput={(e) => value.set((e.target as HTMLInputElement).value)} />
+  </label>
+);
+
+/** The greeting as a component would get it from a form: the names as props. */
+const Greeting = ({ by: View }: { by: typeof ByEffect }) => <View first={first.use()} last={last.use()} />;
+
 export const Effects = () => {
-  const [first, setFirst] = useState('');
-  const [last, setLast] = useState('');
   return (
     <Case
       title="derive it while you render"
       what={
         <>
-          Both greetings are the two fields put together. On the left an effect copies the result into state, so every
-          keystroke costs two renders and the greeting is one render behind what you typed.
+          Both greetings are the two fields put together. On the left an effect copies the result into state, so every keystroke costs two renders and
+          the greeting is one render behind what you typed.
         </>
       }
     >
       <p className="bar">
-        <label className="field small">
-          <span>first</span>
-          <input data-testid="first" value={first} onInput={(e) => setFirst((e.target as HTMLInputElement).value)} />
-        </label>
-        <label className="field small">
-          <span>last</span>
-          <input data-testid="last" value={last} onInput={(e) => setLast((e.target as HTMLInputElement).value)} />
-        </label>
+        <Field name="first" value={first} />
+        <Field name="last" value={last} />
       </p>
       <div className="two">
         <Panel
@@ -77,15 +83,10 @@ export const Effects = () => {
           says="The recorder says: a second commit after every keystroke, caused by core:effect."
           code={BROKEN}
         >
-          <ByEffect first={first} last={last} />
+          <Greeting by={ByEffect} />
         </Panel>
-        <Panel
-          kind="fixed"
-          title="worked out in render"
-          says="The recorder says: one commit per keystroke, and nothing to explain."
-          code={FIXED}
-        >
-          <WhileRendering first={first} last={last} />
+        <Panel kind="fixed" title="worked out in render" says="The recorder says: one commit per keystroke, and nothing to explain." code={FIXED}>
+          <Greeting by={WhileRendering} />
         </Panel>
       </div>
     </Case>

@@ -1,5 +1,5 @@
 import { memo, useState } from 'react';
-import { Case, MountCount, Panel, RenderCount, useRenderCount } from './Case';
+import { Case, createDriver, MountCount, Panel, RenderCount, useRenderCount } from './Case';
 
 interface Task {
   id: string;
@@ -84,35 +84,38 @@ const Row = memo(({ task, mode }: { task: Task; mode: Mode }) => {
 
 const keyOf = (mode: Mode, task: Task, index: number) => (mode === 'index' ? index : mode === 'id' ? task.id : Math.random());
 
-const List = ({ mode, tasks }: { mode: Mode; tasks: Task[] }) => (
+const tasks = createDriver(START);
+// Starting over means forgetting everything the rows remember, and a key change is exactly how that is asked for —
+// the one honest use of a key that is not an id.
+const run = createDriver(0);
+
+/** The list reads the tasks itself, as a list under a store would: only it renders when they change. */
+const List = ({ mode }: { mode: Mode }) => (
   <ul className="rows" data-testid={`list-${mode}`}>
-    {tasks.map((task, index) => (
+    {tasks.use().map((task, index) => (
       <Row key={keyOf(mode, task, index)} task={task} mode={mode} />
     ))}
   </ul>
 );
 
+const Lists = ({ mode }: { mode: Mode }) => <List key={run.use()} mode={mode} />;
+
 export const Keys = () => {
-  const [tasks, setTasks] = useState(START);
-  // Starting over means forgetting everything the rows remember, and a key change is exactly how that is asked for —
-  // the one honest use of a key that is not an id.
-  const [run, setRun] = useState(0);
   return (
     <Case
       title="key: the position or the thing"
       what={
         <>
-          Three copies of one list of tasks, each row in <code>memo</code> with a checkbox of its own. The only
-          difference is what goes into <code>key</code>. Tick a few boxes, then add a task at the top and watch where
-          the ticks end up.
+          Three copies of one list of tasks, each row in <code>memo</code> with a checkbox of its own. The only difference is what goes into{' '}
+          <code>key</code>. Tick a few boxes, then add a task at the top and watch where the ticks end up.
         </>
       }
     >
       <p className="bar">
-        <button type="button" data-testid="prepend" onClick={() => setTasks((t) => [{ id: `n${++added}`, title: `New task ${added}` }, ...t])}>
+        <button type="button" data-testid="prepend" onClick={() => tasks.set((t) => [{ id: `n${++added}`, title: `New task ${added}` }, ...t])}>
           Add at the top
         </button>
-        <button type="button" data-testid="remove" onClick={() => setTasks((t) => t.filter((_, i) => i !== Math.floor(t.length / 2)))}>
+        <button type="button" data-testid="remove" onClick={() => tasks.set((t) => t.filter((_, i) => i !== Math.floor(t.length / 2)))}>
           Remove the middle one
         </button>
         <button
@@ -121,8 +124,8 @@ export const Keys = () => {
           title="Puts the tasks back and mounts the lists again, so the counters and the ticks start over"
           onClick={() => {
             mounts.clear();
-            setTasks(START);
-            setRun((r) => r + 1);
+            tasks.set(START);
+            run.set((r) => r + 1);
           }}
         >
           Start over
@@ -131,7 +134,7 @@ export const Keys = () => {
       <div className="three">
         {MODES.map(({ mode, kind, title, says }) => (
           <Panel key={mode} kind={kind} title={title} says={says} code={CODE[mode]}>
-            <List key={run} mode={mode} tasks={tasks} />
+            <Lists mode={mode} />
           </Panel>
         ))}
       </div>

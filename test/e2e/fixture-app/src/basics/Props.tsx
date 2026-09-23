@@ -1,5 +1,5 @@
-import { memo, useMemo, useState, type ReactNode } from 'react';
-import { Case, Pair, Panel, RenderCount, useRenderCount } from './Case';
+import { memo, useMemo, type ReactNode } from 'react';
+import { Case, createDriver, Pair, Panel, RenderCount, useRenderCount } from './Case';
 
 interface CardProps {
   name: string;
@@ -52,16 +52,30 @@ const STAR = <Star />;   // ← one element, made once
 const STYLE = { paddingLeft: 10 };
 const NAMES = ['Anna', 'Boris', 'Chen'];
 
-const Inline = ({ filter }: { filter: string }) => (
-  <ul className="rows">
-    {NAMES.map((name) => (
-      // A fresh object and a fresh array on every render: memo compares them and finds them different every time.
-      <Card key={name} name={name} style={{ paddingLeft: 10 }} tags={['design', filter]} />
-    ))}
-  </ul>
-);
+const ticks = createDriver(0);
+const run = createDriver(0);
+const filters = createDriver('open');
 
-const Stable = ({ filter }: { filter: string }) => {
+/** The lists render with the button: they are the panel whose render the cards are handed props from. */
+const useFilter = () => {
+  ticks.use();
+  return filters.use();
+};
+
+const Inline = () => {
+  const filter = useFilter();
+  return (
+    <ul className="rows">
+      {NAMES.map((name) => (
+        // A fresh object and a fresh array on every render: memo compares them and finds them different every time.
+        <Card key={name} name={name} style={{ paddingLeft: 10 }} tags={['design', filter]} />
+      ))}
+    </ul>
+  );
+};
+
+const Stable = () => {
+  const filter = useFilter();
   // The array depends on something, so it is remembered until that something changes; the style depends on nothing.
   const tags = useMemo(() => ['design', filter], [filter]);
   return (
@@ -91,56 +105,68 @@ const Badge = memo(({ name, icon }: { name: string; icon: ReactNode }) => {
 // The element itself, made once: JSX is a call that returns an object, and this is the object.
 const STAR = <Star />;
 
-const InlineIcon = () => (
-  <ul className="rows">
-    {NAMES.map((name) => (
-      <Badge key={name} name={name} icon={<Star />} />
-    ))}
-  </ul>
-);
+const InlineIcon = () => {
+  useFilter();
+  return (
+    <ul className="rows">
+      {NAMES.map((name) => (
+        <Badge key={name} name={name} icon={<Star />} />
+      ))}
+    </ul>
+  );
+};
 
-const HoistedIcon = () => (
-  <ul className="rows">
-    {NAMES.map((name) => (
-      <Badge key={name} name={name} icon={STAR} />
-    ))}
-  </ul>
-);
+const HoistedIcon = () => {
+  useFilter();
+  return (
+    <ul className="rows">
+      {NAMES.map((name) => (
+        <Badge key={name} name={name} icon={STAR} />
+      ))}
+    </ul>
+  );
+};
+
+const Rendered = () => <span className="muted">rendered {ticks.use()}×</span>;
+const FilterButton = () => {
+  const filter = filters.use();
+  return (
+    <button type="button" data-testid="filter" onClick={() => filters.set((f) => (f === 'open' ? 'done' : 'open'))}>
+      Change the tag ({filter})
+    </button>
+  );
+};
+/** A new key mounts the list again, which is how the counters are put back to one. */
+const Fresh = ({ children }: { children: (run: number) => ReactNode }) => <>{children(run.use())}</>;
 
 export const Props = () => {
-  const [ticks, setTicks] = useState(0);
-  const [run, setRun] = useState(0);
-  const [filter, setFilter] = useState('open');
   return (
     <Case
       title="a new object is a new prop"
       what={
         <>
-          Every list passes its <code>memo</code> rows something that does not change when the panel renders — but on
-          the left it is written inside the render, so every render builds a new one, and <code>memo</code> has nothing
-          to hold on to. An object, an array, and — the one nobody sees — a JSX element: <code>{'<Star />'}</code> is
-          an object too.
+          Every list passes its <code>memo</code> rows something that does not change when the panel renders — but on the left it is written inside
+          the render, so every render builds a new one, and <code>memo</code> has nothing to hold on to. An object, an array, and — the one nobody
+          sees — a JSX element: <code>{'<Star />'}</code> is an object too.
         </>
       }
     >
       <p className="bar">
-        <button type="button" data-testid="render" onClick={() => setTicks((t) => t + 1)}>
+        <button type="button" data-testid="render" onClick={() => ticks.set((t) => t + 1)}>
           Render the panels
         </button>
-        <button type="button" data-testid="filter" onClick={() => setFilter((f) => (f === 'open' ? 'done' : 'open'))}>
-          Change the tag ({filter})
-        </button>
+        <FilterButton />
         <button
           type="button"
           data-testid="reset"
           onClick={() => {
-            setTicks(0);
-            setRun((r) => r + 1);
+            ticks.set(0);
+            run.set((r) => r + 1);
           }}
         >
           Start over
         </button>
-        <span className="muted">rendered {ticks}×</span>
+        <Rendered />
       </p>
       <Pair id="objects" title="an object or an array">
         <Panel
@@ -149,7 +175,7 @@ export const Props = () => {
           says="The recorder says: parent: props same: style, tags — same content, new references."
           code={BROKEN}
         >
-          <Inline key={run} filter={filter} />
+          <Fresh>{(key) => <Inline key={key} />}</Fresh>
         </Panel>
         <Panel
           kind="fixed"
@@ -157,7 +183,7 @@ export const Props = () => {
           says="The recorder says nothing until the tag really changes, and then it names it: parent: props tags."
           code={FIXED}
         >
-          <Stable key={run} filter={filter} />
+          <Fresh>{(key) => <Stable key={key} />}</Fresh>
         </Panel>
       </Pair>
       <Pair id="element" title="an element is an object too">
@@ -167,10 +193,15 @@ export const Props = () => {
           says="The recorder says: parent: props same: icon — the badge got a new element that draws the same star."
           code={BROKEN_ELEMENT}
         >
-          <InlineIcon key={run} />
+          <Fresh>{(key) => <InlineIcon key={key} />}</Fresh>
         </Panel>
-        <Panel kind="fixed" title="icon={STAR}" says="The recorder says nothing: the same element every time, so memo skips the badge." code={FIXED_ELEMENT}>
-          <HoistedIcon key={run} />
+        <Panel
+          kind="fixed"
+          title="icon={STAR}"
+          says="The recorder says nothing: the same element every time, so memo skips the badge."
+          code={FIXED_ELEMENT}
+        >
+          <Fresh>{(key) => <HoistedIcon key={key} />}</Fresh>
         </Panel>
       </Pair>
     </Case>

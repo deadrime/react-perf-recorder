@@ -1,5 +1,5 @@
 import { memo, useCallback, useState } from 'react';
-import { Case, Panel, RenderCount, useRenderCount } from './Case';
+import { Case, createDriver, Panel, RenderCount, useRenderCount } from './Case';
 
 interface Person {
   id: string;
@@ -46,8 +46,13 @@ const Row = memo(({ person, onPick }: { person: Person; onPick: (id: string) => 
   );
 });
 
-/** The same list twice: the only difference is where the handler comes from. */
-const List = ({ stable, ticks }: { stable: boolean; ticks: number }) => {
+const ticks = createDriver(0);
+// A new key mounts the lists again, which is how the counters are put back to one.
+const run = createDriver(0);
+
+/** The same list twice: the only difference is where the handler comes from. It renders with the button. */
+const List = ({ stable }: { stable: boolean }) => {
+  const clicked = ticks.use();
   const [picked, setPicked] = useState<string | null>(null);
   const stableOnPick = useCallback((id: string) => setPicked(id), []);
   // A new function on every render of the list: memo below compares it and finds it different every time.
@@ -60,29 +65,28 @@ const List = ({ stable, ticks }: { stable: boolean; ticks: number }) => {
         ))}
       </ul>
       <p className="muted">
-        picked: <b>{picked ?? '—'}</b> · panel rendered {ticks + 1}×
+        picked: <b>{picked ?? '—'}</b> · list rendered {clicked + 1}×
       </p>
     </>
   );
 };
 
+const Clicked = () => <span className="muted">clicked {ticks.use()}×</span>;
+const Lists = ({ stable }: { stable: boolean }) => <List key={run.use()} stable={stable} />;
+
 export const MemoCallback = () => {
-  const [ticks, setTicks] = useState(0);
-  // A new key mounts the lists again, which is how the counters are put back to one.
-  const [run, setRun] = useState(0);
   return (
     <Case
       title="memo and useCallback"
       what={
         <>
-          Both lists are the same three rows in <code>memo</code>. The left one is handed a handler written in the
-          parent's render, so every render of the parent gives <code>memo</code> a prop it has never seen. The right one
-          is handed the same function every time.
+          Both lists are the same three rows in <code>memo</code>. The left one is handed a handler written in the parent's render, so every render of
+          the parent gives <code>memo</code> a prop it has never seen. The right one is handed the same function every time.
         </>
       }
     >
       <p className="bar">
-        <button type="button" data-testid="render" onClick={() => setTicks((t) => t + 1)}>
+        <button type="button" data-testid="render" onClick={() => ticks.set((t) => t + 1)}>
           Render both panels
         </button>
         <button
@@ -90,13 +94,13 @@ export const MemoCallback = () => {
           data-testid="reset"
           title="Mounts both lists again, so the counters start over"
           onClick={() => {
-            setTicks(0);
-            setRun((r) => r + 1);
+            ticks.set(0);
+            run.set((r) => r + 1);
           }}
         >
           Start over
         </button>
-        <span className="muted">clicked {ticks}×</span>
+        <Clicked />
       </p>
       <div className="two">
         <Panel
@@ -105,15 +109,10 @@ export const MemoCallback = () => {
           says="The recorder says: parent: props same: onPick — the prop changed identity, not content."
           code={BROKEN}
         >
-          <List key={run} stable={false} ticks={ticks} />
+          <Lists stable={false} />
         </Panel>
-        <Panel
-          kind="fixed"
-          title="onPick from useCallback"
-          says="The recorder says nothing about these rows: they never render again."
-          code={FIXED}
-        >
-          <List key={run} stable ticks={ticks} />
+        <Panel kind="fixed" title="onPick from useCallback" says="The recorder says nothing about these rows: they never render again." code={FIXED}>
+          <Lists stable />
         </Panel>
       </div>
     </Case>
