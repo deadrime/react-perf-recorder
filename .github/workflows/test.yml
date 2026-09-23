@@ -2,11 +2,11 @@ name: test
 
 on:
   push:
-    branches: [main]
+    branches: [main, dev]
   pull_request:
 
 jobs:
-  test:
+  unit:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -15,18 +15,43 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      # React 19 lives in a tree of its own; the e2e run serves the fixture from both.
       - run: npm ci --prefix test/react19
       - run: npm run typecheck
       - run: npm test
       - run: npm run test:19
+
+  # The e2e run takes minutes: main and pull requests into it only; dev gets the checks above on every push.
+  e2e:
+    if: github.ref == 'refs/heads/main' || github.base_ref == 'main'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        project: [react18, react19]
+    env:
+      E2E_PROJECT: ${{ matrix.project }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # React 19 lives in a tree of its own; its fixture is served from there.
+      - run: npm ci --prefix test/react19
       # The e2e run loads what was built: engine.iife.js into a page, the CLI as an MCP server.
       - run: npm run build
+      - id: playwright
+        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ steps.playwright.outputs.version }}
       - run: npx playwright install --with-deps chromium
-      - run: npm run test:e2e
+      - run: npx playwright test --project=${{ matrix.project }}
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
-          name: e2e-results
+          name: e2e-results-${{ matrix.project }}
           path: .agent-artifacts/e2e-results
           retention-days: 7

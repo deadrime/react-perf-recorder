@@ -7,22 +7,13 @@ import { SESSIONS_DIR } from '../../playwright.config';
 
 test.use({ permissions: ['clipboard-read', 'clipboard-write'] });
 
-const sessions = () => (fs.existsSync(SESSIONS_DIR) ? fs.readdirSync(SESSIONS_DIR).filter((d) => /^\d{8}-/.test(d)) : []);
-
-async function newRecording(before: string[]): Promise<{ meta: SessionMeta; recording: RecordingV2 }> {
-  let id: string | undefined;
-  await expect
-    .poll(() => {
-      id = sessions().find((d) => {
-        if (before.includes(d) || !fs.existsSync(path.join(SESSIONS_DIR, d, 'recording.json'))) return false;
-        // Another spec, or a person with the panel open, may finish a recording while this one waits: only ours counts.
-        const meta = JSON.parse(fs.readFileSync(path.join(SESSIONS_DIR, d, 'session.json'), 'utf8')) as SessionMeta;
-        return !meta.source.startsWith('script:');
-      });
-      return id;
-    })
-    .toBeTruthy();
-  const dir = path.join(SESSIONS_DIR, id!);
+async function newRecording(page: Page): Promise<{ meta: SessionMeta; recording: RecordingV2 }> {
+  // The id the panel saved this recording under: other specs record into the same folder at the same time.
+  const saved = page.locator('.result-bar .saved');
+  await expect(saved).toHaveText(/^saved \S+/, { timeout: 15_000 });
+  const id = ((await saved.textContent()) ?? '').replace(/^saved /, '');
+  await expect.poll(() => fs.existsSync(path.join(SESSIONS_DIR, id, 'recording.json'))).toBe(true);
+  const dir = path.join(SESSIONS_DIR, id);
   return {
     meta: JSON.parse(fs.readFileSync(path.join(dir, 'session.json'), 'utf8')),
     recording: JSON.parse(fs.readFileSync(path.join(dir, 'recording.json'), 'utf8')),
@@ -47,7 +38,6 @@ const painted = (page: Page) =>
   });
 
 test('records a session from the panel with store causes, hook names and masked input', async ({ page }) => {
-  const before = sessions();
   await open(page);
   // The note is off in the panel for now, so nothing of it may reach a recording.
   await expect(page.locator('[data-rpr="note"]')).toHaveCount(0);
@@ -59,7 +49,7 @@ test('records a session from the panel with store causes, hook names and masked 
   await page.getByTestId('delete-m3').click();
   await page.locator('[data-rpr="stop"]').click();
   await expect(page.locator('[data-rpr="result"]')).toContainText('saved');
-  const { meta, recording } = await newRecording(before);
+  const { meta, recording } = await newRecording(page);
 
   expect(meta).toMatchObject({ status: 'done' });
   expect(meta.label).toBeUndefined();
@@ -91,7 +81,6 @@ test('records a session from the panel with store causes, hook names and masked 
 });
 
 test('one click on the page is the area; the tree opens around it and moves it', async ({ page }) => {
-  const before = sessions();
   await open(page);
   await page.locator('[data-rpr="pick"]').click();
   await page.getByTestId('message-m1').hover();
@@ -127,7 +116,7 @@ test('one click on the page is the area; the tree opens around it and moves it',
   // Reactions land on one message at a time, so the recording has to be long enough for this row's turn.
   await page.waitForTimeout(3000);
   await page.locator('[data-rpr="stop"]').click();
-  const { recording } = await newRecording(before);
+  const { recording } = await newRecording(page);
   expect(recording.scope).toMatchObject({ name: 'MessageRow', state: 'attached' });
   // The row renders from its own subscription; its children are inside the area, the rest of the page is not.
   expect(recording.roots.map((r) => r.name)).toContain('Status');
@@ -136,7 +125,6 @@ test('one click on the page is the area; the tree opens around it and moves it',
 });
 
 test('follows a component picked in the tree and shows the leading roots live', async ({ page }) => {
-  const before = sessions();
   await open(page);
   await page.locator('[data-rpr="pick"]').click();
   await page.locator('[data-testid="message-m1"] .status').click();
@@ -155,7 +143,7 @@ test('follows a component picked in the tree and shows the leading roots live', 
   await expect(page.locator('[data-rpr="live-roots"] .kind[data-kind="store"]').first()).toBeVisible();
   expect(await buttonAt()).toBe(atRest);
   await page.locator('[data-rpr="stop"]').click();
-  const { recording } = await newRecording(before);
+  const { recording } = await newRecording(page);
   expect(recording.watch?.Status.renders).toBeGreaterThan(0);
   expect(recording.watch?.Status.mounted).toBe(3);
   await expect(page.locator('[data-rpr="result"]')).toContainText('Watched');
@@ -187,7 +175,6 @@ test('copies the area for an assistant', async ({ page, baseURL }) => {
 });
 
 test('outlines renders inside the area while nothing is recorded, and marks recordings made with it', async ({ page }) => {
-  const before = sessions();
   await open(page);
   await page.locator('input[data-rpr="highlight"]').check();
   await page.locator('[data-rpr="pick"]').click();
@@ -199,7 +186,7 @@ test('outlines renders inside the area while nothing is recorded, and marks reco
   await page.locator('[data-rpr="record"]').click();
   await page.waitForTimeout(600);
   await page.locator('[data-rpr="stop"]').click();
-  const { recording } = await newRecording(before);
+  const { recording } = await newRecording(page);
   expect(recording.overhead.highlight).toBe(true);
   expect(recording.warnings.some((w) => w.startsWith('highlight was on'))).toBe(true);
 
@@ -274,27 +261,25 @@ test('the card is dragged by its title bar, edge included', async ({ page }) => 
 });
 
 test('the shortcut opens the panel and records', async ({ page }) => {
-  const before = sessions();
   await page.goto('/app?tick=150');
   await expect(page.getByTestId('unread')).toBeVisible();
   await expect(page.locator('[data-rpr="record"]')).toBeHidden();
   await page.keyboard.press('Alt+Shift+KeyR');
   await page.getByTestId('tab-people').click();
   await page.keyboard.press('Alt+Shift+KeyR');
-  const { recording } = await newRecording(before);
+  const { recording } = await newRecording(page);
   expect(recording.tool.source).toBe('panel');
   expect(recording.totals.commitsInScope).toBeGreaterThan(0);
   await expect(page.locator('[data-rpr="record"]')).toBeVisible();
 });
 
 test('records the page load: the panel reloads into a recording', async ({ page }) => {
-  const before = sessions();
   await open(page);
   await page.locator('[data-rpr="record-on-load"]').click();
   await expect(page.getByTestId('unread')).toBeVisible();
   await expect(page.locator('[data-rpr="stop"]')).toBeVisible();
   await page.locator('[data-rpr="stop"]').click();
-  const { meta, recording } = await newRecording(before);
+  const { meta, recording } = await newRecording(page);
 
   expect(meta).toMatchObject({ source: 'load', label: 'from page load' });
   // Everything the page mounted is in the recording, with the components it mounted on the way.
@@ -303,7 +288,6 @@ test('records the page load: the panel reloads into a recording', async ({ page 
 });
 
 test('records the page load inside the area picked before it', async ({ page }) => {
-  const before = sessions();
   await open(page);
   await page.locator('[data-rpr="pick"]').click();
   await page.getByTestId('messages').click();
@@ -316,7 +300,7 @@ test('records the page load inside the area picked before it', async ({ page }) 
   // The reloaded panel says what is being recorded: the area, not Pick as if it were the whole app.
   await expect(page.locator('[data-rpr="scope"]')).toHaveText('MessageList');
   await page.locator('[data-rpr="stop"]').click();
-  const { meta, recording } = await newRecording(before);
+  const { meta, recording } = await newRecording(page);
 
   expect(meta.source).toBe('load');
   expect(recording.scope).toMatchObject({ name: 'MessageList' });
@@ -324,11 +308,10 @@ test('records the page load inside the area picked before it', async ({ page }) 
 });
 
 test('?rpr=rec records from the first render for a script', async ({ page }) => {
-  const before = sessions();
   await page.goto('/app?rpr=rec&tick=150');
   await expect(page.getByTestId('unread')).toBeVisible();
   await page.locator('[data-rpr="stop"]').click();
-  const { meta, recording } = await newRecording(before);
+  const { meta, recording } = await newRecording(page);
   expect(meta.source).toBe('load');
   expect(recording.totals.mounts).toBeGreaterThan(10);
 });

@@ -22,15 +22,20 @@ const fixture = (port: number, react19: boolean) => ({
   timeout: 60_000,
 });
 
+/** One React only, when CI runs the two as jobs side by side: only its dev server is started. */
+const only = process.env.E2E_PROJECT;
+const projects = [
+  { name: 'react18', use: { baseURL: `http://localhost:${PORTS.react18}` }, server: fixture(PORTS.react18, false) },
+  { name: 'react19', use: { baseURL: `http://localhost:${PORTS.react19}` }, server: fixture(PORTS.react19, true) },
+].filter((p) => !only || p.name === only);
+
 export default defineConfig({
   testDir: 'test/e2e',
   globalSetup: './test/e2e/global-setup.ts',
   outputDir: '.agent-artifacts/e2e-results',
-  workers: 1,
+  // Files run side by side; a test finds its recording by the id it was saved under, not by what is new in the folder.
+  workers: process.env.CI ? 2 : 4,
   use: { headless: true, viewport: { width: 1280, height: 800 } },
-  projects: [
-    { name: 'react18', use: { baseURL: `http://localhost:${PORTS.react18}` } },
-    { name: 'react19', use: { baseURL: `http://localhost:${PORTS.react19}` } },
-  ],
-  webServer: [fixture(PORTS.react18, false), fixture(PORTS.react19, true)],
+  projects: projects.map(({ name, use }) => ({ name, use })),
+  webServer: projects.map((p) => p.server),
 });
