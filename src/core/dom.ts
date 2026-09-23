@@ -1,4 +1,7 @@
-import { fiberFromNode, type Fiber } from './fiber';
+import { fiberFromNode, isHost, Tag, type Fiber } from './fiber';
+
+/** Whether a component changed something on the screen: the set holds one half of each fiber pair. */
+export const touchedHas = (touched: Set<Fiber>, f: Fiber) => touched.has(f) || (f.alternate !== null && touched.has(f.alternate));
 
 export interface DomCounts {
   text: number;
@@ -74,11 +77,15 @@ export class DomWatcher {
     return (oldest === undefined ? m.oldValue : oldest) !== this.valueNow(m);
   }
 
-  /** Every fiber above a node, both halves of each pair: those components changed something on the screen. */
+  /**
+   * Every component above a node changed something on the screen. One half of each pair is enough, since readers
+   * look at both; host fibers are skipped, as nobody asks about them — they are most of the walk.
+   */
   private mark(node: Node, touched: Set<Fiber>) {
-    for (let f = fiberFromNode(node); f && !touched.has(f); f = f.return) {
+    for (let f = fiberFromNode(node); f; f = f.return) {
+      if (isHost(f) || f.tag === Tag.HostText) continue;
+      if (touchedHas(touched, f)) return;
       touched.add(f);
-      if (f.alternate) touched.add(f.alternate);
     }
   }
 

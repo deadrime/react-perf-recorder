@@ -18,7 +18,7 @@ import { buildSegments, eventName, USER_EVENTS, type SegmentCommit } from '../sh
 import { safeUrl } from '../shared/url';
 import { ActionTracker } from './actions';
 import { hookCommits, hookOwner, laneLabel, RecorderError, type CommitHook, type CommitInfo } from './commit-hook';
-import { DomWatcher } from './dom';
+import { DomWatcher, touchedHas } from './dom';
 import { FrameWatcher } from './env/frames';
 import { trackHistory } from './env/navigations';
 import { mountedInPlace,
@@ -148,10 +148,25 @@ interface CommitState {
 }
 
 /** `pending` carries the component an outline will be labelled with, and whether it is a package's own. */
+/** The app's components above a fiber, nearest first, shared by every fiber below: text only when a root needs it. */
+interface PathRef {
+  name: string;
+  up: PathRef | null;
+}
+
+const PATH_DEPTH = 4;
+
+function pathText(ref: PathRef | null, base: string[]): string {
+  const names: string[] = [];
+  for (let r = ref; r && names.length < PATH_DEPTH; r = r.up) names.push(r.name);
+  for (let i = 0; i < base.length && names.length < PATH_DEPTH; i++) names.push(base[i]);
+  return names.join(' < ');
+}
+
 type StackItem = [
   fiber: Fiber,
   parentRendered: boolean,
-  path: string,
+  path: PathRef | null,
   rootKey: string | null,
   pending: [string, Fiber, boolean] | null,
   zone: string | null
@@ -207,6 +222,7 @@ export class Recorder {
   private readonly rootsByKey = new Map<string, RootAgg>();
   private readonly rootList: RootAgg[] = [];
   private readonly reasonIds = new Map<string, number>();
+  private readonly reasonIdsByFields = new Map<string, number>();
   private readonly reasonList: ReasonInfo[] = [];
   private readonly components = new Map<string, ComponentAgg>();
   private readonly watch = new Map<string, { mounted: number; renders: number; byRoot: Map<RootAgg | null, number> }>();
@@ -255,8 +271,17 @@ export class Recorder {
   };
 
   /** Left out of a path: an unnamed wrapper, a component that only hands a context down, a package's own. */
+  /** By the component's type: the answer is the same for every instance, and asked for every one. */
+  private readonly structuralByType = new WeakMap<object, boolean>();
+
   private structural(name: string, f: Fiber): boolean {
-    return this.wrapperRe.test(name) || isProvider(name) || wrapsProvider(f) || isLibraryFiber(f);
+    const type = f.type as object | null;
+    const keyed = type !== null && (typeof type === 'object' || typeof type === 'function');
+    const known = keyed ? this.structuralByType.get(type) : undefined;
+    if (known !== undefined) return known;
+    const result = this.wrapperRe.test(name) || isProvider(name) || wrapsProvider(f) || isLibraryFiber(f);
+    if (keyed) this.structuralByType.set(type, result);
+    return result;
   }
 
   constructor(private deps: RecorderDeps, private options: RecordOptions) {
@@ -498,7 +523,8 @@ export class Recorder {
   private scan(start: Fiber, parentRendered: boolean, path: string, rootKey: string | null, c: CommitState, isolate: boolean) {
     const highlight = Boolean(this.deps.highlight) && this.deps.highlight!.enabled !== false && this.options.highlight !== false;
     if (highlight) this.highlighted = true;
-    const stack: StackItem[] = [[start, parentRendered, path, rootKey, null, null]];
+    const base = path ? path.split(' < ') : [];
+    const stack: StackItem[] = [[start, parentRendered, null, rootKey, null, null]];
     while (stack.length) {
       const [f, parentDid, currentPath, currentKey, pending, zoneTag] = stack.pop()!;
       const prev = this.prevOf(f);
@@ -521,7 +547,7 @@ export class Recorder {
       if (name && rendered) {
         c.renders++;
         this.totals.renders++;
-        const wasted = !c.touched.has(f);
+        const wasted = !touchedHas(c.touched, f);
         const comp = this.componentOf(name, f);
         comp.renders++;
         if (wasted) {
@@ -540,7 +566,7 @@ export class Recorder {
           (prev.props === f.memoizedProps ||
             ((f.tag === Tag.MemoComponent || f.tag === Tag.SimpleMemoComponent) && shallowEqual(prev.props, f.memoizedProps)));
         if (!parentDid || ownWork) {
-          const hit = this.hitRoot(f, name, currentPath, prev!, c, false);
+          const hit = this.hitRoot(f, name, pathText(currentPath, base), prev!, c, false);
           key = hit.agg.key;
           reasons = hit.reasons;
         } else if (isComposite(f) && !isProvider(name)) {
@@ -576,14 +602,12 @@ export class Recorder {
         if (el) c.pairs.push([el, nextPending[0], nextPending[1]]);
         nextPending = null;
       }
-      this.remember(f);
+      // A fiber that did not render has the snapshot it had: nothing to write.
+      if (rendered || !prev) this.remember(f);
       if (!(isolate && f === start) && f.sibling) stack.push([f.sibling, parentDid, currentPath, currentKey, pending, zoneTag]);
       const untouched = this.prune && f.alternate !== null && f.child === f.alternate.child;
       if (f.child && !untouched) {
-        const childPath =
-          name && !this.structural(name, f)
-            ? [name, ...currentPath.split(' < ').filter(Boolean)].slice(0, 4).join(' < ')
-            : currentPath;
+        const childPath = name && !this.structural(name, f) ? { name, up: currentPath } : currentPath;
         stack.push([f.child, rendered, childPath, rendered ? key : currentKey, nextPending, zone]);
       }
     }
@@ -658,10 +682,11 @@ export class Recorder {
       agg.hits++;
       agg.inCommit = 0;
       if (agg.times.length < MAX_TIMES) agg.times.push(c.t);
+      // One instance is enough to name the hooks by at stop: one reference a commit, not one a hit.
+      agg.latest = new WeakRef(f);
     }
     agg.inCommit++;
     agg.instances = Math.max(agg.instances, agg.inCommit);
-    agg.latest = new WeakRef(f);
     const ids = c.reasons.get(agg) ?? new Set<number>();
     const reasons = reasonsOf(prev, f, this.deps.plugins);
     for (const reason of reasons) {
@@ -672,7 +697,7 @@ export class Recorder {
       ids.add(id);
     }
     c.reasons.set(agg, ids);
-    if (!outside && !c.touched.has(f)) agg.noDomChange++;
+    if (!outside && !touchedHas(c.touched, f)) agg.noDomChange++;
     if (hasProfileTimings(f)) {
       agg.renderMs += f.actualDuration!;
       c.renderMs += f.actualDuration!;
@@ -927,6 +952,14 @@ export class Recorder {
 
   /** One entry per distinct reason; everything else — roots, components, commits — points at it by id. */
   private reasonId(reason: Reason): number {
+    // A parent reason — most renders of a big list — has four fields of its own, keyed without a copy of them.
+    const fieldKey =
+      reason.kind === 'parent'
+        ? `parent|${reason.changed?.join(',') ?? ''}|${reason.sameRef?.join(',') ?? ''}|${reason.children ? 1 : 0}${reason.equal ? 1 : 0}`
+        : JSON.stringify({ ...reason, contextObject: undefined });
+    const known = this.reasonIdsByFields.get(fieldKey);
+    if (known !== undefined) return known;
+    // The fields are a cheaper key than the sentence; the sentence decides only for a set of fields not seen yet.
     const { contextObject: _context, ...fields } = reason;
     const text = reasonText(fields);
     let id = this.reasonIds.get(text);
@@ -938,6 +971,7 @@ export class Recorder {
       this.reasonList.push(info);
       this.emit({ k: 'reason', info });
     }
+    this.reasonIdsByFields.set(fieldKey, id);
     return id;
   }
 

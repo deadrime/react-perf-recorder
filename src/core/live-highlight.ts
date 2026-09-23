@@ -1,5 +1,5 @@
 import { hookCommits, hookOwner, type CommitHook, type CommitInfo } from './commit-hook';
-import { DomWatcher } from './dom';
+import { DomWatcher, touchedHas } from './dom';
 import { findRoots, hostRootOf, isComposite, isHost, isLibraryFiber, mountedInPlace, nameOf, Tag, type Fiber, type FiberRoot } from './fiber';
 import type { HighlightSink } from './recorder';
 import { ScopeTracker, type ScopeHandle } from './scope';
@@ -57,7 +57,7 @@ export class LiveHighlight {
       let next = pending;
       if (ranNow(f) && (!pending || (pending[2] && !isLibraryFiber(f)))) {
         next = [nameOf(f) ?? 'Anonymous', f, isLibraryFiber(f)];
-        if (!touched.has(f)) withoutDom.add(f);
+        if (!touchedHas(touched, f)) withoutDom.add(f);
       } else if (!pending && mountedInPlace(f)) {
         next = [nameOf(f) ?? 'Anonymous', f, isLibraryFiber(f)];
         mounted.add(f);

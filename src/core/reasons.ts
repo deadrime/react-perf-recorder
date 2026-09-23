@@ -135,12 +135,15 @@ export function parentReason(prev: Snapshot, f: Fiber, describe: Describer): Rea
   const changed: string[] = [];
   const sameShape: string[] = [];
   let children = false;
-  for (const key of new Set([...Object.keys(a), ...Object.keys(b)])) {
-    if (a[key] === b[key]) continue;
+  const compare = (key: string) => {
+    if (a[key] === b[key]) return;
     // Element trees are too costly to compare deeply on every render: children count by reference.
     if (key === 'children') children = true;
     else (key in a && key in b && sameCheap(a[key], b[key]) ? sameShape : changed).push(key);
-  }
+  };
+  // Every key of either side once, without building a set of them: this runs for every render a parent causes.
+  for (const key in a) compare(key);
+  for (const key in b) if (!(key in a)) compare(key);
   if (!changed.length && !sameShape.length) return [{ kind: 'parent', ...(children ? { children: true } : { equal: true }) }];
   return [
     {
