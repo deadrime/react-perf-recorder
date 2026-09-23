@@ -34,7 +34,7 @@ const open = async (page: Page) => {
   await expect(page.getByTestId('unread')).toBeVisible();
 };
 
-const tree = (page: Page) => page.locator('[data-rpr="tree"] li');
+const tree = (page: Page) => page.locator('[data-rpr="tree"] li[data-name]');
 /** Pixels drawn on the highlight canvas; the overlay lives in the panel's shadow root. */
 const painted = (page: Page) =>
   page.evaluate(() => {

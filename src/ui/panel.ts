@@ -56,8 +56,8 @@ export class Panel {
     this.handlers = this.buildHandlers();
     this.picker = new Picker(this.shadow, this.host, engine, () => ({ library: this.state.showLibrary, providers: this.state.showProviders }), {
       showTree: (rows, active, actions) => this.showTree(rows, active, actions),
-      preview: (owner) => this.setScope(this.engine.scopeFromFiber(owner.fiber)),
-      done: (owner) => this.onPicked(owner),
+      preview: (owner) => this.setScope(owner ? this.engine.scopeFromFiber(owner.fiber) : null),
+      done: (choice) => this.onPicked(choice),
     });
     engine.onChange(() => this.adoptRecordingScope() || this.sync());
     window.addEventListener('keydown', (e) => this.onShortcut(e), true);
@@ -127,7 +127,8 @@ export class Panel {
       pick: () => this.togglePicker(),
       editScope: () => this.editScope(),
       copyScope: () => this.copyScope(),
-      clearScope: () => this.setScope(null),
+      // With the tree open, × moves it to its Whole app row instead of leaving the old area active in it.
+      clearScope: () => (this.picker.active ? this.picker.release() : this.setScope(null)),
       outlineScope: (on) => this.outlineScope(on),
       setHighlight: (on) => this.setHighlight(on),
       setNote: (text) => this.setNote(text),
@@ -377,10 +378,11 @@ export class Panel {
     this.sync();
   }
 
-  private onPicked(owner: Owner | null) {
+  private onPicked(owner: Owner | 'whole-app' | null) {
     this.tree = null;
     this.say('');
-    if (owner) this.setScope(this.engine.scopeFromFiber(owner.fiber));
+    if (owner === 'whole-app') this.setScope(null);
+    else if (owner) this.setScope(this.engine.scopeFromFiber(owner.fiber));
     else this.setScope(this.before.scope, this.before.last);
   }
 

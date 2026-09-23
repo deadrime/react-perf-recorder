@@ -13,15 +13,17 @@ export interface TreeActions {
   hover(index: number): void;
   toggle(index: number): void;
   leave(): void;
+  /** The row above the app's components: the whole app as the area, and the tree closes on it. */
+  wholeApp(): void;
 }
 
 export interface PickerCallbacks {
-  /** Renders the component tree inside the panel. */
+  /** Renders the component tree inside the panel; `active` is -1 while the whole app is the one chosen. */
   showTree(rows: TreeRow[], active: number, actions: TreeActions): void;
-  /** The active component is the area right away; moving in the tree moves the area with it. */
-  preview(owner: Owner): void;
+  /** The active component is the area right away; moving in the tree moves the area with it. `null`: the whole app. */
+  preview(owner: Owner | null): void;
   /** `null`: cancelled, the area goes back to what it was. */
-  done(owner: Owner | null): void;
+  done(choice: Owner | 'whole-app' | null): void;
 }
 
 interface Node {
@@ -117,6 +119,21 @@ export class Picker {
     this.finish(null);
   }
 
+  /**
+   * The whole app becomes the area and the tree stays open on it: its row above the components is the active one,
+   * the page answers the pointer again, and the next key goes back into the tree from its top.
+   */
+  release() {
+    if (!this.active || !this.root) return;
+    this.current = this.previewed = this.root;
+    this.quietOpen = false;
+    this.browsing = true;
+    this.box.hidden = true;
+    this.shown = null;
+    this.callbacks.preview(null);
+    this.render();
+  }
+
   /** A filter was switched: rebuild the path around the active component. */
   refresh() {
     if (this.frozen && this.current) this.build(this.engine.ownersOfFiber(this.current.owner.fiber), this.current.owner.fiber);
@@ -131,14 +148,14 @@ export class Picker {
   }
 
   hideOutline() {
-    if (this.active && this.current) this.outline(this.current.owner.fiber, this.current.owner.name);
+    if (this.active && this.current && !this.browsing) this.outline(this.current.owner.fiber, this.current.owner.name);
     else {
       this.box.hidden = true;
       this.shown = null;
     }
   }
 
-  private finish(owner: Owner | null) {
+  private finish(owner: Owner | 'whole-app' | null) {
     if (!this.active) return;
     this.active = false;
     for (const [type, listener] of this.listeners) window.removeEventListener(type, listener, { capture: true });
@@ -192,7 +209,14 @@ export class Picker {
     const rows = this.rows();
     const at = rows.findIndex((r) => r.node === this.current);
     const node = this.current;
+    if (this.browsing) {
+      // The whole app is active: Enter keeps it, any other key steps into the tree at its top.
+      if (event.key === 'Enter') return this.finish('whole-app');
+      this.previewed = null;
+      return this.render();
+    }
     if (event.key === 'Enter') return this.finish(node.owner);
+    if (event.key === 'ArrowUp' && at === 0) return this.release();
     if (event.key === 'ArrowDown') this.current = rows[Math.min(rows.length - 1, at + 1)].node;
     else if (event.key === 'ArrowUp') this.current = rows[Math.max(0, at - 1)].node;
     else if (event.key === 'ArrowRight') {
@@ -261,10 +285,22 @@ export class Picker {
 
   private render() {
     const rows = this.rows();
-    const active = Math.max(
-      0,
-      rows.findIndex((r) => r.node === this.current)
-    );
+    if (this.current && this.current !== this.previewed) {
+      this.previewed = this.current;
+      if (this.quietOpen) {
+        this.quietOpen = false;
+        this.browsing = true;
+      } else {
+        this.browsing = false;
+        this.callbacks.preview(this.current.owner);
+      }
+    }
+    const active = this.browsing
+      ? -1
+      : Math.max(
+          0,
+          rows.findIndex((r) => r.node === this.current)
+        );
     this.callbacks.showTree(
       rows.map(({ node, depth }) => ({
         owner: node.owner,
@@ -285,20 +321,10 @@ export class Picker {
           this.render();
         },
         leave: () => this.hideOutline(),
+        wholeApp: () => this.finish('whole-app'),
       }
     );
-    if (!this.current) return;
-    this.outline(this.current.owner.fiber, this.current.owner.name);
-    if (this.current !== this.previewed) {
-      this.previewed = this.current;
-      if (this.quietOpen) {
-        this.quietOpen = false;
-        this.browsing = true;
-      } else {
-        this.browsing = false;
-        this.callbacks.preview(this.current.owner);
-      }
-    }
+    if (this.current && !this.browsing) this.outline(this.current.owner.fiber, this.current.owner.name);
   }
 
   private drawBox(rects: DOMRect[], label: string) {

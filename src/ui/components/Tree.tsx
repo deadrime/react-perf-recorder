@@ -50,7 +50,7 @@ function Row({ row, active, watching, onSelect, onHover, onToggle, onWatch, onCo
       data-active={String(active)}
       data-wrapper={String(owner.wrapper || owner.provider || owner.library)}
       data-name={owner.name}
-      style={{ paddingLeft: indentOf(row.depth) }}
+      style={{ paddingLeft: indentOf(row.depth + 1) }}
       onClick={onSelect}
       onMouseEnter={onHover}
     >
@@ -122,6 +122,19 @@ export function Tree(p: TreeProps): JSX.Element {
         </label>
       </div>
       <ul data-rpr="tree" ref={list} onMouseLeave={() => p.actions.leave()}>
+        {/* The whole app sits above its components: the area that is no component, chosen like any row. */}
+        <li
+          class="whole-app"
+          data-rpr="whole-app"
+          data-active={String(p.active < 0)}
+          style={{ paddingLeft: indentOf(0) }}
+          title="Record the whole app"
+          onClick={() => p.actions.wholeApp()}
+          onMouseEnter={() => p.actions.leave()}
+        >
+          <span class="toggle">{ARROW.open}</span>
+          <span class="name">Whole app</span>
+        </li>
         {p.rows.map((row, i) => (
           <Row
             key={i}

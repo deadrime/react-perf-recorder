@@ -316,6 +316,7 @@ button.reason-head { width: 100%; padding: 0; border: 0; background: none; font:
 .picker li:hover { background: var(--row-hover); }
 .picker li[data-active="true"] { background: var(--row-active); }
 .picker li[data-wrapper="true"] { color: var(--muted); }
+.picker li.whole-app .name { font-family: system-ui, sans-serif; font-weight: 600; }
 .picker li .toggle { width: 12px; flex: none; color: var(--muted-soft); text-align: center; }
 .picker li .toggle:hover { color: var(--text-strong); }
 .picker li .name { flex: none; white-space: nowrap; }

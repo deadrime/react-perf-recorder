@@ -3,7 +3,7 @@ import { expect, test, type Page } from '@playwright/test';
 const SHADOW = '[data-react-perf-recorder]';
 
 const rowsOf = (page: Page) =>
-  page.locator('[data-rpr="tree"] li').evaluateAll((items) =>
+  page.locator('[data-rpr="tree"] li[data-name]').evaluateAll((items) =>
     items.map((li) => ({
       name: (li as HTMLElement).dataset.name ?? '',
       arrow: li.querySelector('[data-rpr="expand"]')!.textContent ?? '',
@@ -113,9 +113,9 @@ test('with no area, Pick opens the tree of the whole app without choosing anythi
   await expect(page.locator('[data-rpr="scope"]')).toBeHidden();
 
   await page.locator('[data-rpr="pick"]').click();
-  // The tree opens at the top of the app's own components, with the top one active…
-  await expect(page.locator('[data-rpr="tree"] li[data-active="true"]')).toHaveAttribute('data-name', 'Layout');
-  // …and the area is still the whole app until something is chosen.
+  // The tree opens at the top of the app, on the row of the whole app, which is still the area…
+  await expect(page.locator('[data-rpr="tree"] li[data-active="true"]')).toHaveAttribute('data-rpr', 'whole-app');
+  await expect(page.locator('[data-rpr="tree"] li[data-name]').first()).toHaveAttribute('data-name', 'Layout');
   await expect(page.locator('[data-rpr="scope"]')).toBeHidden();
 
   // A key moves into the tree and that is a choice: the component becomes the area.
@@ -131,4 +131,42 @@ test('with no area, Pick opens the tree of the whole app without choosing anythi
   await page.locator('[data-rpr="pick"]').click();
   await page.getByTestId('message-m1').click();
   await expect(page.locator('[data-rpr="scope"]')).toHaveText('MessageRow');
+});
+
+test('× with the tree open moves it to the whole app, and the tree can go back to a component', async ({ page }) => {
+  await page.goto('/app?rpr=panel&tick=150');
+  await expect(page.getByTestId('unread')).toBeVisible();
+  await page.locator('[data-rpr="pick"]').click();
+  await page.getByTestId('message-m1').click();
+  await expect(page.locator('[data-rpr="scope"]')).toHaveText('MessageRow');
+
+  await page.locator('[data-rpr="clear-scope"]').click();
+  // The area is gone, and the tree says so: its Whole app row is the active one, not the old area.
+  await expect(page.locator('[data-rpr="scope"]')).toBeHidden();
+  await expect(page.locator('[data-rpr="tree"] li[data-active="true"]')).toHaveAttribute('data-rpr', 'whole-app');
+
+  // A row of the tree is an area again…
+  await page.locator('[data-rpr="tree"] li[data-name="MessageList"]').click();
+  await expect(page.locator('[data-rpr="scope"]')).toHaveText('MessageList');
+  await expect(page.locator('[data-rpr="tree"]')).toHaveCount(0);
+
+  // …and the Whole app row is one to choose as well: it closes the tree on the whole app.
+  await page.locator('[data-rpr="scope"]').click();
+  await page.locator('[data-rpr="whole-app"]').click();
+  await expect(page.locator('[data-rpr="scope"]')).toBeHidden();
+  await expect(page.locator('[data-rpr="tree"]')).toHaveCount(0);
+});
+
+test('↑ from the top row reaches the whole app, Enter keeps it', async ({ page }) => {
+  await page.goto('/app?rpr=panel&tick=150');
+  await expect(page.getByTestId('unread')).toBeVisible();
+  await page.locator('[data-rpr="pick"]').click();
+  await page.keyboard.press('ArrowDown');
+  await expect(page.locator('[data-rpr="scope"]')).toHaveText('Layout');
+  await page.keyboard.press('ArrowUp');
+  await expect(page.locator('[data-rpr="scope"]')).toBeHidden();
+  await expect(page.locator('[data-rpr="whole-app"]')).toHaveAttribute('data-active', 'true');
+  await page.keyboard.press('Enter');
+  await expect(page.locator('[data-rpr="tree"]')).toHaveCount(0);
+  await expect(page.locator('[data-rpr="scope"]')).toBeHidden();
 });
