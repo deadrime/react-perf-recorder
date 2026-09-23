@@ -37,7 +37,7 @@ const component = (rec: RecordingV2, name: string) => rec.components.find((c) =>
 /** The hook chain behind the root's first reason, as the panel and the MCP server print it. */
 const chain = (rec: RecordingV2, r: RootStat, mode: HookMode = 'full') => hookText(hookOf(r, reasonsById(rec.reasons).get(r.reasons[0][0])), mode);
 const selector = (rec: RecordingV2, name: string) =>
-  (rec.plugins['proxy-memoize'].data as { selectors: Array<{ name: string; thrash: boolean }> }).selectors.find((s) => s.name === name);
+  (rec.plugins['proxy-memoize'].data as { selectors: Array<{ name: string; evicting: boolean }> }).selectors.find((s) => s.name === name);
 
 test('the clean chat is still the baseline after a tab has been open for a while', async ({ page }) => {
   // A fast clock: 45 messages arrive in about ten seconds, and a reaction lands every 25ms.
@@ -54,7 +54,7 @@ test('the clean chat is still the baseline after a tab has been open for a while
   const rec: RecordingV2 = await page.evaluate(() => (window.__REACT_PERF_RECORDER__ as RecorderGlobal).engine.stop());
   expect(rec.totals.commits).toBeGreaterThan(20);
   expect(rec.totals.rendersWithoutDom).toBe(0);
-  expect((rec.plugins['proxy-memoize'].data as { selectors: Array<{ thrash: boolean }> }).selectors.some((s) => s.thrash)).toBe(false);
+  expect((rec.plugins['proxy-memoize'].data as { selectors: Array<{ evicting: boolean }> }).selectors.some((s) => s.evicting)).toBe(false);
 });
 
 /** Each test seeds one anti-pattern and checks the recording names it, and that a clean run does not. */
@@ -109,13 +109,13 @@ test.describe('seeded re-render bugs', () => {
 
   test('one memo slot shared by rows with different arguments', async ({ page }) => {
     const rec = await record(page, 'idle', 'memo-cache-slot');
-    expect(selector(rec, 'selectMessageInfo')).toMatchObject({ thrash: true });
+    expect(selector(rec, 'selectMessageInfo')).toMatchObject({ evicting: true });
     expect(reasons(rec, root(rec, 'Status'))).toContainEqual(expect.stringContaining('SAME-CONTENT'));
     expect(rec.plugins['proxy-memoize'].highlights?.join(' ')).toContain('selectMessageInfo');
 
     const clean = await record(page, 'idle', '');
-    // The clean rows keep a memoized selector each; none of them thrashes.
-    expect((clean.plugins['proxy-memoize'].data as { selectors: Array<{ thrash: boolean }> }).selectors.some((s) => s.thrash)).toBe(false);
+    // The clean rows keep a memoized selector each; none of them evicts.
+    expect((clean.plugins['proxy-memoize'].data as { selectors: Array<{ evicting: boolean }> }).selectors.some((s) => s.evicting)).toBe(false);
     expect(reasons(clean, root(clean, 'Status'))).not.toContainEqual(expect.stringContaining('SAME-CONTENT'));
   });
 

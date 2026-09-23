@@ -78,7 +78,7 @@ are never recorded, only their length; passwords and one-time codes not even tha
 
 ## Plugin sections
 
-`plugin:proxy-memoize` — calls and recomputes per selector; `thrash` means a `memoizeWithArgs` cache keeps
+`plugin:proxy-memoize` — calls and recomputes per selector; `evicting` means a `memoizeWithArgs` cache keeps
 pushing out answers still in use — more argument sets than slots, or a ring whose slots go round with recomputes
 (`N after the answer was pushed out`). The fix is a memoized selector per row, not a bigger `size`. `plugin:zustand` — the stores it saw and the actions they fired.
 

@@ -85,7 +85,7 @@ export const BUGS: Record<Bug, BugCard> = {
     title: 'One memo slot for rows with different arguments',
     what: 'The rows share one memoizeWithArgs with its default single slot and call it with their ids in turn.',
     scenario: 'wait',
-    shows: 'The proxy-memoize section marks selectMessageInfo as thrash, and the rows re-render with SAME-CONTENT.',
+    shows: 'The proxy-memoize section says selectMessageInfo evicts answers still in use, and the rows re-render with SAME-CONTENT.',
     file: 'src/store/selectors.ts',
   },
   'new-array-selector': {

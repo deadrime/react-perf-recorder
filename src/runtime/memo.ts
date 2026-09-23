@@ -16,7 +16,7 @@ export interface MemoStat {
    */
   evictions: number;
   /** A size-limited cache that keeps pushing out answers still in use: rows, cells or two forms sharing one selector. */
-  thrash: boolean;
+  evicting: boolean;
 }
 
 interface MemoRecord {
@@ -193,7 +193,7 @@ export function createMemoInstrumentation(): MemoInstrumentation {
           recomputesOnArgSwitch: 0,
           distinctArgs: 0,
           evictions: 0,
-          thrash: false,
+          evicting: false,
         };
         stat.calls += rec.calls;
         stat.recomputes += rec.recomputes;
@@ -209,7 +209,7 @@ export function createMemoInstrumentation(): MemoInstrumentation {
           hitRate: stat.calls ? +(1 - stat.recomputes / stat.calls).toFixed(3) : 0,
           // More argument sets than slots, recomputing as they alternate; or answers pushed out while still in use,
           // which a ring with room for every argument set does too.
-          thrash:
+          evicting:
             stat.recomputes >= 10 &&
             ((stat.recomputesOnArgSwitch / stat.recomputes >= 0.5 && stat.distinctArgs > stat.size) || stat.evictions / stat.recomputes >= 0.25),
         }))

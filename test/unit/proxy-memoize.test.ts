@@ -51,8 +51,8 @@ describe('memo instrumentation', () => {
       big(state, i % 2 ? 'a' : 'b');
     }
     const stats = memo.stop();
-    expect(stats.find((s) => s.name === 'selectSmall')).toMatchObject({ calls: 40, recomputes: 40, thrash: true, distinctArgs: 2, size: 1 });
-    expect(stats.find((s) => s.name === 'selectBig')).toMatchObject({ calls: 40, recomputes: 2, thrash: false, size: 8 });
+    expect(stats.find((s) => s.name === 'selectSmall')).toMatchObject({ calls: 40, recomputes: 40, evicting: true, distinctArgs: 2, size: 1 });
+    expect(stats.find((s) => s.name === 'selectBig')).toMatchObject({ calls: 40, recomputes: 2, evicting: false, size: 8 });
   });
 
   it('flags a ring with room for every row that still pushes out answers in use', () => {
@@ -80,7 +80,7 @@ describe('memo instrumentation', () => {
     expect(sameAgain).toBeGreaterThan(0);
     expect(stat.distinctArgs).toBeLessThanOrEqual(stat.size);
     expect(stat.evictions).toBeGreaterThan(0);
-    expect(stat.thrash).toBe(true);
+    expect(stat.evicting).toBe(true);
   });
 
   it('does not call a change of the data an eviction', () => {
@@ -90,7 +90,7 @@ describe('memo instrumentation', () => {
     memo.name(one, 'selectOne', 'src/a.ts');
     memo.start();
     for (let i = 0; i < 30; i++) one(makeState(i, i), 'a');
-    expect(memo.stop().find((s) => s.name === 'selectOne')).toMatchObject({ recomputes: 30, evictions: 0, thrash: false });
+    expect(memo.stop().find((s) => s.name === 'selectOne')).toMatchObject({ recomputes: 30, evictions: 0, evicting: false });
   });
 
   it('counts nothing outside a recording', () => {

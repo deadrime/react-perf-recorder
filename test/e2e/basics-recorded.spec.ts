@@ -56,13 +56,13 @@ test('a subscription for a click: external store on the composer', async ({ page
   expect(rec.roots.map((r) => r.name)).not.toContain('ReadOnClick');
 });
 
-test('a cache smaller than the rows: proxy-memoize names the thrash', async ({ page }) => {
+test('a cache smaller than the rows: proxy-memoize says it evicts answers in use', async ({ page }) => {
   const rec = await record(page, '/basics/cache', () => page.waitForTimeout(1600));
   const notes = rec.plugins['proxy-memoize']?.highlights ?? [];
   expect(notes.find((n) => n.startsWith('selectTight'))).toMatch(/4 argument sets > cache size 2/);
-  // The rows' own selectors are not named, and none of them thrashes.
-  const selectors = (rec.plugins['proxy-memoize']?.data as { selectors: Array<{ name: string; thrash: boolean }> }).selectors;
-  expect(selectors.filter((x) => x.thrash).map((x) => x.name)).toEqual(['selectTight']);
+  // The rows' own selectors are not named, and none of them evicts.
+  const selectors = (rec.plugins['proxy-memoize']?.data as { selectors: Array<{ name: string; evicting: boolean }> }).selectors;
+  expect(selectors.filter((x) => x.evicting).map((x) => x.name)).toEqual(['selectTight']);
   expect(said(rec, 'TightRow')[0]).toMatch(/SAME-CONTENT \[board\] \(s\)=>selectTight\(s, id\)/);
 });
 
