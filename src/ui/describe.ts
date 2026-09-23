@@ -1,5 +1,6 @@
 import type { Engine } from '../core/engine';
 import { nearestHosts, type Fiber } from '../core/fiber';
+import { safeUrl } from '../shared/url';
 
 function elementText(el: Element): string {
   const attrs = ['id', 'data-testid', 'role', 'aria-label', 'name']
@@ -17,7 +18,8 @@ function elementText(el: Element): string {
 function pageUrl(): string {
   const url = new URL(location.href);
   for (const key of [...url.searchParams.keys()]) if (key.startsWith('rpr')) url.searchParams.delete(key);
-  return url.href;
+  // Copied into a chat: a token in the address must not go with it.
+  return safeUrl(url.href);
 }
 
 /**

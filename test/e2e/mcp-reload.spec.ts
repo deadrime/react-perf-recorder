@@ -48,3 +48,30 @@ test('mcp --reload starts the server again when the CLI is rebuilt, and the clie
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('mcp --reload survives two rebuilds in a row and keeps answering', async ({}, info) => {
+  test.skip(info.project.name !== 'react18', 'no browser involved: once is enough');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rpr-reload-'));
+  const cli = path.join(dir, 'cli.mjs');
+  const built = fs.readFileSync('dist/cli.js', 'utf8');
+  fs.writeFileSync(cli, built);
+  const transport = new StdioClientTransport({ command: process.execPath, args: [cli, 'mcp', '--reload', '--dir', path.join(dir, 'sessions')], stderr: 'pipe' });
+  let log = '';
+  transport.stderr?.on('data', (chunk) => (log += String(chunk)));
+  const client = new Client({ name: 'test', version: '1' });
+  let changed = 0;
+  client.setNotificationHandler(ToolListChangedNotificationSchema, () => void changed++);
+  await client.connect(transport);
+  try {
+    // Two builds landing close together: the second restart comes while the first is replaying the handshake.
+    fs.writeFileSync(cli, `${built}\n// one\n`);
+    await expect.poll(() => log.split('the MCP server restarted').length - 1, { timeout: 10_000 }).toBe(1);
+    fs.writeFileSync(cli, `${built}\n// two\n`);
+    await expect.poll(() => log.split('the MCP server restarted').length - 1, { timeout: 10_000 }).toBe(2);
+    await expect.poll(() => changed, { timeout: 10_000 }).toBeGreaterThanOrEqual(1);
+    expect((await client.listTools()).tools.map((t) => t.name)).toContain('list_recordings');
+  } finally {
+    await client.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});

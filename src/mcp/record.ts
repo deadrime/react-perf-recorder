@@ -133,14 +133,14 @@ export async function recordPage(options: RecordPageOptions, sessionsDir: string
 
   const connected = Boolean(options.cdp);
   const browser = connected ? await chromium.connectOverCDP(options.cdp!) : await chromium.launch({ headless: !options.headed });
-  // A browser of the person's own already carries their session; a fresh one gets whatever `login` saved.
-  const context = connected
-    ? browser.contexts()[0] ?? (await browser.newContext())
-    : await browser.newContext({ ...(hasState ? { storageState: state } : {}), ...(sizeOf(options.viewport) ? { viewport: sizeOf(options.viewport) } : {}) });
-  const page = (await context.newPage()) as unknown as PageLike;
-  page.setDefaultTimeout(timeout);
-
+  let page: PageLike | null = null;
   try {
+    // A browser of the person's own already carries their session; a fresh one gets whatever `login` saved.
+    const context = connected
+      ? browser.contexts()[0] ?? (await browser.newContext())
+      : await browser.newContext({ ...(hasState ? { storageState: state } : {}), ...(sizeOf(options.viewport) ? { viewport: sizeOf(options.viewport) } : {}) });
+    page = (await context.newPage()) as unknown as PageLike;
+    page.setDefaultTimeout(timeout);
     if (options.throttle && options.throttle > 1) {
       const session = await context.newCDPSession(page as never);
       await session.send('Emulation.setCPUThrottlingRate', { rate: options.throttle });
@@ -235,7 +235,7 @@ export async function recordPage(options: RecordPageOptions, sessionsDir: string
       warnings: [...warnings, ...rec.warnings],
     };
   } finally {
-    if (connected) await page.close().catch(() => {});
+    if (connected) await page?.close().catch(() => {});
     else await browser.close().catch(() => {});
   }
 }
@@ -247,12 +247,15 @@ export async function recordPage(options: RecordPageOptions, sessionsDir: string
 export async function saveLogin(url: string, file: string, done: (page: PageLike) => Promise<void>, headless = false): Promise<string> {
   const { chromium } = await loadPlaywright();
   const browser = await chromium.launch({ headless });
-  const context = await browser.newContext();
-  const page = (await context.newPage()) as unknown as PageLike;
-  await page.goto(url, { waitUntil: 'load' });
-  await done(page);
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  await context.storageState({ path: file });
-  await browser.close();
-  return file;
+  try {
+    const context = await browser.newContext();
+    const page = (await context.newPage()) as unknown as PageLike;
+    await page.goto(url, { waitUntil: 'load' });
+    await done(page);
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    await context.storageState({ path: file });
+    return file;
+  } finally {
+    await browser.close().catch(() => {});
+  }
 }

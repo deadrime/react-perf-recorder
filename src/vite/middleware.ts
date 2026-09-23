@@ -114,9 +114,10 @@ export class SessionStore {
 
   async finish(id: string, recording: RecordingV2): Promise<{ id: string; dir: string; sites: Record<string, { site: string; code?: string }> }> {
     const dir = this.sessionDir(id);
-    const meta = this.readMeta(dir);
     const sites = await this.mapSites(recording);
     writeAtomic(path.join(dir, 'recording.json'), JSON.stringify({ ...recording, id }, null, 1));
+    // Read after the wait: events may have been appended to the session while the sites were mapped.
+    const meta = this.readMeta(dir);
     meta.status = 'done';
     meta.updatedAt = new Date().toISOString();
     writeAtomic(path.join(dir, 'session.json'), JSON.stringify(meta, null, 2));
