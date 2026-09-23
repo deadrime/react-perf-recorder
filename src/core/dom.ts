@@ -74,6 +74,14 @@ export class DomWatcher {
     return (oldest === undefined ? m.oldValue : oldest) !== this.valueNow(m);
   }
 
+  /** Every fiber above a node, both halves of each pair: those components changed something on the screen. */
+  private mark(node: Node, touched: Set<Fiber>) {
+    for (let f = fiberFromNode(node); f && !touched.has(f); f = f.return) {
+      touched.add(f);
+      if (f.alternate) touched.add(f.alternate);
+    }
+  }
+
   private consume(records: MutationRecord[], touched: Set<Fiber> | null) {
     // What each node held before this batch touched it: the old value of the first write to reach it.
     const before = new Map<Node, Map<string, string | null>>();
@@ -87,9 +95,15 @@ export class DomWatcher {
     for (const m of records) {
       if (!this.changedSomething(m, before)) continue;
       if (touched) {
-        for (let f = fiberFromNode(m.target); f && !touched.has(f); f = f.return) {
-          touched.add(f);
-          if (f.alternate) touched.add(f.alternate);
+        this.mark(m.target, touched);
+        if (m.type === 'childList') {
+          // The node's parent belongs to whoever renders the element around it; the nodes added belong to the
+          // component that added them. A removed node's fiber is already cut loose, so its sibling stands in.
+          m.addedNodes.forEach((node) => this.mark(node, touched));
+          if (m.removedNodes.length) {
+            const sibling = m.previousSibling ?? m.nextSibling;
+            if (sibling) this.mark(sibling, touched);
+          }
         }
       }
       if (!this.inScope(m.target)) continue;

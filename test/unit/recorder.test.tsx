@@ -1,4 +1,4 @@
-import { memo, useContext, useState, createContext, useEffect, type ReactNode } from 'react';
+import { useRef, memo, useContext, useState, createContext, useEffect, type ReactNode } from 'react';
 import { createStore, useStore } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
 import { flushSync } from 'react-dom';
@@ -80,6 +80,39 @@ describe('Recorder', () => {
     expect(rec.totals.renders).toBe(1);
     expect(rec.totals.rendersWithoutDom).toBe(1);
     expect(rec.roots[0].noDomChange).toBe(1);
+  });
+
+  it('a component that adds or removes rows under an element of its parent changed the DOM', () => {
+    const store = createStore(() => ({ rows: ['a'] }));
+    // The rows sit straight in the parent's <tbody>: the only DOM of Rows is the rows themselves.
+    const Rows = () => (
+      <>
+        {useStore(store, (s) => s.rows).map((r) => (
+          <tr key={r}>
+            <td>{r}</td>
+          </tr>
+        ))}
+      </>
+    );
+    const Table = () => (
+      <table>
+        <tbody>
+          <Rows />
+        </tbody>
+      </table>
+    );
+    mount(<Table />);
+    const { recorder } = makeRecorder();
+    recorder.start();
+    flush(() => store.setState({ rows: ['a', 'b'] }));
+    flush(() => store.setState({ rows: ['a', 'b', 'c'] }));
+    flush(() => store.setState({ rows: ['a', 'c'] }));
+    const rec = recorder.stop();
+
+    expect(rec.roots[0].name).toBe('Rows');
+    expect(rec.roots[0].hits).toBe(3);
+    expect(rec.roots[0].noDomChange).toBe(0);
+    expect(rec.totals.rendersWithoutDom).toBe(0);
   });
 
   it('counts the first update after mount', () => {
