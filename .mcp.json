@@ -5,6 +5,7 @@
       "args": [
         "dist/cli.js",
         "mcp",
+        "--reload",
         "--dir",
         ".agent-artifacts/fixture-sessions"
       ]

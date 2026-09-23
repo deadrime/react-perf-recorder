@@ -2,6 +2,7 @@ import { installClaude } from './install';
 import path from 'node:path';
 import { defaultStatePath, recordPage, saveLogin } from './record';
 import { runStdio, section } from './server';
+import { superviseStdio } from './supervise';
 import { findSession, listSessions, readRecording, resolveDir, waitForSession } from './store';
 import { summarize } from '../shared/summary';
 
@@ -15,7 +16,9 @@ const dir = resolveDir(flag('dir'));
 
 async function main() {
   if (command === 'mcp') {
-    await runStdio(dir);
+    // --reload: the server is a child that is started again whenever this file is rebuilt.
+    if (args.includes('--reload')) superviseStdio(process.argv[1], args.filter((a) => a !== '--reload'));
+    else await runStdio(dir);
     return;
   }
   if (command === 'init-claude') {
@@ -105,7 +108,8 @@ async function main() {
   }
   console.log(`react-perf-recorder <command> [--dir <sessions folder>]
 
-  mcp     MCP server over stdio (list_recordings, get_recording, wait_for_recording, compare_recordings)
+  mcp     MCP server over stdio (list_recordings, get_recording, wait_for_recording, compare_recordings, record_page)
+          [--reload] start it again whenever the CLI is rebuilt, for a checkout of this repository
   list    sessions, newest first  [--limit 20]
   show    one session  [id|latest] [--section summary|actions|roots|components|causes|plugins|…] [--top 10]
   pull    wait for the next finished recording and print its summary  [--timeout ms]
