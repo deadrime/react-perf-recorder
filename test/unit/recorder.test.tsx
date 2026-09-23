@@ -192,6 +192,41 @@ describe('Recorder', () => {
     expect(saved).toEqual([rec]);
   });
 
+  it('with sampled reasons works out parent reasons for 50 instances a commit, and counts every render', () => {
+    let set!: Setter;
+    const Item = ({ n }: { n: number }) => <li>{n}</li>;
+    const List = () => {
+      const [n, setN] = useState(0);
+      set = setN;
+      return (
+        <ul>
+          {Array.from({ length: 80 }, (_, i) => (
+            <Item key={i} n={n} />
+          ))}
+        </ul>
+      );
+    };
+    const run = (sampleReasons: boolean) => {
+      mount(<List />);
+      const { recorder } = makeRecorder({ sampleReasons });
+      recorder.start();
+      flush(() => set(1));
+      flush(() => set(2));
+      return recorder.stop();
+    };
+    const exact = run(false);
+    const sampled = run(true);
+    const item = (rec: typeof exact) => rec.components.find((c) => c.name === 'Item')!;
+    expect(item(exact)).toMatchObject({ renders: 160, byParent: 160 });
+    expect(item(exact).sampled).toBeUndefined();
+    expect(item(exact).reasons.reduce((n, [, count]) => n + count, 0)).toBe(160);
+    // The same renders counted; reasons for 50 of each commit's 80.
+    expect(item(sampled)).toMatchObject({ renders: 160, byParent: 160, sampled: true });
+    expect(item(sampled).reasons.reduce((n, [, count]) => n + count, 0)).toBe(100);
+    expect(sampled.warnings.some((w) => w.includes('are a sample'))).toBe(true);
+    expect(exact.warnings.some((w) => w.includes('are a sample'))).toBe(false);
+  });
+
   it('counts the first update after mount', () => {
     let show!: Setter;
     let bumpChild!: Setter;

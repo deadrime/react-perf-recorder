@@ -38,6 +38,9 @@ the answer says which numbers that may have moved. The recording tells the two a
 segment that came without an event (its `background`), or `query:` causes from the react-query plugin, mean the
 action waited on the network.
 
+On a page with lists of thousands, `record_page` with `sample: true` records about twice as fast; the reasons of
+parent-caused renders are then a sample (`sampled` on a component), the counts are not.
+
 **One component, not the whole page.** When the ask is about a particular component, read its file, take the name
 it is exported under, and pass it as the area: `scope: 'MessageList'`. Only what renders inside it is recorded, and
 a render that came from above is kept as an outside root with its reason, so the cause is not lost by narrowing.

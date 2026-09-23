@@ -19,6 +19,8 @@ export interface PanelState {
   /** The report is read in a wider panel. */
   wide?: boolean;
   highlight: boolean;
+  /** Record parent reasons for a sample of a big list's instances: faster, the counts of renders stay exact. */
+  fast?: boolean;
   showLibrary: boolean;
   showProviders: boolean;
   label: string;
@@ -50,6 +52,7 @@ export interface RecordOnLoad {
   label?: string;
   source?: string;
   highlight?: boolean;
+  sampleReasons?: boolean;
   /** The steps of a recording to do again once the page is up. */
   replay?: ReplayPlan;
 }

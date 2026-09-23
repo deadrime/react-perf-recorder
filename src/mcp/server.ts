@@ -260,6 +260,10 @@ export function createServer(dir: string) {
           ),
         fromLoad: z.boolean().optional().describe('Record from the first commit of the page load.'),
         viewport: z.string().optional().describe('1280x800; keep it the same across runs that will be compared.'),
+        sample: z
+          .boolean()
+          .optional()
+          .describe('Faster on lists of thousands: reasons of renders a parent caused are a sample, counts stay exact.'),
         throttle: z.number().min(1).max(20).optional().describe('CPU slowdown, 4 = four times slower.'),
         state: z.string().optional().describe('A session saved by `login`; the default beside the recordings is used when it is there.'),
         cdp: z.string().optional().describe('http://localhost:9222 of a browser already running and signed in.'),

@@ -112,3 +112,17 @@ export function HighlightToggle({ p }: { p: PanelViewProps }): JSX.Element {
     </label>
   );
 }
+
+/** Sampled reasons for the next recording: said where it is switched on, since the report can only say it was. */
+export function FastToggle({ p }: { p: PanelViewProps }): JSX.Element {
+  return (
+    <label
+      class="toggle fast-toggle"
+      title="Faster recording of big lists: the reason of a render its parent caused is worked out for 50 instances of a component a commit, not all of them. Counts of renders stay exact; the report marks the components whose reasons are a sample."
+      hidden={p.recording}
+    >
+      <input type="checkbox" data-rpr="fast" checked={p.fast} onChange={(e) => p.on.setFast((e.target as HTMLInputElement).checked)} />
+      fast
+    </label>
+  );
+}

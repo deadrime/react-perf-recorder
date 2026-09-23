@@ -3,7 +3,7 @@ import { render, type JSX } from 'preact';
 import type { Engine, Saved } from '../../core/engine';
 import { dockStyle } from '../dock';
 import type { Corner, Offset } from '../storage';
-import { Controls, HighlightToggle } from './Controls';
+import { Controls, FastToggle, HighlightToggle } from './Controls';
 import type { Comparison } from './Compare';
 import { Result } from './Result';
 import { whatOf } from './Stats';
@@ -29,6 +29,7 @@ export interface PanelHandlers {
   clearScope(): void;
   outlineScope(on: boolean): void;
   setHighlight(on: boolean): void;
+  setFast(on: boolean): void;
   setNote(text: string): void;
   unwatch(name: string): void;
   setCollapsed(collapsed: boolean): void;
@@ -60,6 +61,7 @@ export interface PanelViewProps {
   scope: { name: string; lost: boolean } | null;
   note: string;
   highlight: boolean;
+  fast: boolean;
   watched: readonly string[];
   live: Live | null;
   message: { text: string; kind: 'error' | 'notice' | 'muted' };
@@ -156,6 +158,7 @@ const View = (p: PanelViewProps): JSX.Element => (
           <span class="brand-name">Perf Recorder</span>
         </span>
         <span class="live">{liveText(p)}</span>
+        <FastToggle p={p} />
         <HighlightToggle p={p} />
         <button type="button" title="Collapse" aria-label="Collapse the panel" data-rpr="collapse" onClick={() => p.on.setCollapsed(true)}>
           –

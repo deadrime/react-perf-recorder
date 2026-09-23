@@ -189,7 +189,8 @@ button.scope:disabled { cursor: default; }
 /* Controls: what runs a recording on one row, the area it is about on the next. */
 .controls { gap: 6px; }
 .controls .reload { color: var(--label); }
-header .highlight-toggle { flex: none; cursor: pointer; }
+header .highlight-toggle, header .fast-toggle { flex: none; cursor: pointer; }
+header .fast-toggle[hidden] { display: none; }
 button.icon { padding: 3px 7px; }
 /* The area is one pill: Pick, or the area's name with copy and back-to-the-whole-app beside it. */
 .area-pill { display: inline-flex; align-items: stretch; min-width: 0; border: 1px solid var(--edge-strong); border-radius: 6px; background: var(--button); overflow: hidden; }

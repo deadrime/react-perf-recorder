@@ -29,6 +29,8 @@ export interface RecordPageOptions {
   /** Record from the first commit of the page load, rather than from a page that has settled. */
   fromLoad?: boolean;
   viewport?: string;
+  /** Parent reasons for a sample of a big list's instances: faster; counts of renders stay exact. */
+  sample?: boolean;
   /** CPU slowdown through CDP, the way a profiler does it: 4 means four times slower. */
   throttle?: number;
   /** Cookies and storage saved by `login`, so a page behind a sign-in records as the signed-in person. */
@@ -154,6 +156,7 @@ export async function recordPage(options: RecordPageOptions, sessionsDir: string
       ...(options.label ? { label: options.label } : {}),
       ...(scope ? { scope } : {}),
       ...(options.watch?.length ? { watch: options.watch } : {}),
+      ...(options.sample ? { sampleReasons: true } : {}),
       highlight: false,
     };
     // A recording from the load starts in the page before this script can say anything: what it should be about

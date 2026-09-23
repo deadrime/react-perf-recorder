@@ -144,6 +144,11 @@ export class Panel {
       },
       outlineScope: (on) => this.outlineScope(on),
       setHighlight: (on) => this.setHighlight(on),
+      setFast: (on) => {
+        this.state.fast = on;
+        this.persist();
+        this.sync();
+      },
       setNote: (text) => this.setNote(text),
       unwatch: (name) => this.toggleWatch(name),
       setCollapsed: (collapsed) => this.setCollapsed(collapsed),
@@ -171,6 +176,7 @@ export class Panel {
       ...(this.state.watch.length ? { watch: this.state.watch } : {}),
       label: replay ? `replay of ${replay.from ?? 'the last recording'}` : (NOTE_IN_PANEL && this.state.label) || 'from page load',
       ...(replay ? { replay } : {}),
+      ...(this.state.fast ? { sampleReasons: true } : {}),
     });
     location.reload();
   }
@@ -267,6 +273,7 @@ export class Panel {
       scope: this.scope ? { name: this.scope.name, lost: live?.scopeState === 'lost' } : null,
       note: this.state.label,
       highlight: this.state.highlight,
+      fast: Boolean(this.state.fast),
       watched: this.state.watch,
       live,
       message: this.message,
@@ -297,6 +304,7 @@ export class Panel {
         scope: this.scope,
         label: (NOTE_IN_PANEL && this.state.label) || undefined,
         ...(this.state.watch.length ? { watch: this.state.watch } : {}),
+        ...(this.state.fast ? { sampleReasons: true } : {}),
       });
     } catch (error) {
       this.say(String((error as Error)?.message ?? error), 'error');

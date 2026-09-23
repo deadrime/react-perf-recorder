@@ -225,6 +225,8 @@ export function Result({
             if (c.memo) badges.push({ text: 'memo' });
             if (c.withoutDom) badges.push({ text: `${c.withoutDom} wasted`, tone: 'warn' });
             if (c.mounts) badges.push({ text: `${c.mounts} mounts` });
+            // Recorded fast: its reasons are a sample of its instances, its counts are not.
+            if (c.sampled) badges.push({ text: 'reasons sampled' });
             const root = rootByName.get(c.name);
             return <StatCard key={c.name} name={c.name} source={root?.source} badges={badges} reasons={stated(c, root)} />;
           })}

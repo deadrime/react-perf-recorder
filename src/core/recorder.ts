@@ -76,6 +76,11 @@ export interface RecordOptions {
   bigCommit?: number;
   timeline?: number;
   meta?: Record<string, Primitive>;
+  /**
+   * Work out the reason of a render caused by its parent for the first instances of a component in a commit only:
+   * a list of thousands costs half as much to record, and the counts of renders stay exact.
+   */
+  sampleReasons?: boolean;
 }
 
 export interface HighlightSink {
@@ -131,6 +136,7 @@ interface ComponentAgg {
   byParent: number;
   memo: boolean;
   reasons: Map<number, number>;
+  sampled?: boolean;
 }
 
 interface CommitState {
@@ -139,6 +145,8 @@ interface CommitState {
   renderMs: number;
   noDom: number;
   cascade: Map<RootAgg, number>;
+  /** With sampled reasons: how many parent reasons each component has had worked out in this commit. */
+  sampledParents: Map<ComponentAgg, number> | null;
   reasons: Map<RootAgg, Set<number>>;
   outside: RootAgg | null;
   pairs: Array<[Element, string, Fiber]>;
@@ -173,6 +181,8 @@ type StackItem = [
 ];
 
 const MAX_TIMES = 2000;
+/** With sampled reasons: parent reasons worked out per component per commit. */
+const SAMPLED_PARENTS = 50;
 /** Stacks are read only while a commit window is unexplained; a burst of updates does not pay for all of them. */
 const MAX_UPDATE_NOTES = 10;
 const MAX_CAUSE_KEYS = 300;
@@ -454,6 +464,7 @@ export class Recorder {
       renderMs: 0,
       noDom: 0,
       cascade: new Map(),
+      sampledParents: this.options.sampleReasons ? new Map() : null,
       reasons: new Map(),
       outside: null,
       pairs: [],
@@ -571,7 +582,11 @@ export class Recorder {
           reasons = hit.reasons;
         } else if (isComposite(f) && !isProvider(name)) {
           comp.byParent++;
-          reasons = parentReason(prev!, f, this.deps.plugins);
+          const sampled = c.sampledParents?.get(comp) ?? 0;
+          if (sampled < SAMPLED_PARENTS) {
+            c.sampledParents?.set(comp, sampled + 1);
+            reasons = parentReason(prev!, f, this.deps.plugins);
+          } else comp.sampled = true;
         }
         for (const reason of reasons ?? []) {
           const id = this.reasonId(reason);
@@ -1140,6 +1155,7 @@ export class Recorder {
           byParent: s.byParent,
           ...(s.memo ? { memo: true as const } : {}),
           reasons: topEntries(s.reasons, 4),
+          ...(s.sampled ? { sampled: true as const } : {}),
         })),
       ...(this.watch.size
         ? {
@@ -1193,6 +1209,9 @@ export class Recorder {
       },
       warnings: [
         ...this.warnings,
+        ...([...this.components.values()].some((comp) => comp.sampled)
+          ? [`reasons of renders caused by a parent were worked out for ${SAMPLED_PARENTS} instances of a component a commit: their counts are a sample`]
+          : []),
         ...(sourcesUnavailable()
           ? [
               `React ${reactVersion() ?? '19.0'} tells nothing about where a component comes from: no files, and the app's own ` +

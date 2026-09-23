@@ -105,6 +105,9 @@ recording (renders and which root pulled it), and `⧉` copies the area as text 
 `label` — what the run was about, shown in `list_recordings` — comes from scripts and `record_page`; the panel's note
 field is off for now, so panel recordings arrive without one. `highlight` outlines renders in the area, both while recording
 and between recordings; a recording made with it on says so in its warnings, because drawing costs frame time.
+`fast` (off by default) works out the reason of a render its parent caused for 50 instances of a component a commit
+rather than all of them: on a list of thousands recording costs about half as much, counts of renders stay exact, and
+the report marks the components whose reasons are a sample. `record_page` takes it as `sample`.
 
 **The report** after Stop leads with the answer: a row of numbers — commits, renders, the wasted ones (renders
 after which the DOM did not change), the slowest action — and the root to fix, the one whose renders changed nothing on the screen most often,
@@ -153,7 +156,7 @@ from its events.
 | -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `list_recordings`    | Newest first, with status, area, commits, renders, the top root                                                                                                                                                                                                   |
 | `get_recording`      | `id` (`latest`, `latest-1`), `section`: `summary` (default), `actions`, `roots`, `outside`, `causes`, `components`, `timeline`, `frames`, `plugins`, `plugin:<name>`…; `hooks: 'short'` prints hook chains up to the library API instead of down to the primitive |
-| `record_page`        | Opens a page in a browser of its own, records it and returns the session id — so a fix can be measured: record, change the code, record again, `compare_recordings`. `ms`, `scope` (a component's name, a path, or a selector), `watch`, `script`, `replay` (a recording id: do its actions again), `fromLoad`, `viewport`, `throttle`, `state`, `cdp`, `via` |
+| `record_page`        | Opens a page in a browser of its own, records it and returns the session id — so a fix can be measured: record, change the code, record again, `compare_recordings`. `ms`, `scope` (a component's name, a path, or a selector), `watch`, `script`, `replay` (a recording id: do its actions again), `sample`, `fromLoad`, `viewport`, `throttle`, `state`, `cdp`, `via` |
 | `wait_for_recording` | Blocks until the user finishes a recording (`until: 'done'`) or starts one                                                                                                                                                                                        |
 | `compare_recordings` | Before/after: totals, roots, causes, the same actions, plugin metrics; warns when runs differ                                                                                                                                                                     |
 

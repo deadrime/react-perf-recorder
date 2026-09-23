@@ -272,6 +272,8 @@ export interface RecordingV2 {
     byParent: number;
     memo?: true;
     reasons: Array<[number, number]>;
+    /** Its parent-caused renders had their reasons worked out for a sample of the instances in a commit, not all. */
+    sampled?: true;
   }>;
   watch?: Record<string, { mounted: number; renders: number; byRoot: Array<[number | null, number]> }>;
   zones?: Record<string, { renders: number; mounted: number; found: boolean }>;
