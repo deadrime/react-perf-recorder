@@ -125,7 +125,7 @@ export function Result({
       ) : null}
 
       {compared ? (
-        <Fold id="compare" title="Before → after" note={compareNote(compared)}>
+        <Fold id="compare" title="Before → after" note={compareNote(compared, Boolean(rec.label?.startsWith('replay of')))}>
           <Compare c={compared} />
         </Fold>
       ) : null}

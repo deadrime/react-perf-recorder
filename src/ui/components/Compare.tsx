@@ -13,31 +13,41 @@ const MAX_ROWS = 5;
 const toneOf = (d: Delta) =>
   d.pct === null || Math.abs(d.pct) < 10 || Math.abs(d.delta ?? 0) < 1 ? undefined : d.pct < 0 ? 'good' : 'bad';
 const num = (n: number | null) => (n === null ? '–' : String(n));
-const pct = (d: Delta) => (d.pct === null ? '' : `${d.pct > 0 ? '+' : d.pct < 0 ? '−' : ''}${Math.abs(d.pct)}%`);
-const unitOf = (c: ActionChange) => (c.per === 'char' ? '/char' : c.action.startsWith('click') ? '/click' : '/time');
+const change = (d: Delta) => (toneOf(d) ? `${d.pct! > 0 ? '+' : '−'}${Math.abs(d.pct!)}%` : 'same');
+const VERB: Record<string, string> = { typing: 'type', click: 'click', key: 'key', change: 'change', submit: 'submit', scroll: 'scroll' };
+const unitOf = (c: ActionChange) => (c.per === 'char' ? 'per char' : c.kind === 'click' ? 'per click' : 'per time');
 const timeOf = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
-const Row = ({ what, times, d, unit }: { what: string; times?: string; d: Delta; unit: string }) => (
-  <div class="cmp-row" data-rpr="cmp-row">
-    <span class="cmp-what" title={what}>
-      {what}
+const Change = ({ d }: { d: Delta }) => (
+  <span class="cmp-change" data-tone={toneOf(d)}>
+    {change(d)}
+  </span>
+);
+
+const ActionRow = ({ a }: { a: ActionChange }) => (
+  <div
+    class="cmp-row"
+    data-rpr="cmp-row"
+    title={`${a.action}\nDone ${a.times.before}× before and ${a.times.after}× now — the numbers are renders ${unitOf(a)}, so that does not matter`}
+  >
+    <span class="cmp-what">
+      <span class="cmp-verb">{VERB[a.kind] ?? a.kind}</span>
+      <span class="cmp-target">{a.target}</span>
+      {a.component ? <span class="cmp-in">{`in ${a.component}`}</span> : null}
     </span>
-    {times ? (
-      <span class="cmp-times" title="How many times it was done, before and after: the numbers are per time, so it does not matter">
-        {times}
-      </span>
-    ) : null}
-    <span class="cmp-value">{`${num(d.before)} → ${num(d.after)}`}</span>
-    <span class="cmp-unit">{unit}</span>
-    <span class="cmp-pct" data-tone={toneOf(d)}>
-      {pct(d)}
+    <span class="cmp-before">{num(a.renders.before)}</span>
+    <span class="cmp-arrow">→</span>
+    <span class="cmp-after">
+      {num(a.renders.after)}
+      {a.per === 'char' ? <small>/char</small> : null}
     </span>
+    <Change d={a.renders} />
   </div>
 );
 
 /**
- * The same actions in this recording and the one before it, per time each was done — so the two runs need not have
- * pressed a button the same number of times. What only one of them did is named, not compared.
+ * The same actions in this recording and the one before it, as renders per time each was done — so the two runs
+ * need not have pressed a button the same number of times. What only one of them did is named, not compared.
  */
 export function Compare({ c }: { c: Comparison }): JSX.Element {
   const only = [
@@ -46,13 +56,30 @@ export function Compare({ c }: { c: Comparison }): JSX.Element {
   ];
   return (
     <div class="cmp" data-rpr="compare">
+      {c.actions.length ? (
+        <div class="cmp-head">
+          <span>renders per action</span>
+          <span class="cmp-cols">before → now</span>
+        </div>
+      ) : null}
       {c.actions.slice(0, MAX_ROWS).map((a) => (
-        <Row key={a.action} what={a.action} times={`${a.times.before}× · ${a.times.after}×`} d={a.renders} unit={unitOf(a)} />
+        <ActionRow key={a.action} a={a} />
       ))}
-      <Row what="wasted renders" d={c.wastedPerSec} unit="/s" />
-      {only.length ? <p class="muted cmp-only">{only.join(' · ')}</p> : null}
+      <div class="cmp-foot">
+        {c.startedDifferently ? (
+          <span class="cmp-note">One run began with the page load: renders per second are not compared.</span>
+        ) : (
+          <span class="cmp-wasted" data-rpr="cmp-wasted">
+            wasted renders <b>{num(c.wastedPerSec.before)}</b>
+            <span class="cmp-arrow">→</span>
+            <b>{num(c.wastedPerSec.after)}</b> per second <Change d={c.wastedPerSec} />
+          </span>
+        )}
+        {only.length ? <span class="cmp-note">{only.join(' · ')}</span> : null}
+      </div>
     </div>
   );
 }
 
-export const compareNote = (c: Comparison) => `vs ${timeOf(c.since)}`;
+/** The fold's note: when the other recording was made, and that this one is its replay. */
+export const compareNote = (c: Comparison, replayed: boolean) => `${replayed ? '↻ replay · ' : ''}vs ${timeOf(c.since)}`;

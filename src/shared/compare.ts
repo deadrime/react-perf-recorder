@@ -67,6 +67,10 @@ const median = (values: number[]) => {
 export interface ActionCost {
   key: string;
   what: string;
+  /** The parts of `what`, for a view that sets them apart: `click`, `tab-people`, `Tab`. */
+  kind: string;
+  target: string;
+  component?: string;
   /** How many times it was done. */
   n: number;
   per: 'action' | 'char';
@@ -85,6 +89,8 @@ export interface Digest {
   path: string;
   area: string | null;
   durationMs: number;
+  /** Began with the page load: its mounts are in the renders per second, and a run that did not is not like it. */
+  fromLoad?: boolean;
   actions: ActionCost[];
   /** Renders outside the reactions to actions: timers, sockets, stores, per second. */
   backgroundPerSec: number;
@@ -101,14 +107,27 @@ const pathOf = (url: string) => {
 
 export function digestOf(rec: RecordingV2 & { id?: string }): Digest {
   const actions = new Map(rec.actions.map((x) => [x.id, x]));
-  const groups = new Map<string, { what: string; typing: boolean; renders: number[]; chars: number; latency: number[] }>();
+  const groups = new Map<
+    string,
+    { what: string; kind: string; target: string; component?: string; typing: boolean; renders: number[]; chars: number; latency: number[] }
+  >();
   let reacted = 0;
   for (const s of rec.segments) {
     const action = actions.get(s.action);
     reacted += s.reaction.renders;
     if (!action) continue;
     const key = actionKey(action);
-    const group = groups.get(key) ?? { what: actionText({ ...action, value: undefined, chars: undefined }), typing: action.kind === 'typing', renders: [], chars: 0, latency: [] };
+    const t = action.target;
+    const group = groups.get(key) ?? {
+      what: actionText({ ...action, value: undefined, chars: undefined }),
+      kind: action.kind,
+      target: t ? t.testId ?? t.name ?? t.label ?? t.text ?? t.tag : '',
+      ...(t?.component ? { component: t.component } : {}),
+      typing: action.kind === 'typing',
+      renders: [],
+      chars: 0,
+      latency: [],
+    };
     group.renders.push(s.reaction.renders);
     group.chars += action.chars ?? 0;
     if (s.latency) group.latency.push(s.latency.duration);
@@ -121,9 +140,13 @@ export function digestOf(rec: RecordingV2 & { id?: string }): Digest {
     path: pathOf(rec.page.url),
     area: rec.scope?.name ?? null,
     durationMs: rec.durationMs,
+    ...(rec.tool?.source === 'load' ? { fromLoad: true } : {}),
     actions: [...groups].map(([key, g]) => ({
       key,
       what: g.typing ? g.what.replace(/^typing 0 chars/, 'typing') : g.what,
+      kind: g.kind,
+      target: g.target,
+      ...(g.component ? { component: g.component } : {}),
       n: g.renders.length,
       // Typing is priced per character: two runs never type the same amount, and a keystroke is what gets repeated.
       per: g.typing && g.chars ? ('char' as const) : ('action' as const),
@@ -137,6 +160,9 @@ export function digestOf(rec: RecordingV2 & { id?: string }): Digest {
 
 export interface ActionChange {
   action: string;
+  kind: string;
+  target: string;
+  component?: string;
   per: 'action' | 'char';
   times: { before: number; after: number };
   renders: Delta;
@@ -152,6 +178,8 @@ export interface DigestComparison {
   unmatched: { before: string[]; after: string[] };
   backgroundPerSec: Delta;
   wastedPerSec: Delta;
+  /** One run began with the page load and the other did not: renders per second are not like for like. */
+  startedDifferently: boolean;
 }
 
 /** The same actions side by side, the biggest change first; what was done in one run only is listed, not compared. */
@@ -168,6 +196,9 @@ export function compareDigests(a: Digest, b: Digest): DigestComparison {
     matched.add(x.key);
     actions.push({
       action: y.what,
+      kind: y.kind,
+      target: y.target,
+      ...(y.component ? { component: y.component } : {}),
       per: y.per,
       times: { before: x.n, after: y.n },
       renders: delta(x.renders, y.renders),
@@ -185,6 +216,7 @@ export function compareDigests(a: Digest, b: Digest): DigestComparison {
     },
     backgroundPerSec: delta(a.backgroundPerSec, b.backgroundPerSec),
     wastedPerSec: delta(a.wastedPerSec, b.wastedPerSec),
+    startedDifferently: Boolean(a.fromLoad) !== Boolean(b.fromLoad),
   };
 }
 

@@ -542,7 +542,7 @@ function compareWithPrevious(rec: Saved): Comparison | null {
   const previous = takePrevious(digest);
   if (!previous || (previous.id && previous.id === digest.id)) return null;
   const result = compareDigests(previous, digest);
-  const wastedMoved = Math.abs(result.wastedPerSec.delta ?? 0) >= 1;
+  const wastedMoved = !result.startedDifferently && Math.abs(result.wastedPerSec.delta ?? 0) >= 1;
   if (!result.comparable || (!result.actions.length && !wastedMoved)) return null;
   return { ...result, since: previous.createdAt };
 }

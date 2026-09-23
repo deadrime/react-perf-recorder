@@ -156,6 +156,11 @@ const View = (p: PanelViewProps): JSX.Element => (
           –
         </button>
       </header>
+      {p.replaying ? (
+        <div class="replay-bar" data-rpr="replay-bar" role="progressbar" aria-valuemin={0} aria-valuemax={p.replaying.of} aria-valuenow={p.replaying.at}>
+          <i style={{ width: `${(p.replaying.at / Math.max(1, p.replaying.of)) * 100}%` }} />
+        </div>
+      ) : null}
       <LiveRoots p={p} />
       <Controls p={p} />
       {NOTE_IN_PANEL ? (

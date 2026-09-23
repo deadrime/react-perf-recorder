@@ -208,14 +208,30 @@ button.icon { padding: 3px 7px; }
 
 /* The report: the answer first, then what to read it against, then the parts that explain it, folded. */
 .verdict { margin-top: 8px; }
-.cmp-row { display: flex; align-items: baseline; gap: 6px; padding: 2px 0; font-variant-numeric: tabular-nums; }
-.cmp-what { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-2); }
-.cmp-times, .cmp-unit, .cmp-only { color: var(--muted); font-size: 11px; }
-.cmp-value { color: var(--text-strong); font-weight: 600; white-space: nowrap; }
-.cmp-pct { min-width: 38px; text-align: right; color: var(--muted); font-size: 11px; }
-.cmp-pct[data-tone="good"] { color: var(--good); }
-.cmp-pct[data-tone="bad"] { color: var(--bad); }
-.cmp-only { margin: 4px 0 0; }
+.cmp { border: 1px solid var(--rule); border-radius: 8px; background: var(--raised); padding: 6px 10px 8px; }
+.cmp-head { display: flex; justify-content: space-between; padding: 0 0 4px; font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.cmp-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto 54px; align-items: baseline; column-gap: 6px; padding: 4px 0; border-top: 1px solid var(--rule-soft); font-variant-numeric: tabular-nums; cursor: default; }
+.cmp-head + .cmp-row { border-top: 0; }
+.cmp-what { display: flex; align-items: baseline; gap: 6px; min-width: 0; white-space: nowrap; overflow: hidden; }
+.cmp-verb { flex: none; font-size: 11px; color: var(--muted); }
+.cmp-target { overflow: hidden; text-overflow: ellipsis; color: var(--text-strong); font-weight: 600; }
+.cmp-in { flex: none; font-size: 11px; color: var(--muted); }
+.cmp-before { color: var(--muted-soft); text-align: right; }
+.cmp-arrow { color: var(--faint); font-size: 11px; }
+.cmp-after { color: var(--text-strong); font-weight: 700; }
+.cmp-after small { margin-left: 2px; font-size: 10px; font-weight: 400; color: var(--muted); }
+.cmp-change { justify-self: end; padding: 1px 6px; border-radius: 999px; font-size: 10px; font-weight: 600; color: var(--faint); }
+.cmp-change[data-tone="good"] { color: var(--good); background: color-mix(in srgb, var(--good) 14%, transparent); }
+.cmp-change[data-tone="bad"] { color: var(--bad); background: color-mix(in srgb, var(--bad) 14%, transparent); }
+.cmp-foot { display: flex; flex-direction: column; gap: 3px; margin-top: 4px; padding-top: 6px; border-top: 1px solid var(--rule); font-size: 11px; color: var(--muted); }
+.cmp-wasted { display: flex; align-items: baseline; gap: 5px; font-variant-numeric: tabular-nums; }
+.cmp-wasted b { color: var(--text-2); }
+.cmp-wasted .cmp-change { margin-left: auto; }
+.cmp-note { color: var(--muted); }
+.result-bar .repeat { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
+.result-bar .repeat:hover { background: color-mix(in srgb, var(--accent) 14%, var(--button)); }
+.replay-bar { height: 2px; margin: -2px -10px 6px; background: var(--rule-soft); }
+.replay-bar i { display: block; height: 100%; background: var(--accent); transition: width .3s ease; }
 .verdict-title { margin: 10px 0 2px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
 .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(74px, 1fr)); gap: 4px; }
 .kpi { display: flex; flex-direction: column; padding: 5px 8px; border: 1px solid var(--rule); border-radius: 6px; background: var(--raised); }
