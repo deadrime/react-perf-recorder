@@ -1,4 +1,4 @@
-import { libraryOf, parseStack } from '../stack';
+import { libraryOf, parseStack, servedPath } from '../stack';
 
 const EFFECT_FRAMES = /flushPassiveEffects|flushPendingEffects|commitPassiveMount|commitHookEffectList/;
 const REACT_FRAMES = /^(react-dom|react|scheduler)$/;
@@ -40,10 +40,7 @@ export function updateOrigin(): UpdateOrigin | null {
         .split('.')
         .pop()
         ?.replace(/^bound /, '') ?? '';
-    const file = app.url
-      .replace(/^[a-z]+:\/\/[^/]+/, '')
-      .split(/[?#]/)[0]
-      .replace(/^\//, '');
+    const file = servedPath(app.url);
     return { text: `${kind}${name ? ` ${name}` : ''} @ ${file}`, kind };
   }
   // Outside the app: name the package when the bundler kept it (deps are split into unnamed chunks) and the

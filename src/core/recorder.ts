@@ -1,4 +1,5 @@
 import { sameContent } from '../shared/same-content';
+import { medianGap, topEntries } from '../shared/stats';
 import {
   RECORDING_SCHEMA,
   type ActionRecord,
@@ -208,16 +209,10 @@ const shallowEqual = (x: unknown, y: unknown) => {
   return keys.length === Object.keys(b).length && keys.every((key) => Object.is(a[key], b[key]));
 };
 
-const median = (xs: number[]) => {
-  if (xs.length < 2) return null;
-  const gaps = xs
-    .slice(1)
-    .map((x, i) => x - xs[i])
-    .sort((a, b) => a - b);
-  return Math.round(gaps[Math.floor(gaps.length / 2)]);
+const medianGapMs = (times: number[]) => {
+  const gap = medianGap(times);
+  return gap === null ? null : Math.round(gap);
 };
-
-const topEntries = <K>(map: Map<K, number>, n: number): Array<[K, number]> => [...map].sort((a, b) => b[1] - a[1]).slice(0, n);
 
 /** One recording: from start() to stop(). */
 export class Recorder {
@@ -1037,7 +1032,7 @@ export class Recorder {
       instances: agg.instances,
       cascade: agg.cascade,
       perHit: agg.hits ? Math.round(agg.cascade / agg.hits) : 0,
-      medianGapMs: median(agg.times),
+      medianGapMs: medianGapMs(agg.times),
       firstAtMs: agg.times[0] ?? 0,
       lastAtMs: agg.times.at(-1) ?? 0,
       reasons: topEntries(agg.reasons, 8),

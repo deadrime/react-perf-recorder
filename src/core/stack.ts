@@ -8,6 +8,13 @@ export interface Frame {
 const V8_FRAME = /^\s*at (?:(?:async )?(.+?) \()?(.+?):(\d+):(\d+)\)?\s*$/;
 const GECKO_FRAME = /^\s*(.*?)@(.+?):(\d+):(\d+)\s*$/;
 
+/** A frame's file as the dev server served it: `src/hooks/useCountdown.ts`, without the origin or the query. */
+export const servedPath = (url: string) =>
+  url
+    .replace(/^[a-z]+:\/\/[^/]+/, '')
+    .split(/[?#]/)[0]
+    .replace(/^\//, '');
+
 export function parseStack(stack: string): Frame[] {
   const frames: Frame[] = [];
   for (const line of stack.split('\n')) {

@@ -1,4 +1,4 @@
-import { libraryOf, parseStack } from '../stack';
+import { libraryOf, parseStack, servedPath } from '../stack';
 
 type Kind = 'setTimeout' | 'setInterval' | 'requestAnimationFrame';
 
@@ -43,10 +43,7 @@ function timerText(t: Scheduled): string {
   const app = frames.find((f) => libraryOf(f.url) === null);
   const name = (app?.fn.split('.').pop() || t.fn.name || '').replace(/^bound /, '');
   if (app) {
-    const file = app.url
-      .replace(/^[a-z]+:\/\/[^/]+/, '')
-      .split(/[?#]/)[0]
-      .replace(/^\//, '');
+    const file = servedPath(app.url);
     text = `timer ${t.kind}${name ? ` ${name}` : ''} @ ${file}`;
   } else {
     const library = frames.map((f) => libraryOf(f.url)).find(Boolean);

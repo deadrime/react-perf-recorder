@@ -178,6 +178,19 @@ export function fiberFromNode(node: Node | null): Fiber | null {
   return null;
 }
 
+/** Every fiber of the page's roots, depth first, until `visit` returns false. */
+export function eachFiber(visit: (f: Fiber) => boolean | void): void {
+  for (const root of findRoots()) {
+    const stack: Fiber[] = [root.current];
+    while (stack.length) {
+      const f = stack.pop()!;
+      if (visit(f) === false) return;
+      if (f.sibling) stack.push(f.sibling);
+      if (f.child) stack.push(f.child);
+    }
+  }
+}
+
 export function hostRootOf(f: Fiber): FiberRoot | null {
   let node: Fiber | null = f;
   while (node?.return) node = node.return;

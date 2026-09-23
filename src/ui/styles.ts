@@ -181,10 +181,6 @@ header .live { flex: 1; color: var(--muted-soft); white-space: nowrap; overflow:
 .scope[data-lost="true"] { color: var(--lost); }
 button.scope:disabled { cursor: default; }
 
-/* Text: one line of a report, used by the live roots and by the summary. */
-.section { margin-top: 8px; }
-.section h4 { margin: 0 0 3px; font-size: 11px; color: var(--text-strong); font-weight: 700; }
-
 /* Controls: what runs a recording on one row, the area it is about on the next. */
 .controls { gap: 6px; }
 .controls .reload { color: var(--label); }
@@ -272,10 +268,6 @@ details.fold[open] > summary::before { content: '▾'; }
   border-top: 1px solid var(--rule); background: var(--card); }
 .result-bar .saved { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
 .rpr[data-wide="true"] .card { width: min(640px, calc(100vw - 24px)); }
-.line { margin: 2px 0; white-space: pre-wrap; word-break: break-word; }
-.line .n { color: var(--number); }
-.line .why { color: var(--accent-soft); }
-.line button { padding: 0 6px; margin-left: 4px; }
 
 /* Roots and Components: a card per component — the numbers on the head, a row per reason under it. */
 .stat { margin: 3px 0; padding: 3px 6px 4px; border: 1px solid var(--rule); border-radius: 6px; background: var(--raised); }

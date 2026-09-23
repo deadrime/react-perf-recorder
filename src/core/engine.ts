@@ -5,6 +5,7 @@ import {
   compositeChain,
   compositeChildren,
   currentOf,
+  eachFiber,
   isComposite,
   isLibraryFiber,
   fiberFromNode,
@@ -285,16 +286,11 @@ export class Engine {
    */
   componentNames(limit = 60): string[] {
     const names = new Set<string>();
-    for (const root of findRoots()) {
-      const stack: Fiber[] = [root.current];
-      while (stack.length && names.size < limit) {
-        const f = stack.pop()!;
-        const name = nameOf(f);
-        if (name && !isLibraryFiber(f)) names.add(name);
-        if (f.sibling) stack.push(f.sibling);
-        if (f.child) stack.push(f.child);
-      }
-    }
+    eachFiber((f) => {
+      const name = nameOf(f);
+      if (name && !isLibraryFiber(f)) names.add(name);
+      return names.size < limit;
+    });
     return [...names];
   }
 
@@ -304,17 +300,12 @@ export class Engine {
    */
   findComponents(name: string, source?: string, limit = 50): Fiber[] {
     const named: Fiber[] = [];
-    for (const root of findRoots()) {
-      const stack: Fiber[] = [root.current];
-      while (stack.length && named.length < limit * 4) {
-        const f = stack.pop()!;
-        // `memo(Row, areEqual)` and `memo(forwardRef(Row))` are two fibers of one instance, both called Row.
-        const inner = f.return !== null && isComposite(f.return) && nameOf(f.return) === name;
-        if (nameOf(f) === name && isComposite(f) && !inner) named.push(f);
-        if (f.sibling) stack.push(f.sibling);
-        if (f.child) stack.push(f.child);
-      }
-    }
+    eachFiber((f) => {
+      // `memo(Row, areEqual)` and `memo(forwardRef(Row))` are two fibers of one instance, both called Row.
+      const inner = f.return !== null && isComposite(f.return) && nameOf(f.return) === name;
+      if (nameOf(f) === name && isComposite(f) && !inner) named.push(f);
+      return named.length < limit * 4;
+    });
     if (!source) return named.slice(0, limit);
     const file = source.replace(/:\d+(:\d+)?$/, '');
     const same = named.filter((f) => sourceOf(f, this.config.projectRoot) === source);
@@ -383,22 +374,18 @@ export class Engine {
   /** Finds the component again after a reload by its composite path, e.g. ['OrdersPanel', 'PositionTable']. */
   scopeFromNames(names: string[]): ScopeHandle {
     const target = names.at(-1);
-    for (const root of findRoots()) {
-      const stack: Fiber[] = [root.current];
-      while (stack.length) {
-        const f = stack.pop()!;
-        if (target && nameOf(f) === target) {
-          const chain = compositeChain(f)
-            .map((x) => nameOf(x))
-            .filter((n): n is string => Boolean(n));
-          let i = names.length - 1;
-          for (let j = chain.length - 1; j >= 0 && i >= 0; j--) if (chain[j] === names[i]) i--;
-          if (i < 0) return this.scopeFromFiber(f);
-        }
-        if (f.sibling) stack.push(f.sibling);
-        if (f.child) stack.push(f.child);
-      }
-    }
+    let found: Fiber | null = null;
+    eachFiber((f) => {
+      if (!target || nameOf(f) !== target) return;
+      const chain = compositeChain(f)
+        .map((x) => nameOf(x))
+        .filter((n): n is string => Boolean(n));
+      let i = names.length - 1;
+      for (let j = chain.length - 1; j >= 0 && i >= 0; j--) if (chain[j] === names[i]) i--;
+      if (i < 0) found = f;
+      return i >= 0;
+    });
+    if (found) return this.scopeFromFiber(found);
     throw new RecorderError('SCOPE_NOT_FOUND', `component ${names.join(' > ')} is not mounted`);
   }
 

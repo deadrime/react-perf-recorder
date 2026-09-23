@@ -1,3 +1,4 @@
+import { medianGap, topEntries } from './stats';
 import { buildSegments } from './segments';
 import {
   RECORDING_SCHEMA,
@@ -28,7 +29,6 @@ interface RootAgg {
   lanes: Map<string, number>;
 }
 
-const top = <K>(map: Map<K, number>, n: number): Array<[K, number]> => [...map].sort((a, b) => b[1] - a[1]).slice(0, n);
 
 /**
  * Rebuilds a partial recording from the streamed events of a session that is still running or was cut by a reload.
@@ -137,10 +137,6 @@ export function aggregateEvents(meta: SessionMeta, events: SessionEvent[]): Reco
   ];
   const remap = new Map(ordered.map((r, index) => [r.i, index]));
   const stat = (r: RootAgg): RootStat => {
-    const gaps = r.times
-      .slice(1)
-      .map((t, i) => t - r.times[i])
-      .sort((a, b) => a - b);
     return {
       key: r.key,
       name: r.name,
@@ -150,12 +146,12 @@ export function aggregateEvents(meta: SessionMeta, events: SessionEvent[]): Reco
       instances: 1,
       cascade: r.cascade,
       perHit: r.hits ? Math.round(r.cascade / r.hits) : 0,
-      medianGapMs: gaps.length ? gaps[Math.floor(gaps.length / 2)] : null,
+      medianGapMs: medianGap(r.times),
       firstAtMs: r.times[0] ?? 0,
       lastAtMs: r.times.at(-1) ?? 0,
-      reasons: top(r.reasons, 8),
-      causes: top(r.causes, 8),
-      lanes: top(r.lanes, 5),
+      reasons: topEntries(r.reasons, 8),
+      causes: topEntries(r.causes, 8),
+      lanes: topEntries(r.lanes, 5),
       noDomChange: 0,
       ...(r.outside ? { scopeRenders: r.cascade } : {}),
     };
