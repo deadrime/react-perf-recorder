@@ -92,6 +92,8 @@ function applySites(recording: RecordingV2, sites: Record<string, { site: string
 export class Engine {
   last: Saved | null = null;
   private recorder: Recorder | null = null;
+  /** The area the running recording was started with, as it was found: a load recording finds it before the panel does. */
+  private recordingScope: ScopeHandle | null = null;
   private writer: SessionWriter | null = null;
   private timer: ReturnType<typeof setTimeout> | null = null;
   private listeners = new Set<(state: 'started' | 'stopped') => void>();
@@ -121,6 +123,10 @@ export class Engine {
 
   get recording() {
     return Boolean(this.recorder);
+  }
+
+  get scopeOfRecording(): ScopeHandle | null {
+    return this.recordingScope;
   }
 
   onChange(listener: (state: 'started' | 'stopped') => void) {
@@ -194,6 +200,7 @@ export class Engine {
       throw error;
     }
     this.recorder = recorder;
+    this.recordingScope = scope;
     if (this.config.endpoint && options.save !== false) {
       writerRef.current = this.writer = new SessionWriter(this.config.endpoint, {
         source: options.source ?? 'api',
@@ -221,6 +228,7 @@ export class Engine {
     if (!recorder) throw new RecorderError('NOT_RECORDING', 'no recording is running');
     if (this.timer) clearTimeout(this.timer);
     this.recorder = null;
+    this.recordingScope = null;
     const writer = this.writer;
     this.writer = null;
     let recording: Saved;

@@ -59,7 +59,7 @@ export class Panel {
       preview: (owner) => this.setScope(this.engine.scopeFromFiber(owner.fiber)),
       done: (owner) => this.onPicked(owner),
     });
-    engine.onChange(() => this.sync());
+    engine.onChange(() => this.adoptRecordingScope() || this.sync());
     window.addEventListener('keydown', (e) => this.onShortcut(e), true);
     this.visible = this.initialVisibility();
     if (options.interrupted)
@@ -190,6 +190,17 @@ export class Panel {
       }
     };
     attempt();
+  }
+
+  /**
+   * A recording from the page load finds its area itself, before the panel's own search does and then stops; the
+   * panel shows that area, or the pill says Pick while the recording is of one component only.
+   */
+  private adoptRecordingScope(): boolean {
+    const handle = this.engine.scopeOfRecording;
+    if (this.scope || !handle) return false;
+    this.setScope(handle);
+    return true;
   }
 
   /** Hovering the area's name outlines it on the page, unless the picker is already drawing something. */

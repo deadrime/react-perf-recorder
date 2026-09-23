@@ -302,6 +302,27 @@ test('records the page load: the panel reloads into a recording', async ({ page 
   expect(recording.components.find((c) => c.name === 'MessageRow')?.mounts).toBe(3);
 });
 
+test('records the page load inside the area picked before it', async ({ page }) => {
+  const before = sessions();
+  await open(page);
+  await page.locator('[data-rpr="pick"]').click();
+  await page.getByTestId('messages').click();
+  await page.locator('[data-rpr="tree"] li[data-name="MessageList"]').click();
+  await expect(page.locator('[data-rpr="scope"]')).toHaveText('MessageList');
+  await page.keyboard.press('Escape');
+  await expect(page.locator('[data-rpr="scope"]')).toHaveText('MessageList');
+  await page.locator('[data-rpr="record-on-load"]').click();
+  await expect(page.locator('[data-rpr="stop"]')).toBeVisible();
+  // The reloaded panel says what is being recorded: the area, not Pick as if it were the whole app.
+  await expect(page.locator('[data-rpr="scope"]')).toHaveText('MessageList');
+  await page.locator('[data-rpr="stop"]').click();
+  const { meta, recording } = await newRecording(before);
+
+  expect(meta.source).toBe('load');
+  expect(recording.scope).toMatchObject({ name: 'MessageList' });
+  expect(recording.totals.commitsInScope).toBeLessThan(recording.totals.commits);
+});
+
 test('?rpr=rec records from the first render for a script', async ({ page }) => {
   const before = sessions();
   await page.goto('/app?rpr=rec&tick=150');
