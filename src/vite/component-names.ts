@@ -13,9 +13,9 @@ export const DEFAULT_WRAPPERS = ['memo', 'forwardRef', 'createContext'];
  * `const Row = memo(...)` → `if (!Row.displayName) Row.displayName = "Row";` at the end of the module. Without it a
  * memo over an arrow function shows up as `Memo`/`Anonymous`, and a context as `(unnamed)`.
  *
- * The declarations are found by reading the text, so one written inside a string or a comment — a code sample in a
- * doc block, say — is found too. The `typeof` guard keeps that harmless: a name that does not exist, or holds
- * something that is not a component, is left alone instead of throwing.
+ * The declarations are found by reading the text; strings, templates and comments are skipped, and the `typeof`
+ * guard keeps whatever the scan still gets wrong harmless: a name that does not exist, or holds something that is
+ * not a component, is left alone instead of throwing.
  */
 export function addComponentNames(code: string, wrappers: string[] = DEFAULT_WRAPPERS): string | null {
   const names = findDeclarations(code, wrappers, { allowReactPrefix: true });

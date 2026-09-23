@@ -72,6 +72,25 @@ describe('findDeclarations', () => {
     ].join('\n');
     expect(findDeclarations(code, ['memoize', 'memoizeWithArgs'])).toEqual(['selectA', 'selectB', 'selectC', 'selectD']);
   });
+
+  it('skips what is written inside strings, templates and comments', () => {
+    const code = [
+      // A code sample, the way a docs or a demo page keeps one: every line of it looks like a declaration.
+      'const SAMPLE = `',
+      'const selectTask = memoizeWithArgs(',
+      '  (s, id) => s.tasks[id],',
+      ');`;',
+      '/*',
+      'const selectOld = memoize((s) => s.old);',
+      '*/',
+      "const QUOTE = 'const selectQuoted = memoize((s) => s)';",
+      // Nested templates and a regular expression with quotes in it must not throw the scan off what follows.
+      'const label = `a ${`b ${1}`} c`;',
+      'const quotes = /[\'"`]/g;',
+      'export const selectReal = memoize((s: S) => s.real);',
+    ].join('\n');
+    expect(findDeclarations(code, ['memoize', 'memoizeWithArgs'])).toEqual(['selectReal']);
+  });
 });
 
 describe('createFilter', () => {

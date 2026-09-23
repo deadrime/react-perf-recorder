@@ -1,5 +1,5 @@
 import { createFilter } from '../../vite/helpers/filter';
-import { appendLines, findDeclarations } from '../../vite/helpers/name-declarations';
+import { appendLines, findDeclarations, ifDeclared } from '../../vite/helpers/name-declarations';
 import { combineProxies, proxyModule } from '../../vite/helpers/proxy-module';
 import type { BuildContext, PerfRecorderPlugin } from '../../vite/plugin-api';
 
@@ -56,7 +56,7 @@ export function zustand(options: ZustandOptions = {}): PerfRecorderPlugin {
         const names = findDeclarations(code, functions);
         const out = appendLines(code, [
           `import { nameStore as __rprNameStore } from ${JSON.stringify(RUNTIME)};`,
-          ...names.map((name) => `__rprNameStore(${name}, ${JSON.stringify(name)});`),
+          ...names.map((name) => ifDeclared(name, `__rprNameStore(${name}, ${JSON.stringify(name)});`)),
         ]);
         return names.length && out ? { code: out, map: null } : null;
       },

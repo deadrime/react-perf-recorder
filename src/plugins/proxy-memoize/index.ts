@@ -1,5 +1,5 @@
 import { createFilter, relativeToRoot } from '../../vite/helpers/filter';
-import { appendLines, findDeclarations } from '../../vite/helpers/name-declarations';
+import { appendLines, findDeclarations, ifDeclared } from '../../vite/helpers/name-declarations';
 import { proxyModule } from '../../vite/helpers/proxy-module';
 import type { BuildContext, PerfRecorderPlugin } from '../../vite/plugin-api';
 
@@ -47,7 +47,7 @@ export function proxyMemoize(options: ProxyMemoizeOptions = {}): PerfRecorderPlu
         const file = relativeToRoot(root(), id);
         const out = appendLines(code, [
           `import { nameMemoized as __rprNameMemoized } from ${JSON.stringify(RUNTIME)};`,
-          ...names.map((name) => `__rprNameMemoized(${name}, ${JSON.stringify(name)}, ${JSON.stringify(file)});`),
+          ...names.map((name) => ifDeclared(name, `__rprNameMemoized(${name}, ${JSON.stringify(name)}, ${JSON.stringify(file)});`)),
         ]);
         return names.length && out ? { code: out, map: null } : null;
       },
