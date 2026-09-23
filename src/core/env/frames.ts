@@ -42,6 +42,8 @@ export class FrameWatcher {
   readonly longTasks = { count: 0, maxMs: 0, totalMs: 0 };
   readonly loaf: LongFrame[] = [];
   readonly latency: LatencyEntry[] = [];
+  /** Index in `latency` of the worst entry of each interaction, so the same interaction is kept once. */
+  private readonly worstByInteraction = new Map<number, number>();
   private observers: Array<[PerformanceObserver, (entry: PerformanceEntry) => void]> = [];
 
   constructor(private options: FrameOptions) {}
@@ -101,7 +103,15 @@ export class FrameWatcher {
             presentation: Math.max(0, Math.round(entry.startTime + entry.duration - entry.processingEnd)),
             interactionId: entry.interactionId,
           };
-          this.latency.push(latency);
+          // The browser reports one entry per event of an interaction — pointerdown, pointerup, click all carry the
+          // same id. Only the worst of them says what the person waited for, so the rest are not kept.
+          const seen = this.worstByInteraction.get(latency.interactionId);
+          if (seen && this.latency[seen].duration >= latency.duration) return;
+          if (seen) this.latency[seen] = latency;
+          else {
+            this.worstByInteraction.set(latency.interactionId, this.latency.length);
+            this.latency.push(latency);
+          }
           this.options.onLatency(latency);
         },
         { durationThreshold: 16 }

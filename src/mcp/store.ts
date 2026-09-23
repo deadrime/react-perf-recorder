@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { aggregateEvents } from '../shared/aggregate';
-import type { RecordingV1, SessionEvent, SessionMeta, SessionStatus } from '../shared/schema';
+import type { RecordingV2, SessionEvent, SessionMeta, SessionStatus } from '../shared/schema';
 
 export interface SessionEntry {
   id: string;
@@ -68,8 +68,8 @@ export function readEvents(entry: SessionEntry): SessionEvent[] {
 }
 
 /** The final recording, or one rebuilt from the events of a running or interrupted session. */
-export function readRecording(entry: SessionEntry): RecordingV1 & { status: SessionStatus } {
-  const recording = entry.hasRecording ? readJson<RecordingV1>(path.join(entry.dir, 'recording.json')) : null;
+export function readRecording(entry: SessionEntry): RecordingV2 & { status: SessionStatus } {
+  const recording = entry.hasRecording ? readJson<RecordingV2>(path.join(entry.dir, 'recording.json')) : null;
   const base = recording ?? aggregateEvents(entry.meta, readEvents(entry));
   return { ...base, id: entry.id, status: entry.status };
 }

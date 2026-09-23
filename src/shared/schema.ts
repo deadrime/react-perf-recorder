@@ -1,6 +1,6 @@
 export const RECORDING_SCHEMA = 'react-perf-recorder/recording';
 export const SESSION_SCHEMA = 'react-perf-recorder/session';
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 export const GLOBAL_KEY = '__REACT_PERF_RECORDER__';
 export const ENDPOINT = '__react-perf-recorder';
 export const CLIENT_HEADER = 'x-react-perf-recorder';
@@ -37,10 +37,38 @@ export interface HookInfo {
   code?: string;
 }
 
+/** What made a component render, as fields rather than a sentence; `text` is the sentence, built from them. */
+export type ReasonKind = 'state' | 'store' | 'context' | 'props' | 'parent' | 'bailout' | 'unknown';
+
+export interface ReasonInfo {
+  i: number;
+  kind: ReasonKind;
+  /** Index in the hook list, for `state` and `store`; the key into `RootStat.hooks`. */
+  hook?: number;
+  /** The store behind an external-store hook, and the selector it was read with. */
+  store?: string;
+  selector?: string;
+  /** The context that changed, for `context`. */
+  context?: string;
+  /** Props that really changed, and props that are a new reference with the same content. */
+  changed?: string[];
+  sameRef?: string[];
+  /** The children element changed by reference. */
+  children?: true;
+  /** The parent rendered and handed over equal props: `memo` would have skipped this render. */
+  equal?: true;
+  /** A new value with the same content: a subscription bug rather than new data. */
+  sameContent?: true;
+  /** Older recordings carry the sentence; it is built from the fields above by `reasonText` when it is not there. */
+  text?: string;
+}
+
 export interface RootStat {
   key: string;
   name: string;
   source: string;
+  /** Call site in the generated code, when the source alone has no line; the dev server maps it into `source`. */
+  generatedSource?: { url: string; line: number; column: number };
   path: string;
   hits: number;
   instances: number;
@@ -49,7 +77,8 @@ export interface RootStat {
   medianGapMs: number | null;
   firstAtMs: number;
   lastAtMs: number;
-  reasons: Array<[string, number]>;
+  /** `[reason id, how many hits]`; the ids index `RecordingV2.reasons`. */
+  reasons: Array<[number, number]>;
   causes: Array<[string, number]>;
   lanes: Array<[string, number]>;
   /** Hits in which nothing in the root's DOM changed: the render was wasted. */
@@ -86,6 +115,8 @@ export interface Totals {
 }
 
 export interface CauseStat {
+  /** Id: what a commit references instead of repeating the key. */
+  i: number;
   key: string;
   plugin: string;
   type: string;
@@ -103,7 +134,23 @@ export interface ActionTarget {
   tag: string;
   role?: string;
   text?: string;
+  /** The component that rendered the element, where it was written, and the app's components above it. */
   component?: string;
+  source?: string;
+  /** React 19: the built position of the component, which the dev server maps into `source` when saving. */
+  generatedSource?: { url: string; line: number; column: number };
+  path?: string[];
+  /** Enough to find the element again: a selector, and which one it is among its like-named siblings. */
+  selector?: string;
+  nth?: number;
+  /** Where the click landed, and the box of the element at that moment. */
+  point?: { x: number; y: number };
+  box?: { x: number; y: number; w: number; h: number };
+  /** The element's own state when it was acted on. */
+  id?: string;
+  href?: string;
+  disabled?: true;
+  checked?: boolean;
   inScope?: boolean;
 }
 
@@ -122,6 +169,8 @@ export interface ActionRecord {
   secret?: boolean;
   scroll?: { from: number; to: number; pixels: number };
   url?: string;
+  /** The commits that followed it, by id; empty when the action changed nothing. */
+  commitIds?: number[];
 }
 
 export interface LatencyEntry {
@@ -144,6 +193,8 @@ export interface LongFrame {
 
 export interface Segment {
   action: number;
+  /** Internal wiring while a recording is built; the saved recording keeps these on the action itself. */
+  commitIds?: number[];
   atMs: number;
   durationMs: number;
   commits: number;
@@ -157,18 +208,30 @@ export interface Segment {
   maxFrameMs: number;
 }
 
-export interface TimelineEntry {
-  t: number;
-  /** Renders in scope (or everywhere without a scope). */
-  n: number;
+/**
+ * One commit, with everything that points at it: the action and the causes that led to it, the roots that rendered
+ * in it and why. This is what a timeline is drawn from — a bar per commit, a marker per action.
+ */
+export interface CommitRecord {
+  i: number;
+  atMs: number;
+  /** Milliseconds since the previous commit. */
+  sinceMs?: number;
   /** React render time of the commit's cascade roots, when the build has profile timings. */
   ms?: number;
   lane?: string;
+  /** The DOM event being dispatched when React was told, e.g. `click`. */
   event?: string;
-  roots?: Array<[number, number]>;
-  causes?: string[];
-  outside?: number;
+  /** The action this commit answered, and the causes that claimed it. */
+  actionId?: number;
+  causeIds?: number[];
+  /** Renders in scope (or everywhere without a scope), and how many changed nothing in the DOM. */
+  renders: number;
   noDom?: number;
+  outside?: number;
+  mounts?: number;
+  /** Cascade roots of this commit: which root, how many of its instances, and why each rendered. */
+  roots?: Array<{ i: number; hits: number; reasonIds: number[] }>;
 }
 
 export interface Navigation {
@@ -178,9 +241,9 @@ export interface Navigation {
   sameUrl?: true;
 }
 
-export interface RecordingV1 {
+export interface RecordingV2 {
   schema: typeof RECORDING_SCHEMA;
-  version: 1;
+  version: 2;
   id?: string;
   createdAt: string;
   label?: string;
@@ -208,7 +271,7 @@ export interface RecordingV1 {
     withoutDom: number;
     byParent: number;
     memo?: true;
-    reasons: Array<[string, number]>;
+    reasons: Array<[number, number]>;
   }>;
   watch?: Record<string, { mounted: number; renders: number; byRoot: Array<[number | null, number]> }>;
   zones?: Record<string, { renders: number; mounted: number; found: boolean }>;
@@ -216,7 +279,9 @@ export interface RecordingV1 {
   actions: ActionRecord[];
   segments: Segment[];
   latency: LatencyEntry[];
-  timeline: { entries: TimelineEntry[]; truncated: boolean };
+  /** Every reason any root or component gave, once; everything else points here by id. */
+  reasons: ReasonInfo[];
+  commits: { list: CommitRecord[]; truncated: boolean };
   bigCommits: number[];
   frames: { longTasks: { count: number; maxMs: number; totalMs: number }; loaf: LongFrame[]; fps?: number };
   dom: { text: number; attr?: number; child?: number };
@@ -242,7 +307,7 @@ export interface SessionMeta {
   updatedAt: string;
   source: string;
   label?: string;
-  page: RecordingV1['page'];
+  page: RecordingV2['page'];
   scope: { name: string; source: string } | null;
   conditions: Conditions;
   plugins: PluginInfo[];
@@ -252,8 +317,17 @@ export interface SessionMeta {
 
 /** One line of `events.ndjson`. Roots and reasons are sent as dictionaries once, then referenced by index. */
 export type SessionEvent =
-  | { k: 'root'; i: number; key: string; name: string; source: string; path: string; outside?: true }
-  | { k: 'reason'; i: number; text: string }
+  | {
+      k: 'root';
+      i: number;
+      key: string;
+      name: string;
+      source: string;
+      generatedSource?: { url: string; line: number; column: number };
+      path: string;
+      outside?: true;
+    }
+  | { k: 'reason'; info: ReasonInfo }
   | {
       k: 'commit';
       t: number;

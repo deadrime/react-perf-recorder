@@ -5,11 +5,12 @@ import {
   type LatencyEntry,
   type LongFrame,
   type Navigation,
-  type RecordingV1,
+  type RecordingV2,
   type RootStat,
   type SessionEvent,
+  type CommitRecord,
+  type ReasonInfo,
   type SessionMeta,
-  type TimelineEntry,
 } from './schema';
 
 interface RootAgg {
@@ -22,27 +23,27 @@ interface RootAgg {
   hits: number;
   cascade: number;
   times: number[];
-  reasons: Map<string, number>;
+  reasons: Map<number, number>;
   causes: Map<string, number>;
   lanes: Map<string, number>;
 }
 
-const top = (map: Map<string, number>, n: number): Array<[string, number]> => [...map].sort((a, b) => b[1] - a[1]).slice(0, n);
+const top = <K>(map: Map<K, number>, n: number): Array<[K, number]> => [...map].sort((a, b) => b[1] - a[1]).slice(0, n);
 
 /**
  * Rebuilds a partial recording from the streamed events of a session that is still running or was cut by a reload.
  * Hook names, components and plugin sections exist only in the final recording.
  */
-export function aggregateEvents(meta: SessionMeta, events: SessionEvent[]): RecordingV1 {
+export function aggregateEvents(meta: SessionMeta, events: SessionEvent[]): RecordingV2 {
   const roots = new Map<number, RootAgg>();
-  const reasons = new Map<number, string>();
-  const causes = new Map<string, { events: number; commits: number }>();
+  const reasons: ReasonInfo[] = [];
+  const causes = new Map<string, { i: number; events: number; commits: number }>();
   const actions: ActionRecord[] = [];
   const latency: LatencyEntry[] = [];
   const loaf: LongFrame[] = [];
   const navigations: Navigation[] = [];
-  const hmr: RecordingV1['hmr'] = [];
-  const timeline: TimelineEntry[] = [];
+  const hmr: RecordingV2['hmr'] = [];
+  const commits: CommitRecord[] = [];
   const lanes: Record<string, number> = {};
   let renders = 0;
   let noDom = 0;
@@ -67,7 +68,7 @@ export function aggregateEvents(meta: SessionMeta, events: SessionEvent[]): Reco
         });
         break;
       case 'reason':
-        reasons.set(e.i, e.text);
+        reasons[e.info.i] = e.info;
         break;
       case 'commit': {
         end = Math.max(end, e.t);
@@ -75,7 +76,7 @@ export function aggregateEvents(meta: SessionMeta, events: SessionEvent[]): Reco
         noDom += e.noDom ?? 0;
         if (e.lane) lanes[e.lane] = (lanes[e.lane] ?? 0) + 1;
         for (const key of e.causes ?? []) {
-          const c = causes.get(key) ?? { events: 0, commits: 0 };
+          const c = causes.get(key) ?? { i: causes.size, events: 0, commits: 0 };
           c.events++;
           c.commits++;
           causes.set(key, c);
@@ -87,21 +88,23 @@ export function aggregateEvents(meta: SessionMeta, events: SessionEvent[]): Reco
           r.hits++;
           r.cascade += cascade;
           r.times.push(e.t);
-          for (const id of reasonIds) {
-            const text = reasons.get(id);
-            if (text) r.reasons.set(text, (r.reasons.get(text) ?? 0) + 1);
-          }
+          for (const id of reasonIds) r.reasons.set(id, (r.reasons.get(id) ?? 0) + 1);
           for (const key of e.causes ?? []) r.causes.set(key, (r.causes.get(key) ?? 0) + 1);
           if (e.lane) r.lanes.set(e.lane, (r.lanes.get(e.lane) ?? 0) + 1);
         }
-        if (timeline.length < 5000) {
-          timeline.push({
-            t: e.t,
-            n: e.n,
+        if (commits.length < 5000) {
+          const previous = commits[commits.length - 1];
+          commits.push({
+            i: commits.length,
+            atMs: e.t,
+            ...(previous ? { sinceMs: +(e.t - previous.atMs).toFixed(1) } : {}),
+            renders: e.n,
+            ...(e.ms ? { ms: e.ms } : {}),
             ...(e.lane ? { lane: e.lane } : {}),
             ...(e.event ? { event: e.event } : {}),
-            roots: (e.roots ?? []).map(([i, c]) => [i, c] as [number, number]),
-            causes: e.causes,
+            ...(e.noDom ? { noDom: e.noDom } : {}),
+            ...(e.causes?.length ? { causeIds: e.causes.map((key) => causes.get(key)!.i) } : {}),
+            ...(e.roots?.length ? { roots: e.roots.map(([i, hits, reasonIds]) => ({ i, hits, reasonIds })) } : {}),
           });
         }
         break;
@@ -157,11 +160,25 @@ export function aggregateEvents(meta: SessionMeta, events: SessionEvent[]): Reco
       ...(r.outside ? { scopeRenders: r.cascade } : {}),
     };
   };
-  const remapped = timeline.map((entry) => ({ ...entry, roots: entry.roots?.map(([i, c]) => [remap.get(i) ?? i, c] as [number, number]) }));
-  const commits = timeline.length;
+  const remapped: CommitRecord[] = commits.map((commit) => ({
+    ...commit,
+    ...(commit.roots ? { roots: commit.roots.map((r) => ({ ...r, i: remap.get(r.i) ?? r.i })) } : {}),
+  }));
+  const total = commits.length;
+  const segments = buildSegments(
+    actions,
+    remapped.map((c) => ({ i: c.i, t: c.atMs, n: c.renders, event: c.event, roots: c.roots?.map((r) => [r.i, r.hits] as [number, number]) })),
+    latency,
+    loaf
+  );
+  for (const segment of segments) {
+    for (const i of segment.commitIds ?? []) if (remapped[i]) remapped[i].actionId = segment.action;
+    const action = actions.find((a) => a.id === segment.action);
+    if (action && segment.commitIds?.length) action.commitIds = segment.commitIds;
+  }
   return {
     schema: RECORDING_SCHEMA,
-    version: 1,
+    version: 2,
     id: meta.id,
     partial: true,
     createdAt: meta.updatedAt,
@@ -174,12 +191,12 @@ export function aggregateEvents(meta: SessionMeta, events: SessionEvent[]): Reco
     durationMs: end,
     scope: meta.scope ? { ...meta.scope, path: [], state: 'attached', remounts: 0, lostAtMs: [] } : null,
     totals: {
-      commits,
-      commitsInScope: commits,
+      commits: total,
+      commitsInScope: total,
       renders,
       mounts: 0,
-      rendersPerCommit: commits ? +(renders / commits).toFixed(1) : 0,
-      rendersPerScopeCommit: commits ? +(renders / commits).toFixed(1) : 0,
+      rendersPerCommit: total ? +(renders / total).toFixed(1) : 0,
+      rendersPerScopeCommit: total ? +(renders / total).toFixed(1) : 0,
       rendersFromOutside: outside,
       rendersWithoutDom: noDom,
       domTextChanges: 0,
@@ -190,12 +207,13 @@ export function aggregateEvents(meta: SessionMeta, events: SessionEvent[]): Reco
     outsideRoots: ordered.filter((r) => r.outside).map(stat),
     components: [],
     causes: [...causes]
-      .map(([key, c]) => ({ key, plugin: key.split(':')[0], type: key.slice(key.indexOf(':') + 1), events: c.events, commits: c.commits }))
+      .map(([key, c]) => ({ i: c.i, key, plugin: key.split(':')[0], type: key.slice(key.indexOf(':') + 1), events: c.events, commits: c.commits }))
       .sort((a, b) => b.commits - a.commits),
     actions,
-    segments: buildSegments(actions, remapped, latency, loaf),
+    segments: segments.map(({ commitIds: _ids, ...rest }) => rest),
     latency,
-    timeline: { entries: remapped, truncated: events.filter((e) => e.k === 'commit').length > 5000 },
+    reasons: reasons.filter(Boolean),
+    commits: { list: remapped, truncated: events.filter((e) => e.k === 'commit').length > 5000 },
     bigCommits: [],
     frames: { longTasks: { count: 0, maxMs: 0, totalMs: 0 }, loaf },
     dom: { text: 0 },

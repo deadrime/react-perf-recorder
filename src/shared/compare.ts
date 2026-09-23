@@ -1,4 +1,4 @@
-import type { ActionRecord, RecordingV1, RootStat } from './schema';
+import type { ActionRecord, RecordingV2, RootStat } from './schema';
 import { actionText } from './summary';
 
 export interface Delta {
@@ -54,8 +54,8 @@ function compareRoots(a: RootStat[], b: RootStat[], msA: number, msB: number, ma
 
 const actionKey = (a: ActionRecord) => `${a.kind}|${a.target?.testId ?? a.target?.name ?? a.target?.label ?? a.target?.text ?? a.target?.tag ?? ''}`;
 
-function compareActions(a: RecordingV1, b: RecordingV1) {
-  const pick = (rec: RecordingV1) => {
+function compareActions(a: RecordingV2, b: RecordingV2) {
+  const pick = (rec: RecordingV2) => {
     const byKey = new Map<string, Array<{ action: ActionRecord; renders: number; perChar?: number; latency?: number }>>();
     const actions = new Map(rec.actions.map((x) => [x.id, x]));
     for (const s of rec.segments) {
@@ -89,7 +89,7 @@ function compareActions(a: RecordingV1, b: RecordingV1) {
 }
 
 /** Before/after of two recordings, per second where durations differ; warns when they were not taken alike. */
-export function compareRecordings(a: RecordingV1, b: RecordingV1, options: CompareOptions = {}) {
+export function compareRecordings(a: RecordingV2, b: RecordingV2, options: CompareOptions = {}) {
   const top = options.top ?? 15;
   const match = options.match ?? 'key';
   const warnings: string[] = [];
@@ -108,13 +108,13 @@ export function compareRecordings(a: RecordingV1, b: RecordingV1, options: Compa
     const vb = b.plugins[name]?.version;
     if (va !== undefined && vb !== undefined && va !== vb) warnings.push(`plugin ${name}: section v${va} vs v${vb}, only shared metrics compared`);
   }
-  const lit = (r: RecordingV1) => Boolean(r.overhead?.highlight ?? r.overhead?.overlayMs);
+  const lit = (r: RecordingV2) => Boolean(r.overhead?.highlight ?? r.overhead?.overlayMs);
   if (lit(a) !== lit(b))
     warnings.push(
       `highlight was on only ${lit(a) ? 'before' : 'after'}: its drawing inflates frame and long-task times, compare renders, not timings`
     );
   if (a.partial || b.partial) warnings.push('a partial recording is compared: hook names, components and plugin sections may be missing');
-  const text = (r: RecordingV1) => r.totals.domTextChanges;
+  const text = (r: RecordingV2) => r.totals.domTextChanges;
   const totals = {
     commitsPerSec: delta(rate(a.totals.commitsInScope, ms[0]), rate(b.totals.commitsInScope, ms[1])),
     rendersPerSec: delta(rate(a.totals.renders, ms[0]), rate(b.totals.renders, ms[1])),

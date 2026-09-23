@@ -5,7 +5,7 @@ import { flushSync } from 'react-dom';
 import { findRoots, fiberFromNode } from '../../src/core/fiber';
 import { scopeFromFiber } from '../../src/core/scope';
 import { hookText } from '../../src/shared/summary';
-import { flush, makeRecorder, mount } from './helpers';
+import { flush, makeRecorder, mount, reasonsOf } from './helpers';
 
 type Setter = (n: number) => void;
 
@@ -42,7 +42,7 @@ describe('Recorder', () => {
     expect(root.name).toBe('Counter');
     expect(root.hits).toBe(2);
     expect(root.perHit).toBe(3);
-    expect(root.reasons[0][0]).toBe('state #0');
+    expect(reasonsOf(rec, root)[0]).toBe('state #0');
     expect(root.path).toBe('App');
   });
 
@@ -59,7 +59,7 @@ describe('Recorder', () => {
     const rec = recorder.stop();
 
     expect(rec.roots[0].name).toBe('List');
-    expect(rec.roots[0].reasons[0][0]).toMatch(/^external store #\d SAME-CONTENT \(s\) => s\.items\.map/);
+    expect(reasonsOf(rec, rec.roots[0])[0]).toMatch(/^external store #\d SAME-CONTENT \(s\) => s\.items\.map/);
   });
 
   it('counts a render that changed nothing in the DOM', () => {
@@ -175,7 +175,7 @@ describe('Recorder', () => {
         flush(() => (pick === 6 ? setters[100](2 + Math.floor(random() * 2)) : setters[pick]?.(step)));
       }
       const rec = recorder.stop();
-      return { renders: rec.totals.renders, roots: rec.roots.map((r) => [r.key, r.hits, r.cascade, r.reasons]) };
+      return { renders: rec.totals.renders, roots: rec.roots.map((r) => [r.key, r.hits, r.cascade, reasonsOf(rec, r)]) };
     };
     expect(run(true)).toEqual(run(false));
   });
@@ -251,7 +251,7 @@ describe('Recorder', () => {
       const rec = recorder.stop();
       expect(rec.roots).toHaveLength(0);
       expect(rec.outsideRoots[0].name).toBe('Page');
-      expect(rec.outsideRoots[0].reasons[0][0]).toBe('state #0');
+      expect(reasonsOf(rec, rec.outsideRoots[0])[0]).toBe('state #0');
       expect(rec.outsideRoots[0].scopeRenders).toBe(2);
       expect(rec.totals.rendersFromOutside).toBe(2);
     });
@@ -298,8 +298,8 @@ describe('Recorder', () => {
     flush(() => store.setState({ price: 2 }));
     const rec = recorder.stop();
     const root = rec.roots[0];
-    const index = root.reasons[0][0].match(/#(\d+)/)![1];
-    const hook = root.hooks?.[index];
+    const reason = rec.reasons[root.reasons[0][0]];
+    const hook = root.hooks?.[reason.hook!];
     expect(hook?.path).toEqual(['useRow', 'usePrice', 'useStore', 'useSyncExternalStoreWithSelector', 'SyncExternalStore']);
     expect(hook?.type).toBe('useSyncExternalStore');
     expect(hook).toMatchObject({ library: 'zustand', libraryAt: 2 });

@@ -1,6 +1,6 @@
 import { createContext, memo, useContext, useReducer, useState } from 'react';
 import { reasonLine } from '../../src/shared/summary';
-import { flush, makeRecorder, mount } from './helpers';
+import { flush, makeRecorder, mount, reasonPairs, reasonsOf } from './helpers';
 
 type Setter = (n: number) => void;
 
@@ -37,8 +37,8 @@ describe('render reasons', () => {
     const row = rec.components.find((c) => c.name === 'Row')!;
     expect(row.memo).toBe(true);
     expect(row.byParent).toBe(2);
-    expect(row.reasons.map(([text]) => text).sort()).toEqual(['parent: props price | same: style, onClick', 'parent: props same: style, onClick']);
-    expect(rec.components.find((c) => c.name === 'Plain')!.reasons).toEqual([['parent: props equal', 2]]);
+    expect(reasonsOf(rec, row).sort()).toEqual(['parent: props price | same: style, onClick', 'parent: props same: style, onClick']);
+    expect(reasonPairs(rec, rec.components.find((c) => c.name === 'Plain')!)).toEqual([['parent: props equal', 2]]);
   });
 
   it('shows a context change that reaches a memo component past its parent', () => {
@@ -63,7 +63,7 @@ describe('render reasons', () => {
     flush(() => toggle(2));
     const rec = recorder.stop();
     const badge = rec.components.find((c) => c.name === 'Badge')!;
-    expect(badge.reasons.map(([text]) => text).sort()).toEqual(['context Theme', 'context Theme SAME-CONTENT']);
+    expect(reasonsOf(rec, badge).sort()).toEqual(['context Theme', 'context Theme SAME-CONTENT']);
   });
 
   it('calls a render that set a state to its current value a bailout', () => {
@@ -79,7 +79,7 @@ describe('render reasons', () => {
     recorder.start();
     flush(() => dispatch(0));
     const rec = recorder.stop();
-    expect(rec.components.find((c) => c.name === 'Radio')?.reasons).toEqual([['bailout: state set to the same value', 1]]);
+    expect(reasonPairs(rec, rec.components.find((c) => c.name === 'Radio')!)).toEqual([['bailout: state set to the same value', 1]]);
   });
 
   it('names the custom hooks that read a changed context', () => {
@@ -106,6 +106,6 @@ describe('render reasons', () => {
     const rec = recorder.stop();
     const badge = rec.roots.find((r) => r.name === 'Badge')!;
     expect(badge.hooks?.['ctx:Theme']?.path).toEqual(['useTheme', 'Context']);
-    expect(reasonLine(badge, badge.reasons[0])).toMatch(/^1× context Theme · useTheme › Context/);
+    expect(reasonLine(badge, rec.reasons[badge.reasons[0][0]], badge.reasons[0][1])).toMatch(/^1× context Theme · useTheme › Context/);
   });
 });

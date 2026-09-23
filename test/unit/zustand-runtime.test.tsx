@@ -4,7 +4,7 @@ import { createStore } from 'zustand/vanilla';
 import { useShallow } from 'zustand/react/shallow';
 import { PluginHost } from '../../src/core/plugins';
 import plugin, { nameStore, wrapCreate, wrapUseShallow } from '../../src/plugins/zustand/runtime';
-import { flush, makeRecorder, mount } from './helpers';
+import { flush, makeRecorder, mount, reasonsOf } from './helpers';
 
 describe('zustand plugin runtime', () => {
   afterEach(() => {
@@ -53,7 +53,7 @@ describe('zustand plugin runtime', () => {
     recorder.start();
     flush(() => prices.setState({ p: 3 }));
     const rec = recorder.stop();
-    expect(rec.roots[0].reasons[0][0]).toMatch(/^external store #\d \[ammPriceStore\] useShallow\(selectPrice\)$/);
+    expect(reasonsOf(rec, rec.roots[0])[0]).toMatch(/^external store #\d \[ammPriceStore\] useShallow\(selectPrice\)$/);
     expect(rec.causes.map((c) => c.key)).toContain('zustand:ammPriceStore.setState');
   });
 });

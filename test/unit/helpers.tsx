@@ -1,4 +1,5 @@
 import { act, type ReactNode } from 'react';
+import { reasonTexts } from '../../src/shared/summary';
 import { createRoot, type Root } from 'react-dom/client';
 import { PluginHost, type PluginEntry } from '../../src/core/plugins';
 import { Recorder, type EngineConfig, type RecordOptions } from '../../src/core/recorder';
@@ -43,3 +44,10 @@ export function makeRecorder(options: RecordOptions = {}, plugins: PluginEntry[]
 }
 
 export const flush = (fn: () => void) => act(fn);
+
+/** Reasons of a root or a component as sentences; the recording keeps them once and points at them by id. */
+export const reasonsOf = (rec: { reasons: Parameters<typeof reasonTexts>[0]['reasons'] }, stat: { reasons: Array<[number, number]> }) =>
+  reasonTexts(rec, stat).map(([text]) => text);
+
+export const reasonPairs = (rec: { reasons: Parameters<typeof reasonTexts>[0]['reasons'] }, stat: { reasons: Array<[number, number]> }) =>
+  reasonTexts(rec, stat);

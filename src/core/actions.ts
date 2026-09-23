@@ -1,5 +1,5 @@
 import type { ActionKind, ActionRecord, ActionTarget } from '../shared/schema';
-import { fiberFromNode, isProvider, nameOf } from './fiber';
+import { fiberFromNode, generatedSourceOf, isLibraryFiber, isProvider, nameOf, sourceOf, wrapsProvider, type Fiber } from './fiber';
 
 export interface ActionOptions {
   /** Record typed values; off by default — only the length is kept. */
@@ -7,6 +7,7 @@ export interface ActionOptions {
   /** Fields that are never recorded, value or length, in addition to passwords and one-time codes. */
   secretSelector: string;
   wrapperPattern: RegExp;
+  projectRoot: string;
   /** Our own UI; events inside it are not actions. */
   ownHost: Element | null;
   inScope(el: Element): boolean | undefined;
@@ -76,7 +77,7 @@ export class ActionTracker {
     }
   }
 
-  describe(el: Element): ActionTarget {
+  describe(el: Element, event?: Event): ActionTarget {
     const target: ActionTarget = { tag: el.tagName.toLowerCase() };
     const testId = el.closest('[data-testid]');
     if (testId && (testId === el || testId.contains(el))) target.testId = testId.getAttribute('data-testid') ?? undefined;
@@ -90,24 +91,80 @@ export class ActionTracker {
       const text = el.textContent?.replace(/\s+/g, ' ').trim();
       if (text) target.text = text.slice(0, 40);
     }
-    const component = this.ownerName(el);
-    if (component) target.component = component;
+    const id = el.getAttribute('id');
+    if (id) target.id = id;
+    const href = el.getAttribute('href');
+    if (href) target.href = href.slice(0, 200);
+    if (el.hasAttribute('disabled')) target.disabled = true;
+    if (el instanceof HTMLInputElement && (el.type === 'checkbox' || el.type === 'radio')) target.checked = el.checked;
+    // Which one it is, not just what it is: a page has many «Add» buttons and only one of them was clicked.
+    const selector = this.selectorOf(el);
+    if (selector) {
+      target.selector = selector;
+      const like = document.querySelectorAll(selector);
+      if (like.length > 1) target.nth = [...like].indexOf(el);
+    }
+    const box = el.getBoundingClientRect();
+    if (box.width || box.height) {
+      target.box = { x: Math.round(box.x), y: Math.round(box.y), w: Math.round(box.width), h: Math.round(box.height) };
+    }
+    const pointer = event as MouseEvent | undefined;
+    if (pointer && typeof pointer.clientX === 'number' && (pointer.clientX || pointer.clientY)) {
+      target.point = { x: Math.round(pointer.clientX), y: Math.round(pointer.clientY) };
+    }
+    const owner = this.ownerOf(el);
+    if (owner) {
+      target.component = nameOf(owner) ?? undefined;
+      const source = sourceOf(owner, this.options.projectRoot);
+      if (source) target.source = source;
+      const generated = generatedSourceOf(owner);
+      if (generated) target.generatedSource = generated;
+      const path = this.pathOf(owner);
+      if (path.length) target.path = path;
+    }
     const inScope = this.options.inScope(el);
     if (inScope !== undefined) target.inScope = inScope;
     return target;
   }
 
+  /** `[data-testid="send"]`, `#amount`, `button[name="save"]`: enough to find the element again. */
+  private selectorOf(el: Element): string | undefined {
+    const tag = el.tagName.toLowerCase();
+    const testId = el.getAttribute('data-testid');
+    if (testId) return `[data-testid="${CSS.escape(testId)}"]`;
+    const id = el.getAttribute('id');
+    if (id) return `#${CSS.escape(id)}`;
+    const own = ['name', 'role', 'aria-label', 'type', 'href'].map((attr) => [attr, el.getAttribute(attr)] as const).find(([, value]) => value);
+    const self = own ? `${tag}[${own[0]}="${CSS.escape(own[1]!)}"]` : tag;
+    // Inside the nearest thing that has a test id, so a row's button is not every row's button.
+    const anchor = el.parentElement?.closest('[data-testid]');
+    const inside = anchor?.getAttribute('data-testid');
+    return inside ? `[data-testid="${CSS.escape(inside)}"] ${self}` : self;
+  }
+
+  /** The component that rendered the element: the first with a name of its own, wrappers and providers skipped. */
+  private ownerOf(el: Element): Fiber | null {
+    for (let f = fiberFromNode(el); f; f = f.return) {
+      const name = nameOf(f);
+      if (name && !isProvider(name) && !this.options.wrapperPattern.test(name)) return f;
+    }
+    return null;
+  }
+
+  /** The app's components above the one that rendered the element, nearest last: `Layout › Chat › MessageRow`. */
+  private pathOf(owner: Fiber): string[] {
+    const path: string[] = [];
+    for (let f: Fiber | null = owner.return; f && path.length < 4; f = f.return) {
+      const name = nameOf(f);
+      if (!name || isProvider(name) || this.options.wrapperPattern.test(name) || isLibraryFiber(f) || wrapsProvider(f)) continue;
+      path.push(name);
+    }
+    return path.reverse();
+  }
+
   private isOwn(event: Event) {
     const host = this.options.ownHost;
     return Boolean(host && event.composedPath().includes(host));
-  }
-
-  private ownerName(el: Element): string | undefined {
-    for (let f = fiberFromNode(el); f; f = f.return) {
-      const name = nameOf(f);
-      if (name && !isProvider(name) && !this.options.wrapperPattern.test(name)) return name;
-    }
-    return undefined;
   }
 
   private record(action: ActionRecord) {
@@ -116,11 +173,11 @@ export class ActionTracker {
     this.emit(action);
   }
 
-  private push(kind: ActionKind, el: Element | null, extra: Partial<ActionRecord> = {}) {
+  private push(kind: ActionKind, el: Element | null, extra: Partial<ActionRecord> = {}, event?: Event) {
     if (!el) return;
     this.flushTyping();
     const at = Math.round(this.now());
-    this.record({ id: this.nextId++, kind, atMs: at, endMs: at, target: this.describe(el), ...extra });
+    this.record({ id: this.nextId++, kind, atMs: at, endMs: at, target: this.describe(el, event), ...extra });
   }
 
   private valueFields(el: Element): Partial<ActionRecord> {
@@ -166,7 +223,7 @@ export class ActionTracker {
 
   private onClick(event: Event) {
     const el = event.target instanceof Element ? event.target : null;
-    this.push('click', el?.closest(INTERACTIVE) ?? el);
+    this.push('click', el?.closest(INTERACTIVE) ?? el, {}, event);
   }
 
   private onKey(event: KeyboardEvent) {

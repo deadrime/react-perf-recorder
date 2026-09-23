@@ -1,11 +1,21 @@
 import type { ActionRecord, LatencyEntry, LongFrame, Segment } from './schema';
 
 export interface SegmentCommit {
+  /** Id of the commit in the recording, so an action and its commits can point at each other. */
+  i: number;
   t: number;
   n: number;
   event?: string;
   roots?: Array<[number, number]>;
 }
+
+/**
+ * Moving a pointer over the page is not an event worth a cause of its own: a commit during one is reported as
+ * `pointer`, so a page with hover effects does not fill the report with `pointermove`, `pointerover`, `mouseout`.
+ */
+const AMBIENT_POINTER = /^(pointer|mouse)(move|over|out|enter|leave)$/;
+
+export const eventName = (type: string | undefined) => (type && AMBIENT_POINTER.test(type) ? 'pointer' : type);
 
 /** Events a person produced; a commit during their dispatch is a direct reaction to the action. */
 export const USER_EVENTS = new Set([
@@ -67,6 +77,7 @@ export function buildSegments(
       reaction: { commits: 0, renders: 0 },
       background: { commits: 0, renders: 0 },
       topRoots: [],
+      commitIds: [],
       longFrames: 0,
       maxFrameMs: 0,
     };
@@ -79,6 +90,7 @@ export function buildSegments(
       last = Math.max(last, commit.t);
       segment.commits++;
       segment.renders += commit.n;
+      segment.commitIds!.push(commit.i);
       const bucket = commit.event && USER_EVENTS.has(commit.event) ? segment.reaction : segment.background;
       bucket.commits++;
       bucket.renders += commit.n;

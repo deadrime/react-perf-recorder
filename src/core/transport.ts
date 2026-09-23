@@ -1,9 +1,9 @@
-import { CLIENT_HEADER, type RecordingV1, type SessionEvent, type SessionMeta } from '../shared/schema';
+import { CLIENT_HEADER, type RecordingV2, type SessionEvent, type SessionMeta } from '../shared/schema';
 
 export interface OpenMeta {
   source: string;
   label?: string;
-  page: RecordingV1['page'];
+  page: RecordingV2['page'];
   scope: SessionMeta['scope'];
   conditions: SessionMeta['conditions'];
   plugins: SessionMeta['plugins'];
@@ -73,7 +73,7 @@ export class SessionWriter {
     this.clearPending();
   }
 
-  async finish(recording: RecordingV1): Promise<SavedSession | null> {
+  async finish(recording: RecordingV2): Promise<SavedSession | null> {
     await this.flush();
     this.stopHeartbeat();
     this.clearPending();

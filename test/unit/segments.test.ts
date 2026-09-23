@@ -8,13 +8,13 @@ const click: ActionRecord = { id: 2, kind: 'click', atMs: 3000, endMs: 3000, tar
 describe('buildSegments', () => {
   it('splits reaction from background and counts per typed char', () => {
     const commits = [
-      { t: 110, n: 40, event: 'input', roots: [[0, 40]] as Array<[number, number]> },
-      { t: 150, n: 10, event: 'message', roots: [[1, 10]] as Array<[number, number]> },
-      { t: 210, n: 40, event: 'input', roots: [[0, 40]] as Array<[number, number]> },
-      { t: 300, n: 40, event: 'input', roots: [[0, 40]] as Array<[number, number]> },
-      { t: 390, n: 40, event: 'input', roots: [[0, 40]] as Array<[number, number]> },
-      { t: 2500, n: 5, roots: [[1, 5]] as Array<[number, number]> },
-      { t: 3001, n: 7, event: 'click', roots: [[2, 7]] as Array<[number, number]> },
+      { i: 0, t: 110, n: 40, event: 'input', roots: [[0, 40]] as Array<[number, number]> },
+      { i: 0, t: 150, n: 10, event: 'message', roots: [[1, 10]] as Array<[number, number]> },
+      { i: 0, t: 210, n: 40, event: 'input', roots: [[0, 40]] as Array<[number, number]> },
+      { i: 0, t: 300, n: 40, event: 'input', roots: [[0, 40]] as Array<[number, number]> },
+      { i: 0, t: 390, n: 40, event: 'input', roots: [[0, 40]] as Array<[number, number]> },
+      { i: 0, t: 2500, n: 5, roots: [[1, 5]] as Array<[number, number]> },
+      { i: 0, t: 3001, n: 7, event: 'click', roots: [[2, 7]] as Array<[number, number]> },
     ];
     const [a, b] = buildSegments([typing, click], commits, [
       { atMs: 3000, type: 'click', duration: 64, inputDelay: 2, processing: 50, presentation: 12, interactionId: 9 },

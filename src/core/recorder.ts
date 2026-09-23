@@ -8,12 +8,14 @@ import {
   type JsonValue,
   type Navigation,
   type Primitive,
-  type RecordingV1,
+  type RecordingV2,
   type RootStat,
   type SessionEvent,
-  type TimelineEntry,
+  type CommitRecord,
+  type ReasonInfo,
 } from '../shared/schema';
-import { buildSegments, USER_EVENTS, type SegmentCommit } from '../shared/segments';
+import { buildSegments, eventName, USER_EVENTS, type SegmentCommit } from '../shared/segments';
+import { safeUrl } from '../shared/url';
 import { ActionTracker } from './actions';
 import { hookCommits, hookOwner, laneLabel, RecorderError, type CommitHook, type CommitInfo } from './commit-hook';
 import { DomWatcher } from './dom';
@@ -21,6 +23,7 @@ import { FrameWatcher } from './env/frames';
 import { trackHistory } from './env/navigations';
 import {
   findRoots,
+  generatedSourceOf,
   hasProfileTimings,
   hostRootOf,
   isComposite,
@@ -31,12 +34,14 @@ import {
   nameOf,
   nearestHosts,
   reactVersion,
+  siteKeyOf,
   sourceOf,
+  sourcesUnavailable,
   Tag,
   type Fiber,
   type FiberRoot,
 } from './fiber';
-import { contextKey } from '../shared/summary';
+import { contextKey, reasonText, textOf } from '../shared/summary';
 import { inspectHooks, type InspectedHooks } from './hook-names';
 import type { CauseEvent, PluginHost } from './plugins';
 import { didRender, hookTypeAt, parentReason, reasonsOf, snapshotOf, type Reason, type Snapshot } from './reasons';
@@ -94,6 +99,8 @@ interface RootAgg {
   key: string;
   name: string;
   source: string;
+  /** React 19: the built position of the call site, which the dev server maps into `source` when saving. */
+  generated?: { url: string; line: number; column: number };
   path: string;
   outside: boolean;
   hits: number;
@@ -102,7 +109,7 @@ interface RootAgg {
   lastCommit: number;
   cascade: number;
   times: number[];
-  reasons: Map<string, number>;
+  reasons: Map<number, number>;
   causes: Map<string, number>;
   lanes: Map<string, number>;
   noDomChange: number;
@@ -122,7 +129,7 @@ interface ComponentAgg {
   withoutDom: number;
   byParent: number;
   memo: boolean;
-  reasons: Map<string, number>;
+  reasons: Map<number, number>;
 }
 
 interface CommitState {
@@ -185,7 +192,7 @@ const median = (xs: number[]) => {
   return Math.round(gaps[Math.floor(gaps.length / 2)]);
 };
 
-const topEntries = (map: Map<string, number>, n: number): Array<[string, number]> => [...map].sort((a, b) => b[1] - a[1]).slice(0, n);
+const topEntries = <K,>(map: Map<K, number>, n: number): Array<[K, number]> => [...map].sort((a, b) => b[1] - a[1]).slice(0, n);
 
 /** One recording: from start() to stop(). */
 export class Recorder {
@@ -198,12 +205,13 @@ export class Recorder {
   private readonly rootsByKey = new Map<string, RootAgg>();
   private readonly rootList: RootAgg[] = [];
   private readonly reasonIds = new Map<string, number>();
+  private readonly reasonList: ReasonInfo[] = [];
   private readonly components = new Map<string, ComponentAgg>();
   private readonly watch = new Map<string, { mounted: number; renders: number; byRoot: Map<RootAgg | null, number> }>();
   private readonly zoneNodes = new Map<Element, string>();
   private readonly zones = new Map<string, { renders: number; mounted: number; found: boolean }>();
   private readonly causeStats = new Map<string, CauseStat>();
-  private readonly timeline: TimelineEntry[] = [];
+  private readonly commitList: CommitRecord[] = [];
   private readonly segmentCommits: SegmentCommit[] = [];
   private readonly commitTimes: number[] = [];
   private readonly bigCommits: number[] = [];
@@ -215,6 +223,8 @@ export class Recorder {
   private readonly dom = new DomWatcher();
   private readonly frames: FrameWatcher;
   private readonly actions: ActionTracker | null;
+  /** Whether childLanes can be trusted to point at fresh updates; React 19 answers no and the walk widens. */
+  private narrowUpdateWalk = true;
   private hook: CommitHook | null = null;
   private stopHistory: (() => void) | null = null;
   private roots: FiberRoot[] = [];
@@ -266,6 +276,7 @@ export class Recorder {
               values: this.config.actions.values,
               secretSelector: this.config.actions.secretSelector,
               wrapperPattern: this.wrapperRe,
+              projectRoot: this.config.projectRoot,
               ownHost: deps.ownHost,
               inScope: (el) => (this.scope ? this.scopeHosts().some((h) => h.contains(el)) : undefined),
             },
@@ -361,12 +372,16 @@ export class Recorder {
           name: agg.name,
           hits: agg.hits,
           perHit: agg.hits ? Math.round(agg.cascade / agg.hits) : 0,
-          reason: topEntries(agg.reasons, 1)[0]?.[0] ?? '',
+          ...(() => {
+            const info = this.reasonList[topEntries(agg.reasons, 1)[0]?.[0] ?? -1];
+            // The sentence for whoever prints it, the fields for whoever draws them.
+            return info ? { reason: textOf(info), info } : { reason: '' };
+          })(),
         })),
     };
   }
 
-  stop(): RecordingV1 {
+  stop(): RecordingV2 {
     if (this.stopped) throw new RecorderError('NOT_RECORDING', 'recording already stopped');
     this.stopped = true;
     setTimerSink(null);
@@ -521,7 +536,10 @@ export class Recorder {
           comp.byParent++;
           reasons = parentReason(prev!, f, this.deps.plugins);
         }
-        for (const reason of reasons ?? []) comp.reasons.set(reason.text, (comp.reasons.get(reason.text) ?? 0) + 1);
+        for (const reason of reasons ?? []) {
+          const id = this.reasonId(reason);
+          comp.reasons.set(id, (comp.reasons.get(id) ?? 0) + 1);
+        }
         const agg = key ? this.rootsByKey.get(key) : undefined;
         if (agg) {
           agg.cascade++;
@@ -580,7 +598,10 @@ export class Recorder {
 
   private hitRoot(f: Fiber, name: string, path: string, prev: Snapshot, c: CommitState, outside: boolean): { agg: RootAgg; reasons: Reason[] } {
     const source = sourceOf(f, this.config.projectRoot);
-    const key = `${outside ? 'outside|' : ''}${name}|${source}|${path}`;
+    const generated = generatedSourceOf(f);
+    // Two roots of the same name in one file are told apart by the call site, which the source alone carries only
+    // on React 18; on 19 it is the built position, and it keys them just as well before the server maps it.
+    const key = `${outside ? 'outside|' : ''}${name}|${siteKeyOf(f, this.config.projectRoot) || source}|${path}`;
     let agg = this.rootsByKey.get(key);
     if (!agg) {
       agg = {
@@ -588,6 +609,7 @@ export class Recorder {
         key,
         name,
         source,
+        generated,
         path,
         outside,
         hits: 0,
@@ -609,7 +631,16 @@ export class Recorder {
       };
       this.rootsByKey.set(key, agg);
       this.rootList.push(agg);
-      this.emit({ k: 'root', i: agg.index, key, name, source, path, ...(outside ? { outside: true as const } : {}) });
+      this.emit({
+        k: 'root',
+        i: agg.index,
+        key,
+        name,
+        source,
+        path,
+        ...(generated ? { generatedSource: generated } : {}),
+        ...(outside ? { outside: true as const } : {}),
+      });
     }
     if (agg.lastCommit !== this.totals.commits) {
       agg.lastCommit = this.totals.commits;
@@ -623,10 +654,11 @@ export class Recorder {
     const ids = c.reasons.get(agg) ?? new Set<number>();
     const reasons = reasonsOf(prev, f, this.deps.plugins);
     for (const reason of reasons) {
-      agg.reasons.set(reason.text, (agg.reasons.get(reason.text) ?? 0) + 1);
+      const id = this.reasonId(reason);
+      agg.reasons.set(id, (agg.reasons.get(id) ?? 0) + 1);
       if (reason.hook !== undefined) agg.hookIdx.add(reason.hook);
-      if (reason.context) agg.contexts.set(contextKey(reason.text), reason.context);
-      ids.add(this.reasonId(reason.text));
+      if (reason.contextObject && reason.context) agg.contexts.set(contextKey(reason.context), reason.contextObject);
+      ids.add(id);
     }
     c.reasons.set(agg, ids);
     if (!outside && !c.touched.has(f)) agg.noDomChange++;
@@ -666,7 +698,7 @@ export class Recorder {
       keys.add(key);
       if (cause.fibers?.size) targets.set(key, new Set([...(targets.get(key) ?? []), ...cause.fibers]));
     }
-    if (event && USER_EVENTS.has(event)) keys.add(this.attachCause({ plugin: 'core', type: `input ${event}`, atMs: c.t }));
+    if (event && USER_EVENTS.has(event)) keys.add(this.attachCause({ plugin: 'core', type: `input ${eventName(event)}`, atMs: c.t }));
     else if (source) keys.add(this.attachCause({ plugin: 'core', type: `message ${source}`, atMs: c.t }));
     // Where the update came from, for the components no store, query or timer event claimed. An update made while
     // the person's event was being handled is already told by `input`; an effect flushed in the same window is not.
@@ -698,27 +730,32 @@ export class Recorder {
     }
     const ranked = [...c.cascade].sort((a, b) => b[1] - a[1]);
     const roots = ranked.slice(0, 5).map(([agg, n]) => [agg.index, n] as [number, number]);
-    const entry: TimelineEntry = {
-      t: c.t,
-      n: c.renders,
+    const previous = this.commitList[this.commitList.length - 1];
+    const record: CommitRecord = {
+      i: this.commitList.length,
+      atMs: c.t,
+      ...(previous ? { sinceMs: +(c.t - previous.atMs).toFixed(1) } : {}),
+      renders: c.renders,
       ...(c.renderMs ? { ms: +c.renderMs.toFixed(2) } : {}),
       ...(lane ? { lane } : {}),
       ...(event ? { event } : {}),
-      ...(roots.length ? { roots } : {}),
-      causes: [...keys],
+      ...(keys.size ? { causeIds: [...keys].map((key) => this.causeStats.get(key)!.i) } : {}),
+      ...(ranked.length
+        ? { roots: ranked.slice(0, 10).map(([agg, hits]) => ({ i: agg.index, hits, reasonIds: [...(c.reasons.get(agg) ?? [])] })) }
+        : {}),
       ...(c.outside ? { outside: c.outside.index } : {}),
       ...(c.noDom ? { noDom: c.noDom } : {}),
     };
     const limit = this.options.timeline ?? this.config.timelineLimit;
-    if (this.timeline.length < limit) this.timeline.push(entry);
+    if (this.commitList.length < limit) this.commitList.push(record);
     else this.truncated = true;
-    if (c.renders >= (this.options.bigCommit ?? this.config.bigCommit)) this.bigCommits.push(this.timeline.length - 1);
-    if (this.segmentCommits.length < MAX_SEGMENT_COMMITS) this.segmentCommits.push({ t: c.t, n: c.renders, event, roots });
+    if (c.renders >= (this.options.bigCommit ?? this.config.bigCommit)) this.bigCommits.push(record.i);
+    if (this.segmentCommits.length < MAX_SEGMENT_COMMITS) this.segmentCommits.push({ i: record.i, t: c.t, n: c.renders, event, roots });
     this.emit({
       k: 'commit',
       t: c.t,
       n: c.renders,
-      ...(entry.ms ? { ms: entry.ms } : {}),
+      ...(record.ms ? { ms: record.ms } : {}),
       ...(lane ? { lane } : {}),
       ...(event ? { event } : {}),
       roots: ranked.map(([agg, n]) => [agg.index, n, [...(c.reasons.get(agg) ?? [])]] as [number, number, number[]]),
@@ -739,7 +776,7 @@ export class Recorder {
     if (!this.causeStats.has(key) && this.causeStats.size >= MAX_CAUSE_KEYS) key = `${cause.plugin}:other`;
     let stat = this.causeStats.get(key);
     if (!stat) {
-      stat = { key, plugin: cause.plugin, type: key.slice(cause.plugin.length + 1), events: 0, commits: 0 };
+      stat = { i: this.causeStats.size, key, plugin: cause.plugin, type: key.slice(cause.plugin.length + 1), events: 0, commits: 0 };
       this.causeStats.set(key, stat);
     }
     stat.events++;
@@ -771,15 +808,29 @@ export class Recorder {
 
   /**
    * Components that got updates since the last commit and were not claimed by an earlier timer: a second timer
-   * that updates another component in an already pending lane adds no lane bits, only a fiber. React marks the
-   * path to updated fibers with childLanes, so the walk stays narrow.
+   * that updates another component in an already pending lane adds no lane bits, only a fiber.
+   *
+   * React 18 marks the path to an updated fiber with childLanes as it schedules, so the walk can stay narrow. React
+   * 19 leaves that until the render, and a narrow walk finds nobody — so the first time the narrow one comes back
+   * empty where the whole tree has an answer, the walk stays wide for the rest of the session. Wide costs about
+   * 35µs per thousand fibers, which is the price of naming what woke a component at all.
    */
   private freshUpdates(claim = true): Set<Fiber> {
-    const out = new Set<Fiber>();
     const lanes = this.roots.reduce((all, root) => all | (root.pendingLanes ?? 0), 0);
-    if (!lanes) return out;
+    if (!lanes) return new Set();
+    if (!this.narrowUpdateWalk) return this.scanUpdates(lanes, false, claim);
+    const narrow = this.scanUpdates(lanes, true, claim);
+    if (narrow.size) return narrow;
+    const wide = this.scanUpdates(lanes, false, claim);
+    if (wide.size) this.narrowUpdateWalk = false;
+    return wide;
+  }
+
+  private scanUpdates(lanes: number, narrow: boolean, claim: boolean): Set<Fiber> {
+    const out = new Set<Fiber>();
     const stack = this.roots.map((root) => root.current);
-    for (let visits = 0; stack.length && visits < 2000; visits++) {
+    const limit = narrow ? 2000 : 20_000;
+    for (let visits = 0; stack.length && visits < limit; visits++) {
       const f = stack.pop()!;
       if ((f.lanes ?? 0) & lanes && !this.claimed.has(f)) {
         out.add(f);
@@ -789,7 +840,8 @@ export class Recorder {
           if (f.alternate) this.claimed.add(f.alternate);
         }
       }
-      for (let child = f.child; child; child = child.sibling) if (((child.lanes ?? 0) | (child.childLanes ?? 0)) & lanes) stack.push(child);
+      for (let child = f.child; child; child = child.sibling)
+        if (!narrow || ((child.lanes ?? 0) | (child.childLanes ?? 0)) & lanes) stack.push(child);
     }
     return out;
   }
@@ -862,12 +914,18 @@ export class Recorder {
     return n;
   }
 
-  private reasonId(text: string) {
+  /** One entry per distinct reason; everything else — roots, components, commits — points at it by id. */
+  private reasonId(reason: Reason): number {
+    const { contextObject: _context, ...fields } = reason;
+    const text = reasonText(fields);
     let id = this.reasonIds.get(text);
     if (id === undefined) {
       id = this.reasonIds.size;
       this.reasonIds.set(text, id);
-      this.emit({ k: 'reason', i: id, text });
+      // The sentence is the key that tells two reasons apart, and the readers build it again from the fields.
+      const info: ReasonInfo = { i: id, ...fields };
+      this.reasonList.push(info);
+      this.emit({ k: 'reason', info });
     }
     return id;
   }
@@ -884,7 +942,7 @@ export class Recorder {
   private readConditions(): Conditions {
     return {
       viewport: `${innerWidth}×${innerHeight}`,
-      url: location.pathname + location.search,
+      url: safeUrl(location.pathname + location.search),
       dpr: devicePixelRatio,
       ...this.deps.plugins.conditions(),
     };
@@ -918,6 +976,7 @@ export class Recorder {
       key: agg.key,
       name: agg.name,
       source: agg.source,
+      ...(agg.generated ? { generatedSource: agg.generated } : {}),
       path: agg.path,
       hits: agg.hits,
       instances: agg.instances,
@@ -938,7 +997,7 @@ export class Recorder {
     };
   }
 
-  private build(durationMs: number, sections: Record<string, RecordingV1['plugins'][string]>, conditionsAfter: Conditions): RecordingV1 {
+  private build(durationMs: number, sections: Record<string, RecordingV2['plugins'][string]>, conditionsAfter: Conditions): RecordingV2 {
     const inside = this.rootList.filter((r) => !r.outside).sort((a, b) => b.cascade - a.cascade);
     const outside = this.rootList.filter((r) => r.outside).sort((a, b) => b.cascade - a.cascade);
     const hooksFor = new Set([...inside.slice(0, 30), ...outside.slice(0, 10)]);
@@ -963,16 +1022,24 @@ export class Recorder {
       this.frames.latency,
       this.frames.loaf
     );
+    // An action and the commits that answered it, both ways round: the segments decide which belongs to which.
+    const actionOfCommit = new Map<number, number>();
+    for (const segment of segments) for (const i of segment.commitIds ?? []) actionOfCommit.set(i, segment.action);
+    const commitsOfAction = new Map<number, number[]>(segments.map((s) => [s.action, s.commitIds ?? []]));
+    for (const action of actions) {
+      const ids = commitsOfAction.get(action.id);
+      if (ids?.length) action.commitIds = ids;
+    }
     const commits = this.totals.commits;
     const commitsInScope = this.totals.commitsInScope;
     return {
       schema: RECORDING_SCHEMA,
-      version: 1,
+      version: 2,
       createdAt: new Date().toISOString(),
       ...(this.options.label ? { label: this.options.label } : {}),
       tool: { version: this.config.version, source: this.options.source ?? 'panel', plugins: this.deps.plugins.info() },
       page: {
-        url: location.href,
+        url: safeUrl(location.href),
         title: document.title,
         viewport: `${innerWidth}×${innerHeight}`,
         dpr: devicePixelRatio,
@@ -986,7 +1053,8 @@ export class Recorder {
       scope: this.scope
         ? {
             name: this.scope.name,
-            source: this.scope.source,
+            // Asked again rather than kept from when the area was picked: by now the dev server may have mapped it.
+            source: sourceOf(this.scope.target, this.config.projectRoot) || this.scope.source,
             path: this.scope.ancestorNames().slice(-6),
             state: this.scope.state,
             remounts: this.scope.remounts,
@@ -1046,13 +1114,15 @@ export class Recorder {
       ...(this.zones.size ? { zones: Object.fromEntries(this.zones) } : {}),
       causes: [...this.causeStats.values()].sort((a, b) => b.commits - a.commits),
       actions,
-      segments,
+      segments: segments.map(({ commitIds: _ids, ...rest }) => rest),
       latency: this.frames.latency,
-      timeline: {
-        entries: this.timeline.map((e) => ({
-          ...e,
-          ...(e.roots ? { roots: mapRoots(e.roots) } : {}),
-          ...(e.outside !== undefined ? { outside: remap.get(e.outside) } : {}),
+      reasons: this.reasonList,
+      commits: {
+        list: this.commitList.map((commit) => ({
+          ...commit,
+          ...(commit.roots ? { roots: commit.roots.map((r) => ({ ...r, i: remap.get(r.i)! })) } : {}),
+          ...(commit.outside !== undefined ? { outside: remap.get(commit.outside) } : {}),
+          ...(actionOfCommit.get(commit.i) !== undefined ? { actionId: actionOfCommit.get(commit.i) } : {}),
         })),
         truncated: this.truncated,
       },
@@ -1074,9 +1144,16 @@ export class Recorder {
         overlayMs: +this.overlayMs.toFixed(1),
         highlight: this.highlighted,
       },
-      warnings: this.highlighted
-        ? [...this.warnings, 'highlight was on: drawing the outlines costs main-thread time, so timings and long frames read high']
-        : this.warnings,
+      warnings: [
+        ...this.warnings,
+        ...(sourcesUnavailable()
+          ? [
+              `React ${reactVersion() ?? '19.0'} tells nothing about where a component comes from: no files, and the app's own ` +
+                'components cannot be told from a package\'s. React 19.1 or newer brings both back.',
+            ]
+          : []),
+        ...(this.highlighted ? ['highlight was on: drawing the outlines costs main-thread time, so timings and long frames read high'] : []),
+      ],
       errors: this.errors,
     };
   }

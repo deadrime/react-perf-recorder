@@ -1,5 +1,7 @@
 import { sameContent } from '../shared/same-content';
+import type { ReasonKind } from '../shared/schema';
 import { hasHooks, Tag, type ContextDependency, type Fiber, type Hook } from './fiber';
+import { hookCells } from './react-compat';
 
 export interface Snapshot {
   props: unknown;
@@ -8,13 +10,29 @@ export interface Snapshot {
   ctx: ContextDependency | null;
 }
 
+/**
+ * Why a component rendered, in fields. The sentence a person reads is built from these by `reasonText`, so nothing
+ * downstream — the panel, the MCP server, an agent — has to parse it back.
+ */
 export interface Reason {
-  text: string;
-  /** Index `#N` in the hook list, for external store and state reasons. */
+  kind: ReasonKind;
+  /** Index `#N` in the hook list, for external store and state reasons; absent for a class. */
   hook?: number;
-  /** The context object of a `context X` reason, to name the hooks that read it. */
-  context?: object;
+  store?: string;
+  selector?: string;
+  /** The context object itself, to name the hooks that read it; the recording keeps its name. */
+  contextObject?: object;
+  context?: string;
+  /** Props that changed, and props that are a new reference with the same content. */
+  changed?: string[];
+  sameRef?: string[];
+  children?: true;
+  /** Every prop was equal: `memo` would have skipped this render. */
+  equal?: true;
+  sameContent?: true;
 }
+
+const MAX_PROPS = 10;
 
 export interface Describer {
   selector(fn: Function): string;
@@ -50,9 +68,11 @@ function propsReason(before: unknown, after: unknown): Reason {
     if (a[key] === b[key]) continue;
     (key in a && key in b && same(a[key], b[key]) ? sameShape : changed).push(key);
   }
-  const parts = [changed.length ? changed.slice(0, 5).join(', ') : ''];
-  if (sameShape.length) parts.push(`same: ${sameShape.slice(0, 5).join(', ')}`);
-  return { text: `props: ${parts.filter(Boolean).join(' | ') || '(new object)'}` };
+  return {
+    kind: 'props',
+    ...(changed.length ? { changed: changed.slice(0, MAX_PROPS) } : {}),
+    ...(sameShape.length ? { sameRef: sameShape.slice(0, MAX_PROPS) } : {}),
+  };
 }
 
 /** Why a rendered fiber rendered, compared with its snapshot from the previous commit it was seen in. */
@@ -65,16 +85,16 @@ export function reasonsOf(prev: Snapshot, f: Fiber, describe: Describer): Reason
     let before: Hook | null = null;
     for (let i = 0; a && b && i < 1000; i++) {
       if (b.queue && a.memoizedState !== b.memoizedState) {
-        const mark = same(a.memoizedState, b.memoizedState) ? ' SAME-CONTENT' : '';
+        const mark = same(a.memoizedState, b.memoizedState) ? ({ sameContent: true } as const) : null;
         if (b.queue.getSnapshot) {
           // use-sync-external-store/with-selector (zustand v4, react-redux) keeps [getSnapshot, getServerSnapshot, selector, isEqual]
           // in the deps of the useMemo right before the store hook.
           const deps = Array.isArray(before?.memoizedState) ? (before!.memoizedState as unknown[])[1] : null;
           const selector = Array.isArray(deps) && typeof deps[2] === 'function' ? describe.selector(deps[2] as Function) : '';
           const store = Array.isArray(deps) && typeof deps[0] === 'function' ? describe.store(deps[0] as Function) : null;
-          out.push({ text: `external store #${i}${mark}${store ? ` [${store}]` : ''} ${selector}`.trim(), hook: i });
+          out.push({ kind: 'store', hook: i, ...(store ? { store } : {}), ...(selector ? { selector } : {}), ...mark });
         } else if (b.queue.lastRenderedReducer) {
-          out.push({ text: `state #${i}${mark}`, hook: i });
+          out.push({ kind: 'state', hook: i, ...mark });
         }
       }
       before = b;
@@ -82,7 +102,7 @@ export function reasonsOf(prev: Snapshot, f: Fiber, describe: Describer): Reason
       b = b.next;
     }
   } else if (f.tag === Tag.ClassComponent && prev.state !== f.memoizedState) {
-    out.push({ text: `class state${same(prev.state, f.memoizedState) ? ' SAME-CONTENT' : ''}` });
+    out.push({ kind: 'state', ...(same(prev.state, f.memoizedState) ? { sameContent: true } : {}) });
   }
   const current = f.dependencies?.firstContext ?? null;
   if (current && prev.ctx !== current) {
@@ -90,14 +110,18 @@ export function reasonsOf(prev: Snapshot, f: Fiber, describe: Describer): Reason
     for (let d = prev.ctx; d; d = d.next) old.set(d.context, d.memoizedValue);
     for (let d: ContextDependency | null = current; d; d = d.next) {
       if (!old.has(d.context) || old.get(d.context) === d.memoizedValue) continue;
-      const mark = same(old.get(d.context), d.memoizedValue) ? ' SAME-CONTENT' : '';
-      out.push({ text: `context ${d.context.displayName || '(unnamed)'}${mark}`, context: d.context });
+      out.push({
+        kind: 'context',
+        context: d.context.displayName || '(unnamed)',
+        contextObject: d.context,
+        ...(same(old.get(d.context), d.memoizedValue) ? { sameContent: true } : {}),
+      });
     }
   }
   // The function ran (new hook list) yet no state, store value, prop or context differs: React rendered it for an
   // update that set a value it already had, then bailed out.
-  if (!out.length && hasHooks(f) && prev.state !== f.memoizedState) return [{ text: 'bailout: state set to the same value' }];
-  return out.length ? out : [{ text: 'unknown' }];
+  if (!out.length && hasHooks(f) && prev.state !== f.memoizedState) return [{ kind: 'bailout' }];
+  return out.length ? out : [{ kind: 'unknown' }];
 }
 
 /**
@@ -117,19 +141,31 @@ export function parentReason(prev: Snapshot, f: Fiber, describe: Describer): Rea
     if (key === 'children') children = true;
     else (key in a && key in b && sameCheap(a[key], b[key]) ? sameShape : changed).push(key);
   }
-  if (!changed.length && !sameShape.length) return [{ text: children ? 'parent: children' : 'parent: props equal' }];
-  const parts = [changed.length ? changed.slice(0, 5).join(', ') : '', sameShape.length ? `same: ${sameShape.slice(0, 5).join(', ')}` : ''];
-  return [{ text: `parent: props ${parts.filter(Boolean).join(' | ')}${children ? ' +children' : ''}` }];
+  if (!changed.length && !sameShape.length) return [{ kind: 'parent', ...(children ? { children: true } : { equal: true }) }];
+  return [
+    {
+      kind: 'parent',
+      ...(changed.length ? { changed: changed.slice(0, MAX_PROPS) } : {}),
+      ...(sameShape.length ? { sameRef: sameShape.slice(0, MAX_PROPS) } : {}),
+      ...(children ? { children: true } : {}),
+    },
+  ];
 }
 
-/** `_debugHookTypes` lists every hook call, `useContext` and `useDebugValue` included; the hook list skips those two. */
+/**
+ * `_debugHookTypes` lists the hook calls a component made, the ones that take no cell of the hook list included,
+ * and some take more than one cell — `useSyncExternalStore` takes the store and its effect, `useActionState` three.
+ * So the cells are counted off as the list is read, and the hook holding cell `index` is the answer.
+ */
 export function hookTypeAt(f: Fiber, index: number): string | undefined {
   const types = f._debugHookTypes;
   if (!types) return undefined;
-  let n = -1;
+  let cell = 0;
   for (const type of types) {
-    if (type === 'useContext' || type === 'useDebugValue') continue;
-    if (++n === index) return type;
+    const cells = hookCells(type);
+    if (!cells) continue;
+    if (index < cell + cells) return type;
+    cell += cells;
   }
   return undefined;
 }

@@ -4,8 +4,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
-import { createServer } from '../../src/mcp/server';
-import type { SessionEvent, SessionMeta } from '../../src/shared/schema';
+import { createServer, section } from '../../src/mcp/server';
+import type { RecordingV2, SessionEvent, SessionMeta } from '../../src/shared/schema';
 
 let dir: string;
 let client: Client;
@@ -28,7 +28,7 @@ const meta = (id: string, status: SessionMeta['status'], updatedAt = new Date().
 
 const events = (renders: number): SessionEvent[] => [
   { k: 'root', i: 0, key: 'Amount|src/Amount.tsx:3|OrderForm', name: 'Amount', source: 'src/Amount.tsx:3', path: 'OrderForm' },
-  { k: 'reason', i: 0, text: 'state #2' },
+  { k: 'reason', info: { i: 0, kind: 'state', hook: 2, text: 'state #2' } },
   { k: 'action', action: { id: 1, kind: 'typing', atMs: 10, endMs: 300, chars: 3, length: 3, target: { tag: 'input', name: 'amount' } } },
   { k: 'commit', t: 20, n: renders, event: 'input', roots: [[0, renders, [0]]], causes: ['core:input input'] },
   { k: 'commit', t: 120, n: renders, event: 'input', roots: [[0, renders, [0]]], causes: ['core:input input'] },
@@ -67,6 +67,18 @@ describe('MCP server', () => {
       ['aaaa', 'interrupted'],
     ]);
     expect(list.recordings[1]).toMatchObject({ area: 'OrderForm', actions: 1, commits: 3, renders: 240 });
+    // The leading root is named with its reason in words: the listing has nothing to look an id up in.
+    expect(list.recordings[1].topRoot).toBe('Amount ×3 · state #2');
+  });
+
+  it('hands a component its reasons in words, keeping the id the timeline uses', () => {
+    const rec = {
+      durationMs: 1000,
+      reasons: [{ i: 7, kind: 'store', hook: 2, store: 'useChatStore', sameContent: true }],
+      components: [{ name: 'Status', renders: 396, withoutDom: 394, byParent: 0, memo: true, reasons: [[7, 394]] }],
+    } as unknown as RecordingV2;
+    const components = section(rec, 'components', 10, 0) as { items: Array<{ reasons: unknown[] }> };
+    expect(components.items[0].reasons).toEqual([{ i: 7, n: 394, reason: 'external store #2 SAME-CONTENT [useChatStore]' }]);
   });
 
   it('returns a partial summary and the actions section', async () => {
@@ -79,6 +91,22 @@ describe('MCP server', () => {
     });
     const actions = await call('get_recording', { id: 'latest-1', section: 'actions' });
     expect(actions.actions.items[0].topRoots[0]).toMatchObject({ root: 'Amount', renders: 240, reason: 'state #2' });
+  });
+
+  it('gives the timeline as a line per commit, in words', async () => {
+    const got = await call('get_recording', { id: 'latest-1', section: 'timeline' });
+    expect(got.timeline.total).toBe(3);
+    // Everything the recording keeps as ids — the action, the causes, the roots and their reasons — is resolved here.
+    expect(got.timeline.items[0]).toMatchObject({
+      i: 0,
+      atSec: 0.02,
+      renders: 80,
+      event: 'input',
+      action: 'typing 3 chars into «amount»',
+      causes: ['core:input input'],
+      roots: [{ root: 'Amount', hits: 80, reasons: ['state #2'] }],
+    });
+    expect(got.timeline.items[1]).toMatchObject({ i: 1, sinceMs: 100 });
   });
 
   it('waits for a session to finish', async () => {

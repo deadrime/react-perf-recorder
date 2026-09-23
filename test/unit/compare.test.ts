@@ -22,7 +22,7 @@ const meta: SessionMeta = {
 
 const events = (renders: number): SessionEvent[] => [
   { k: 'root', i: 0, key: 'Row|src/Row.tsx:1|Table', name: 'Row', source: 'src/Row.tsx:1', path: 'Table' },
-  { k: 'reason', i: 0, text: 'external store #2 selectRow' },
+  { k: 'reason', info: { i: 0, kind: 'store', hook: 2, selector: 'selectRow', text: 'external store #2 selectRow' } },
   { k: 'action', action: { id: 1, kind: 'click', atMs: 100, endMs: 100, target: { tag: 'button', testId: 'refresh' } } },
   { k: 'commit', t: 110, n: renders, event: 'click', roots: [[0, renders, [0]]], causes: ['zustand:rows/set'] },
   { k: 'commit', t: 900, n: renders, roots: [[0, renders, [0]]], causes: ['zustand:rows/set'] },
@@ -34,7 +34,8 @@ describe('partial recordings and comparison', () => {
     const rec = aggregateEvents(meta, events(30));
     expect(rec.partial).toBe(true);
     expect(rec.totals).toMatchObject({ commits: 2, renders: 60 });
-    expect(rec.roots[0]).toMatchObject({ name: 'Row', hits: 2, cascade: 60, reasons: [['external store #2 selectRow', 2]] });
+    expect(rec.roots[0]).toMatchObject({ name: 'Row', hits: 2, cascade: 60, reasons: [[0, 2]] });
+    expect(rec.reasons[0]).toMatchObject({ kind: 'store', hook: 2, selector: 'selectRow' });
     const summary = summarize(rec);
     expect(summary.actions[0]).toMatchObject({ what: 'click «refresh»', renders: 60 });
     expect(summary.topCauses[0]).toMatchObject({ key: 'zustand:rows/set', commits: 2 });
