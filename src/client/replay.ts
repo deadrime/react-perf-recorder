@@ -40,24 +40,39 @@ function setValue(el: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement
   Object.getOwnPropertyDescriptor(proto, 'value')?.set?.call(el, value);
 }
 
-const pointer = (el: Element, type: string) =>
+/** The next task: a person's events of one gesture are tasks of their own, and React commits after each. */
+const nextTask = () =>
+  new Promise<void>((resolve) => {
+    const channel = new MessageChannel();
+    channel.port1.onmessage = () => {
+      channel.port1.close();
+      resolve();
+    };
+    channel.port2.postMessage(null);
+  });
+
+const pointer = async (el: Element, type: string) => {
   dispatchAsUser(
     el,
     type.startsWith('pointer')
       ? new PointerEvent(type, { bubbles: true, cancelable: true, composed: true, pointerType: 'mouse', isPrimary: true, button: 0 })
       : new MouseEvent(type, { bubbles: true, cancelable: true, composed: true, button: 0, detail: 1 })
   );
-const key = (el: Element, type: string, k: string) =>
+  await nextTask();
+};
+const key = async (el: Element, type: string, k: string) => {
   dispatchAsUser(el, new KeyboardEvent(type, { key: k, bubbles: true, cancelable: true, composed: true }));
+  await nextTask();
+};
 
 async function perform(step: ReplayStep, el: Element, cancelled: () => boolean) {
   switch (step.kind) {
     case 'click': {
       // The whole press, not just `click`: menus and drag handles listen for the button going down.
-      for (const type of ['pointerdown', 'mousedown', 'pointerup', 'mouseup']) pointer(el, type);
+      for (const type of ['pointerdown', 'mousedown', 'pointerup', 'mouseup']) await pointer(el, type);
       if (el instanceof HTMLElement) el.focus({ preventScroll: true });
       // A dispatched click still does what a click does: checks the box, follows the link, submits the form.
-      pointer(el, 'click');
+      await pointer(el, 'click');
       return;
     }
     case 'typing': {
@@ -70,25 +85,27 @@ async function perform(step: ReplayStep, el: Element, cancelled: () => boolean) 
       for (let i = 0; i < chars; i++) {
         if (cancelled()) return;
         // Each character as a keyboard makes it: the key goes down, the value changes, the key comes up.
-        key(el, 'keydown', text[i]);
+        await key(el, 'keydown', text[i]);
         setValue(el, el.value + text[i]);
         dispatchAsUser(el, new InputEvent('input', { bubbles: true, composed: true, inputType: 'insertText', data: text[i] }));
-        key(el, 'keyup', text[i]);
+        await nextTask();
+        await key(el, 'keyup', text[i]);
         if (i < chars - 1) await sleep(gap);
       }
       return;
     }
     case 'key': {
-      key(el, 'keydown', step.key ?? '');
-      key(el, 'keyup', step.key ?? '');
+      await key(el, 'keydown', step.key ?? '');
+      await key(el, 'keyup', step.key ?? '');
       return;
     }
     case 'change': {
       if (el instanceof HTMLSelectElement && step.value !== undefined) {
         setValue(el, step.value);
         dispatchAsUser(el, new Event('input', { bubbles: true }));
+        await nextTask();
         dispatchAsUser(el, new Event('change', { bubbles: true }));
-      } else pointer(el, 'click');
+      } else await pointer(el, 'click');
       return;
     }
     case 'submit': {
