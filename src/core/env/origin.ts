@@ -1,7 +1,22 @@
 import { libraryOf, parseStack } from '../stack';
 
-const EFFECT_FRAMES = /flushPassiveEffects|commitPassiveMount|commitHookEffectList/;
+const EFFECT_FRAMES = /flushPassiveEffects|flushPendingEffects|commitPassiveMount|commitHookEffectList/;
 const REACT_FRAMES = /^(react-dom|react|scheduler)$/;
+
+/**
+ * V8 keeps 10 frames by default, and React 19 runs an effect through more wrappers than that before reaching the
+ * app's code — the frames that say "this update came from an effect" would fall off the end of the stack.
+ */
+function captureStack(): string {
+  const holder = Error as ErrorConstructor & { stackTraceLimit?: number };
+  const limit = holder.stackTraceLimit;
+  holder.stackTraceLimit = 40;
+  try {
+    return new Error().stack ?? '';
+  } finally {
+    holder.stackTraceLimit = limit;
+  }
+}
 
 /**
  * Who scheduled the update that is being marked right now, read from the stack: the nearest app frame, and whether
@@ -14,7 +29,7 @@ export interface UpdateOrigin {
 }
 
 export function updateOrigin(): UpdateOrigin | null {
-  const frames = parseStack(new Error().stack ?? '').slice(1);
+  const frames = parseStack(captureStack()).slice(1);
   const own = frames.filter((f) => libraryOf(f.url) !== 'react-perf-recorder');
   if (!own.length) return null;
   const inEffect = own.some((f) => EFFECT_FRAMES.test(f.fn));

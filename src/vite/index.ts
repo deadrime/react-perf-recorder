@@ -125,9 +125,13 @@ export function perfRecorder(options: PerfRecorderOptions = {}): VitePluginLike[
       return entryCode('react-perf-recorder/client', clientConfig(), runtimes);
     },
     transform(code, id) {
-      if (!components || !componentFilter(id)) return null;
-      const named = addComponentNames(code, components.wrappers ?? DEFAULT_WRAPPERS);
-      return named ? { code: named, map: null } : null;
+      // The import is rewritten rather than intercepted when it is resolved: Vite answers a bare specifier from the
+      // optimizer before any plugin of ours is asked whenever the app aliases `react-dom` — a monorepo, a patched
+      // copy, a version matrix — and the root would quietly stop announcing itself.
+      const rewritten = appFilter(id) ? rootProxy.rewrite(code) : null;
+      if (!components || !componentFilter(id)) return rewritten ? { code: rewritten, map: null } : null;
+      const named = addComponentNames(rewritten ?? code, components.wrappers ?? DEFAULT_WRAPPERS);
+      return named ? { code: named, map: null } : rewritten ? { code: rewritten, map: null } : null;
     },
     transformIndexHtml: () => [{ tag: 'script', attrs: { type: 'module', src: `${base}@id/${ENTRY_ID}` }, injectTo: 'head-prepend' }],
     configureServer(server) {

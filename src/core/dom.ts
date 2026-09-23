@@ -22,7 +22,16 @@ export class DomWatcher {
 
   start(target: Node = document.body) {
     this.observer = new MutationObserver((records) => this.consume(records, null));
-    this.observer.observe(target, { subtree: true, characterData: true, attributes: true, childList: true });
+    // The old values are what tells a real change from a value written over itself, which React 19 does to the
+    // attributes of form fields on every render of them.
+    this.observer.observe(target, {
+      subtree: true,
+      characterData: true,
+      characterDataOldValue: true,
+      attributes: true,
+      attributeOldValue: true,
+      childList: true,
+    });
   }
 
   takeForCommit(): Set<Fiber> {
@@ -44,8 +53,39 @@ export class DomWatcher {
     return false;
   }
 
+  private valueNow(m: MutationRecord): string | null {
+    if (m.type !== 'attributes') return (m.target as CharacterData).data ?? null;
+    const element = m.target as Element;
+    return m.attributeName && typeof element.getAttribute === 'function' ? element.getAttribute(m.attributeName) : null;
+  }
+
+  private recordKey(m: MutationRecord): string {
+    return m.type === 'attributes' ? `a:${m.attributeName}` : 't';
+  }
+
+  /**
+   * Whether the writes to a node left it different from how the batch found it: the oldest value they overwrote
+   * against the one it holds now. React 19 blanks a form field's `name` and writes it straight back on every render
+   * of it, two writes that end where they started, and a component whose render only did that changed nothing.
+   */
+  private changedSomething(m: MutationRecord, before: Map<Node, Map<string, string | null>>): boolean {
+    if (m.type === 'childList') return true;
+    const oldest = before.get(m.target)?.get(this.recordKey(m));
+    return (oldest === undefined ? m.oldValue : oldest) !== this.valueNow(m);
+  }
+
   private consume(records: MutationRecord[], touched: Set<Fiber> | null) {
+    // What each node held before this batch touched it: the old value of the first write to reach it.
+    const before = new Map<Node, Map<string, string | null>>();
     for (const m of records) {
+      if (m.type === 'childList') continue;
+      let perNode = before.get(m.target);
+      if (!perNode) before.set(m.target, (perNode = new Map()));
+      const key = this.recordKey(m);
+      if (!perNode.has(key)) perNode.set(key, m.oldValue);
+    }
+    for (const m of records) {
+      if (!this.changedSomething(m, before)) continue;
       if (touched) {
         for (let f = fiberFromNode(m.target); f && !touched.has(f); f = f.return) {
           touched.add(f);

@@ -1,4 +1,5 @@
 import { nameOf, sourceOf, type Fiber } from './fiber';
+import { isConsumerTag, isProviderTag } from './react-compat';
 
 export interface ScopeHandle {
   kind: 'scope';
@@ -22,6 +23,9 @@ export function scopeFromFiber(target: Fiber, projectRoot = ''): ScopeHandle {
  */
 export function scopeNames(scope: ScopeHandle, depth = 6): string[] {
   return scope.chain
+    // A context provider is not a component to find again: on React 19 it is the context object itself and has a
+    // name, so it used to land in the path, and the path then matched nothing — the area was lost on every reload.
+    .filter((f) => !isProviderTag(f.tag) && !isConsumerTag(f.tag))
     .map((f) => {
       const t = f.type;
       if (typeof t === 'function') return t.displayName || t.name;

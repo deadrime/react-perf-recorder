@@ -5,6 +5,7 @@ import { perfRecorder } from '../../../src/vite';
 import { proxyMemoize } from '../../../src/plugins/proxy-memoize';
 import { reactQuery } from '../../../src/plugins/react-query';
 import { zustand } from '../../../src/plugins/zustand';
+import { react19Aliases, reactVersionUnderTest } from '../../react-19';
 
 const src = path.resolve(__dirname, '../../../src');
 
@@ -14,9 +15,13 @@ export const aliases = [
   { find: /^react-perf-recorder\/plugins\/([\w-]+)\/runtime$/, replacement: `${src}/plugins/$1/runtime.ts` },
 ];
 
+const react19 = reactVersionUnderTest() === '19';
+
 export default defineConfig({
   root: __dirname,
-  resolve: { alias: aliases },
+  // One cache per React, so the two fixture servers of a matrix run never share a pre-bundle.
+  cacheDir: path.resolve(__dirname, `../../../node_modules/.vite-fixture-${reactVersionUnderTest()}`),
+  resolve: { alias: [...(react19 ? react19Aliases : []), ...aliases] },
   server: { port: Number(process.env.FIXTURE_PORT ?? 5391), strictPort: true },
   plugins: [
     react(),

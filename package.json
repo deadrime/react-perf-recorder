@@ -60,14 +60,21 @@
     "dev": "tsup --watch",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "test:19": "vitest run --config vitest.react19.config.ts",
+    "test:matrix": "npm run test && npm run test:19 && npm run test:e2e",
     "test:e2e": "playwright test",
     "fixture": "vite --config test/e2e/fixture-app/vite.config.ts",
+    "fixture:19": "RPR_REACT=19 FIXTURE_PORT=5392 vite --config test/e2e/fixture-app/vite.config.ts",
     "format": "prettier --write ."
   },
   "peerDependencies": {
+    "react": "^18.2.0 || >=19.1.0",
     "vite": ">=5 <8"
   },
   "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    },
     "vite": {
       "optional": true
     }

@@ -1,0 +1,14 @@
+{
+  "name": "react-perf-recorder-react19",
+  "private": true,
+  "version": "0.0.0",
+  "description": "React 19 and everything that renders with it, installed beside the React 18 the repo develops against: `npm run test:19` and the e2e project of the same name resolve to this tree.",
+  "dependencies": {
+    "@tanstack/react-query": "5.81.5",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "react-hook-form": "7.78.0",
+    "react-router-dom": "6.30.3",
+    "zustand": "4.5.7"
+  }
+}

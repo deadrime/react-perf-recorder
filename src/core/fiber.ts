@@ -1,4 +1,10 @@
+import { contextOf, isConsumerTag, isProviderTag, siteOf } from './react-compat';
+import { mappedSite } from './sites';
 import { libraryOf } from './stack';
+
+export { captureRenderers, laneLabel, reactVersion, renderer, sourcesUnavailable, type Renderer } from './react-compat';
+export { onSitesMapped, setSiteMapper, type Position, type SiteMapper } from './sites';
+
 export interface Hook {
   memoizedState: unknown;
   queue: { getSnapshot?: unknown; lastRenderedReducer?: unknown } | null;
@@ -30,7 +36,10 @@ export interface Fiber {
   lanes?: number;
   childLanes?: number;
   actualDuration?: number;
+  /** React 18 only: where the element was written. React 19.1 replaced it with `_debugStack`. */
   _debugSource?: { fileName: string; lineNumber: number; columnNumber?: number } | null;
+  /** React 19.1+: an owner stack whose second frame is where the element was written. */
+  _debugStack?: unknown;
   _debugOwner?: Fiber | null;
   _debugHookTypes?: string[] | null;
 }
@@ -70,6 +79,10 @@ export const hasHooks = (f: Fiber) =>
 export const hasProfileTimings = (f: Fiber) => (f.mode & ProfileMode) !== 0 && typeof f.actualDuration === 'number';
 
 export function nameOf(f: Fiber): string | null {
+  // Told by the tag: React 18 hangs the context off the provider's type, React 19 made the context its own
+  // provider and gave the consumer the `_context` the provider used to have.
+  if (isProviderTag(f.tag)) return `Provider(${contextOf(f)?.displayName || 'context'})`;
+  if (isConsumerTag(f.tag)) return `Consumer(${contextOf(f)?.displayName || 'context'})`;
   const t = f.type;
   if (t == null || typeof t === 'string') return null;
   if (typeof t === 'function') return t.displayName || f.elementType?.displayName || t.name || 'Anonymous';
@@ -77,7 +90,6 @@ export function nameOf(f: Fiber): string | null {
     if (t.displayName) return t.displayName;
     if (t.render) return t.render.displayName || t.render.name || 'ForwardRef';
     if (t.type) return t.type.displayName || t.type.name || 'Memo';
-    if (t._context) return `Provider(${t._context.displayName || 'context'})`;
   }
   return null;
 }
@@ -97,10 +109,10 @@ export function wrapsProvider(f: Fiber): boolean {
 const libraryByType = new WeakMap<object, boolean>();
 
 /**
- * A component of the app or of a package. `_debugSource` on a fiber says where the component was *used*, so a
- * UI-kit component written in app JSX looks like the app's own; where it is *defined* shows in the element it
- * returns. App code is built with the dev JSX transform and its elements carry a source and an owner, packages
- * ship compiled and theirs carry neither.
+ * A component of the app or of a package. The site of a fiber says where the component was *used*, so a UI-kit
+ * component written in app JSX looks like the app's own; where it is *defined* shows in the element it returns.
+ * The file comes from `_debugSource` on React 18 and from the owner stack on React 19.1+; either way it is the
+ * file that answers, so a package's own components are found without listing their names.
  */
 export function isLibraryFiber(f: Fiber): boolean {
   const type = (typeof f.type === 'function' || (f.type && typeof f.type === 'object') ? f.type : null) as object | null;
@@ -114,22 +126,42 @@ export function isLibraryFiber(f: Fiber): boolean {
 function definedInPackage(f: Fiber): boolean {
   // The element under the component — the one it returned, or the children it passed through. App code is built
   // with the dev transform and its elements carry the file they were written in; a package's do not.
-  const child = f.child;
-  const file = (child ?? f)._debugSource?.fileName;
-  return !file || libraryOf(file) !== null;
+  const site = siteOf(f.child ?? f);
+  return !site || libraryOf(site.url) !== null;
 }
 
+/**
+ * `src/components/Row.tsx:42`. React 19 answers with a position in the module the dev server built, which only a
+ * source map turns back into a line of the file, so until that happens the line is left off rather than guessed;
+ * `generatedSourceOf` carries the position the server maps when the recording is saved.
+ */
 export function sourceOf(f: Fiber, root = ''): string {
-  const s = f._debugSource;
-  if (!s) return '';
-  return `${relativeFile(s.fileName, root)}:${s.lineNumber}`;
+  const site = siteOf(f);
+  if (!site) return '';
+  const file = relativeFile(site.url, root);
+  if (site.exact) return `${file}:${site.line}`;
+  // The dev server maps the built position; asking puts it in the next batch, and the file alone does for now.
+  return mappedSite(site) || file;
+}
+
+/** The built position to map through the dev server, when the fiber's own is not the file's. */
+export function generatedSourceOf(f: Fiber): { url: string; line: number; column: number } | undefined {
+  const site = siteOf(f);
+  return site && !site.exact ? { url: site.url, line: site.line, column: site.column } : undefined;
+}
+
+/** What tells two call sites apart in a root's key, whether or not the position can be shown yet. */
+export function siteKeyOf(f: Fiber, root = ''): string {
+  const site = siteOf(f);
+  return site ? `${relativeFile(site.url, root)}:${site.line}:${site.column}` : '';
 }
 
 export function relativeFile(fileName: string, root = ''): string {
-  const file = fileName.replace(/[?#].*$/, '');
+  // A React 19 site is a URL the dev server served: `http://localhost:5173/src/App.tsx?t=1`.
+  const file = fileName.replace(/^[a-z]+:\/\/[^/]+/, '').replace(/[?#].*$/, '');
   if (root && file.startsWith(root)) return file.slice(root.length).replace(/^\/+/, '');
   const i = file.lastIndexOf('/src/');
-  return i >= 0 ? file.slice(i + 1) : file.split('/').slice(-3).join('/');
+  return i >= 0 ? file.slice(i + 1) : file.replace(/^\/+/, '').split('/').slice(-3).join('/');
 }
 
 let fiberKey: string | null = null;
@@ -188,78 +220,6 @@ export function compositeChain(f: Fiber): Fiber[] {
   const chain: Fiber[] = [];
   for (let node: Fiber | null = f; node; node = node.return) if (isComposite(node)) chain.push(node);
   return chain.reverse();
-}
-
-export interface Renderer {
-  version?: string;
-  currentDispatcherRef?: { current: unknown } | { H: unknown };
-  getLaneLabelMap?: () => Map<number, string>;
-}
-
-type InjectFn = ((renderer: Renderer) => number) & { rprCaptured?: boolean };
-
-interface DevtoolsHook {
-  renderers?: Map<number, Renderer>;
-  inject?: InjectFn;
-}
-
-const captured = new Set<Renderer>();
-
-/**
- * Remembers every renderer React injects into the DevTools hook. The hook's own `renderers` map is not reliable: the
- * React Refresh hook (Vite's react plugins) counts injections without storing them. Must run before react-dom loads;
- * installs a minimal hook when there is none, otherwise wraps the existing `inject` and keeps its behaviour.
- */
-export function captureRenderers() {
-  const target = globalThis as { __REACT_DEVTOOLS_GLOBAL_HOOK__?: DevtoolsHook & Record<string, unknown> };
-  let hook = target.__REACT_DEVTOOLS_GLOBAL_HOOK__;
-  if (!hook) {
-    const renderers = new Map<number, Renderer>();
-    const noop = () => {};
-    hook = {
-      renderers,
-      supportsFiber: true,
-      isDisabled: false,
-      inject(renderer: Renderer) {
-        const id = renderers.size + 1;
-        renderers.set(id, renderer);
-        return id;
-      },
-      onCommitFiberRoot: noop,
-      onCommitFiberUnmount: noop,
-      onPostCommitFiberRoot: noop,
-      onScheduleFiberRoot: noop,
-      checkDCE: noop,
-      on: noop,
-      off: noop,
-      emit: noop,
-      sub: () => noop,
-    };
-    target.__REACT_DEVTOOLS_GLOBAL_HOOK__ = hook;
-  }
-  for (const renderer of hook.renderers?.values() ?? []) captured.add(renderer);
-  const original = hook.inject;
-  if (typeof original === 'function' && !original.rprCaptured) {
-    const inject: InjectFn = function (this: unknown, renderer: Renderer) {
-      captured.add(renderer);
-      return original.call(this, renderer);
-    };
-    inject.rprCaptured = true;
-    hook.inject = inject;
-  }
-}
-
-function knownRenderers(): Renderer[] {
-  const hook = (globalThis as { __REACT_DEVTOOLS_GLOBAL_HOOK__?: DevtoolsHook }).__REACT_DEVTOOLS_GLOBAL_HOOK__;
-  return [...captured, ...(hook?.renderers?.values() ?? [])];
-}
-
-export function reactVersion(): string | null {
-  return knownRenderers().find((r) => r.version)?.version ?? null;
-}
-
-export function renderer(): Renderer | null {
-  return knownRenderers().find((r) => r.currentDispatcherRef) ?? null;
 }
 
 /**

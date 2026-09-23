@@ -16,6 +16,9 @@ interface LoggedHook {
 
 const RENDER_MARK = '__rprInspectRender';
 const DISPATCHER_MARK = '__rpr_';
+/** What React fills a fresh compiler cache with, and what says "nothing in a form is pending". */
+const MEMO_CACHE_SENTINEL = Symbol.for('react.memo_cache_sentinel');
+const NOT_PENDING = Object.freeze({ pending: false, data: null, method: null, action: null });
 
 /**
  * Re-runs a function component with a stand-in dispatcher, like React DevTools does when a component is selected, and
@@ -113,6 +116,54 @@ export function inspectHooks(fiber: Fiber): InspectedHooks | null {
     useCacheRefresh: function __rpr_useCacheRefresh() {
       stateHook('CacheRefresh');
       return noop;
+    },
+
+    // ---- React 19 ------------------------------------------------------------------------------------------------
+    // Without these the stand-in throws at the first one and the component's hooks are named only up to it.
+
+    /** A context is read like `useContext`; a promise gives up its value only if it already has one. */
+    use: function __rpr_use(usable: unknown) {
+      if (usable && typeof usable === 'object') {
+        if ('_currentValue' in usable) {
+          const context = usable as { _currentValue?: unknown };
+          logged('Context', null, context);
+          return readContext(context);
+        }
+        const thenable = usable as { then?: unknown; status?: string; value?: unknown; reason?: unknown };
+        if (typeof thenable.then === 'function') {
+          if (thenable.status === 'fulfilled') return thenable.value;
+          if (thenable.status === 'rejected') throw thenable.reason;
+          // Pending: React would suspend here, and so does the inspection — the hooks before it are still named.
+          throw new Error('use() is still pending');
+        }
+      }
+      return undefined;
+    },
+    // The state, the pending flag and the action queue.
+    useActionState: function __rpr_useActionState(_action: unknown, initialState: unknown) {
+      const h = stateHook('ActionState', 3);
+      return [h ? h.memoizedState : initialState, noop, false];
+    },
+    useFormState: function __rpr_useFormState(_action: unknown, initialState: unknown) {
+      const h = stateHook('FormState', 3);
+      return [h ? h.memoizedState : initialState, noop, false];
+    },
+    useOptimistic: function __rpr_useOptimistic(passthrough: unknown) {
+      const h = stateHook('Optimistic');
+      return [h ? h.memoizedState : passthrough, noop];
+    },
+    useEffectEvent: function __rpr_useEffectEvent(callback: unknown) {
+      stateHook('EffectEvent');
+      return typeof callback === 'function' ? callback : noop;
+    },
+    // The compiler's cache lives on the fiber's update queue, not in the hook list, so it takes no cell. The
+    // sentinel is what React fills a fresh cache with, and it makes the compiled body recompute rather than read.
+    useMemoCache: function __rpr_useMemoCache(size: number) {
+      return new Array(typeof size === 'number' ? size : 0).fill(MEMO_CACHE_SENTINEL);
+    },
+    // What `useFormStatus` reads; outside a form action there is nothing pending.
+    useHostTransitionStatus: function __rpr_useHostTransitionStatus() {
+      return NOT_PENDING;
     },
   };
 

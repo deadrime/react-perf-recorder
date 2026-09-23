@@ -1,11 +1,11 @@
 import { Engine, type BootConfig } from '../core/engine';
-import { captureRenderers } from '../core/fiber';
+import { captureRenderers, onSitesMapped, setSiteMapper, type Position } from '../core/fiber';
 import { PluginHost, type PluginEntry } from '../core/plugins';
 import { installTimers } from '../core/env/timers';
 import { onRootCreated } from '../core/roots-notify';
 import { SessionWriter } from '../core/transport';
 import { Highlighter } from '../overlay/highlight';
-import { GLOBAL_KEY } from '../shared/schema';
+import { CLIENT_HEADER, GLOBAL_KEY } from '../shared/schema';
 import { actionText, hookText, reasonLine, summarize } from '../shared/summary';
 import { Panel } from '../ui/panel';
 
@@ -35,6 +35,22 @@ declare global {
 }
 
 /**
+ * React 19 gives a component's site as a position in the module the dev server built; only the server holds the map
+ * back to the file, so the panel asks it for the ones it wants to show and redraws when the answer comes.
+ */
+function mapSitesThrough(endpoint: string) {
+  setSiteMapper(async (positions: Position[]) => {
+    const response = await fetch(`${endpoint}/map`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', [CLIENT_HEADER]: '1' },
+      body: JSON.stringify({ positions }),
+    });
+    if (!response.ok) throw new Error(`map: ${response.status}`);
+    return ((await response.json()) as { sites?: Record<string, string> }).sites ?? {};
+  });
+}
+
+/**
  * `?rpr=rec` records from the page's first commit. The engine boots before React, so it waits for a root to
  * appear; a cascade on mount is otherwise impossible to catch by hand.
  */
@@ -48,6 +64,9 @@ function recordFromLoad(engine: Engine, pending: RecordOnLoad | null) {
         label: pending?.label || 'from page load',
         scope: pending?.names ? { names: pending.names } : null,
         ...(pending?.watch?.length ? { watch: pending.watch } : {}),
+        // `?rpr=rec` is how a script asks, and a script is measuring: outlines cost frame time. The panel's own
+        // load button comes through `pending` and keeps whatever the person set.
+        ...(pending ? {} : { highlight: false }),
       });
     } catch (error) {
       // No root yet, or the area is not mounted yet: the proxy of createRoot and the poll try again.
@@ -65,6 +84,7 @@ export function boot(config: ClientConfig, plugins: PluginEntry[], hot?: HotCont
   const existing = window[GLOBAL_KEY];
   if (existing) return existing;
   captureRenderers();
+  if (config.endpoint) mapSitesThrough(config.endpoint);
   if (config.timers !== false) installTimers();
   const host = new PluginHost(plugins);
   host.setupAll();
@@ -77,6 +97,7 @@ export function boot(config: ClientConfig, plugins: PluginEntry[], hot?: HotCont
     panel.setHighlighter(highlighter);
     engine.attachUi(highlighter, panel.host);
     panel.mount();
+    onSitesMapped(() => panel?.redraw());
   }
   const pending = takeRecordOnLoad();
   if (pending || new URLSearchParams(location.search).get('rpr') === 'rec') recordFromLoad(engine, pending);

@@ -1,0 +1,30 @@
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # React 19 lives in a tree of its own; the e2e run serves the fixture from both.
+      - run: npm ci --prefix test/react19
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run test:19
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: e2e-results
+          path: .agent-artifacts/e2e-results
+          retention-days: 7

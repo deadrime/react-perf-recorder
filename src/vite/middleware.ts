@@ -2,7 +2,7 @@ import { randomBytes } from 'node:crypto';
 import fs from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import path from 'node:path';
-import { CLIENT_HEADER, ENDPOINT, SESSION_SCHEMA, type RecordingV1, type SessionEvent, type SessionMeta } from '../shared/schema';
+import { CLIENT_HEADER, ENDPOINT, SESSION_SCHEMA, type RecordingV2, type SessionEvent, type SessionMeta } from '../shared/schema';
 
 export interface SessionStoreOptions {
   dir: string;
@@ -111,10 +111,10 @@ export class SessionStore {
     writeAtomic(path.join(dir, 'session.json'), JSON.stringify(meta, null, 2));
   }
 
-  async finish(id: string, recording: RecordingV1): Promise<{ id: string; dir: string; sites: Record<string, { site: string; code?: string }> }> {
+  async finish(id: string, recording: RecordingV2): Promise<{ id: string; dir: string; sites: Record<string, { site: string; code?: string }> }> {
     const dir = this.sessionDir(id);
     const meta = this.readMeta(dir);
-    const sites = await this.mapHookSites(recording);
+    const sites = await this.mapSites(recording);
     writeAtomic(path.join(dir, 'recording.json'), JSON.stringify({ ...recording, id }, null, 1));
     meta.status = 'done';
     meta.updatedAt = new Date().toISOString();
@@ -124,28 +124,68 @@ export class SessionStore {
     return { id, dir, sites };
   }
 
-  private async mapHookSites(recording: RecordingV1): Promise<Record<string, { site: string; code?: string }>> {
+  /**
+   * The panel asking, while nothing is being recorded: the file and line of positions it has on the page. React 19
+   * gives a component's site as a position in the built module, and only the dev server holds the map back.
+   */
+  async mapPositions(positions: Array<{ url: string; line: number; column: number }>): Promise<Record<string, string>> {
+    const mapSite = this.options.mapSite;
+    const out: Record<string, string> = {};
+    if (!mapSite) return out;
+    for (const p of positions.slice(0, 200)) {
+      if (!p || typeof p.url !== 'string' || typeof p.line !== 'number' || typeof p.column !== 'number') continue;
+      const mapped = await mapSite(p.url, p.line, p.column).catch(() => null);
+      if (mapped) out[`${p.url}:${p.line}:${p.column}`] = mapped.site;
+    }
+    return out;
+  }
+
+  /**
+   * Turns built positions back into lines of the files they were written in: the call site of every hook, and on
+   * React 19 the component's own site too, which the page can only know as a position in the served module.
+   */
+  private async mapSites(recording: RecordingV2): Promise<Record<string, { site: string; code?: string }>> {
     const sites: Record<string, { site: string; code?: string }> = {};
     const mapSite = this.options.mapSite;
     if (!mapSite) return sites;
     const cache = new Map<string, Promise<{ site: string; code?: string } | null>>();
+    const map = (g: { url: string; line: number; column: number }) => {
+      const key = `${g.url}:${g.line}:${g.column}`;
+      if (!cache.has(key))
+        cache.set(
+          key,
+          mapSite(g.url, g.line, g.column).catch(() => null)
+        );
+      return cache.get(key)!.then((mapped) => {
+        if (mapped) sites[key] = mapped;
+        return mapped;
+      });
+    };
+    for (const action of recording.actions ?? []) {
+      const own = action.target?.generatedSource;
+      if (!own) continue;
+      const mapped = await map(own);
+      if (mapped) action.target!.source = mapped.site;
+      delete action.target!.generatedSource;
+    }
     for (const root of [...recording.roots, ...recording.outsideRoots]) {
+      const own = root.generatedSource;
+      if (own) {
+        const mapped = await map(own);
+        if (mapped) root.source = mapped.site;
+        delete root.generatedSource;
+      }
       for (const hook of Object.values(root.hooks ?? {})) {
         const g = hook.generated;
         if (!g) continue;
-        const key = `${g.url}:${g.line}:${g.column}`;
-        if (!cache.has(key))
-          cache.set(
-            key,
-            mapSite(g.url, g.line, g.column).catch(() => null)
-          );
-        const mapped = await cache.get(key)!;
+        const mapped = await map(g);
         if (mapped) {
-          sites[key] = mapped;
           hook.site = mapped.site;
           if (mapped.code) hook.code = mapped.code;
-          delete hook.generated;
         }
+        // Mapped or not, the built position has had its chance here; an absolute dev-server URL of a pre-bundled
+        // dependency is worth nothing to whoever reads the recording, and it is the longest string in it.
+        delete hook.generated;
       }
     }
     return sites;
@@ -216,7 +256,7 @@ export function createMiddleware(store: SessionStore, base: string, version: str
     try {
       if (req.method === 'GET' && route === 'health') return send(res, 200, { ok: true, version, dir: store.dir });
       if (req.method !== 'POST') return send(res, 405, { error: 'method not allowed' });
-      const match = /^sessions(?:\/([^/]+)\/(events|finish))?$/.exec(route);
+      const match = /^(?:map|sessions(?:\/([^/]+)\/(events|finish))?)$/.exec(route);
       if (!match) return send(res, 404, { error: 'not found' });
       const [, id, action] = match;
       const trusted = req.headers[CLIENT_HEADER] === '1' && String(req.headers['content-type'] ?? '').startsWith('application/json');
@@ -224,6 +264,7 @@ export function createMiddleware(store: SessionStore, base: string, version: str
       if (!trusted && !beacon) return send(res, 415, { error: `requests need content-type application/json and ${CLIENT_HEADER}: 1` });
       const raw = await readBody(req, action === 'finish' ? store.maxBytes : Math.min(store.maxBytes, 16 * 1024 * 1024));
       const body = raw ? JSON.parse(raw) : {};
+      if (route === 'map') return send(res, 200, { sites: await store.mapPositions(body.positions ?? []) });
       if (!action) return send(res, 200, store.open(body));
       if (action === 'events') {
         if (!Array.isArray(body.events)) return send(res, 400, { error: 'events must be an array' });

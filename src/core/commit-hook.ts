@@ -1,5 +1,7 @@
 import type { Fiber, FiberRoot } from './fiber';
 
+export { laneLabel } from './react-compat';
+
 export class RecorderError extends Error {
   constructor(public code: 'BUSY' | 'NO_ROOT' | 'ALREADY' | 'SCOPE_NOT_FOUND' | 'NOT_RECORDING', message: string, public owner?: string) {
     super(message);
@@ -12,7 +14,7 @@ type OwnedSetter = ((fiber: Fiber) => void) & { owner?: string };
 export interface CommitInfo {
   root: FiberRoot;
   fiber: Fiber;
-  /** Lanes of the commit; React clears `root.finishedLanes` before assigning `root.current`. */
+  /** Lanes of the commit: the bits React took back off `root.pendingLanes` on its way into this commit. */
   lanes: number;
 }
 
@@ -28,7 +30,7 @@ export function hookOwner(root: FiberRoot): string | null {
 }
 
 /**
- * Catches every commit through a setter on `root.current`: React 18 assigns it exactly once per commit, after the
+ * Catches every commit through a setter on `root.current`: React assigns it exactly once per commit, after the
  * mutation phase and before layout effects. The DevTools hook is not used: react-grab's bippy owns it, and polling
  * `root.current` once per frame loses commits because current and alternate swap.
  */
@@ -51,10 +53,12 @@ export function hookCommits(
     let passthrough = false;
     const set: OwnedSetter = (fiber) => {
       current = fiber;
+      const taken = lanes;
+      lanes = 0;
       if (passthrough) return;
       const started = performance.now();
       try {
-        onCommit({ root, fiber, lanes });
+        onCommit({ root, fiber, lanes: taken });
       } catch (error) {
         if (errors.length < 3) errors.push(String((error as Error)?.stack || error).slice(0, 300));
       }
@@ -65,9 +69,13 @@ export function hookCommits(
     set.owner = `react-perf-recorder:${owner}`;
     Object.defineProperty(root, 'current', { configurable: true, enumerable: true, get: () => current, set });
 
+    // Both halves of a commit's story are on `pendingLanes`: React sets the bits of an update when it marks work,
+    // and takes the committed ones back in `markRootFinished`, just before it assigns `root.current`. So the lanes
+    // of a commit are the bits that went away since the last one — which is also the only way to have them on
+    // React 19.1+, where `finishedLanes` is a local of the renderer and no longer a field of the root.
     const pendingDescriptor = Object.getOwnPropertyDescriptor(root, 'pendingLanes');
     let pendingLanes = root.pendingLanes ?? 0;
-    const hasPending = Boolean(onUpdate) && pendingDescriptor && 'value' in pendingDescriptor && pendingDescriptor.configurable;
+    const hasPending = pendingDescriptor && 'value' in pendingDescriptor && pendingDescriptor.configurable;
     if (hasPending) {
       Object.defineProperty(root, 'pendingLanes', {
         configurable: true,
@@ -75,28 +83,14 @@ export function hookCommits(
         get: () => pendingLanes,
         set: (value: number) => {
           const added = value & ~pendingLanes;
+          lanes |= pendingLanes & ~value;
           pendingLanes = value;
-          if (!added || passthrough) return;
+          if (!added || passthrough || !onUpdate) return;
           try {
-            onUpdate!();
+            onUpdate();
           } catch (error) {
             if (errors.length < 3) errors.push(String((error as Error)?.stack || error).slice(0, 300));
           }
-        },
-      });
-    }
-
-    const lanesDescriptor = Object.getOwnPropertyDescriptor(root, 'finishedLanes');
-    let finishedLanes = root.finishedLanes ?? 0;
-    const hasLanes = lanesDescriptor && 'value' in lanesDescriptor && lanesDescriptor.configurable;
-    if (hasLanes) {
-      Object.defineProperty(root, 'finishedLanes', {
-        configurable: true,
-        enumerable: true,
-        get: () => finishedLanes,
-        set: (value: number) => {
-          finishedLanes = value;
-          if (value) lanes = value;
         },
       });
     }
@@ -108,7 +102,6 @@ export function hookCommits(
       } else {
         passthrough = true;
       }
-      if (hasLanes) Object.defineProperty(root, 'finishedLanes', { configurable: true, enumerable: true, writable: true, value: finishedLanes });
       if (hasPending) Object.defineProperty(root, 'pendingLanes', { configurable: true, enumerable: true, writable: true, value: pendingLanes });
     };
   });
@@ -121,27 +114,4 @@ export function hookCommits(
       return errors;
     },
   };
-}
-
-const LANE_LABELS: Array<[number, string]> = [
-  [0b1, 'Sync'],
-  [0b10, 'InputContinuousHydration'],
-  [0b100, 'InputContinuous'],
-  [0b1000, 'DefaultHydration'],
-  [0b10000, 'Default'],
-  [0b100000, 'TransitionHydration'],
-  [0b1111111111111111000000, 'Transition'],
-  [0b1111100000000000000000000000, 'Retry'],
-  [0b1 << 27, 'SelectiveHydration'],
-  [0b1 << 28, 'IdleHydration'],
-  [0b1 << 29, 'Idle'],
-  [0b1 << 30, 'Offscreen'],
-];
-
-/** Label of the highest-priority lane in the set; React 18 bit layout. */
-export function laneLabel(lanes: number): string | undefined {
-  if (!lanes) return undefined;
-  const lowest = lanes & -lanes;
-  for (const [mask, label] of LANE_LABELS) if (lowest & mask) return label;
-  return `lane:${lowest}`;
 }

@@ -1,4 +1,5 @@
-import type { RecordingV1, SessionEvent } from '../shared/schema';
+import type { RecordingV2, SessionEvent } from '../shared/schema';
+import { safeUrl } from '../shared/url';
 import { hookOwner, RecorderError } from './commit-hook';
 import {
   compositeChain,
@@ -46,25 +47,42 @@ export interface Owner {
   wrapper: boolean;
   /** Hands a context down and nothing else. */
   provider: boolean;
-  /** A component of a package, not of the app: no `_debugSource`, or a file under node_modules. */
+  /** A component of a package, not of the app: no site of its own, or a file under node_modules. */
   library: boolean;
   fiber: Fiber;
 }
 
-export interface Saved extends RecordingV1 {
+export interface Saved extends RecordingV2 {
   id?: string;
   dir?: string;
   saveError?: string;
 }
 
-function applySites(recording: RecordingV1, sites: Record<string, { site: string; code?: string }>) {
+function applySites(recording: RecordingV2, sites: Record<string, { site: string; code?: string }>) {
+  // The dev server has answered everything it could; a built position that stayed unmapped is an absolute URL of a
+  // pre-bundled dependency, the longest string in the recording and of no use to anyone reading it.
+  for (const action of recording.actions ?? []) {
+    const own = action.target?.generatedSource;
+    if (!own) continue;
+    const mapped = sites[`${own.url}:${own.line}:${own.column}`];
+    if (mapped) action.target!.source = mapped.site;
+    delete action.target!.generatedSource;
+  }
   for (const root of [...recording.roots, ...recording.outsideRoots]) {
+    const own = root.generatedSource;
+    if (own) {
+      const ownMapped = sites[`${own.url}:${own.line}:${own.column}`];
+      if (ownMapped) root.source = ownMapped.site;
+      delete root.generatedSource;
+    }
     for (const hook of Object.values(root.hooks ?? {})) {
       const g = hook.generated;
-      const mapped = g && sites[`${g.url}:${g.line}:${g.column}`];
-      if (!mapped) continue;
-      hook.site = mapped.site;
-      if (mapped.code) hook.code = mapped.code;
+      if (!g) continue;
+      const mapped = sites[`${g.url}:${g.line}:${g.column}`];
+      if (mapped) {
+        hook.site = mapped.site;
+        if (mapped.code) hook.code = mapped.code;
+      }
       delete hook.generated;
     }
   }
@@ -181,7 +199,7 @@ export class Engine {
         source: options.source ?? 'api',
         label: options.label,
         page: {
-          url: location.href,
+          url: safeUrl(location.href),
           title: document.title,
           viewport: `${innerWidth}×${innerHeight}`,
           dpr: devicePixelRatio,
@@ -241,6 +259,37 @@ export class Engine {
   interrupt() {
     if (!this.recorder) return;
     this.writer?.beacon(Math.round(this.recorder.now()));
+  }
+
+  /**
+   * The app's own components on the page right now, by name. A script that was told to record inside one and did
+   * not find it can say what there is instead of failing into nothing.
+   */
+  componentNames(limit = 60): string[] {
+    const names = new Set<string>();
+    for (const root of findRoots()) {
+      const stack: Fiber[] = [root.current];
+      while (stack.length && names.size < limit) {
+        const f = stack.pop()!;
+        const name = nameOf(f);
+        if (name && !isLibraryFiber(f)) names.add(name);
+        if (f.sibling) stack.push(f.sibling);
+        if (f.child) stack.push(f.child);
+      }
+    }
+    return [...names];
+  }
+
+  /**
+   * The topmost of the app's own components, as the tree shows them with these filters: where a tree of the whole
+   * app opens when no area has been picked yet.
+   */
+  topComponent(shown: Shown): Fiber | null {
+    for (const root of findRoots()) {
+      const [top] = compositeChildren(root.current, (f) => this.hidden(this.ownerOf(f), shown), 1);
+      if (top) return top;
+    }
+    return null;
   }
 
   /** Composite ancestors of an element, nearest first. */

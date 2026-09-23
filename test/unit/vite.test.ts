@@ -53,6 +53,21 @@ describe('perfRecorder vite plugin', () => {
     expect(fromLib?.id.startsWith('\0')).toBe(false);
   });
 
+  it("points the app's createRoot at the proxy, whatever the resolver would have done with it", async () => {
+    // Rewritten in the source rather than caught when resolved: Vite answers a bare specifier from the optimizer
+    // before any plugin of ours is asked whenever the app aliases `react-dom`, and the root would go unannounced.
+    const main = await server.transformRequest('/src/main.tsx');
+    expect(main?.code).toContain('/@id/__x00__react-perf-recorder:core:react-dom/client');
+    expect(main?.code).not.toMatch(/from ["'][^"']*deps\/react-dom_client/);
+    const id = '\0react-perf-recorder:core:react-dom/client';
+    expect((await server.pluginContainer.resolveId(id, undefined))?.id).toBe(id);
+    const proxy = await server.pluginContainer.load(id);
+    expect(typeof proxy === 'string' ? proxy : proxy?.code).toContain('noteRoot()');
+    // A module of a package keeps the original: only the app's own roots are announced.
+    const fromLib = await server.pluginContainer.resolveId('react-dom/client', path.resolve(__dirname, '../../node_modules/react-dom/client.js'));
+    expect(fromLib?.id.startsWith('\0')).toBe(false);
+  });
+
   it('names selectors, stores and memo components', async () => {
     const selectors = await server.transformRequest('/src/store/selectors.ts');
     expect(selectors?.code).toContain('__rprNameMemoized(selectMessageIds, "selectMessageIds", "src/store/selectors.ts")');
