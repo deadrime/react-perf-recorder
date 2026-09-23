@@ -21,7 +21,8 @@ export function parseStack(stack: string): Frame[] {
 /** Where this package's own code is served from: a `file:` link is served by its real path, not node_modules. */
 const OWN = (() => {
   const url = (parseStack(new Error().stack ?? '')[0]?.url ?? '').split(/[?#]/)[0];
-  const at = url.search(/\/(dist|src)\//);
+  // The last one: a checkout under ~/src or a monorepo in a src folder has one above the package's own.
+  const at = Math.max(url.lastIndexOf('/dist/'), url.lastIndexOf('/src/'));
   return at >= 0 ? [`${url.slice(0, at)}/dist/`, `${url.slice(0, at)}/src/`] : [];
 })();
 

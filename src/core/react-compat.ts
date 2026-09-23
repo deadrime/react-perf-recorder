@@ -119,7 +119,7 @@ const LANES_18: LaneTable = [
   [0b10000, 'Default'],
   [0b100000, 'TransitionHydration'],
   [0b1111111111111111000000, 'Transition'],
-  [0b1111100000000000000000000000, 'Retry'],
+  [0b11111 << 22, 'Retry'],
   [1 << 27, 'SelectiveHydration'],
   [1 << 28, 'IdleHydration'],
   [1 << 29, 'Idle'],

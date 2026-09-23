@@ -188,11 +188,23 @@ export function hostRootOf(f: Fiber): FiberRoot | null {
   return node?.tag === Tag.HostRoot ? (node.stateNode as FiberRoot) : null;
 }
 
-/** React roots mounted in the page: `#root`, children of body and their children. */
+/** Roots the app created, as the proxy of `react-dom/client` reports them: found wherever they are mounted. */
+const created = new Set<WeakRef<FiberRoot>>();
+
+export function registerRoot(root: FiberRoot) {
+  created.add(new WeakRef(root));
+}
+
+/** React roots mounted in the page: the ones the app created, then `#root`, children of body and their children. */
 export function findRoots(doc: Document = document): FiberRoot[] {
+  const roots = new Set<FiberRoot>();
+  for (const ref of created) {
+    const root = ref.deref();
+    if (!root) created.delete(ref);
+    else if (root.containerInfo?.isConnected && root.current) roots.add(root);
+  }
   const candidates = [doc.getElementById('root'), ...Array.from(doc.body?.children ?? [])];
   for (const el of Array.from(doc.body?.children ?? [])) candidates.push(...Array.from(el.children));
-  const roots = new Set<FiberRoot>();
   for (const el of candidates) {
     if (!el) continue;
     const key = Object.keys(el).find((k) => k.startsWith('__reactContainer$'));

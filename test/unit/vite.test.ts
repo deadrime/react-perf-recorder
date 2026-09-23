@@ -62,7 +62,7 @@ describe('perfRecorder vite plugin', () => {
     const id = '\0react-perf-recorder:core:react-dom/client';
     expect((await server.pluginContainer.resolveId(id, undefined))?.id).toBe(id);
     const proxy = await server.pluginContainer.load(id);
-    expect(typeof proxy === 'string' ? proxy : proxy?.code).toContain('noteRoot()');
+    expect(typeof proxy === 'string' ? proxy : proxy?.code).toContain('noteRoot(root)');
     // A module of a package keeps the original: only the app's own roots are announced.
     const fromLib = await server.pluginContainer.resolveId('react-dom/client', path.resolve(__dirname, '../../node_modules/react-dom/client.js'));
     expect(fromLib?.id.startsWith('\0')).toBe(false);

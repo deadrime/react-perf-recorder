@@ -78,8 +78,8 @@ export function perfRecorder(options: PerfRecorderOptions = {}): VitePluginLike[
         // Named exports only: react-dom/client is interop'd from CJS, and `export *` would lose them.
         `import * as original from 'react-dom/client';`,
         `import { noteRoot } from 'react-perf-recorder/runtime';`,
-        `export const createRoot = (...args) => { const root = original.createRoot(...args); noteRoot(); return root; };`,
-        `export const hydrateRoot = (...args) => { const root = original.hydrateRoot(...args); noteRoot(); return root; };`,
+        `export const createRoot = (...args) => { const root = original.createRoot(...args); noteRoot(root); return root; };`,
+        `export const hydrateRoot = (...args) => { const root = original.hydrateRoot(...args); noteRoot(root); return root; };`,
         `export const version = original.version;`,
         `export default original.default ?? original;`,
       ].join('\n'),

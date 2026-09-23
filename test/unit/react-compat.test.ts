@@ -56,3 +56,14 @@ describe('component sites across React versions', () => {
     expect(nameOf({ tag: 9, type: { _context: context } } as unknown as Fiber)).toBe('Consumer(Theme)');
   });
 });
+
+describe('lane labels on React 18', () => {
+  it('reads the retry lanes of Suspense as Retry, and the lane above them as selective hydration', async () => {
+    const { laneLabel } = await import('../../src/core/react-compat');
+    // React 18's RetryLanes are bits 22–26; the first one handed out is RetryLane1.
+    expect(laneLabel(1 << 22)).toBe('Retry');
+    expect(laneLabel(1 << 26)).toBe('Retry');
+    expect(laneLabel(1 << 27)).toBe('SelectiveHydration');
+    expect(laneLabel(1 << 21)).toBe('Transition');
+  });
+});

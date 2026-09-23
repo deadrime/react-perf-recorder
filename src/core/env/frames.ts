@@ -106,8 +106,8 @@ export class FrameWatcher {
           // The browser reports one entry per event of an interaction — pointerdown, pointerup, click all carry the
           // same id. Only the worst of them says what the person waited for, so the rest are not kept.
           const seen = this.worstByInteraction.get(latency.interactionId);
-          if (seen && this.latency[seen].duration >= latency.duration) return;
-          if (seen) this.latency[seen] = latency;
+          if (seen !== undefined && this.latency[seen].duration >= latency.duration) return;
+          if (seen !== undefined) this.latency[seen] = latency;
           else {
             this.worstByInteraction.set(latency.interactionId, this.latency.length);
             this.latency.push(latency);
