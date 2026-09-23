@@ -31,6 +31,8 @@ export default defineConfig([
     target: 'node18',
     // The MCP server runs from a file: link too, where npm does not install the package's dependencies.
     noExternal: [/.*/],
+    // …except the browser: `record` resolves it from the project that is being measured, or says it is not there.
+    external: ['playwright', 'playwright-core'],
     banner: {
       js: "#!/usr/bin/env node\nimport { createRequire as __rprCreateRequire } from 'node:module';\nconst require = __rprCreateRequire(import.meta.url);",
     },

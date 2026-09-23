@@ -2,7 +2,12 @@
   "mcpServers": {
     "react-perf-recorder": {
       "command": "node",
-      "args": ["dist/cli.js", "mcp"]
+      "args": [
+        "dist/cli.js",
+        "mcp",
+        "--dir",
+        ".agent-artifacts/fixture-sessions"
+      ]
     }
   }
 }

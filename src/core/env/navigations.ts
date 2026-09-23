@@ -1,10 +1,11 @@
 import type { Navigation } from '../../shared/schema';
+import { safeUrl } from '../../shared/url';
 
 /** Wraps pushState/replaceState and listens to popstate; a navigation to the same URL still re-renders router subscribers. */
 export function trackHistory(now: () => number, onNavigation: (nav: Navigation) => void): () => void {
   const original = { pushState: history.pushState, replaceState: history.replaceState };
   const wrapped: Partial<typeof original> = {};
-  const here = () => location.pathname + location.search;
+  const here = () => safeUrl(location.pathname + location.search);
   for (const method of ['pushState', 'replaceState'] as const) {
     const fn = function (this: History, ...args: Parameters<History['pushState']>) {
       const before = here();
