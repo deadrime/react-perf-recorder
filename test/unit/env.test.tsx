@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { act } from 'react';
-import { installTimers } from '../../src/core/env/timers';
+import { installTimers, scheduledByRecorder } from '../../src/core/env/timers';
 import { Engine } from '../../src/core/engine';
 import { fiberFromNode, isLibraryFiber } from '../../src/core/fiber';
 import { LiveHighlight } from '../../src/core/live-highlight';
@@ -73,6 +73,20 @@ describe('timer causes', () => {
       expect.stringMatching(/^core:timer setInterval( \S+)? @ .*test\/unit\/env\.test\.tsx$/),
     ]);
     expect(rec.roots[0].causes[0][0]).toMatch(/^core:timer setInterval/);
+  });
+});
+
+describe('timers of the recorder itself', () => {
+  it('knows a timer the recorder scheduled from one the app did, by the code that called it', () => {
+    // A stack as the wrapper sees it: its own frame first, then whoever called setTimeout.
+    const here = new Error().stack!.split('\n');
+    const wrapper = here[1];
+    const app = here[1];
+    const panel = here[1].replace(/test\/unit\/env\.test\.tsx/, 'src/ui/panel.ts');
+    expect(panel).not.toBe(app);
+    expect(scheduledByRecorder(['Error', wrapper, panel, app].join('\n'))).toBe(true);
+    // The panel called by the app's code is still the panel's timer; the app's own timer is the app's.
+    expect(scheduledByRecorder(['Error', wrapper, app, panel].join('\n'))).toBe(false);
   });
 });
 

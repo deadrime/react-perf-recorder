@@ -322,9 +322,10 @@ export class Recorder {
     // marked are the ones this event updated.
     this.deps.plugins.targets = () => this.freshUpdates();
     setTimerSink({
-      after: (text) => {
-        const fresh = this.freshUpdates();
-        if (fresh.size) this.deps.plugins.emit('core', { type: text() }, fresh);
+      after: (text, ours) => {
+        // A timer of the recorder's own — the panel's clock, its outlines — takes no one's updates.
+        if (!this.freshUpdates(false).size || ours()) return;
+        this.deps.plugins.emit('core', { type: text() }, this.freshUpdates());
       },
     });
     this.frames.start();

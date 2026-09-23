@@ -10,14 +10,18 @@ interface Scheduled {
 }
 
 export interface TimerSink {
-  /** Called after every timer callback; `text` names the timer and is formatted only if the sink keeps the cause. */
-  after(text: () => string): void;
+  /**
+   * Called after every timer callback; `text` names the timer and `ours` says the recorder scheduled it — both are
+   * worked out only if there are updates to give it.
+   */
+  after(text: () => string, ours: () => boolean): void;
 }
 
 let sink: TimerSink | null = null;
 let running: Scheduled | null = null;
 let installed = false;
 const texts = new WeakMap<Error, string>();
+const own = new WeakMap<Error, boolean>();
 
 export function setTimerSink(next: TimerSink | null) {
   sink = next;
@@ -52,6 +56,18 @@ function timerText(t: Scheduled): string {
   return text;
 }
 
+/** The code that called the timer is the recorder's own — the panel, its outlines, a replay — whoever called it. */
+export function scheduledByRecorder(stack: string): boolean {
+  const caller = parseStack(stack)[1];
+  return caller !== undefined && libraryOf(caller.url) === 'react-perf-recorder';
+}
+
+function ours(t: Scheduled): boolean {
+  let result = own.get(t.origin);
+  if (result === undefined) own.set(t.origin, (result = scheduledByRecorder(t.origin.stack ?? '')));
+  return result;
+}
+
 function wrap(kind: Kind) {
   const target = window as unknown as Record<Kind, (...args: unknown[]) => unknown>;
   const original = target[kind];
@@ -70,7 +86,10 @@ function wrap(kind: Kind) {
           return callback.apply(this, args);
         } finally {
           running = outer;
-          s.after(() => timerText(scheduled));
+          s.after(
+            () => timerText(scheduled),
+            () => ours(scheduled)
+          );
         }
       },
       ...rest
