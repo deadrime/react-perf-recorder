@@ -43,7 +43,7 @@ export function proxyMemoize(options: ProxyMemoizeOptions = {}): PerfRecorderPlu
       load: (id) => proxy.load(id),
       transform(code, id) {
         if (!filter(id) || !functions.some((fn) => code.includes(fn))) return null;
-        const names = findDeclarations(code, functions);
+        const names = findDeclarations(code, functions, { file: id });
         const file = relativeToRoot(root(), id);
         const out = appendLines(code, [
           `import { nameMemoized as __rprNameMemoized } from ${JSON.stringify(RUNTIME)};`,

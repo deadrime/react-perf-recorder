@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { addComponentNames } from '../../src/vite/component-names';
+import { addComponentNames, nameOfFile } from '../../src/vite/component-names';
 import { findDeclarations } from '../../src/vite/helpers/name-declarations';
 import { createFilter } from '../../src/vite/helpers/filter';
 
@@ -56,7 +56,48 @@ describe('addComponentNames', () => {
   });
 });
 
+describe('export default', () => {
+  it('names a default-exported memo after its file, on the same lines', () => {
+    const code = ['import { memo } from "react";', 'export default memo(({ id }: { id: string }) => <b>{id}</b>);', 'const x = 1;'].join('\n');
+    const named = addComponentNames(code, undefined, '/app/src/rows/UserCard.tsx?v=3')!;
+    expect(named.split('\n').slice(0, 3)).toEqual([
+      'import { memo } from "react";',
+      'export default (__rprDefault = memo(({ id }: { id: string }) => <b>{id}</b>));',
+      'const x = 1;',
+    ]);
+    expect(named).toContain('var __rprDefault;');
+    expect(named).toContain('__rprDefault.displayName = "UserCard"');
+  });
+
+  it('takes the folder for an index file, and leaves other default exports alone', () => {
+    expect(nameOfFile('/app/src/Sidebar/index.tsx')).toBe('Sidebar');
+    expect(addComponentNames('export default function Page() { return null; }', undefined, '/app/src/Page.tsx')).toBeNull();
+    // Without the file there is no name to give it.
+    expect(addComponentNames('export default memo(() => null);')).toBeNull();
+  });
+});
+
 describe('findDeclarations', () => {
+  it('reads casts in .ts, curried factories and names past a comment', () => {
+    const code = [
+      'export const useStore = create<State>()((set) => ({ n: 0 }));',
+      'export const useOld = createWithEqualityFn<State>()((set) => ({ n: 0 }), shallow);',
+      'const size = <number>(window as any).size;',
+      'export const useTyped = create((set) => ({})) as UseBoundStore<StoreApi<State>>;',
+      'export const /* the main one */ useMain = create(() => ({}));',
+    ].join('\n');
+    expect(findDeclarations(code, ['create', 'createWithEqualityFn'], { file: '/app/src/store.ts' })).toEqual([
+      'useStore',
+      'useOld',
+      'useTyped',
+      'useMain',
+    ]);
+  });
+
+  it('finds nothing in a module that does not parse, instead of throwing', () => {
+    expect(findDeclarations('export const a = memoize((s) => s.a', ['memoize'])).toEqual([]);
+  });
+
   it('finds memoized selectors in every declaration form', () => {
     const code = [
       'export const selectA = memoize((state: S) => state.a);',

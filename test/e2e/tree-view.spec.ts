@@ -170,3 +170,11 @@ test('↑ from the top row reaches the whole app, Enter keeps it', async ({ page
   await expect(page.locator('[data-rpr="tree"]')).toHaveCount(0);
   await expect(page.locator('[data-rpr="scope"]')).toBeHidden();
 });
+
+test('a default-exported memo is called by its file, not Memo', async ({ page }) => {
+  await page.goto('/app?rpr=panel&tick=150');
+  await expect(page.getByTestId('unread')).toBeVisible();
+  await page.locator('[data-rpr="pick"]').click();
+  await page.getByTestId('workspace').click();
+  await expect(page.locator('[data-rpr="scope"]')).toHaveText('Workspace');
+});

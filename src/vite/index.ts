@@ -130,7 +130,7 @@ export function perfRecorder(options: PerfRecorderOptions = {}): VitePluginLike[
       // copy, a version matrix — and the root would quietly stop announcing itself.
       const rewritten = appFilter(id) ? rootProxy.rewrite(code) : null;
       if (!components || !componentFilter(id)) return rewritten ? { code: rewritten, map: null } : null;
-      const named = addComponentNames(rewritten ?? code, components.wrappers ?? DEFAULT_WRAPPERS);
+      const named = addComponentNames(rewritten ?? code, components.wrappers ?? DEFAULT_WRAPPERS, id);
       return named ? { code: named, map: null } : rewritten ? { code: rewritten, map: null } : null;
     },
     transformIndexHtml: () => [{ tag: 'script', attrs: { type: 'module', src: `${base}@id/${ENTRY_ID}` }, injectTo: 'head-prepend' }],

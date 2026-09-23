@@ -1,4 +1,4 @@
-import { appendLines, findDeclarations } from './helpers/name-declarations';
+import { appendLines, scanModule } from './helpers/name-declarations';
 
 export interface ComponentNamesOptions {
   include?: string[];
@@ -9,22 +9,38 @@ export interface ComponentNamesOptions {
 
 export const DEFAULT_WRAPPERS = ['memo', 'forwardRef', 'createContext'];
 
+/** The local the default export is kept in so it can be named; a `var`, so it is declared before the export runs. */
+const DEFAULT_LOCAL = '__rprDefault';
+
+const nameLine = (local: string, name: string) =>
+  `if ((typeof ${local} === "function" || (typeof ${local} === "object" && ${local} !== null)) && !${local}.displayName) ` +
+  `${local}.displayName = ${JSON.stringify(name)};`;
+
+/** What a default export is called where it is imported: its file, or its folder for an `index` file. */
+export function nameOfFile(file: string): string | null {
+  const parts = file.replace(/[?#].*$/, '').split(/[\\/]/);
+  const base = parts.pop()?.replace(/\.[^.]+$/, '');
+  const name = base === 'index' ? parts.pop() : base;
+  return name && /^[A-Za-z_$][\w$-]*$/.test(name) ? name : null;
+}
+
 /**
  * `const Row = memo(...)` → `if (!Row.displayName) Row.displayName = "Row";` at the end of the module. Without it a
- * memo over an arrow function shows up as `Memo`/`Anonymous`, and a context as `(unnamed)`.
+ * memo over an arrow function shows up as `Memo`/`Anonymous`, and a context as `(unnamed)`. `export default
+ * memo(...)` is named after its file: the call is kept in a local on the way to the export, on the same line.
  *
- * The declarations are found by reading the text; strings, templates and comments are skipped, and the `typeof`
- * guard keeps whatever the scan still gets wrong harmless: a name that does not exist, or holds something that is
- * not a component, is left alone instead of throwing.
+ * The module is parsed, so strings, templates, comments and nested declarations are not mistaken for declarations;
+ * the `typeof` guard still keeps a name that holds something other than a component harmless.
  */
-export function addComponentNames(code: string, wrappers: string[] = DEFAULT_WRAPPERS): string | null {
-  const names = findDeclarations(code, wrappers, { allowReactPrefix: true });
-  return appendLines(
-    code,
-    names.map(
-      (name) =>
-        `if ((typeof ${name} === "function" || (typeof ${name} === "object" && ${name} !== null)) && !${name}.displayName) ` +
-        `${name}.displayName = ${JSON.stringify(name)};`
-    )
-  );
+export function addComponentNames(code: string, wrappers: string[] = DEFAULT_WRAPPERS, file?: string): string | null {
+  const { names, defaultCall } = scanModule(code, wrappers, { allowReactPrefix: true, file });
+  const lines = names.map((name) => nameLine(name, name));
+  const defaultName = defaultCall && file ? nameOfFile(file) : null;
+  let out = code;
+  if (defaultCall && defaultName) {
+    const { start, end } = defaultCall;
+    out = `${code.slice(0, start)}(${DEFAULT_LOCAL} = ${code.slice(start, end)})${code.slice(end)}`;
+    lines.push(`var ${DEFAULT_LOCAL};`, nameLine(DEFAULT_LOCAL, defaultName));
+  }
+  return appendLines(out, lines);
 }

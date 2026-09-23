@@ -3,6 +3,7 @@ import { useChatStore } from '../store/chat';
 import { selectUnread, selectWorkspace } from '../store/selectors';
 import { TimezoneBadge } from './Settings';
 import { TypingBadge } from './TypingBadge';
+import Workspace from './Workspace';
 
 // Flags are fixed for the page's life, so picking a hook by flag keeps the hook order stable.
 function useWholeWorkspaceUnread() {
@@ -26,7 +27,7 @@ const Unread = () => {
 
 export const Header = () => (
   <header className="head" data-testid="header">
-    <strong className="workspace">Design team</strong>
+    <Workspace />
     <Unread />
     <TimezoneBadge />
     <TypingBadge />

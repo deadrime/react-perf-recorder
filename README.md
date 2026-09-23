@@ -264,7 +264,7 @@ proxy-memoize plugin.
   made there says so in its warnings.
 - Store writes that did not lead to a commit in the area are not recorded — there is no store journal by design.
 - Two timers that update the same component between commits are attributed to the first of them.
-- `export default memo(() => …)` without a `const`, nested `memo`, zustand v5 selectors are not named.
+- Only the top level of a module is named: a `memo` inside a function or an object literal keeps React's `Memo`.
 - StrictMode doubles render-time selector calls.
 - Hook names re-run the component: side effects in render run once more.
 

@@ -6,7 +6,7 @@ import type { BuildContext, PerfRecorderPlugin } from '../../vite/plugin-api';
 export interface ZustandOptions {
   include?: string[];
   exclude?: string[];
-  /** Store factories whose results get a name: `export const useStore = create(...)`. */
+  /** Store factories whose results get a name: `export const useStore = create(...)`, `createWithEqualityFn(...)`. */
   functions?: string[];
   /** Stand in for the Redux DevTools extension to read action names; a real extension still gets everything. */
   devtools?: boolean;
@@ -19,7 +19,7 @@ const RUNTIME = 'react-perf-recorder/plugins/zustand/runtime';
  * content or not); labels `useShallow(selector)` and the store in `external store` reasons.
  */
 export function zustand(options: ZustandOptions = {}): PerfRecorderPlugin {
-  const functions = options.functions ?? ['create', 'createStore'];
+  const functions = options.functions ?? ['create', 'createStore', 'createWithEqualityFn'];
   let context: BuildContext | null = null;
   const root = () => context?.root() ?? process.cwd();
   const filter = createFilter(root, options.include ?? ['src/**/*.{ts,tsx,js,jsx}'], options.exclude);
@@ -43,6 +43,9 @@ export function zustand(options: ZustandOptions = {}): PerfRecorderPlugin {
     ]),
     wrap('zustand/vanilla', ['export const createStore = rpr.wrapCreate(original.createStore);', 'export default original.default;']),
     wrap('zustand/react/shallow', ['export const useShallow = rpr.wrapUseShallow(original.useShallow);']),
+    // v5 also exports `useShallow` from here, and keeps the store with an equality function in `traditional`.
+    wrap('zustand/shallow', ['export const useShallow = rpr.wrapUseShallow(original.useShallow);', 'export default original.default;']),
+    wrap('zustand/traditional', ['export const createWithEqualityFn = rpr.wrapCreate(original.createWithEqualityFn);']),
   ]);
   return {
     name: 'zustand',
@@ -53,7 +56,7 @@ export function zustand(options: ZustandOptions = {}): PerfRecorderPlugin {
       load: (id) => proxies.load(id),
       transform(code, id) {
         if (!filter(id) || !functions.some((fn) => code.includes(fn))) return null;
-        const names = findDeclarations(code, functions);
+        const names = findDeclarations(code, functions, { file: id });
         const out = appendLines(code, [
           `import { nameStore as __rprNameStore } from ${JSON.stringify(RUNTIME)};`,
           ...names.map((name) => ifDeclared(name, `__rprNameStore(${name}, ${JSON.stringify(name)});`)),

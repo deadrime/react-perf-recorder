@@ -31,7 +31,11 @@ function register(result: unknown) {
 export function wrapCreate<F extends (...args: any[]) => any>(factory: F): F {
   if (typeof factory !== 'function') return factory;
   return function (this: unknown, ...args: unknown[]) {
-    if (args[0] === undefined) return (initializer: unknown) => register(factory.call(this, initializer));
+    // The curried `create<T>()(init, equalityFn)`: the store is made by the second call, with all of its arguments.
+    if (args[0] === undefined) {
+      const curried = factory.apply(this, args) as (...inner: unknown[]) => unknown;
+      return (...inner: unknown[]) => register(curried(...inner));
+    }
     return register(factory.apply(this, args));
   } as F;
 }
