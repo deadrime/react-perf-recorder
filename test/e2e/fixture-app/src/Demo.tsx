@@ -1,3 +1,4 @@
+import { ADVANCED } from './advanced';
 import { BASICS } from './basics';
 import { BUGS, SCENARIOS, enabledBugs } from './bugs';
 
@@ -23,6 +24,7 @@ body { margin: 0; background: #131317; }
 .demo .sandbox span { color: #b9b9c2; }
 .demo .section { margin: 0 0 6px; font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: #8c8c96; }
 .demo .section + p { margin-bottom: 12px; }
+.demo .cards + .section { margin-top: 32px; }
 .demo .card { display: flex; flex-direction: column; gap: 7px; padding: 12px 14px; border: 1px solid #3a3a44; border-radius: 10px;
   background: rgba(36,36,42,.6); color: inherit; text-decoration: none; }
 .demo .card:hover { border-color: #0a84ff; background: rgba(46,46,56,.75); }
@@ -84,6 +86,20 @@ export const Catalogue = () => (
           <a className="card" href={`/basics/${id}`} key={id} data-basic={id}>
             <h2>{basic.title}</h2>
             <p className="what">{basic.what}</p>
+          </a>
+        ))}
+      </div>
+      <h2 className="section">Harder ones</h2>
+      <p>
+        Mistakes of more than one step, the way they come in real code: effects in a chain, a measurement kept in
+        state, a list too big for a keystroke, a query read whole. The recording explains them where the counters
+        alone would not.
+      </p>
+      <div className="cards" data-testid="advanced">
+        {Object.entries(ADVANCED).map(([id, item]) => (
+          <a className="card" href={`/advanced/${id}`} key={id} data-advanced={id}>
+            <h2>{item.title}</h2>
+            <p className="what">{item.what}</p>
           </a>
         ))}
       </div>

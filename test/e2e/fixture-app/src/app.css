@@ -681,3 +681,51 @@ input {
   opacity: 0.5;
   cursor: default;
 }
+
+/* Harder cases: a row of tags that fits its box, a long list, the lag under a field. */
+.measured {
+  overflow: hidden;
+}
+
+.tags {
+  display: flex;
+  gap: 6px;
+  flex-wrap: nowrap;
+}
+
+.tag {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+  width: 90px;
+  flex: none;
+  padding: 3px 6px;
+  border-radius: 6px;
+  background: #2a2a33;
+  font-size: 12px;
+  overflow: hidden;
+}
+
+.tag .n {
+  font-size: 10px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.rows .label.wide {
+  width: 64px;
+}
+
+.tag.more {
+  width: auto;
+  color: var(--muted);
+}
+
+.rows.tall {
+  max-height: 260px;
+  overflow: auto;
+}
+
+.lag {
+  font-variant-numeric: tabular-nums;
+}
