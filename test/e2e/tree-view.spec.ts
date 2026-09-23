@@ -105,3 +105,30 @@ test('hovering shows the box the click would leave', async ({ page }) => {
   await expect(page.locator('[data-rpr="scope"]')).toHaveText(hovered.tag!);
   expect((await box(page)).w).toBe(hovered.w);
 });
+
+test('with no area, Pick opens the tree of the whole app without choosing anything yet', async ({ page }) => {
+  await page.goto('/app?rpr=panel&tick=150');
+  await expect(page.getByTestId('unread')).toBeVisible();
+  // The whole app is the area, and it has no chip: there is nothing to press to get back to it but ×.
+  await expect(page.locator('[data-rpr="scope"]')).toBeHidden();
+
+  await page.locator('[data-rpr="pick"]').click();
+  // The tree opens at the top of the app's own components, with the top one active…
+  await expect(page.locator('[data-rpr="tree"] li[data-active="true"]')).toHaveAttribute('data-name', 'Layout');
+  // …and the area is still the whole app until something is chosen.
+  await expect(page.locator('[data-rpr="scope"]')).toBeHidden();
+
+  // A key moves into the tree and that is a choice: the component becomes the area.
+  await page.keyboard.press('ArrowRight');
+  await page.keyboard.press('ArrowDown');
+  await expect(page.locator('[data-rpr="scope"]')).toBeVisible();
+  // Esc puts back what was there: the whole app.
+  await page.keyboard.press('Escape');
+  await expect(page.locator('[data-rpr="scope"]')).toBeHidden();
+  await expect(page.locator('[data-rpr="tree"]')).toHaveCount(0);
+
+  // A click on the page still picks from the page.
+  await page.locator('[data-rpr="pick"]').click();
+  await page.getByTestId('message-m1').click();
+  await expect(page.locator('[data-rpr="scope"]')).toHaveText('MessageRow');
+});

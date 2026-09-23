@@ -1,18 +1,24 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
-import type { RecordingV1, SessionMeta } from '../../src/shared/schema';
+import type { RecordingV2, SessionMeta } from '../../src/shared/schema';
+import { reasonsById, textOf } from '../../src/shared/summary';
 import { SESSIONS_DIR } from '../../playwright.config';
 
 test.use({ permissions: ['clipboard-read', 'clipboard-write'] });
 
 const sessions = () => (fs.existsSync(SESSIONS_DIR) ? fs.readdirSync(SESSIONS_DIR).filter((d) => /^\d{8}-/.test(d)) : []);
 
-async function newRecording(before: string[]): Promise<{ meta: SessionMeta; recording: RecordingV1 }> {
+async function newRecording(before: string[]): Promise<{ meta: SessionMeta; recording: RecordingV2 }> {
   let id: string | undefined;
   await expect
     .poll(() => {
-      id = sessions().find((d) => !before.includes(d) && fs.existsSync(path.join(SESSIONS_DIR, d, 'recording.json')));
+      id = sessions().find((d) => {
+        if (before.includes(d) || !fs.existsSync(path.join(SESSIONS_DIR, d, 'recording.json'))) return false;
+        // Another spec, or a person with the panel open, may finish a recording while this one waits: only ours counts.
+        const meta = JSON.parse(fs.readFileSync(path.join(SESSIONS_DIR, d, 'session.json'), 'utf8')) as SessionMeta;
+        return !meta.source.startsWith('script:');
+      });
       return id;
     })
     .toBeTruthy();
@@ -40,10 +46,11 @@ const painted = (page: Page) =>
     return false;
   });
 
-test('records a session from the panel with a note, store causes, hook names and masked input', async ({ page }) => {
+test('records a session from the panel with store causes, hook names and masked input', async ({ page }) => {
   const before = sessions();
   await open(page);
-  await page.locator('[data-rpr="note"]').fill('typing the key label');
+  // The note is off in the panel for now, so nothing of it may reach a recording.
+  await expect(page.locator('[data-rpr="note"]')).toHaveCount(0);
   await page.locator('[data-rpr="record"]').click();
   // The rows render from the price feed, so wait until the recording has seen one tick before typing into the form.
   await expect(page.locator('[data-rpr="live-roots"]')).toContainText('Status');
@@ -54,11 +61,16 @@ test('records a session from the panel with a note, store causes, hook names and
   await expect(page.locator('[data-rpr="result"]')).toContainText('saved');
   const { meta, recording } = await newRecording(before);
 
-  expect(meta).toMatchObject({ status: 'done', label: 'typing the key label' });
+  expect(meta).toMatchObject({ status: 'done' });
+  expect(meta.label).toBeUndefined();
   const row = recording.roots.find((r) => r.name === 'Status')!;
-  const storeReason = row.reasons.find(([text]) => text.startsWith('external store'))![0];
-  expect(storeReason).toMatch(/^external store #\d+ \[useChatStore\]/);
-  const hook = row.hooks![/#(\d+)/.exec(storeReason)![1]];
+  const byId = reasonsById(recording.reasons);
+  const storeReason = row.reasons.map(([id]) => byId.get(id)!).find((r) => r.kind === 'store')!;
+  // The sentence is built from the fields on read; the recording keeps the fields.
+  expect(textOf(storeReason)).toMatch(/^external store #\d+ \[useChatStore\]/);
+  expect(storeReason).toMatchObject({ kind: 'store', store: 'useChatStore' });
+  // The hook is named by the reason itself; nothing has to read the sentence to find it.
+  const hook = row.hooks![storeReason.hook!];
   expect(hook.path).toEqual(['useMessageInfo', 'useBoundStore', 'useStore', 'useSyncExternalStoreWithSelector', 'SyncExternalStore']);
   expect(hook).toMatchObject({ library: 'zustand', libraryAt: 1 });
   // The call site in the component: the line where it calls the outermost custom hook.
@@ -101,7 +113,8 @@ test('one click on the page is the area; the tree opens around it and moves it',
   await page.keyboard.press('ArrowDown');
   await expect(page.locator('[data-rpr="scope"]')).toHaveText('TimeAgo');
   await page.keyboard.press('Escape');
-  await expect(page.locator('[data-rpr="scope"]')).toHaveText('Whole app');
+  // No area again: the whole app, which has no chip of its own.
+  await expect(page.locator('[data-rpr="scope"]')).toBeHidden();
 
   // Clicking a row confirms it and closes the tree.
   await page.locator('[data-rpr="pick"]').click();
@@ -132,10 +145,15 @@ test('follows a component picked in the tree and shows the leading roots live', 
   await page.keyboard.press('Escape');
   await expect(page.locator('[data-rpr="watch"] [data-name="Status"]')).toBeVisible();
 
+  // In a bottom corner the panel grows upwards, so the roots filling in must not move the buttons: they sit above.
+  const buttonAt = () => page.locator('[data-rpr="pick"]').evaluate((el) => Math.round(el.getBoundingClientRect().top));
+  const atRest = await buttonAt();
   await page.locator('[data-rpr="record"]').click();
   // While it records, the panel names the roots leading so far.
   await expect(page.locator('[data-rpr="live-roots"]')).toContainText('Status');
-  await expect(page.locator('[data-rpr="live-roots"]')).toContainText('external store');
+  // Each leading root as a reason row: the kind as a chip, the store it subscribes to next to it.
+  await expect(page.locator('[data-rpr="live-roots"] .kind[data-kind="store"]').first()).toBeVisible();
+  expect(await buttonAt()).toBe(atRest);
   await page.locator('[data-rpr="stop"]').click();
   const { recording } = await newRecording(before);
   expect(recording.watch?.Status.renders).toBeGreaterThan(0);
@@ -147,16 +165,20 @@ test('follows a component picked in the tree and shows the leading roots live', 
   await expect(page.locator('[data-rpr="watch"] [data-name="Status"]')).toHaveCount(0);
 });
 
-test('copies the area for an assistant', async ({ page }) => {
+test('copies the area for an assistant', async ({ page, baseURL }) => {
   await open(page);
   await page.locator('[data-rpr="pick"]').click();
   await page.getByTestId('message-m1').click();
   await page.keyboard.press('Enter');
   await expect(page.locator('[data-rpr="scope"]')).toHaveText('MessageRow');
   await page.locator('[data-rpr="copy-scope"]').click();
+  // The button says it worked, for a moment, where the pointer is; nothing is written below the controls.
+  await expect(page.locator('[data-rpr="copy-scope"]')).toHaveText('✓');
+  await expect(page.locator('[data-rpr="message"]')).toHaveText('');
+  await expect(page.locator('[data-rpr="copy-scope"]')).toHaveText('⧉', { timeout: 3000 });
   const copied = await page.evaluate(() => navigator.clipboard.readText());
   // The tool's own flag is not part of the address the assistant should reproduce.
-  expect(copied).toContain('React area on http://localhost:5391/app?tick=150\n');
+  expect(copied).toContain(`React area on ${baseURL}/app?tick=150\n`);
   expect(copied).toContain('Component: MessageRow — src/components/Messages.tsx:');
   expect(copied).toContain('› MessageList › MessageRow');
   expect(copied).toContain('Element: <li data-testid="message-m1"');
@@ -185,6 +207,72 @@ test('outlines renders inside the area while nothing is recorded, and marks reco
   await expect.poll(() => painted(page)).toBe(false);
 });
 
+test('the dot is dragged anywhere and sticks to the nearest edge', async ({ page }) => {
+  await open(page);
+  await page.locator('[data-rpr="collapse"]').click();
+  const dot = page.locator('[data-rpr="toggle"]');
+  await expect(dot).toBeVisible();
+  const before = (await dot.boundingBox())!;
+  await page.mouse.move(before.x + before.width / 2, before.y + before.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(1200, 300, { steps: 8 });
+  await page.mouse.up();
+
+  const view = page.viewportSize()!;
+  const after = (await dot.boundingBox())!;
+  // The nearest edge is the right one: it sits the usual gap from it, at the height it was let go of.
+  expect(Math.round(after.x + after.width)).toBe(view.width - 12);
+  expect(Math.round(after.y + after.height / 2)).toBe(300);
+  // A drag is not a click: the card stays closed.
+  await expect(page.locator('[data-rpr="record"]')).toBeHidden();
+  await dot.click();
+  await expect(page.locator('[data-rpr="record"]')).toBeVisible();
+
+  // And the place survives a reload, card and all: held by the same corner, it opens down and to the left of it.
+  await page.goto('/app?tick=150');
+  const card = (await page.locator('.card').boundingBox())!;
+  expect(Math.round(card.x + card.width)).toBe(view.width - 12);
+  expect(Math.round(card.y)).toBe(Math.round(after.y));
+
+  // Let go of past the edge of the window: the pointer is held, so the drag still ends where it was released.
+  await page.locator('[data-rpr="collapse"]').click();
+  const held = (await dot.boundingBox())!;
+  await page.mouse.move(held.x + held.width / 2, held.y + held.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(40, view.height + 60, { steps: 6 });
+  await page.mouse.up();
+  const bottom = (await dot.boundingBox())!;
+  expect(Math.round(bottom.y + bottom.height)).toBe(view.height - 12);
+  expect(Math.round(bottom.x + bottom.width / 2)).toBe(40);
+
+  // The top and bottom edges hold it the same way: the gap from the edge, and anywhere along it.
+  await page.mouse.move(bottom.x + bottom.width / 2, bottom.y + bottom.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(600, 90, { steps: 6 });
+  await page.mouse.up();
+  const up = (await dot.boundingBox())!;
+  expect(Math.round(up.y)).toBe(12);
+  expect(Math.round(up.x + up.width / 2)).toBe(600);
+  await dot.click();
+  await expect(page.locator('[data-rpr="record"]')).toBeVisible();
+});
+
+test('the card is dragged by its title bar, edge included', async ({ page }) => {
+  await open(page);
+  const view = page.viewportSize()!;
+  const before = (await page.locator('.rpr').boundingBox())!;
+  // The very top edge of the card, above the word in the title bar: the handle takes the card's padding too.
+  await page.mouse.move(before.x + 60, before.y + 2);
+  await page.mouse.down();
+  await page.mouse.move(120, 300, { steps: 8 });
+  await page.mouse.up();
+  const after = (await page.locator('.rpr').boundingBox())!;
+  // Dropped nearer the left edge than the top one, it takes the left edge at the usual gap.
+  expect(Math.round(after.x)).toBe(12);
+  expect(Math.round(after.y)).toBeGreaterThan(200);
+  expect(Math.round(after.y)).toBeLessThan(view.height / 2);
+});
+
 test('the shortcut opens the panel and records', async ({ page }) => {
   const before = sessions();
   await page.goto('/app?tick=150');
@@ -202,14 +290,13 @@ test('the shortcut opens the panel and records', async ({ page }) => {
 test('records the page load: the panel reloads into a recording', async ({ page }) => {
   const before = sessions();
   await open(page);
-  await page.locator('[data-rpr="note"]').fill('what the load costs');
   await page.locator('[data-rpr="record-on-load"]').click();
   await expect(page.getByTestId('unread')).toBeVisible();
   await expect(page.locator('[data-rpr="stop"]')).toBeVisible();
   await page.locator('[data-rpr="stop"]').click();
   const { meta, recording } = await newRecording(before);
 
-  expect(meta).toMatchObject({ source: 'load', label: 'what the load costs' });
+  expect(meta).toMatchObject({ source: 'load', label: 'from page load' });
   // Everything the page mounted is in the recording, with the components it mounted on the way.
   expect(recording.totals.mounts).toBeGreaterThan(10);
   expect(recording.components.find((c) => c.name === 'MessageRow')?.mounts).toBe(3);
@@ -233,4 +320,108 @@ test('Esc cancels the picker and the page keeps working', async ({ page }) => {
   await expect(page.locator('[data-rpr="tree"]')).toHaveCount(0);
   await page.getByTestId('tab-people').click();
   await expect(page.getByTestId('people')).toBeVisible();
+});
+
+test('the result draws the recording in time and opens the commit you click', async ({ page }) => {
+  await open(page);
+  await page.locator('[data-rpr="record"]').click();
+  await expect(page.locator('[data-rpr="live-roots"]')).toContainText('Status');
+  await page.getByTestId('tab-people').click();
+  await page.waitForTimeout(400);
+  await page.locator('[data-rpr="stop"]').click();
+  await expect(page.locator('[data-rpr="result"]')).toContainText('saved');
+
+  const bars = page.locator('.tl-bar');
+  expect(await bars.count()).toBeGreaterThan(1);
+  // The count of hidden commits grows to the left of the filter, so ticking it never moves the box under the pointer.
+  const boxAt = () => page.locator('input[data-rpr="tl-changed"]').evaluate((el) => Math.round(el.getBoundingClientRect().left));
+  const boxAtRest = await boxAt();
+  await page.locator('input[data-rpr="tl-changed"]').check();
+  expect(await boxAt()).toBe(boxAtRest);
+  await page.locator('input[data-rpr="tl-changed"]').uncheck();
+  // A mark per action the person did, and the bar of a commit tells what it rendered.
+  expect(await page.locator('.tl-mark').count()).toBeGreaterThan(0);
+  // With nothing picked, the tracks say what is in the part of the recording being looked at.
+  await expect(page.locator('.tl-detail')).toContainText('commits');
+  await bars.last().click();
+  // The cursor line is only drawn for a picked commit, so it proves the click landed on the bar.
+  await expect(page.locator('.tl-cursor')).toBeVisible();
+  await expect(page.locator('.tl-detail .tl-head')).toContainText('renders');
+
+  // Zooming spreads the commits apart and keeps the strip scrollable — by the buttons and by the wheel over it.
+  const width = () => page.locator('.tl-strip').evaluate((el) => el.getBoundingClientRect().width);
+  const fit = await width();
+  await page.locator('[data-rpr="tl-in"]').click();
+  expect(await width()).toBeGreaterThan(fit * 1.5);
+  await page.locator('[data-rpr="tl-out"]').click();
+  expect(await width()).toBeCloseTo(fit, 0);
+  await page.locator('.tl-scroll').hover();
+  await page.mouse.wheel(0, -400);
+  await expect.poll(width).toBeGreaterThan(fit * 1.5);
+  await page.mouse.wheel(0, 800);
+  await expect.poll(width).toBeCloseTo(fit, 0);
+
+  // Clicking an action lights up every commit it is answerable for, not just the first.
+  await page.locator('.tl-mark').first().click();
+  await expect(page.locator('.tl-detail .tl-head')).toContainText('click');
+  await expect(page.locator('.tl-strip[data-lit="true"]')).toBeVisible();
+  expect(await page.locator('.tl-bar[data-lit="true"]').count()).toBeGreaterThan(0);
+  // And from there into one of its commits.
+  await page.locator('.tl-detail .tl-link').first().click();
+  await expect(page.locator('.tl-detail .tl-head')).toContainText('renders');
+
+  // Dragging across the overview looks closer at that part, and the tracks say what is in the window.
+  await page.locator('[data-rpr="tl-overview"]').scrollIntoViewIfNeeded();
+  const strip = (await page.locator('[data-rpr="tl-overview"]').boundingBox())!;
+  await page.mouse.move(strip.x + strip.width * 0.3, strip.y + strip.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(strip.x + strip.width * 0.7, strip.y + strip.height / 2, { steps: 6 });
+  await page.mouse.up();
+  await expect.poll(width).toBeGreaterThan(fit * 1.5);
+  await expect(page.locator('.tl-brush')).toBeVisible();
+
+  // And dragging the tracks themselves moves them sideways.
+  const scrolled = () => page.locator('.tl-scroll').evaluate((el) => el.scrollLeft);
+  const wasAt = await scrolled();
+  const tracks = (await page.locator('.tl-scroll').boundingBox())!;
+  await page.mouse.move(tracks.x + tracks.width * 0.7, tracks.y + tracks.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(tracks.x + tracks.width * 0.2, tracks.y + tracks.height / 2, { steps: 6 });
+  await page.mouse.up();
+  await expect.poll(scrolled).toBeGreaterThan(wasAt);
+
+  // And the renders that changed nothing can be taken out of the picture.
+  const all = await bars.count();
+  await page.locator('[data-rpr="tl-changed"]').check();
+  expect(await bars.count()).toBeLessThanOrEqual(all);
+  await expect(page.locator('.tl-controls')).toContainText('changed the DOM');
+});
+
+test('the area comes back after a reload, and × forgets it', async ({ page }) => {
+  await open(page);
+  await page.locator('[data-rpr="pick"]').click();
+  await page.getByTestId('message-m1').click();
+  await page.keyboard.press('Enter');
+  await expect(page.locator('[data-rpr="scope"]')).toHaveText('MessageRow');
+
+  // A reload loses the component itself; the panel finds it again by its path once the app has rendered it.
+  await page.reload();
+  await expect(page.getByTestId('unread')).toBeVisible();
+  await expect(page.locator('[data-rpr="scope"]')).toHaveText('MessageRow');
+
+  // A page without that component keeps the whole app, and says nothing about it.
+  await page.goto('/basics/keys?rpr=panel');
+  await expect(page.getByTestId('list-id')).toBeVisible();
+  await page.waitForTimeout(600);
+  await expect(page.locator('[data-rpr="scope"]')).toBeHidden();
+  await expect(page.locator('[data-rpr="message"]')).toHaveText('');
+
+  // × is a choice of the whole app: after it, a reload brings nothing back.
+  await open(page);
+  await expect(page.locator('[data-rpr="scope"]')).toHaveText('MessageRow');
+  await page.locator('[data-rpr="clear-scope"]').click();
+  await page.reload();
+  await expect(page.getByTestId('unread')).toBeVisible();
+  await page.waitForTimeout(600);
+  await expect(page.locator('[data-rpr="scope"]')).toBeHidden();
 });

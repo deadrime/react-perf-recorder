@@ -7,60 +7,99 @@ const scopeText = (p: PanelViewProps) => {
   return p.scope.lost ? `${p.scope.name} (unmounted)` : p.scope.name;
 };
 
-/** The row that runs a recording and says which part of the page it is about. */
+/**
+ * A crosshair drawn rather than typed: the ⌖ glyph sits on the text's baseline in every font differently, and in a
+ * button of its own it never came out in the middle.
+ */
+const PickIcon = () => (
+  <svg class="pick-icon" viewBox="0 0 12 12" aria-hidden="true">
+    <circle cx="6" cy="6" r="3.5" />
+    <path d="M6 0.5v3M6 8.5v3M0.5 6h3M8.5 6h3" />
+  </svg>
+);
+
+/** What the outlines on the page mean: said where they are switched on, since nothing on the page can say it. */
+const HIGHLIGHT_LEGEND =
+  'Outline renders on the page, also between recordings. Green: a few renders in a row, yellow: often, red: all the ' +
+  'time; grey: the render changed nothing in the DOM. ×N counts the renders of that streak.';
+
+/**
+ * One row: record, the area, the outlines. The area is a single pill — Pick when there is none, and once there is
+ * one, its name to move it through the tree, ⧉ to copy it and × to go back to the whole app — so what a recording
+ * is about sits next to the button that starts it, not on a row of its own.
+ */
 export function Controls({ p }: { p: PanelViewProps }): JSX.Element {
+  const scoped = Boolean(p.scope);
   return (
-    <div class="row">
-      <button class="rec" data-rpr="record" title={`Start recording (${p.shortcuts.record})`} hidden={p.recording || p.busy} onClick={p.on.record}>
+    <div class="row controls">
+      <button type="button" class="rec" data-rpr="record" title={`Start recording (${p.shortcuts.record})`} hidden={p.recording || p.busy} onClick={p.on.record}>
         ● Rec
       </button>
       <button
-        class="rec"
+        type="button"
+        class="reload"
         data-rpr="record-on-load"
-        title="Reload the page and record from its first render"
+        title="Reload the page and record it from its first render"
         hidden={p.recording || p.busy}
         onClick={p.on.recordOnLoad}
       >
-        ⟳ Load
+        ↺ Page load
       </button>
-      <button class="stop" data-rpr="stop" title={`Stop (${p.shortcuts.record})`} hidden={!p.recording} onClick={p.on.stop}>
+      <button type="button" class="stop" data-rpr="stop" title={`Stop (${p.shortcuts.record})`} hidden={!p.recording} onClick={p.on.stop}>
         ■ Stop
       </button>
-      <button data-rpr="pick" title={`Pick an area (${p.shortcuts.pick})`} disabled={p.recording} onClick={p.on.pick}>
-        ⌖ Area
-      </button>
-      <button
-        class="scope"
-        data-rpr="scope"
-        data-lost={String(Boolean(p.scope?.lost))}
-        title="Click to change the area, hover to outline it"
-        disabled={p.recording}
-        onClick={p.on.editScope}
-        onMouseEnter={() => p.on.outlineScope(true)}
-        onMouseLeave={() => p.on.outlineScope(false)}
-      >
-        {scopeText(p)}
-      </button>
-      <button
-        data-rpr="copy-scope"
-        title="Copy the area as text for an AI assistant: component, file, path, DOM"
-        hidden={!p.scope}
-        onClick={p.on.copyScope}
-      >
-        ⧉
-      </button>
-      <button data-rpr="clear-scope" title="Record the whole app" hidden={!p.scope || p.recording} onClick={p.on.clearScope}>
-        ×
-      </button>
-      <button
-        data-rpr="last-scope"
-        title={p.lastScope ? `Find ${p.lastScope} again` : ''}
-        hidden={Boolean(p.scope) || !p.lastScope || p.recording}
-        onClick={p.on.lastScope}
-      >
-        ↺
-      </button>
-      <label class="toggle" title="Outline renders in the area, also between recordings">
+      <span class="area-pill" data-scoped={scoped ? 'true' : undefined} data-lost={String(Boolean(p.scope?.lost))}>
+        <button
+          type="button"
+          data-rpr="pick"
+          title={`${scoped ? 'Pick another area' : 'Pick an area — the whole app is recorded until you do'} (${p.shortcuts.pick})`}
+          aria-label={scoped ? 'Pick another area' : 'Pick an area'}
+          disabled={p.recording}
+          onClick={p.on.pick}
+        >
+          <PickIcon />
+          {scoped ? null : 'Pick'}
+        </button>
+        <button
+          type="button"
+          class="scope"
+          data-rpr="scope"
+          data-lost={String(Boolean(p.scope?.lost))}
+          title="The area: click to move it through the tree, hover to outline it"
+          // No area means the whole app: that needs no button of its own, and × is how to get back to it.
+          hidden={!scoped}
+          disabled={p.recording}
+          onClick={p.on.editScope}
+          onMouseEnter={() => p.on.outlineScope(true)}
+          onMouseLeave={() => p.on.outlineScope(false)}
+        >
+          {scopeText(p)}
+        </button>
+        <button
+          type="button"
+          class="icon"
+          data-rpr="copy-scope"
+          data-copied={p.copied === 'scope' ? 'true' : undefined}
+          title={p.copied === 'scope' ? 'Copied — paste it into the chat with the assistant' : 'Copy the area as text for an AI assistant: component, file, path, DOM'}
+          aria-label={p.copied === 'scope' ? 'Area copied' : 'Copy the area for an AI assistant'}
+          hidden={!scoped}
+          onClick={p.on.copyScope}
+        >
+          {p.copied === 'scope' ? '✓' : '⧉'}
+        </button>
+        <button
+          type="button"
+          class="icon"
+          data-rpr="clear-scope"
+          title="Back to the whole app"
+          aria-label="Back to the whole app"
+          hidden={!scoped || p.recording}
+          onClick={p.on.clearScope}
+        >
+          ×
+        </button>
+      </span>
+      <label class="toggle highlight-toggle" title={HIGHLIGHT_LEGEND}>
         <input type="checkbox" data-rpr="highlight" checked={p.highlight} onChange={(e) => p.on.setHighlight((e.target as HTMLInputElement).checked)} />
         highlight
       </label>

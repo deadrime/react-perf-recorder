@@ -49,6 +49,13 @@ export class Picker {
   private root: Node | null = null;
   private current: Node | null = null;
   private previewed: Node | null = null;
+  /** The next row the tree lands on is shown, not taken as the area. */
+  private quietOpen = false;
+  /**
+   * The tree of the whole app is open and nothing has been chosen yet: the page still answers the pointer with the
+   * box a click would take, as it does before any tree is open, and the keys already move through the tree.
+   */
+  private browsing = false;
   private frozen = false;
   private listeners: Array<[string, EventListener]> = [];
   /** What the box is drawn around, so it can be measured again when the page scrolls under it. */
@@ -95,9 +102,14 @@ export class Picker {
     if (this.shown && !this.box.hidden) this.outline(this.shown.fiber, this.shown.label);
   }
 
-  /** Opens the tree on a component, e.g. the current area, to move from it instead of picking anew. */
-  startAt(fiber: Fiber) {
+  /**
+   * Opens the tree on a component, e.g. the current area, to move from it instead of picking anew. `quiet` opens it
+   * without taking that component as the area: the tree of the whole app starts at its top, and the whole app stays
+   * the area until a row, a key or a click on the page says otherwise.
+   */
+  startAt(fiber: Fiber, { quiet = false }: { quiet?: boolean } = {}) {
     this.start();
+    this.quietOpen = quiet;
     this.build(this.engine.ownersOfFiber(fiber), fiber);
   }
 
@@ -134,6 +146,7 @@ export class Picker {
     this.box.hidden = true;
     this.shown = null;
     this.root = this.current = this.previewed = null;
+    this.quietOpen = this.browsing = false;
     this.callbacks.done(owner);
   }
 
@@ -146,7 +159,7 @@ export class Picker {
   }
 
   private onMove(event: PointerEvent) {
-    if (this.frozen || this.isOwn(event)) return;
+    if ((this.frozen && !this.browsing) || this.isOwn(event)) return;
     const el = this.elementAt(event.clientX, event.clientY);
     if (!el) return;
     const owner = this.engine.owners(el).find((o) => !this.engine.hidden(o, this.filters()));
@@ -278,7 +291,13 @@ export class Picker {
     this.outline(this.current.owner.fiber, this.current.owner.name);
     if (this.current !== this.previewed) {
       this.previewed = this.current;
-      this.callbacks.preview(this.current.owner);
+      if (this.quietOpen) {
+        this.quietOpen = false;
+        this.browsing = true;
+      } else {
+        this.browsing = false;
+        this.callbacks.preview(this.current.owner);
+      }
     }
   }
 

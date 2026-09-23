@@ -9,10 +9,19 @@ interface Flash {
   name: string;
   count: number;
   wasted: boolean;
-  start: number;
+  /** When the element last rendered: a box is lit from there, not from the first render of a streak. */
+  at: number;
 }
 
-const FADE_MS = 500;
+/**
+ * An outline holds still while the renders keep coming and only fades once they stop, so a component that renders
+ * ten times a second is a steady box with a rising count — not a strobe. The colour says how often, the number says
+ * how many; neither needs the box to blink.
+ */
+const LIT_MS = 320;
+const FADE_MS = 420;
+/** Renders closer together than this are one streak, and the count keeps rising. */
+const STREAK_MS = LIT_MS + FADE_MS;
 const MAX_FLASHES = 300;
 
 /**
@@ -22,16 +31,28 @@ const MAX_FLASHES = 300;
  */
 const shown = (el: Element) => el.checkVisibility?.({ opacityProperty: true, visibilityProperty: true, contentVisibilityAuto: true }) ?? true;
 
-const colorOf = (count: number, wasted: boolean) => {
-  if (wasted) return [150, 150, 160];
-  if (count < 3) return [52, 199, 89];
-  if (count < 10) return [255, 204, 0];
-  return [255, 69, 58];
+type Rgb = [number, number, number];
+
+/** The four colours of an outline, by name in the panel's stylesheet and as the fallback for a page without it. */
+const PALETTE: Array<[string, Rgb]> = [
+  ['--flash-wasted', [150, 150, 160]],
+  ['--flash-new', [52, 199, 89]],
+  ['--flash-often', [255, 204, 0]],
+  ['--flash-hot', [255, 69, 58]],
+];
+
+/** A canvas takes no custom property, so each one is read from the panel once and kept as numbers. */
+const rgbOf = (value: string, fallback: Rgb): Rgb => {
+  const hex = /^#([0-9a-f]{6})$/i.exec(value.trim());
+  if (!hex) return fallback;
+  const n = parseInt(hex[1], 16);
+  return [n >> 16, (n >> 8) & 255, n & 255];
 };
 
 /**
  * Outlines of rendered components, like react-scan: one canvas, rectangles read through IntersectionObserver (no
- * forced layout), a fade, and `Name ×N` for the instance's render count. Grey — the render changed nothing in the DOM.
+ * forced layout), a box per element that holds while it keeps rendering, and `Name ×N` for the instance's render
+ * count. Grey — the render changed nothing in the DOM.
  */
 export class Highlighter implements HighlightSink {
   enabled = true;
@@ -40,12 +61,17 @@ export class Highlighter implements HighlightSink {
   private pending = new Map<Element, { name: string; count: number; wasted: boolean }>();
   /** Renders in a row with less than a fade between them: a steady ticker keeps counting up and turns red. */
   private counts = new WeakMap<Fiber, { n: number; at: number }>();
-  private flashes: Flash[] = [];
+  /** One box per element, so a component rendering again refreshes its outline instead of stacking another. */
+  private flashes = new Map<Element, Flash>();
   private frameRequested = false;
   private drawing = false;
   private costMs = 0;
+  private colours: Rgb[] = PALETTE.map(([, fallback]) => fallback);
 
   constructor(parent: ShadowRoot | Element) {
+    const host = parent instanceof ShadowRoot ? parent.host : parent;
+    const style = getComputedStyle(host);
+    this.colours = PALETTE.map(([name, fallback]) => rgbOf(style.getPropertyValue(name), fallback));
     this.canvas = document.createElement('canvas');
     Object.assign(this.canvas.style, { position: 'fixed', inset: '0', width: '100vw', height: '100vh', pointerEvents: 'none', zIndex: '2147483646' });
     this.canvas.setAttribute('data-rpr', 'overlay');
@@ -64,7 +90,7 @@ export class Highlighter implements HighlightSink {
   reset() {
     this.counts = new WeakMap();
     this.pending.clear();
-    this.flashes = [];
+    this.flashes.clear();
     this.clear();
   }
 
@@ -73,7 +99,7 @@ export class Highlighter implements HighlightSink {
     const now = performance.now();
     for (const [el, name, fiber] of pairs) {
       const prev = this.counts.get(fiber) ?? (fiber.alternate ? this.counts.get(fiber.alternate) : undefined);
-      const entry = { n: prev && now - prev.at < FADE_MS ? prev.n + 1 : 1, at: now };
+      const entry = { n: prev && now - prev.at < STREAK_MS ? prev.n + 1 : 1, at: now };
       const count = entry.n;
       this.counts.set(fiber, entry);
       if (fiber.alternate) this.counts.set(fiber.alternate, entry);
@@ -104,9 +130,12 @@ export class Highlighter implements HighlightSink {
         const info = batch.get(entry.target);
         const r = entry.boundingClientRect;
         if (!info || (!r.width && !r.height) || !shown(entry.target)) continue;
-        this.flashes.push({ x: r.left, y: r.top, w: r.width, h: r.height, ...info, start: now });
+        this.flashes.set(entry.target, { x: r.left, y: r.top, w: r.width, h: r.height, ...info, at: now });
       }
-      if (this.flashes.length > MAX_FLASHES) this.flashes.splice(0, this.flashes.length - MAX_FLASHES);
+      for (const el of this.flashes.keys()) {
+        if (this.flashes.size <= MAX_FLASHES) break;
+        this.flashes.delete(el);
+      }
       if (!this.drawing) {
         this.drawing = true;
         requestAnimationFrame(() => this.draw());
@@ -121,13 +150,15 @@ export class Highlighter implements HighlightSink {
     if (!ctx) return;
     const started = performance.now();
     const now = performance.now();
-    this.flashes = this.flashes.filter((f) => now - f.start < FADE_MS);
+    for (const [el, f] of this.flashes) if (now - f.at >= STREAK_MS) this.flashes.delete(el);
     this.clear();
     const labelled = new Set<string>();
     ctx.font = '11px ui-monospace, SFMono-Regular, Menlo, monospace';
-    for (const f of this.flashes) {
-      const alpha = 1 - (now - f.start) / FADE_MS;
-      const [r, g, b] = colorOf(f.count, f.wasted);
+    for (const f of this.flashes.values()) {
+      const age = now - f.at;
+      // Full while it keeps rendering, and only then on its way out.
+      const alpha = age <= LIT_MS ? 1 : Math.max(0, 1 - (age - LIT_MS) / FADE_MS);
+      const [r, g, b] = this.colourOf(f.count, f.wasted);
       ctx.strokeStyle = `rgba(${r},${g},${b},${alpha})`;
       ctx.lineWidth = 1.5;
       ctx.strokeRect(f.x + 0.5, f.y + 0.5, Math.max(0, f.w - 1), Math.max(0, f.h - 1));
@@ -144,8 +175,15 @@ export class Highlighter implements HighlightSink {
       }
     }
     this.costMs += performance.now() - started;
-    if (this.flashes.length) requestAnimationFrame(() => this.draw());
+    if (this.flashes.size) requestAnimationFrame(() => this.draw());
     else this.drawing = false;
+  }
+
+  /** Grey when the render changed nothing; otherwise green, amber and red by how often it came. */
+  private colourOf(count: number, wasted: boolean): Rgb {
+    const [wastedColour, fresh, often, hot] = this.colours;
+    if (wasted) return wastedColour;
+    return count < 3 ? fresh : count < 10 ? often : hot;
   }
 
   private clear() {

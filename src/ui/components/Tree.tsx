@@ -14,7 +14,12 @@ export interface TreeProps {
   onShow(what: 'library' | 'providers', on: boolean): void;
   onWatch(name: string): void;
   onCopy(owner: Owner): void;
+  /** The copy button that just worked, by `rowCopyKey`. */
+  copied?: string | null;
 }
+
+/** Which row a copy came from: its component and where it is written, the same for the row across rebuilds. */
+export const rowCopyKey = (owner: Owner) => `row:${owner.name}:${owner.source}`;
 
 interface RowProps {
   row: TreeRow;
@@ -25,6 +30,7 @@ interface RowProps {
   onToggle(): void;
   onWatch(): void;
   onCopy(): void;
+  copied: boolean;
 }
 
 const ARROW = { open: '▾', closed: '▸' } as const;
@@ -37,7 +43,7 @@ const stop = (event: Event, run: () => void) => {
   run();
 };
 
-function Row({ row, active, watching, onSelect, onHover, onToggle, onWatch, onCopy }: RowProps): JSX.Element {
+function Row({ row, active, watching, onSelect, onHover, onToggle, onWatch, onCopy, copied }: RowProps): JSX.Element {
   const { owner } = row;
   return (
     <li
@@ -52,20 +58,32 @@ function Row({ row, active, watching, onSelect, onHover, onToggle, onWatch, onCo
         {row.toggle ? ARROW[row.toggle] : ''}
       </span>
       <span class="name">{owner.name}</span>
+      {/* The file's name is what tells rows apart; the folders repeat on every row and are in the title. */}
       <span class="src" title={owner.source}>
-        {owner.source}
+        {owner.source.slice(owner.source.lastIndexOf('/') + 1)}
       </span>
       <span
         class="watch-toggle"
         data-rpr="watch-toggle"
         data-on={String(watching)}
         title="Follow this component through the recording"
+        role="button"
+        aria-label={`Follow ${owner.name} through the recording`}
+        aria-pressed={watching}
         onClick={(e) => stop(e, onWatch)}
       >
         {watching ? '◉' : '◎'}
       </span>
-      <span class="copy" data-rpr="copy-row" title="Copy for an AI assistant" onClick={(e) => stop(e, onCopy)}>
-        ⧉
+      <span
+        class="copy"
+        data-rpr="copy-row"
+        data-copied={copied ? 'true' : undefined}
+        title={copied ? 'Copied' : 'Copy for an AI assistant'}
+        role="button"
+        aria-label={copied ? `${owner.name} copied` : `Copy ${owner.name} for an AI assistant`}
+        onClick={(e) => stop(e, onCopy)}
+      >
+        {copied ? '✓' : '⧉'}
       </span>
     </li>
   );
@@ -82,7 +100,8 @@ export function Tree(p: TreeProps): JSX.Element {
   return (
     <>
       <div class="row">
-        <span class="muted">Record inside:</span>
+        {/* These filter the tree below; what gets recorded is decided by the area, not by what the tree shows. */}
+        <span class="muted">Show:</span>
         <label class="toggle" title="Show components that come from packages, and the app's own unnamed wrappers">
           <input
             type="checkbox"
@@ -90,7 +109,7 @@ export function Tree(p: TreeProps): JSX.Element {
             checked={p.showLibrary}
             onChange={(e) => p.onShow('library', (e.target as HTMLInputElement).checked)}
           />
-          library
+          packages
         </label>
         <label class="toggle" title="Show the components that only hand a context down">
           <input
@@ -114,6 +133,7 @@ export function Tree(p: TreeProps): JSX.Element {
             onToggle={() => p.actions.toggle(i)}
             onWatch={() => p.onWatch(row.owner.name)}
             onCopy={() => p.onCopy(row.owner)}
+            copied={p.copied === rowCopyKey(row.owner)}
           />
         ))}
       </ul>

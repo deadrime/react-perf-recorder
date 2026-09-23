@@ -1,9 +1,19 @@
 export type Corner = 'bottom-left' | 'bottom-right' | 'top-left' | 'top-right';
 
+/** How far the panel sits from its corner's two edges, in pixels. */
+export interface Offset {
+  x: number;
+  y: number;
+}
+
 export interface PanelState {
   visible?: boolean;
   collapsed: boolean;
   corner: Corner;
+  /** Where along the corner's two edges the panel was left; unset means the corner itself. */
+  offset?: Offset;
+  /** The report is read in a wider panel. */
+  wide?: boolean;
   highlight: boolean;
   showLibrary: boolean;
   showProviders: boolean;

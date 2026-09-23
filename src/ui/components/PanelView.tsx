@@ -1,13 +1,20 @@
 /** @jsxImportSource preact */
 import { render, type JSX } from 'preact';
 import type { Engine, Saved } from '../../core/engine';
-import type { Corner } from '../storage';
+import { dockStyle } from '../dock';
+import type { Corner, Offset } from '../storage';
 import { Controls } from './Controls';
 import { Result } from './Result';
-import { Line, N, Why } from './Text';
+import { whatOf } from './Stats';
 import { Tree, type TreeProps } from './Tree';
 
 export type Live = NonNullable<ReturnType<Engine['live']>>;
+
+/**
+ * The note field is off: nobody has found a use for it yet. The label it wrote is still taken from scripts and the
+ * record tool; the panel sends none while this is off, so a note typed long ago cannot ride along unseen.
+ */
+export const NOTE_IN_PANEL = false;
 
 export interface PanelHandlers {
   record(): void;
@@ -17,12 +24,14 @@ export interface PanelHandlers {
   editScope(): void;
   copyScope(): void;
   clearScope(): void;
-  lastScope(): void;
   outlineScope(on: boolean): void;
   setHighlight(on: boolean): void;
   setNote(text: string): void;
   unwatch(name: string): void;
   setCollapsed(collapsed: boolean): void;
+  /** The dot was clicked rather than dragged. */
+  openFromDot(): void;
+  setWide(wide: boolean): void;
   dragStart(event: JSX.TargetedPointerEvent<HTMLElement>): void;
   dismissResult(): void;
 }
@@ -33,9 +42,14 @@ export interface PanelViewProps {
   recording: boolean;
   busy: boolean;
   corner: Corner;
+  /** Where the panel sits relative to its corner, once it has been dragged somewhere. */
+  offset?: Offset;
+  /** The report in a wider panel. */
+  wide: boolean;
+  /** The key of the copy button that just worked: it shows a tick for a moment. */
+  copied: string | null;
   shortcuts: { record: string; pick: string };
   scope: { name: string; lost: boolean } | null;
-  lastScope: string | null;
   note: string;
   highlight: boolean;
   watched: readonly string[];
@@ -46,9 +60,11 @@ export interface PanelViewProps {
   on: PanelHandlers;
 }
 
-const liveText = ({ live, busy }: PanelViewProps) => {
+/** The running line in the header, in words: a letter per number saved no room and cost every reader a guess. */
+const liveText = ({ live, busy, scope }: PanelViewProps) => {
   if (!live) return busy ? 'saving…' : '';
-  return `${(live.elapsedMs / 1000).toFixed(1)}s · C ${live.commitsInScope}/${live.commits} · R ${live.renders} · ${live.rendersPerSec}/s`;
+  const commits = scope ? `${live.commitsInScope}/${live.commits} commits in area` : `${live.commits} commits`;
+  return `${(live.elapsedMs / 1000).toFixed(1)}s · ${commits} · ${live.renders} renders · ${live.rendersPerSec}/s`;
 };
 
 /** Names being followed, each removable; during a recording they are shown but not editable. */
@@ -71,54 +87,91 @@ const Watching = ({ p }: { p: PanelViewProps }) => (
   </div>
 );
 
-/** Leading roots as they are: what is flashing right now, without stopping the recording. */
+/**
+ * Leading roots as they are: what is flashing right now, without stopping the recording. It sits above the buttons
+ * on purpose: in a bottom corner the panel grows upwards, so everything under a block that fills in stays put.
+ */
 const LiveRoots = ({ p }: { p: PanelViewProps }) => (
   <div class="live-roots" data-rpr="live-roots">
+    {/* The block keeps its height from the first moment, so say why it is empty rather than leave a hole. */}
+    {p.live && !p.live.topRoots.length ? <span class="live-empty">{p.scope ? 'Nothing has rendered in the area yet' : 'Nothing has rendered yet'}</span> : null}
     {(p.live?.topRoots ?? []).map((r) => (
-      <Line key={r.name}>
-        <N>{r.name}</N>
-        {` ×${r.hits} · ${r.perHit}/hit `}
-        <Why>{r.reason}</Why>
-      </Line>
+      <div class="live-root" key={r.name}>
+        <span class="who">{r.name}</span>
+        <span class="badge" data-tone="count">{`×${r.hits}`}</span>
+        <span class="badge">{`${r.perHit}/hit`}</span>
+        {r.info ? (
+          <span class="kind" data-kind={r.info.kind}>
+            {r.info.kind}
+          </span>
+        ) : null}
+        <span class="what" title={r.reason}>
+          {r.info ? whatOf(r.info) : r.reason}
+        </span>
+      </div>
     ))}
   </div>
 );
 
 const View = (p: PanelViewProps): JSX.Element => (
-  <div class="rpr" data-corner={p.corner} data-collapsed={String(p.collapsed && !p.recording)} data-recording={String(p.recording)} hidden={!p.visible}>
-    <button class="dot" data-rpr="toggle" title={`react-perf-recorder (${p.shortcuts.record})`} onClick={() => p.on.setCollapsed(false)}>
+  <div
+    class="rpr"
+    data-corner={p.corner}
+    data-collapsed={String(p.collapsed && !p.recording)}
+    data-recording={String(p.recording)}
+    data-wide={p.wide && p.result ? 'true' : undefined}
+    hidden={!p.visible}
+    style={dockStyle(p.corner, p.offset)}
+  >
+    {/* The dot is dragged by itself and sticks to the nearest edge; a press that does not move still opens it. */}
+    <button
+      class="dot"
+      data-rpr="toggle"
+      title={`react-perf-recorder (${p.shortcuts.record}) — drag to move it`}
+      onPointerDown={p.on.dragStart}
+      onClick={() => p.on.openFromDot()}
+    >
       ●
     </button>
     <div class="card">
       <header onPointerDown={p.on.dragStart}>
-        <span class="title">perf</span>
+        {/* A pulse on a chart: the mark turns red and beats while a recording runs, so the state reads at a glance. */}
+        <span class="brand">
+          <svg class="brand-mark" viewBox="0 0 16 16" aria-hidden="true">
+            <rect x="0.5" y="0.5" width="15" height="15" rx="4" />
+            <path d="M2.5 9h2.5l1.5-4 2.5 7 1.5-3h3" />
+          </svg>
+          <span class="brand-name">Perf Recorder</span>
+        </span>
         <span class="live">{liveText(p)}</span>
-        <button title="Collapse" data-rpr="collapse" onClick={() => p.on.setCollapsed(true)}>
+        <button type="button" title="Collapse" aria-label="Collapse the panel" data-rpr="collapse" onClick={() => p.on.setCollapsed(true)}>
           –
         </button>
       </header>
-      <Controls p={p} />
-      <label class="row note">
-        <span class="muted">Note</span>
-        <input
-          type="text"
-          data-rpr="note"
-          placeholder="what you are testing, e.g. typing the amount"
-          title="Saved with the recording and shown in the list of recordings, so you and the agent can tell them apart"
-          value={p.note}
-          onInput={(e) => p.on.setNote((e.target as HTMLInputElement).value)}
-        />
-      </label>
-      <Watching p={p} />
       <LiveRoots p={p} />
+      <Controls p={p} />
+      {NOTE_IN_PANEL ? (
+        <label class="row note">
+          <span class="muted">Note</span>
+          <input
+            type="text"
+            data-rpr="note"
+            placeholder="what you are testing, e.g. typing the amount"
+            title="Saved with the recording and shown in the list of recordings, so you and the agent can tell them apart"
+            value={p.note}
+            onInput={(e) => p.on.setNote((e.target as HTMLInputElement).value)}
+          />
+        </label>
+      ) : null}
+      <Watching p={p} />
       <div class="picker" data-rpr="picker">
-        {p.tree ? <Tree {...p.tree} /> : null}
+        {p.tree ? <Tree {...p.tree} copied={p.copied} /> : null}
       </div>
       <div class={p.message.kind} data-rpr="message">
         {p.message.text}
       </div>
       <div class="result" data-rpr="result">
-        {p.result ? <Result rec={p.result} onDismiss={p.on.dismissResult} /> : null}
+        {p.result ? <Result rec={p.result} onDismiss={p.on.dismissResult} wide={p.wide} onWide={() => p.on.setWide(!p.wide)} /> : null}
       </div>
     </div>
   </div>

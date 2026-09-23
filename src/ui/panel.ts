@@ -2,11 +2,12 @@ import type { Engine, Owner, Saved } from '../core/engine';
 import { currentOf, type Fiber, type FiberRoot } from '../core/fiber';
 import { scopeNames, type ScopeHandle } from '../core/scope';
 import type { Highlighter } from '../overlay/highlight';
-import { renderPanel, type PanelHandlers, type PanelViewProps } from './components/PanelView';
-import type { TreeProps } from './components/Tree';
+import { NOTE_IN_PANEL, renderPanel, type PanelHandlers, type PanelViewProps } from './components/PanelView';
+import { rowCopyKey, type TreeProps } from './components/Tree';
 import { describeArea } from './describe';
 import { Picker, type TreeActions, type TreeRow } from './picker';
 import { matches } from './shortcuts';
+import { dockOf, dockStyle } from './dock';
 import { defaults, loadState, saveState, setRecordOnLoad, type Corner, type PanelState } from './storage';
 import { STYLES } from './styles';
 
@@ -39,6 +40,8 @@ export class Panel {
   private result: Saved | null = null;
   private message: Message = { text: '', kind: 'muted' };
   private highlighter: Highlighter | null = null;
+  /** The pointer that just finished a drag of the dot; its click opens nothing. */
+  private dragged = false;
   private readonly handlers: PanelHandlers;
 
   constructor(private engine: Engine, private options: PanelOptions) {
@@ -62,6 +65,7 @@ export class Panel {
     if (options.interrupted)
       this.say(`The previous recording was cut by a page reload; its events are saved in session ${options.interrupted.id}.`, 'notice');
     this.sync();
+    this.restoreScope();
   }
 
   setHighlighter(highlighter: Highlighter) {
@@ -77,6 +81,11 @@ export class Panel {
 
   get shadowRoot() {
     return this.shadow;
+  }
+
+  /** Something the view shows has changed outside the panel — a component's file came back from the dev server. */
+  redraw() {
+    this.sync();
   }
 
   show() {
@@ -119,12 +128,17 @@ export class Panel {
       editScope: () => this.editScope(),
       copyScope: () => this.copyScope(),
       clearScope: () => this.setScope(null),
-      lastScope: () => this.findLastScope(),
       outlineScope: (on) => this.outlineScope(on),
       setHighlight: (on) => this.setHighlight(on),
       setNote: (text) => this.setNote(text),
       unwatch: (name) => this.toggleWatch(name),
       setCollapsed: (collapsed) => this.setCollapsed(collapsed),
+      openFromDot: () => this.openFromDot(),
+      setWide: (wide) => {
+        this.state.wide = wide;
+        this.persist();
+        this.sync();
+      },
       dragStart: (event) => this.onDragStart(event),
       dismissResult: () => {
         this.result = null;
@@ -138,22 +152,44 @@ export class Panel {
     setRecordOnLoad({
       ...(this.scope ? { names: scopeNames(this.scope) } : {}),
       ...(this.state.watch.length ? { watch: this.state.watch } : {}),
-      label: this.state.label || 'from page load',
+      label: (NOTE_IN_PANEL && this.state.label) || 'from page load',
     });
     location.reload();
   }
 
   private copyScope() {
     const target = this.scopeTarget();
-    if (target) void this.copy(describeArea(this.engine, target), 'Area copied: paste it into the chat with the assistant.');
+    if (target) this.copyArea(target, 'scope');
   }
 
-  private findLastScope() {
-    try {
-      if (this.state.lastScope) this.setScope(this.engine.scopeFromNames(this.state.lastScope.names));
-    } catch (error) {
-      this.say(String((error as Error)?.message ?? error), 'error');
-    }
+  /**
+   * The clipboard is written in the same task as the click, never after an await: a copy that leaves the user's
+   * gesture is a copy browsers may refuse. On React 19 the file's line comes from the dev server, and picking the
+   * area is what asked for it — by the time anyone reaches this button the answer is in.
+   */
+  private copyArea(fiber: Fiber, key: string) {
+    void this.copy(describeArea(this.engine, fiber), key);
+  }
+
+  /**
+   * The area picked before the page reloaded, found again by its component path once the app has rendered it — the
+   * way the corner and the highlight are remembered. A page that does not have that component leaves the whole app
+   * as the area and says nothing; a recording that has already started is left as it began.
+   */
+  private restoreScope() {
+    const last = this.state.lastScope;
+    if (!last || this.scope) return;
+    const deadline = Date.now() + 8000;
+    const attempt = () => {
+      // Picked, cleared or recording in the meantime: the person has moved on.
+      if (this.scope || this.state.lastScope !== last || this.engine.recording) return;
+      try {
+        this.setScope(this.engine.scopeFromNames(last.names), last);
+      } catch {
+        if (Date.now() < deadline) setTimeout(attempt, 250);
+      }
+    };
+    attempt();
   }
 
   /** Hovering the area's name outlines it on the page, unless the picker is already drawing something. */
@@ -195,9 +231,11 @@ export class Panel {
       recording,
       busy: this.busy,
       corner: this.state.corner,
+      offset: this.state.offset,
+      wide: Boolean(this.state.wide),
+      copied: this.copied,
       shortcuts: this.options.shortcuts,
       scope: this.scope ? { name: this.scope.name, lost: live?.scopeState === 'lost' } : null,
-      lastScope: this.state.lastScope?.label ?? null,
       note: this.state.label,
       highlight: this.state.highlight,
       watched: this.state.watch,
@@ -226,7 +264,7 @@ export class Panel {
       this.engine.start({
         source: 'panel',
         scope: this.scope,
-        label: this.state.label || undefined,
+        label: (NOTE_IN_PANEL && this.state.label) || undefined,
         ...(this.state.watch.length ? { watch: this.state.watch } : {}),
       });
     } catch (error) {
@@ -256,12 +294,16 @@ export class Panel {
     }
     this.setCollapsed(false);
     this.rememberScope();
+    // With no area yet, the tree of the whole app opens at its top: a component can be chosen from the tree as well
+    // as from the page, and the whole app stays the area until one is.
+    const top = this.scope ? null : this.engine.topComponent({ library: this.state.showLibrary, providers: this.state.showProviders });
+    // Two short lines: the one thing to do, then the keys. The page ignores the clicks meanwhile.
     this.say(
-      'Click an element: it becomes the area at once. ↑/↓ move it, →/← go in and out, Enter keeps it, Esc puts the ' +
-        'old one back. The page itself does not react to clicks while you are picking.',
+      `Click ${top ? 'an element or a row' : 'an element'} to take it as the area.\n↑↓ move · →← in and out · Enter keep · Esc cancel`,
       'muted'
     );
-    this.picker.start();
+    if (top) this.picker.startAt(top, { quiet: true });
+    else this.picker.start();
   }
 
   /** Reopens the tree on the current area; without one, picks from scratch. */
@@ -272,7 +314,7 @@ export class Panel {
     this.picker.cancel();
     this.setCollapsed(false);
     this.rememberScope();
-    this.say('↑/↓ move the area, → goes inside, ← goes up, Enter keeps it, Esc puts the old one back; click the page to pick elsewhere.', 'muted');
+    this.say('Click the page to pick elsewhere.\n↑↓ move · →← in and out · Enter keep · Esc cancel', 'muted');
     this.picker.startAt(target);
   }
 
@@ -298,7 +340,11 @@ export class Panel {
     }
   }
 
-  private async copy(text: string, done: string) {
+  /** What was just copied, by the key of the button that copied it: that button shows a tick for a moment. */
+  private copied: string | null = null;
+  private copiedTimer: ReturnType<typeof setTimeout> | null = null;
+
+  private async copy(text: string, key: string) {
     try {
       await navigator.clipboard.writeText(text);
     } catch {
@@ -310,7 +356,14 @@ export class Panel {
       document.execCommand('copy');
       area.remove();
     }
-    this.say(done, 'muted');
+    // The button says it worked where the eye already is, instead of a sentence somewhere below it.
+    this.copied = key;
+    if (this.copiedTimer) clearTimeout(this.copiedTimer);
+    this.copiedTimer = setTimeout(() => {
+      this.copied = null;
+      this.sync();
+    }, 1500);
+    this.sync();
   }
 
   private onPicked(owner: Owner | null) {
@@ -344,7 +397,7 @@ export class Panel {
         this.picker.refresh();
       },
       onWatch: (name) => this.toggleWatch(name),
-      onCopy: (owner) => void this.copy(describeArea(this.engine, owner.fiber), `${owner.name} copied: paste it into the chat with the assistant.`),
+      onCopy: (owner) => this.copyArea(owner.fiber, rowCopyKey(owner)),
     };
     this.sync();
   }
@@ -372,27 +425,63 @@ export class Panel {
     }
   }
 
-  /** Dragging stays out of the view: it moves the card by inline styles, which no render touches. */
+  /**
+   * Dragging stays out of the view: it moves the panel by inline styles, which no render touches, and on release
+   * the edge it landed by becomes state, with the place along that edge. The card is dragged by its header, the
+   * dot by itself — and the dot is a button, so the drag only takes over once the pointer has really moved, and
+   * the click that opens the panel is swallowed only then.
+   */
   private onDragStart(down: PointerEvent) {
-    if ((down.target as Element).closest('button')) return;
-    const root = (down.currentTarget as HTMLElement).closest('.rpr') as HTMLElement | null;
+    const handle = down.currentTarget as HTMLElement;
+    const fromDot = handle.classList.contains('dot');
+    if (!fromDot && (down.target as Element).closest('button')) return;
+    const root = handle.closest('.rpr') as HTMLElement | null;
     if (!root) return;
     const rect = root.getBoundingClientRect();
     const dx = down.clientX - rect.left;
     const dy = down.clientY - rect.top;
-    const move = (e: PointerEvent) =>
+    let moved = false;
+    const move = (e: PointerEvent) => {
+      if (!moved && Math.abs(e.clientX - down.clientX) + Math.abs(e.clientY - down.clientY) < 4) return;
+      if (!moved) {
+        moved = true;
+        root.dataset.dragging = 'true';
+        // Held by the pointer from here on: a release past the edge of the window still ends the drag, instead of
+        // leaving the panel stuck to the cursor.
+        handle.setPointerCapture?.(down.pointerId);
+      }
       Object.assign(root.style, { left: `${e.clientX - dx}px`, top: `${e.clientY - dy}px`, right: 'auto', bottom: 'auto' });
-    const up = (e: PointerEvent) => {
+    };
+    const up = () => {
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
-      // Snap to the nearest corner: positions survive a resize and a reload.
-      this.state.corner = `${e.clientY > innerHeight / 2 ? 'bottom' : 'top'}-${e.clientX > innerWidth / 2 ? 'right' : 'left'}` as Corner;
-      root.removeAttribute('style');
+      window.removeEventListener('pointercancel', up);
+      if (moved) handle.releasePointerCapture?.(down.pointerId);
+      delete root.dataset.dragging;
+      if (!moved) return;
+      // It sticks to the nearest edge, at the place along it where it was let go of; the view draws that now.
+      this.dragged = fromDot;
+      const dock = dockOf(root.getBoundingClientRect(), { width: innerWidth, height: innerHeight });
+      this.state.corner = dock.corner;
+      this.state.offset = dock.offset;
+      // The dock as the view would write it: a drop that lands on the same one leaves preact nothing to patch, so
+      // the drag's own left/top are replaced here rather than on the next render.
+      root.style.cssText = dockStyle(dock.corner, dock.offset) ?? '';
       this.persist();
       this.sync();
     };
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', up);
+  }
+
+  /** A drag that started on the dot ends in a click; that one click must not open the panel. */
+  private openFromDot() {
+    if (this.dragged) {
+      this.dragged = false;
+      return;
+    }
+    this.setCollapsed(false);
   }
 
   private persist() {
