@@ -117,6 +117,11 @@ the causes above the tracks are their colour legend, and pressing one lights up 
 and plugin notes start folded. The id, `Copy id`, `↻ Repeat`, `Download`, `⤢ Wide` and `Dismiss` stay at the
 bottom of the panel however far the report is scrolled.
 
+**Memos that miss.** A `useMemo` or `useCallback` that recomputed on at least half of its component's renders is
+listed with how often it kept its value, the dependency that moved — and whether it moved into a new object with
+the same content, the usual reason — and the line that calls it. Those that recompute on every render lead, and
+open the fold. `get_recording` has them as the `memos` section and the top five in the summary.
+
 **Before → after.** A second recording on the same page and area is set against the one before it in the tab: the
 same actions side by side, as renders per time each was done (per character for typing), so the two runs need not
 press a button the same number of times. `↻ Repeat` makes them the same anyway: it reloads the page and does the

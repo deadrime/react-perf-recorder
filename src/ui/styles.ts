@@ -204,6 +204,17 @@ button.icon { padding: 3px 7px; }
 
 /* The report: the answer first, then what to read it against, then the parts that explain it, folded. */
 .verdict { margin-top: 8px; }
+.memo { padding: 5px 0; border-top: 1px solid var(--rule-soft); }
+.memo:first-child { border-top: 0; }
+.memo-head { display: flex; align-items: baseline; gap: 6px; }
+.memo-head .kind { color: var(--muted); font-size: 11px; }
+.memo-head .badge { margin-left: auto; }
+.memo[data-every="true"] .who { color: var(--warn); }
+.memo-why { margin: 2px 0 2px; color: var(--text-2); }
+.memo .chain { color: var(--muted); font-size: 11px; }
+.memo .site { width: 100%; color: var(--accent); }
+.memo .site .copy-text { flex: 1; }
+.memo .code { margin: 3px 0 1px; padding: 2px 8px; border-radius: 4px; background: var(--sunken); color: var(--label); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cmp { border: 1px solid var(--rule); border-radius: 8px; background: var(--raised); padding: 6px 10px 8px; }
 .cmp-head { display: flex; justify-content: space-between; padding: 0 0 4px; font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
 .cmp-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto 54px; align-items: baseline; column-gap: 6px; padding: 4px 0; border-top: 1px solid var(--rule-soft); font-variant-numeric: tabular-nums; cursor: default; }

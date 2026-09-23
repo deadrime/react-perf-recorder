@@ -1,4 +1,4 @@
-import { useRef, memo, useContext, useState, createContext, useEffect, type ReactNode } from 'react';
+import { useMemo, useCallback, useRef, memo, useContext, useState, createContext, useEffect, type ReactNode } from 'react';
 import { createStore, useStore } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
 import { flushSync } from 'react-dom';
@@ -225,6 +225,41 @@ describe('Recorder', () => {
     expect(item(sampled).reasons.reduce((n, [, count]) => n + count, 0)).toBe(100);
     expect(sampled.warnings.some((w) => w.includes('are a sample'))).toBe(true);
     expect(exact.warnings.some((w) => w.includes('are a sample'))).toBe(false);
+  });
+
+  it('lists the useMemo that recomputes on every render, and says which dependency moved', () => {
+    let set!: Setter;
+    const OPEN = { status: 'open' };
+    const Report = () => {
+      const [n, setN] = useState(0);
+      set = setN;
+      const filter = { status: 'open' };
+      const inline = useMemo(() => [filter.status], [filter]);
+      // No dependency array: allowed by React, not by its types.
+      const always = (useMemo as unknown as (create: () => number) => number)(() => n * 2);
+      const kept = useMemo(() => [OPEN.status], [OPEN]);
+      const onPick = useCallback(() => setN(0), []);
+      return (
+        <p onClick={onPick}>
+          {n} {inline.length} {always} {kept.length}
+        </p>
+      );
+    };
+    mount(<Report />);
+    const { recorder } = makeRecorder();
+    recorder.start();
+    for (let i = 1; i <= 3; i++) flush(() => set(i));
+    const rec = recorder.stop();
+    const memos = rec.memos ?? [];
+    // Two of the four remember nothing; the constant one and the callback keep their values.
+    expect(memos.map((m) => [m.component, m.kind, m.renders, m.recomputed])).toEqual([
+      ['Report', 'useMemo', 3, 3],
+      ['Report', 'useMemo', 3, 3],
+    ]);
+    const [inline, always] = memos[0].noDeps ? [memos[1], memos[0]] : [memos[0], memos[1]];
+    expect(inline.deps).toEqual([{ index: 0, changed: 3, sameContent: 3 }]);
+    expect(always.noDeps).toBe(true);
+    expect(inline.info?.type ?? inline.info?.path?.at(-1)).toMatch(/Memo/);
   });
 
   it('counts the first update after mount', () => {

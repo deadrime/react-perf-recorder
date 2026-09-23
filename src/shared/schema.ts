@@ -22,6 +22,23 @@ export interface PluginSection<Data = unknown> {
   data?: Data;
 }
 
+/** A useMemo or useCallback that recomputed on at least half of its component's renders. */
+export interface MemoHookStat {
+  component: string;
+  source?: string;
+  /** Cell index in the component's hook list: the same `#N` the reasons use. */
+  hook: number;
+  kind: 'useMemo' | 'useCallback';
+  /** Renders in which the hook had a value to keep; `recomputed` of them made a new one. */
+  renders: number;
+  recomputed: number;
+  /** No dependency array: it recomputes on every render by definition. */
+  noDeps?: true;
+  /** Per dependency position: how often it changed, and how often into a value with the same content. */
+  deps: Array<{ index: number; changed: number; sameContent: number }>;
+  info?: HookInfo;
+}
+
 export interface HookInfo {
   /** Primitive hook type from `_debugHookTypes`, e.g. `useSyncExternalStore`. */
   type?: string;
@@ -280,6 +297,8 @@ export interface RecordingV2 {
   causes: CauseStat[];
   actions: ActionRecord[];
   segments: Segment[];
+  /** Memo hooks that keep recomputing, worst first; absent when none do. */
+  memos?: MemoHookStat[];
   latency: LatencyEntry[];
   /** Every reason any root or component gave, once; everything else points here by id. */
   reasons: ReasonInfo[];

@@ -38,6 +38,10 @@ the answer says which numbers that may have moved. The recording tells the two a
 segment that came without an event (its `background`), or `query:` causes from the react-query plugin, mean the
 action waited on the network.
 
+`memos` in the summary names a useMemo or useCallback that keeps recomputing — which dependency moves, whether
+into the same content, and the line. "A new object with the same content every time" is a dependency written in
+render: the fix is to make it once (a constant, or its own useMemo), not to add another memo.
+
 On a page with lists of thousands, `record_page` with `sample: true` records about twice as fast; the reasons of
 parent-caused renders are then a sample (`sampled` on a component), the counts are not.
 

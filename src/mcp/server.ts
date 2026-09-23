@@ -3,7 +3,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
 import { z } from 'zod';
 import { compareRecordings } from '../shared/compare';
-import { actionText, hookOf, hookText, reasonsById, rootLine, summarize, textOf, type HookMode } from '../shared/summary';
+import { actionText, hookOf, hookText, memoLine, reasonsById, rootLine, summarize, textOf, type HookMode } from '../shared/summary';
 import type { RecordingV2 } from '../shared/schema';
 import { listingOf } from '../shared/listing';
 import { planReplay } from '../shared/replay';
@@ -20,6 +20,7 @@ const SECTIONS = [
   'outside',
   'causes',
   'components',
+  'memos',
   'watch',
   'zones',
   'timeline',
@@ -68,6 +69,8 @@ export function section(rec: RecordingV2 & { id?: string; status?: string }, nam
       );
     case 'causes':
       return page(rec.causes);
+    case 'memos':
+      return page((rec.memos ?? []).map((m) => ({ ...m, line: memoLine(m) })));
     // A component keeps its reasons as ids into the recording's dictionary; nobody reading the answer can join
     // them by hand, so they are handed over in words, with the id kept for the timeline.
     case 'components': {

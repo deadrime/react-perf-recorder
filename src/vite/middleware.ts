@@ -186,6 +186,16 @@ export class SessionStore {
         delete hook.generated;
       }
     }
+    for (const memo of recording.memos ?? []) {
+      const g = memo.info?.generated;
+      if (!g) continue;
+      const mapped = await map(g);
+      if (mapped) {
+        memo.info!.site = mapped.site;
+        if (mapped.code) memo.info!.code = mapped.code;
+      }
+      delete memo.info!.generated;
+    }
     return sites;
   }
 

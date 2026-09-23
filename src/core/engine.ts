@@ -88,6 +88,16 @@ function applySites(recording: RecordingV2, sites: Record<string, { site: string
       delete hook.generated;
     }
   }
+  for (const memo of recording.memos ?? []) {
+    const g = memo.info?.generated;
+    if (!g) continue;
+    const mapped = sites[`${g.url}:${g.line}:${g.column}`];
+    if (mapped) {
+      memo.info!.site = mapped.site;
+      if (mapped.code) memo.info!.code = mapped.code;
+    }
+    delete memo.info!.generated;
+  }
 }
 
 /** The page-side API: `window.__REACT_PERF_RECORDER__.engine`. */

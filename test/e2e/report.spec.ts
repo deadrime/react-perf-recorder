@@ -216,3 +216,22 @@ test('Repeat replays in the area the report was recorded in, not the one the pan
   await expect(page.locator('[data-rpr="scope"]')).toHaveText('MessageList');
   await expect(page.locator('details[data-fold="compare"]')).toBeVisible();
 });
+
+test('a useMemo that recomputes on every render is named, with the dependency that moves and its line', async ({ page }) => {
+  await page.goto('/basics/deps?rpr=panel');
+  await page.locator('[data-rpr="record"]').click();
+  for (let i = 0; i < 3; i++) await page.getByTestId('render').click();
+  await page.locator('[data-rpr="stop"]').click();
+  await expect(page.locator('[data-rpr="result"]')).toContainText('saved');
+
+  const fold = page.locator('details[data-fold="memos"]');
+  await expect(fold).toHaveAttribute('open', '');
+  const row = fold.locator('[data-rpr="memo"]', { hasText: 'InlineReport' });
+  await expect(row).toHaveAttribute('data-every', 'true');
+  await expect(row.locator('.badge')).toHaveText('0/3 reused');
+  await expect(row).toContainText('dependency 1 is a new object with the same content every time');
+  await expect(row.locator('.site')).toContainText('MemoDeps.tsx');
+  await expect(row.locator('.chain')).toHaveText(/^useOpenRows › /);
+  // The report with the constant filter remembers: it is not listed.
+  await expect(fold.locator('[data-rpr="memo"]', { hasText: 'ConstantReport' })).toHaveCount(0);
+});

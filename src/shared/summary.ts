@@ -1,4 +1,4 @@
-import type { ActionRecord, HookInfo, PluginSection, ReasonInfo, RecordingV2, RootStat } from './schema';
+import type { ActionRecord, HookInfo, MemoHookStat, PluginSection, ReasonInfo, RecordingV2, RootStat } from './schema';
 
 export interface RootLine {
   root: string;
@@ -57,6 +57,8 @@ export interface Summary {
   topCauses: Array<{ key: string; events: number; commits: number; keys?: string }>;
   actions: ActionLine[];
   plugins: Record<string, { version: number; highlights: string[] }>;
+  /** useMemo and useCallback that recompute on most renders, worst first. */
+  memos?: string[];
   frames: { longTasks: number; maxLongTaskMs: number; longFrames: number; worstFrameMs: number };
   overhead: RecordingV2['overhead'];
   warnings: string[];
@@ -166,6 +168,25 @@ export function rootLine(root: RootStat, durationMs: number, reasons: Map<number
   };
 }
 
+/** Why a memo hook remembers nothing, in words: which dependency moves, and whether only its reference does. */
+export function memoWhy(m: MemoHookStat): string {
+  if (m.noDeps) return 'no dependency array: it runs on every render';
+  const dep = m.deps[0];
+  if (!dep) return 'its dependencies changed';
+  const which = `dependency ${dep.index + 1}`;
+  return dep.sameContent === dep.changed
+    ? `${which} is a new object with the same content every time`
+    : dep.sameContent
+      ? `${which} changed ${dep.changed}×, ${dep.sameContent} of them to the same content`
+      : `${which} changed ${dep.changed}×`;
+}
+
+/** `Report · useMemo #2 · recomputed 12 of 12 renders — dependency 1 is a new object… · src/Report.tsx:14` */
+export function memoLine(m: MemoHookStat): string {
+  const site = m.info?.site ? ` · ${m.info.site}${m.info.code ? ` ${m.info.code}` : ''}` : m.source ? ` · ${m.source}` : '';
+  return `${m.component} · ${m.kind} #${m.hook} · recomputed ${m.recomputed} of ${m.renders} renders — ${memoWhy(m)}${site}`;
+}
+
 export function actionText(action: ActionRecord): string {
   const t = action.target;
   const field = t ? t.testId ?? t.name ?? t.label ?? t.text ?? t.tag : '';
@@ -271,6 +292,7 @@ export function summarize(rec: RecordingV2 & { id?: string; status?: string }, t
       worstFrameMs: rec.frames.loaf.reduce((m, f) => Math.max(m, f.duration), 0),
     },
     overhead: rec.overhead,
+    ...(rec.memos?.length ? { memos: rec.memos.slice(0, 5).map(memoLine) } : {}),
     warnings: [...rec.warnings, ...rec.errors.map((e) => `error: ${e}`)].slice(0, 10),
   };
 }

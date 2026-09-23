@@ -41,7 +41,7 @@ export interface Describer {
 
 const same = (a: unknown, b: unknown) => sameContent(a, b, 20_000) === true;
 // Runs for every render caused by a parent, so the budget is smaller than for cascade roots.
-const sameCheap = (a: unknown, b: unknown) => sameContent(a, b, 2_000) === true;
+export const sameCheap = (a: unknown, b: unknown) => sameContent(a, b, 2_000) === true;
 
 export function snapshotOf(f: Fiber): Snapshot {
   return { props: f.memoizedProps, state: f.memoizedState, ctx: f.dependencies?.firstContext ?? null };

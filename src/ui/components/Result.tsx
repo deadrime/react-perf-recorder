@@ -6,6 +6,7 @@ import type { RootStat } from '../../shared/schema';
 import { hookOf, reasonsById, summarize } from '../../shared/summary';
 import { downloadJson } from '../download';
 import { Compare, compareNote, type Comparison } from './Compare';
+import { Memos } from './Memos';
 import { planReplay } from '../../shared/replay';
 import { Kpis, Notice, ReasonLine, StatCard, type Badge, type Kpi, type StatReason } from './Stats';
 import { causeColour, Timeline } from './Timeline';
@@ -128,6 +129,17 @@ export function Result({
       {compared ? (
         <Fold id="compare" title="Before → after" note={compareNote(compared, Boolean(rec.label?.startsWith('replay of')))}>
           <Compare c={compared} />
+        </Fold>
+      ) : null}
+
+      {rec.memos?.length ? (
+        <Fold
+          id="memos"
+          title="Memos that miss"
+          note={`${rec.memos.filter((m) => m.recomputed === m.renders).length} every render · ${rec.memos.length}`}
+          open={rec.memos.some((m) => m.recomputed === m.renders)}
+        >
+          <Memos memos={rec.memos} />
         </Fold>
       ) : null}
 

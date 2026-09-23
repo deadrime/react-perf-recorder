@@ -20,6 +20,7 @@ import { safeUrl } from '../shared/url';
 import { ActionTracker } from './actions';
 import { hookCommits, hookOwner, laneLabel, RecorderError, type CommitHook, type CommitInfo } from './commit-hook';
 import { DomWatcher, touchedHas } from './dom';
+import { MemoHits } from './memo-hits';
 import { FrameWatcher } from './env/frames';
 import { trackHistory } from './env/navigations';
 import {
@@ -226,6 +227,7 @@ export class Recorder {
   private readonly rootList: RootAgg[] = [];
   private readonly reasonIds = new Map<string, number>();
   private readonly reasonIdsByFields = new Map<string, number>();
+  private readonly memoHits = new MemoHits((f) => sourceOf(f, this.config.projectRoot));
   private readonly reasonList: ReasonInfo[] = [];
   private readonly components = new Map<string, ComponentAgg>();
   private readonly watch = new Map<string, { mounted: number; renders: number; byRoot: Map<RootAgg | null, number> }>();
@@ -553,6 +555,7 @@ export class Recorder {
       if (name && rendered) {
         c.renders++;
         this.totals.renders++;
+        this.memoHits.track(name, f, prev!.state);
         const wasted = !touchedHas(c.touched, f);
         const comp = this.componentOf(name, f);
         comp.renders++;
@@ -1082,6 +1085,14 @@ export class Recorder {
       const ids = commitsOfAction.get(action.id)?.filter(kept);
       if (ids?.length) action.commitIds = ids;
     }
+    const memos = this.memoHits.result((fiber) => {
+      if (this.options.hookNames === false || !isMounted(fiber)) return null;
+      try {
+        return inspectHooks(fiber)?.hooks ?? null;
+      } catch {
+        return null;
+      }
+    });
     const commits = this.totals.commits;
     const commitsInScope = this.totals.commitsInScope;
     return {
@@ -1168,6 +1179,7 @@ export class Recorder {
       causes: [...this.causeStats.values()].sort((a, b) => b.commits - a.commits),
       actions,
       segments: segments.map(({ commitIds: _ids, ...rest }) => rest),
+      ...(memos.length ? { memos } : {}),
       latency: this.frames.latency,
       reasons: this.reasonList,
       commits: {
