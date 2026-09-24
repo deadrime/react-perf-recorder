@@ -14,7 +14,7 @@ const Card = memo(({ name, style, tags }: CardProps) => {
       <span className="grow">
         {name} <small className="muted">{tags.join(' · ')}</small>
       </span>
-      <RenderCount n={renders} />
+      <RenderCount renders={renders} />
     </li>
   );
 });
@@ -97,7 +97,7 @@ const Badge = memo(({ name, icon }: { name: string; icon: ReactNode }) => {
       <span className="grow">
         {icon} {name}
       </span>
-      <RenderCount n={renders} />
+      <RenderCount renders={renders} />
     </li>
   );
 });

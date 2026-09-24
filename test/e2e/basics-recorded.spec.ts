@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import type { RecorderGlobal } from '../../src/client';
 import type { RecordingV2 } from '../../src/shared/schema';
-import { hookOf, hookText, reasonsById, textOf, wayText } from '../../src/shared/summary';
+import { hookOf, hookText, reasonsById, textOf, waysOf, wayText } from '../../src/shared/summary';
 
 /**
  * Every panel of a textbook case says what the recorder will say about it. These record the scenario and check the
@@ -52,8 +52,8 @@ test('a clock hidden in a hook: the hook chain names it', async ({ page }) => {
 
 test('a render that came down from a clock keeps its way: the timer, the card, the item that got equal props', async ({ page }) => {
   const rec = await record(page, '/basics/state', () => page.waitForTimeout(2500));
-  const ways = rec.components.find((c) => c.name === 'RenderCount')?.chains?.map((c) => wayText(rec, c.links)) ?? [];
-  expect(ways).toContainEqual(expect.stringMatching(/^core:timer setInterval @ src\/basics\/StateDown\.tsx › CardWithClock · state #0 › Item · props equal › RenderCount · n$/));
+  const ways = waysOf(rec, rec.components.find((c) => c.name === 'RenderCount')?.chains).map(wayText);
+  expect(ways).toContainEqual(expect.stringMatching(/^core:timer setInterval @ src\/basics\/StateDown\.tsx › CardWithClock · state #0 › Item · props equal › RenderCount · prop renders$/));
 
   // The panel draws the same way, with the link where a memo would stop it marked.
   await page.goto('/basics/state?rpr=panel');
@@ -64,6 +64,9 @@ test('a render that came down from a clock keeps its way: the timer, the card, t
   const way = page.locator('[data-rpr="way"]', { hasText: 'CardWithClock' }).filter({ hasText: 'RenderCount' }).first();
   await expect(way.locator('.way-cause')).toHaveText('setInterval @ StateDown.tsx');
   await expect(way.locator('.way-step[data-equal="true"] .way-name')).toHaveText('Item');
+  // The way ends in what the parent changed, so the card does not say it again as a reason of its own.
+  const card = page.locator('.stat', { has: page.locator('.stat-name', { hasText: /^RenderCount$/ }) });
+  await expect(card.locator('.kind', { hasText: 'parent' })).toHaveCount(0);
 });
 
 test('a subscription for a click: external store on the composer', async ({ page }) => {

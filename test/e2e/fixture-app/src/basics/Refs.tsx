@@ -56,7 +56,7 @@ const PadWithState = () => {
       <span className="grow" data-testid="pinned-state">
         {pinned || 'move the pointer over the pad'}
       </span>
-      <RenderCount n={renders} />
+      <RenderCount renders={renders} />
     </div>
   );
 };
@@ -80,7 +80,7 @@ const PadWithRef = () => {
       <span className="grow" data-testid="pinned-ref">
         {pinned || 'move the pointer over the pad'}
       </span>
-      <RenderCount n={renders} />
+      <RenderCount renders={renders} />
     </div>
   );
 };
@@ -94,7 +94,7 @@ const SendButton = memo(({ onSend, testId }: { onSend: () => void; testId: strin
         Send
       </button>
       <span className="grow muted">a memo button</span>
-      <RenderCount n={renders} />
+      <RenderCount renders={renders} />
     </li>
   );
 });

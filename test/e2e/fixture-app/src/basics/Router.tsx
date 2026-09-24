@@ -44,7 +44,7 @@ const LETTERS = ['Invoice for March', 'Re: the picker tree', 'Your weekly digest
 const Letter = ({ subject }: { subject: string }) => (
   <li>
     <span className="grow">{subject}</span>
-    <RenderCount n={useRenderCount()} />
+    <RenderCount renders={useRenderCount()} />
   </li>
 );
 
@@ -63,7 +63,7 @@ const WholeCard = () => {
         <span className="grow">
           folder: <b>{folder}</b>
         </span>
-        <RenderCount n={useRenderCount()} />
+        <RenderCount renders={useRenderCount()} />
       </li>
       {LETTERS.map((subject) => (
         <Letter key={subject} subject={subject} />
@@ -80,7 +80,7 @@ const FolderName = () => {
       <span className="grow">
         folder: <b>{folder}</b>
       </span>
-      <RenderCount n={useRenderCount()} />
+      <RenderCount renders={useRenderCount()} />
     </>
   );
 };
@@ -104,7 +104,7 @@ const NavigatingButton = () => {
       <button type="button" data-testid="go-hook" onClick={() => navigate({ search: '?folder=sent' })}>
         go to sent
       </button>
-      <RenderCount n={useRenderCount()} />
+      <RenderCount renders={useRenderCount()} />
     </li>
   );
 };
@@ -129,7 +129,7 @@ const PlainLink = () => (
     <a className="link" data-testid="go-link" href="?folder=sent">
       go to sent
     </a>
-    <RenderCount n={useRenderCount()} />
+    <RenderCount renders={useRenderCount()} />
   </li>
 );
 

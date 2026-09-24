@@ -53,7 +53,7 @@ const Item = ({ text }: { text: string }) => {
   return (
     <li>
       <span className="grow">{text}</span>
-      <RenderCount n={renders} />
+      <RenderCount renders={renders} />
     </li>
   );
 };
@@ -73,7 +73,7 @@ const Clock = () => {
   const renders = useRenderCount();
   return (
     <span className="clock" data-testid="clock-own">
-      {now.toLocaleTimeString()} <RenderCount n={renders} />
+      {now.toLocaleTimeString()} <RenderCount renders={renders} />
     </span>
   );
 };
@@ -88,7 +88,7 @@ const CardWithClock = () => {
         <span className="clock" data-testid="clock-parent">
           {now.toLocaleTimeString()}
         </span>
-        <RenderCount n={renders} />
+        <RenderCount renders={renders} />
       </p>
       <ul className="rows">
         {ITEMS.map((text) => (
@@ -105,7 +105,7 @@ const CardWithOwnClock = () => {
     <>
       <p className="bar">
         <Clock />
-        <RenderCount n={renders} />
+        <RenderCount renders={renders} />
       </p>
       <ul className="rows">
         {ITEMS.map((text) => (
@@ -133,7 +133,7 @@ const useOverdue = (deadline: number) => {
 const Due = ({ over, renders }: { over: boolean; renders: number }) => (
   <li>
     <span className="grow">Review the picker tree — {over ? <b>overdue</b> : 'due in a few seconds'}</span>
-    <RenderCount n={renders} />
+    <RenderCount renders={renders} />
   </li>
 );
 

@@ -26,7 +26,7 @@ const ByEffect = ({ first, last }: { first: string; last: string }) => {
         <span className="grow">
           Hello, <b>{full || '…'}</b>
         </span>
-        <RenderCount n={useRenderCount()} />
+        <RenderCount renders={useRenderCount()} />
       </li>
     </ul>
   );
@@ -41,7 +41,7 @@ const WhileRendering = ({ first, last }: { first: string; last: string }) => {
         <span className="grow">
           Hello, <b>{full || '…'}</b>
         </span>
-        <RenderCount n={useRenderCount()} />
+        <RenderCount renders={useRenderCount()} />
       </li>
     </ul>
   );

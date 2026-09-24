@@ -39,7 +39,7 @@ const Line = ({ what, value }: { what: string; value: string }) => (
     <span className="grow">
       {what}: <b>{value}</b>
     </span>
-    <RenderCount n={useRenderCount()} />
+    <RenderCount renders={useRenderCount()} />
   </li>
 );
 

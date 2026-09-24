@@ -30,15 +30,15 @@ export function useRenderCount() {
   return count.current;
 }
 
-export const RenderCount = ({ n }: { n: number }) => (
-  <span className="count" data-count={n}>
-    rendered {n}×
+export const RenderCount = ({ renders }: { renders: number }) => (
+  <span className="count" data-count={renders}>
+    rendered {renders}×
   </span>
 );
 
-export const MountCount = ({ n }: { n: number }) => (
-  <span className={n > 1 ? 'count mounts again' : 'count mounts'} data-mounts={n}>
-    mounted {n}×
+export const MountCount = ({ mounts }: { mounts: number }) => (
+  <span className={mounts > 1 ? 'count mounts again' : 'count mounts'} data-mounts={mounts}>
+    mounted {mounts}×
   </span>
 );
 

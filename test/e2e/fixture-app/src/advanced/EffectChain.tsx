@@ -34,7 +34,7 @@ const Line = ({ what, value }: { what: string; value: string }) => (
   <li>
     <span className="label wide">{what}</span>
     <span className="grow">{value || '…'}</span>
-    <RenderCount n={useRenderCount()} />
+    <RenderCount renders={useRenderCount()} />
   </li>
 );
 

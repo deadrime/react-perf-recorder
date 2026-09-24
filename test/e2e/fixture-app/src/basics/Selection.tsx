@@ -40,7 +40,7 @@ const Line = ({ item, on, onSelect, side }: { item: Item; on: boolean; onSelect:
       {on ? '● ' : ''}
       {item.title}
     </button>
-    <RenderCount n={useRenderCount()} />
+    <RenderCount renders={useRenderCount()} />
   </li>
 );
 

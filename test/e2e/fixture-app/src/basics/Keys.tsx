@@ -76,8 +76,8 @@ const Row = memo(({ task, mode }: { task: Task; mode: Mode }) => {
     <li data-testid={`task-${task.id}`}>
       <input type="checkbox" checked={done} onChange={(e) => setDone(e.target.checked)} />
       <span className="grow">{task.title}</span>
-      <RenderCount n={renders} />
-      <MountCount n={mounted} />
+      <RenderCount renders={renders} />
+      <MountCount mounts={mounted} />
     </li>
   );
 });

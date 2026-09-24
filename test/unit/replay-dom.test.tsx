@@ -23,7 +23,11 @@ describe('replay', () => {
     );
     await new Promise((r) => setTimeout(r, 20));
     commits = 0;
-    await replay({ steps: [{ kind: 'click', afterMs: 0, durationMs: 0, what: 'click «menu»', selector: '[data-testid="menu"]' }], tailMs: 0, skipped: [] });
+    await replay({
+      steps: [{ kind: 'click', afterMs: 0, durationMs: 0, what: 'click «menu»', selector: '[data-testid="menu"]' }],
+      tailMs: 0,
+      skipped: [],
+    });
     await new Promise((r) => setTimeout(r, 20));
     expect(document.querySelector('[data-testid="menu"]')!.textContent).toBe('open 1');
     // pointerdown opens, click picks: two commits, not one.

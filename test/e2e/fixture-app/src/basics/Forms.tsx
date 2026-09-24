@@ -42,7 +42,7 @@ const Field = ({ label, children }: { label: string; children: ReactNode }) => (
   <li>
     <span className="label">{label}</span>
     {children}
-    <RenderCount n={useRenderCount()} />
+    <RenderCount renders={useRenderCount()} />
   </li>
 );
 
@@ -61,7 +61,7 @@ const ControlledForm = () => {
         <span className="grow">
           preview: <b>{values.title || '…'}</b>
         </span>
-        <RenderCount n={useRenderCount()} />
+        <RenderCount renders={useRenderCount()} />
       </li>
     </ul>
   );
@@ -75,7 +75,7 @@ const Preview = ({ control }: { control: Control<Values> }) => {
       <span className="grow">
         preview: <b>{title || '…'}</b>
       </span>
-      <RenderCount n={useRenderCount()} />
+      <RenderCount renders={useRenderCount()} />
     </li>
   );
 };

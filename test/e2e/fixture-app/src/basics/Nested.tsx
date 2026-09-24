@@ -30,8 +30,8 @@ const Outside = ({ label }: { label: string }) => {
     <li>
       <span className="grow">{label}</span>
       <input data-testid={`note-${label}`} value={note} onInput={(e) => setNote((e.target as HTMLInputElement).value)} placeholder="note" />
-      <RenderCount n={useRenderCount()} />
-      <MountCount n={mounted} />
+      <RenderCount renders={useRenderCount()} />
+      <MountCount mounts={mounted} />
     </li>
   );
 };
@@ -49,8 +49,8 @@ const Inside = () => {
       <li>
         <span className="grow">{label}</span>
         <input data-testid={`note-in-${label}`} value={note} onInput={(e) => setNote((e.target as HTMLInputElement).value)} placeholder="note" />
-        <RenderCount n={useRenderCount()} />
-        <MountCount n={mounted} />
+        <RenderCount renders={useRenderCount()} />
+        <MountCount mounts={mounted} />
       </li>
     );
   };

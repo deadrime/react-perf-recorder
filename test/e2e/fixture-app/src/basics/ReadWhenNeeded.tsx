@@ -47,7 +47,7 @@ const Subscribed = () => {
       <span className="grow" data-testid="sent-subscribed">
         {sent}
       </span>
-      <RenderCount n={renders} />
+      <RenderCount renders={renders} />
     </li>
   );
 };
@@ -64,7 +64,7 @@ const ReadOnClick = () => {
       <span className="grow" data-testid="sent-read">
         {sent}
       </span>
-      <RenderCount n={renders} />
+      <RenderCount renders={renders} />
     </li>
   );
 };

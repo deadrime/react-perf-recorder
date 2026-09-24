@@ -55,7 +55,7 @@ const Table = memo(({ rows }: { rows: Row[] }) => (
 const TableRow = ({ row }: { row: Row }) => (
   <li>
     <span className="grow">{row.title}</span>
-    <RenderCount n={useRenderCount()} />
+    <RenderCount renders={useRenderCount()} />
   </li>
 );
 

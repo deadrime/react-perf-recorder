@@ -36,7 +36,7 @@ const POSTS = ['Release notes for 0.2', 'How the picker finds a component', 'Rec
 const Post = ({ title }: { title: string }) => (
   <li>
     <span className="grow">{title}</span>
-    <RenderCount n={useRenderCount()} />
+    <RenderCount renders={useRenderCount()} />
   </li>
 );
 

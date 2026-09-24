@@ -41,7 +41,7 @@ const Row = memo(({ person, onPick }: { person: Person; onPick: (id: string) => 
       <button type="button" onClick={() => onPick(person.id)}>
         pick
       </button>
-      <RenderCount n={renders} />
+      <RenderCount renders={renders} />
     </li>
   );
 });

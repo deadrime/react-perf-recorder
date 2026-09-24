@@ -43,14 +43,14 @@ const ThemeContext = createContext('dark');
 const Who = ({ user, renders }: { user: string; renders: number }) => (
   <li data-testid="who">
     <span className="grow">signed in as {user}</span>
-    <RenderCount n={renders} />
+    <RenderCount renders={renders} />
   </li>
 );
 
 const Swatch = ({ theme, renders }: { theme: string; renders: number }) => (
   <li data-testid="swatch">
     <span className="grow">theme: {theme}</span>
-    <RenderCount n={renders} />
+    <RenderCount renders={renders} />
   </li>
 );
 
@@ -71,16 +71,16 @@ const InlineContext = createContext<Both>({ user: 'Anna', theme: 'dark' });
 const StableContext = createContext<Both>({ user: 'Anna', theme: 'dark' });
 
 /** How often a provider rendered: the line above its readers, so the two numbers can be compared at a glance. */
-const ProviderRenders = ({ n }: { n: number }) => (
-  <p className="muted" data-provider-renders={n}>
-    the provider rendered {n}×
+const ProviderRenders = ({ renders }: { renders: number }) => (
+  <p className="muted" data-provider-renders={renders}>
+    the provider rendered {renders}×
   </p>
 );
 
 /** Hands out a new object every time it renders, whatever it renders for. */
 const InlineProvider = ({ user, theme, children }: Both & { children: ReactNode }) => (
   <>
-    <ProviderRenders n={useRenderCount()} />
+    <ProviderRenders renders={useRenderCount()} />
     <InlineContext.Provider value={{ user, theme }}>{children}</InlineContext.Provider>
   </>
 );
@@ -90,7 +90,7 @@ const StableProvider = ({ user, theme, children }: Both & { children: ReactNode 
   const value = useMemo(() => ({ user, theme }), [user, theme]);
   return (
     <>
-      <ProviderRenders n={useRenderCount()} />
+      <ProviderRenders renders={useRenderCount()} />
       <StableContext.Provider value={value}>{children}</StableContext.Provider>
     </>
   );

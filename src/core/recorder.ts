@@ -373,11 +373,7 @@ export class Recorder {
     setTimerSink({
       after: (text, ours, library, startedAt) => {
         const plugins = this.deps.plugins;
-        if (!this.freshUpdates(false).size) {
-          // A library's timer that updated no one: what waited for it woke no one either.
-          if (plugins.hasWaiting) plugins.deliver(library(), () => new Set(), startedAt);
-          return;
-        }
+        if (!this.freshUpdates(false).size) return;
         // A timer of the recorder's own — the panel's clock, its outlines — takes no one's updates.
         if (ours()) return;
         if (plugins.hasWaiting && plugins.deliver(library(), () => this.freshUpdates(), startedAt)) return;

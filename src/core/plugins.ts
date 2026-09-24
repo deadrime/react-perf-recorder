@@ -1,6 +1,7 @@
 import type { CauseInput, DescribeKind, PluginContext, RuntimePlugin, RuntimePluginFactory, SessionContext } from '../runtime';
 import type { Conditions, PluginInfo, PluginSection, Primitive } from '../shared/schema';
 import type { Fiber } from './fiber';
+import { nextOrder } from './env/timers';
 import { fallbackSelectorLabel, type Describer } from './reasons';
 
 export interface CauseEvent {
@@ -17,10 +18,15 @@ export interface CauseEvent {
 
 interface Waiting extends CauseEvent {
   merge?: string;
-  emittedAt: number;
+  /** Its place in `nextOrder`, against a timer's start; `emittedMs` is only for giving up on it. */
+  order: number;
+  emittedMs: number;
 }
 
-/** A waiting event whose timer never came (a scheduler of the app's own) goes to the next commit as it is. */
+/**
+ * A waiting event whose timer never came: dropped once the plugin's timers have delivered before (nothing listened
+ * to it), or sent to the next commit as it is when they never have (a scheduler of the app's own).
+ */
 const WAIT_MS = 1000;
 
 export type PluginEntry = [RuntimePluginFactory | RuntimePlugin, unknown];
@@ -42,6 +48,8 @@ export class PluginHost implements Describer {
   /** `waitForTimer` events, until a timer of their plugin's packages runs. */
   private waiting: Waiting[] = [];
   private readonly owners = new Map<string, string>();
+  /** Plugins whose events a timer of theirs has delivered in this recording. */
+  private readonly delivering = new Set<string>();
   private t0 = 0;
   readonly warnings: string[] = [];
 
@@ -97,7 +105,8 @@ export class PluginHost implements Describer {
         changes: event.changes,
         data: event.data,
         merge: event.merge,
-        emittedAt: performance.now(),
+        order: nextOrder(),
+        emittedMs: performance.now(),
       };
       this.waiting.push(cause);
       return cause;
@@ -121,29 +130,29 @@ export class PluginHost implements Describer {
   }
 
   /**
-   * A timer of `library` ran: the events its plugin had waiting since before it started go to the components it
-   * updated — `null` when the commit ran inside the timer and they cannot be told — or nowhere if it updated none.
-   * Returns whether the timer was a plugin's delivery, which then needs no cause of its own.
+   * A timer of `library` updated components: the events its plugin had waiting since before it started go to them,
+   * or to the commit as it is when `fibers` is null (the commit ran inside the timer). Returns whether it was a
+   * plugin's delivery, which then needs no cause of its own. A timer that updated no one is not called: a library
+   * runs other timers too (garbage collection, the next poll), and one of those must not take the events.
    */
   deliver(library: string | null, fibers: () => Set<Fiber> | null, startedAt = Infinity): boolean {
     const plugin = library ? this.owners.get(library) : undefined;
     if (!plugin) return false;
-    const mine = this.waiting.filter((w) => w.plugin === plugin && w.emittedAt < startedAt);
+    const mine = this.waiting.filter((w) => w.plugin === plugin && w.order < startedAt);
     if (!mine.length) return false;
     this.waiting = this.waiting.filter((w) => !mine.includes(w));
+    this.delivering.add(plugin);
     const aimed = fibers();
-    for (const { merge, emittedAt, ...cause } of mine) {
-      if (!aimed) this.buffer.push(cause);
-      else if (aimed.size) this.buffer.push({ ...cause, aimed: true, fibers: aimed });
-    }
+    for (const { merge, order, emittedMs, ...cause } of mine) this.buffer.push(aimed ? { ...cause, aimed: true, fibers: aimed } : cause);
     return true;
   }
 
   drain(): CauseEvent[] {
-    if (this.waiting.length && performance.now() - this.waiting[0].emittedAt > WAIT_MS) {
+    if (this.waiting.length && performance.now() - this.waiting[0].emittedMs > WAIT_MS) {
       const cutoff = performance.now() - WAIT_MS;
-      for (const { merge, emittedAt, ...cause } of this.waiting.filter((w) => w.emittedAt <= cutoff)) this.buffer.push(cause);
-      this.waiting = this.waiting.filter((w) => w.emittedAt > cutoff);
+      for (const { merge, order, emittedMs, ...cause } of this.waiting.filter((w) => w.emittedMs <= cutoff))
+        if (!this.delivering.has(cause.plugin)) this.buffer.push(cause);
+      this.waiting = this.waiting.filter((w) => w.emittedMs > cutoff);
     }
     if (!this.buffer.length) return this.buffer;
     const out = this.buffer;
@@ -181,6 +190,7 @@ export class PluginHost implements Describer {
     this.t0 = t0;
     this.buffer = [];
     this.waiting = [];
+    this.delivering.clear();
     this.recording = true;
     for (const entry of this.loaded) {
       if (entry.error || !entry.plugin.start) continue;

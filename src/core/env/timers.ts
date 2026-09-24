@@ -14,6 +14,7 @@ export interface TimerSink {
    * Called after every timer callback; `text` names the timer and `ours` says the recorder scheduled it — both are
    * worked out only if there are updates to give it.
    */
+  /** `startedAt` is the timer's place in `nextOrder`. */
   after(text: () => string, ours: () => boolean, library: () => string | null, startedAt: number): void;
 }
 
@@ -22,6 +23,14 @@ let running: Scheduled | null = null;
 let installed = false;
 const texts = new WeakMap<Error, string>();
 const own = new WeakMap<Error, boolean>();
+
+let order = 0;
+
+/**
+ * A number that only grows: what happened before a timer started, told apart from what happened in it. The clock
+ * cannot say: it is coarsened to 0.1 ms, and a timeout of 0 runs within that of the code that set it.
+ */
+export const nextOrder = () => ++order;
 
 export function setTimerSink(next: TimerSink | null) {
   sink = next;
@@ -97,7 +106,7 @@ function wrap(kind: Kind) {
         const s = sink;
         if (!s) return callback.apply(this, args);
         const outer = running;
-        const startedAt = performance.now();
+        const startedAt = nextOrder();
         running = scheduled;
         try {
           return callback.apply(this, args);

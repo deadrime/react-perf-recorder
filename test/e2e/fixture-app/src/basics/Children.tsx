@@ -33,7 +33,7 @@ const Frame = ({ children }) => {
 const Report = () => (
   <li>
     <span className="grow">The monthly report</span>
-    <RenderCount n={useRenderCount()} />
+    <RenderCount renders={useRenderCount()} />
   </li>
 );
 
@@ -53,7 +53,7 @@ const FrameThatRenders = () => {
     <ul className="rows">
       <li className="clock-row">
         <span className="grow">{now.toLocaleTimeString()}</span>
-        <RenderCount n={useRenderCount()} />
+        <RenderCount renders={useRenderCount()} />
       </li>
       <Report />
     </ul>
@@ -67,7 +67,7 @@ const FrameWithChildren = ({ children }: { children: ReactNode }) => {
     <ul className="rows">
       <li className="clock-row">
         <span className="grow">{now.toLocaleTimeString()}</span>
-        <RenderCount n={useRenderCount()} />
+        <RenderCount renders={useRenderCount()} />
       </li>
       {children}
     </ul>

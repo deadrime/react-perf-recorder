@@ -68,7 +68,7 @@ const Row = ({ task, renders }: { task: Task; renders: number }) => (
       {task.done ? '✓ ' : ''}
       {task.title}
     </span>
-    <RenderCount n={renders} />
+    <RenderCount renders={renders} />
   </li>
 );
 

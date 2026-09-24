@@ -20,7 +20,7 @@ const fetchInbox = async () => MESSAGES.map((text, i) => ({ id: i, text }));
 const Message = ({ text }: { text: string }) => (
   <li>
     <span className="grow">{text}</span>
-    <RenderCount n={useRenderCount()} />
+    <RenderCount renders={useRenderCount()} />
   </li>
 );
 

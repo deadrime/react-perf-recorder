@@ -131,40 +131,110 @@ export function reasonText(reason: Omit<ReasonInfo, 'i' | 'text'>): string {
 /** The sentence of a reason: what the recording stored, or what its fields say. */
 export const textOf = (reason: Pick<ReasonInfo, 'kind'> & Partial<ReasonInfo>) => reason.text ?? reasonText(reason);
 
-/** A link's reason in the fewest words: a parent's link is only the props it changed. */
-export function linkWhy(reason: ReasonInfo | undefined): string {
-  if (!reason) return '';
-  if (reason.kind !== 'parent') return textOf(reason);
-  if (reason.equal) return 'props equal';
-  const props = [names(reason.changed), reason.sameRef?.length ? `same: ${names(reason.sameRef)}` : ''].filter(Boolean).join(' | ');
-  return props || 'children';
-}
-
 /** One step of a way down, ready to print; the first carries its root's leading cause. */
 export interface WayStep {
   name: string;
-  why: string;
+  /** The root's own reason: `state #0`, `external store #2 [chat]`. */
+  why?: string;
+  /** Props the parent changed, and props that were only new references to the same content. */
+  props?: string[];
+  same?: string[];
+  children?: true;
   /** Props equal: the render a memo would have saved. */
-  equal?: boolean;
+  equal?: true;
   skipped?: number;
 }
+
+function stepOf(name: string, reason: ReasonInfo | undefined): WayStep {
+  if (!reason) return { name };
+  if (reason.kind !== 'parent') return { name, why: textOf(reason) };
+  if (reason.equal) return { name, equal: true };
+  return {
+    name,
+    ...(reason.changed?.length ? { props: reason.changed.slice(0, 5) } : {}),
+    ...(reason.sameRef?.length ? { same: reason.sameRef.slice(0, 5) } : {}),
+    ...(reason.children || (!reason.changed?.length && !reason.sameRef?.length) ? { children: true as const } : {}),
+  };
+}
+
+/** What a step says after the name, split for the panel: `prop` and `renders`, or only the words for a root. */
+export function stepParts(step: WayStep): Array<{ label?: string; text: string; tone?: 'warn' }> {
+  if (step.skipped) return [{ text: `${step.skipped} more` }];
+  if (step.why) return [{ text: step.why }];
+  if (step.equal) return [{ label: 'props', text: 'equal', tone: 'warn' }];
+  const parts: Array<{ label?: string; text: string; tone?: 'warn' }> = [];
+  if (step.props?.length) parts.push({ label: step.props.length > 1 ? 'props' : 'prop', text: step.props.join(', ') });
+  // A new reference with the same content: the prop a useMemo or a constant would have kept.
+  if (step.same?.length) parts.push({ label: 'same content', text: step.same.join(', '), tone: 'warn' });
+  if (step.children && !parts.length) parts.push({ text: 'children' });
+  return parts;
+}
+
+const stepText = (step: WayStep) =>
+  stepParts(step)
+    .map((p) => (p.label ? `${p.label} ${p.text}` : p.text))
+    .join(' · ');
 
 export function wayOf(rec: Pick<RecordingV2, 'roots' | 'outsideRoots' | 'reasons'>, links: ChainLink[]): { cause?: string; steps: WayStep[] } {
   const reasons = reasonsById(rec.reasons);
   const root = links[0]?.root !== undefined ? [...rec.roots, ...rec.outsideRoots][links[0].root] : undefined;
   const cause = root?.causes.find(([key]) => key !== 'core:none')?.[0];
-  const steps = links.map((link): WayStep => {
-    if (link.skipped) return { name: '…', why: `${link.skipped} more`, skipped: link.skipped };
-    const reason = link.reason !== undefined ? reasons.get(link.reason) : undefined;
-    return { name: link.name, why: linkWhy(reason), ...(reason?.kind === 'parent' && reason.equal ? { equal: true } : {}) };
-  });
+  const steps = links.map(
+    (link): WayStep =>
+      link.skipped ? { name: '…', skipped: link.skipped } : stepOf(link.name, link.reason !== undefined ? reasons.get(link.reason) : undefined)
+  );
   return { ...(cause ? { cause } : {}), steps };
 }
 
+export interface Way {
+  n: number;
+  cause?: string;
+  steps: WayStep[];
+}
+
+const union = (a?: string[], b?: string[]) => {
+  const all = [...new Set([...(a ?? []), ...(b ?? [])])];
+  return all.length ? all : undefined;
+};
+
+/** Two steps of the same component on the same way: the props of both; equal only if equal on both. */
+function mergeStep(a: WayStep, b: WayStep): WayStep {
+  if (a.skipped || a.why !== undefined) return a;
+  if (a.equal && b.equal) return a;
+  const props = union(a.props, b.props);
+  const same = union(a.same, b.same);
+  return {
+    name: a.name,
+    ...(props ? { props } : {}),
+    ...(same ? { same } : {}),
+    ...(a.children || b.children ? { children: true as const } : {}),
+  };
+}
+
+/**
+ * A component's ways, those through the same components as one: which props each parent changed differs from render
+ * to render, and that is not a different way down.
+ */
+export function waysOf(rec: Pick<RecordingV2, 'roots' | 'outsideRoots' | 'reasons'>, chains: Array<{ n: number; links: ChainLink[] }> = []): Way[] {
+  const byRoute = new Map<string, Way>();
+  for (const chain of chains) {
+    const way = { n: chain.n, ...wayOf(rec, chain.links) };
+    const route = `${way.cause ?? ''}|${way.steps.map((s) => `${s.name}${s.why ? `:${s.why}` : ''}`).join('>')}`;
+    const known = byRoute.get(route);
+    if (!known) byRoute.set(route, way);
+    else {
+      known.n += way.n;
+      known.steps = known.steps.map((step, i) => mergeStep(step, way.steps[i]));
+    }
+  }
+  return [...byRoute.values()].sort((a, b) => b.n - a.n);
+}
+
 /** `react-query:fetch ["presence"] › Stats · state #0 › Line · online › Badge · count` */
-export function wayText(rec: Pick<RecordingV2, 'roots' | 'outsideRoots' | 'reasons'>, links: ChainLink[]): string {
-  const { cause, steps } = wayOf(rec, links);
-  return [cause, ...steps.map((s) => (s.skipped ? `… ${s.skipped} more` : s.why ? `${s.name} · ${s.why}` : s.name))].filter(Boolean).join(' › ');
+export function wayText(way: Way): string {
+  return [way.cause, ...way.steps.map((s) => (s.skipped ? `… ${s.skipped} more` : stepText(s) ? `${s.name} · ${stepText(s)}` : s.name))]
+    .filter(Boolean)
+    .join(' › ');
 }
 
 /** Reasons of a recording by id, for everything that prints them. */

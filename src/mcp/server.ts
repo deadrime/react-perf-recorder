@@ -3,7 +3,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
 import { z } from 'zod';
 import { compareRecordings } from '../shared/compare';
-import { actionText, hookOf, hookText, memoLine, reasonsById, rootLine, summarize, textOf, wayText, type HookMode } from '../shared/summary';
+import { actionText, hookOf, hookText, memoLine, reasonsById, rootLine, summarize, textOf, waysOf, wayText, type HookMode } from '../shared/summary';
 import type { RecordingV2 } from '../shared/schema';
 import { listingOf } from '../shared/listing';
 import { planReplay } from '../shared/replay';
@@ -82,7 +82,7 @@ export function section(rec: RecordingV2 & { id?: string; status?: string }, nam
             const reason = reasons.get(id);
             return { i: id, n, reason: reason ? textOf(reason) : '?' };
           }),
-          ...(c.chains ? { chains: c.chains.map((chain) => ({ n: chain.n, way: wayText(rec, chain.links) })) } : {}),
+          ...(c.chains ? { chains: waysOf(rec, c.chains).map((way) => ({ n: way.n, way: wayText(way) })) } : {}),
         }))
       );
     }

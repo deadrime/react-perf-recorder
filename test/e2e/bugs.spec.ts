@@ -231,7 +231,10 @@ test.describe('seeded re-render bugs', () => {
     // A poll is one cause, on the commits of its own subscribers: not three, and not on a feed tick's commit.
     const poll = rec.causes.find((c) => c.key === 'react-query:fetch → success ["presence"]')!;
     expect(poll).toBeDefined();
-    expect(keys.filter((k) => k.includes('@tanstack'))).toEqual([]);
+    // react-query's timer stands alone only when the poll it delivers began before the recording did.
+    const timer = rec.causes.find((c) => c.key.includes('@tanstack'));
+    const firstPoll = Math.min(...rec.commits.list.filter((c) => c.causeIds?.includes(poll.i)).map((c) => c.i));
+    expect(rec.commits.list.filter((c) => timer && c.causeIds?.includes(timer.i) && c.i > firstPoll)).toEqual([]);
     const pollRoots = rec.commits.list.filter((c) => c.causeIds?.includes(poll.i)).flatMap((c) => (c.roots ?? []).map((r) => rec.roots[r.i].name));
     expect(new Set(pollRoots)).toEqual(new Set(['ChannelStats']));
     // Every commit is explained: nothing falls through to "no known cause".

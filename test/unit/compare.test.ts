@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { aggregateEvents } from '../../src/shared/aggregate';
 import { compareDigests, compareRecordings, digestOf } from '../../src/shared/compare';
-import { summarize } from '../../src/shared/summary';
+import { summarize, waysOf, wayText } from '../../src/shared/summary';
 import type { SessionEvent, SessionMeta } from '../../src/shared/schema';
 
 const meta: SessionMeta = {
@@ -39,6 +39,46 @@ describe('partial recordings and comparison', () => {
     const summary = summarize(rec);
     expect(summary.actions[0]).toMatchObject({ what: 'click «refresh»', renders: 60 });
     expect(summary.topCauses[0]).toMatchObject({ key: 'zustand:rows/set', commits: 2 });
+  });
+
+  it('folds ways through the same components into one, props of each link together', () => {
+    const rec = aggregateEvents(meta, events(3));
+    rec.roots[0].causes = [['core:timer setInterval', 3]];
+    rec.reasons.push(
+      { i: 10, kind: 'parent', changed: ['renders'] },
+      { i: 11, kind: 'parent', changed: ['over', 'renders'] },
+      { i: 12, kind: 'parent', equal: true }
+    );
+    const ways = waysOf(rec, [
+      {
+        n: 2,
+        links: [
+          { name: 'Row', root: 0, reason: 0 },
+          { name: 'Due', reason: 11 },
+        ],
+      },
+      {
+        n: 1,
+        links: [
+          { name: 'Row', root: 0, reason: 0 },
+          { name: 'Due', reason: 10 },
+        ],
+      },
+      {
+        n: 1,
+        links: [
+          { name: 'Row', root: 0, reason: 0 },
+          { name: 'Item', reason: 12 },
+          { name: 'Due', reason: 10 },
+        ],
+      },
+    ]);
+    expect(ways.map(wayText)).toEqual([
+      'core:timer setInterval › Row · external store #2 selectRow › Due · props over, renders',
+      'core:timer setInterval › Row · external store #2 selectRow › Item · props equal › Due · prop renders',
+    ]);
+    expect(ways.map((w) => w.n)).toEqual([3, 1]);
+    expect(ways[1].steps[1]).toMatchObject({ equal: true });
   });
 
   it('leaves out a plugin that found nothing of its library', () => {
@@ -79,7 +119,16 @@ describe('partial recordings and comparison', () => {
     const clicks = (times: number, renders: number): SessionEvent[] => [
       { k: 'root', i: 0, key: 'List|src/List.tsx:1|App', name: 'List', source: 'src/List.tsx:1', path: 'App' },
       ...Array.from({ length: times }, (_, i): SessionEvent[] => [
-        { k: 'action', action: { id: i + 1, kind: 'click', atMs: 100 + i * 2000, endMs: 100 + i * 2000, target: { tag: 'button', text: 'Add', component: 'Todo' } } },
+        {
+          k: 'action',
+          action: {
+            id: i + 1,
+            kind: 'click',
+            atMs: 100 + i * 2000,
+            endMs: 100 + i * 2000,
+            target: { tag: 'button', text: 'Add', component: 'Todo' },
+          },
+        },
         { k: 'commit', t: 110 + i * 2000, n: renders + (i % 2), event: 'click', roots: [[0, renders, []]] },
       ]).flat(),
       { k: 'commit', t: 50, n: 4, roots: [[0, 4, []]] },

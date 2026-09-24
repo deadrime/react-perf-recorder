@@ -32,7 +32,8 @@ describe('addComponentNames', () => {
     expect(namesIn(code)).toContain('Real');
     const named = addComponentNames(code)!;
     // Never a bare mention of the name: reading an undeclared one throws, `typeof` does not.
-    for (const name of namesIn(code)) expect(named).toContain(`if ((typeof ${name} === "function" || (typeof ${name} === "object" && ${name} !== null))`);
+    for (const name of namesIn(code))
+      expect(named).toContain(`if ((typeof ${name} === "function" || (typeof ${name} === "object" && ${name} !== null))`);
   });
 
   it('keeps an existing displayName', () => {

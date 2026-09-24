@@ -2,7 +2,7 @@
 import type { JSX } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { HookInfo, ReasonInfo } from '../../shared/schema';
-import { hookChain, type WayStep } from '../../shared/summary';
+import { hookChain, stepParts, type Way } from '../../shared/summary';
 
 /** A number worth seeing at a glance next to a component's name; `warn` is for the ones that mean wasted work. */
 export interface Badge {
@@ -185,10 +185,7 @@ export const Kpis = ({ items }: { items: Kpi[] }): JSX.Element => (
  * to open are one click away, so the reading stays short.
  */
 /** `core:timer setInterval @ src/basics/StateDown.tsx` reads as `setInterval @ StateDown.tsx`; the title keeps the whole key. */
-const shortCause = (key: string) =>
-  key
-    .replace(/^core:(timer )?/, '')
-    .replace(/@ \S*\/([^/\s]+)$/, '@ $1');
+const shortCause = (key: string) => key.replace(/^core:(timer )?/, '').replace(/@ \S*\/([^/\s]+)$/, '@ $1');
 
 export function StatCard({
   name,
@@ -203,7 +200,7 @@ export function StatCard({
   badges: Badge[];
   reasons: StatReason[];
   /** How its renders came down from their roots, most frequent first. */
-  ways?: Array<{ n: number; cause?: string; steps: WayStep[] }>;
+  ways?: Way[];
   /** Roots open their leading reason: it is the answer the report was opened for. */
   openFirst?: boolean;
 }): JSX.Element {
@@ -233,17 +230,22 @@ export function StatCard({
           {ways.map((way, i) => (
             <div class="way" data-rpr="way" key={i} title={`${way.n} renders came down this way`}>
               <span class="way-n">{`×${way.n}`}</span>
+              {way.cause ? (
+                <span class="way-cause" title={way.cause}>
+                  {shortCause(way.cause)}
+                </span>
+              ) : null}
               <ol class="way-steps">
-                {way.cause ? (
-                  <li class="way-cause" title={way.cause}>
-                    {shortCause(way.cause)}
-                  </li>
-                ) : null}
                 {way.steps.map((step, j) => (
                   // Props equal on a link: the parent rendered for nothing this child needed — a memo would stop it here.
                   <li key={j} class="way-step" data-equal={step.equal ? 'true' : undefined} data-skipped={step.skipped ? 'true' : undefined}>
                     <span class="way-name">{step.name}</span>
-                    {step.why ? <span class="way-why">{step.why}</span> : null}
+                    {stepParts(step).map((part, k) => (
+                      <span class="way-why" key={k} data-tone={part.tone}>
+                        {part.label ? <span class="way-label">{part.label}</span> : null}
+                        {part.text}
+                      </span>
+                    ))}
                   </li>
                 ))}
               </ol>

@@ -3,7 +3,7 @@ import type { ComponentChildren, JSX } from 'preact';
 import { useMemo, useState } from 'preact/hooks';
 import type { Saved } from '../../core/engine';
 import type { RootStat } from '../../shared/schema';
-import { hookOf, reasonsById, summarize, wayOf } from '../../shared/summary';
+import { hookOf, reasonsById, summarize, waysOf } from '../../shared/summary';
 import { downloadJson } from '../download';
 import { Compare, compareNote, type Comparison } from './Compare';
 import { Memos } from './Memos';
@@ -251,8 +251,10 @@ export function Result({
             // Recorded fast: its reasons are a sample of its instances, its counts are not.
             if (c.sampled) badges.push({ text: 'reasons sampled' });
             const root = rootByName.get(c.name);
-            const ways = c.chains?.map((chain) => ({ n: chain.n, ...wayOf(rec, chain.links) }));
-            return <StatCard key={c.name} name={c.name} source={root?.source} badges={badges} reasons={stated(c, root)} ways={ways} />;
+            const ways = waysOf(rec, c.chains);
+            // The ways end in what the parent changed: a parent reason above them would say it twice.
+            const own = ways.length ? stated(c, root).filter((r) => r.reason?.kind !== 'parent') : stated(c, root);
+            return <StatCard key={c.name} name={c.name} source={root?.source} badges={badges} reasons={own} ways={ways} />;
           })}
           {hidden ? <p class="muted">{`+ ${hidden} wrappers and components of packages`}</p> : null}
         </Fold>

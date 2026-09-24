@@ -1,4 +1,5 @@
 import { QueryClient } from '@tanstack/query-core';
+import { nextOrder } from '../../src/core/env/timers';
 import { PluginHost } from '../../src/core/plugins';
 import type { Fiber } from '../../src/core/fiber';
 import plugin from '../../src/plugins/react-query/runtime';
@@ -72,19 +73,31 @@ describe('events that wait for their library timer', () => {
     expect(h.drain()).toEqual([expect.objectContaining({ type: 'fetch → success ["a"]', aimed: true, fibers: new Set([fiber]) })]);
   });
 
-  it('are dropped when the timer updated no one, and one emitted inside the timer waits for the next', () => {
+  it('wait past a timer that was not the delivery, and are dropped if the delivery never comes', () => {
     let now = 1000;
     vi.spyOn(performance, 'now').mockImplementation(() => now);
     const h = host();
     h.emit('q', { type: 'success ["a"]', waitForTimer: true });
-    now += 5;
-    const startedAt = now;
+    const startedAt = nextOrder();
     h.emit('q', { type: 'fetch ["b"]', waitForTimer: true });
-    expect(h.deliver('@tanstack/query-core', () => new Set(), startedAt)).toBe(true);
-    expect(h.drain()).toEqual([]);
+    // Only what waited from before the timer started goes with it.
+    expect(h.deliver('@tanstack/query-core', () => new Set([fiber]), startedAt)).toBe(true);
+    expect(h.drain().map((e) => e.type)).toEqual(['success ["a"]']);
     expect(h.hasWaiting).toBe(true);
-    h.deliver('@tanstack/query-core', () => null);
-    expect(h.drain()).toEqual([expect.objectContaining({ type: 'fetch ["b"]' })]);
+    // Its timers delivered before: one that never comes means nothing listened.
+    now += 2000;
+    expect(h.drain()).toEqual([]);
+    expect(h.hasWaiting).toBe(false);
+    vi.restoreAllMocks();
+  });
+
+  it('go to the next commit as they are when the plugin has no timer delivering them', () => {
+    let now = 1000;
+    vi.spyOn(performance, 'now').mockImplementation(() => now);
+    const h = host();
+    h.emit('q', { type: 'success ["a"]', waitForTimer: true });
+    now += 2000;
+    expect(h.drain()).toEqual([expect.objectContaining({ type: 'success ["a"]' })]);
     vi.restoreAllMocks();
   });
 });
