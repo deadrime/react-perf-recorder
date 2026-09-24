@@ -186,12 +186,12 @@ export function createServer(dir: string) {
     'list_recordings',
     {
       description:
-        'Sessions recorded with the react-perf-recorder panel or scripts, newest first. status: recording (still running), done, interrupted (page reloaded or closed). Each has the area (scope), commits, renders and the top cascade root.',
+        'Sessions recorded with the panel, record_page or scripts, newest first: id, status (recording — still running, done, interrupted — the page reloaded or closed), source, label, url, area, duration, actions, commits, renders and the top cascade root.',
       inputSchema: {
-        limit: z.number().int().min(1).max(200).optional(),
+        limit: z.number().int().min(1).max(200).optional().describe('20 by default.'),
         status: z.enum(['recording', 'done', 'interrupted']).optional(),
-        scope: z.string().optional(),
-        source: z.string().optional(),
+        scope: z.string().optional().describe('Only sessions whose area name contains this.'),
+        source: z.string().optional().describe('Only sessions whose source contains this: panel, record, script:<name>.'),
       },
     },
     async ({ limit = 20, status, scope, source }) => {
@@ -247,8 +247,8 @@ export function createServer(dir: string) {
               'one landed on, its component and file, what it cost. memos: useMemo/useCallback that keep recomputing, the dependency ' +
               'that moved and its line.'
           ),
-        top: z.number().int().min(1).max(100).optional(),
-        offset: z.number().int().min(0).optional(),
+        top: z.number().int().min(1).max(100).optional().describe('How many entries of a long section, 10 by default.'),
+        offset: z.number().int().min(0).optional().describe('Where to start in a long section, to page through it.'),
         hooks: z
           .enum(['full', 'short'])
           .optional()
@@ -274,10 +274,16 @@ export function createServer(dir: string) {
     'record_page',
     {
       description:
-        "Records a page in a browser of its own and returns the session id, so a fix can be measured: record, change the code, record again with the same arguments, then compare_recordings. Needs the dev server running with the Vite plugin and playwright installed in the project. A page behind a sign-in needs a session: `react-perf-recorder login <url>` once (a headed browser, the person signs in), or cdp to record in a browser they are already signed in to. A scenario of clicks and typing goes in a script module, or replay does again what a recording did — the person's own clicks and typing, at their pace, from the page load; without either it records ms of the page as it is, and fromLoad records the page load itself.",
+        "Records a page in a browser of its own and returns the session id, so a fix can be measured: record, change the code, record again with the same arguments, then compare_recordings. Needs the dev server running with the Vite plugin and playwright installed in the project. A scenario of clicks and typing goes in a script module, or replay does again what a recording did — the person's own clicks and typing, at their pace, from the page load; replay does not wait for data, so a scenario whose actions wait on requests needs a script. Without either it records ms of the page as it is, and fromLoad records the page load itself. Behind a sign-in: via (a link that signs in), then a session saved once by `react-perf-recorder login <url>`, then cdp; a page that redirects to a login says so. Outlines are off in these runs.",
       inputSchema: {
         url: z.string().optional().describe("The page to open, on the dev server. With replay, the recording's page when left out."),
-        ms: z.number().int().min(200).max(60_000).optional(),
+        ms: z
+          .number()
+          .int()
+          .min(200)
+          .max(60_000)
+          .optional()
+          .describe('How long to record the page as it is, 3000 by default. With a script or replay the recording lasts as long as they run.'),
         label: z.string().optional().describe('What this run is, e.g. "before" and "after".'),
         scope: z
           .union([z.string(), z.object({ names: z.array(z.string()) }), z.object({ selector: z.string(), component: z.string().optional() })])
@@ -285,17 +291,25 @@ export function createServer(dir: string) {
           .describe(
             'Record only what renders inside an area: a component\'s name as the page calls it ("MessageList"), the path down to it when the name repeats, or an element. Renders that came from above are kept as outside roots, with their reason.'
           ),
-        watch: z.array(z.string()).optional(),
+        watch: z
+          .array(z.string())
+          .optional()
+          .describe('Components to follow by name through the whole page: how often each rendered and which root pulled it.'),
         script: z.string().optional().describe('A module with `export default async (page) => {…}`, run while recording.'),
         replay: z
           .string()
           .optional()
           .describe(
-            'A recording id (or "latest") whose actions to do again, from the page load and in its area: record it after the fix, then compare_recordings with the original.'
+            'A recording id (or "latest") whose actions to do again, from the page load, on its page and in its area unless url and scope say otherwise: record it after the fix, then compare_recordings with the original.'
           ),
         fromLoad: z.boolean().optional().describe('Record from the first commit of the page load.'),
         viewport: z.string().optional().describe('1280x800; keep it the same across runs that will be compared.'),
-        sample: z.boolean().optional().describe('Faster on lists of thousands: reasons of renders a parent caused are a sample, counts stay exact.'),
+        sample: z
+          .boolean()
+          .optional()
+          .describe(
+            'Faster on lists of thousands: reasons of renders a parent caused are a sample, counts stay exact, and no ways or commit cascades are kept.'
+          ),
         throttle: z.number().min(1).max(20).optional().describe('CPU slowdown, 4 = four times slower.'),
         state: z.string().optional().describe('A session saved by `login`; the default beside the recordings is used when it is there.'),
         cdp: z.string().optional().describe('http://localhost:9222 of a browser already running and signed in.'),
@@ -319,10 +333,10 @@ export function createServer(dir: string) {
     'wait_for_recording',
     {
       description:
-        'Blocks until the user starts (until: "started") or finishes (until: "done", default) a recording in the browser, then returns its summary. Use when you asked the user to record a scenario with the panel. Returns status "timeout" after timeoutMs; call again to keep waiting.',
+        'Blocks until the person starts (until: "started") or finishes (until: "done", default) a recording in the browser, then returns its id and summary. Use when you asked them to record a scenario with the panel. Returns status "timeout" after timeoutMs; call again to keep waiting.',
       inputSchema: {
-        timeoutMs: z.number().int().min(1000).max(600_000).optional(),
-        afterId: z.string().optional(),
+        timeoutMs: z.number().int().min(1000).max(600_000).optional().describe('120000 (two minutes) by default.'),
+        afterId: z.string().optional().describe('Only a session newer than this id: pass the latest one to skip what was there before you asked.'),
         until: z.enum(['started', 'done']).optional(),
       },
     },
@@ -349,12 +363,17 @@ export function createServer(dir: string) {
     'compare_recordings',
     {
       description:
-        'Before/after of two sessions: totals per second and per commit, cascade roots (new, gone, changed by cascade per second), causes, the same user actions (renders, renders per char, latency) and plugin metrics. Warns when viewport, page, area, conditions or durations differ.',
+        'Before/after of two sessions: totals per second and per commit, cascade roots (new, gone, changed by cascade per second), causes, the same user actions — the median of each time it was done, per character for typing, so the runs need not match click for click — and plugin metrics. Warns when viewport, page, area, conditions or durations differ, when outlines were on in only one run, and when a side is partial.',
       inputSchema: {
-        before: z.string(),
+        before: z.string().describe('A session id, or "latest-1".'),
         after: z.string().default('latest'),
-        top: z.number().int().min(1).max(50).optional(),
-        match: z.enum(['key', 'name']).optional(),
+        top: z.number().int().min(1).max(50).optional().describe('How many roots to list, 15 by default.'),
+        match: z
+          .enum(['key', 'name'])
+          .optional()
+          .describe(
+            'How a root is found again. key (default): by name, file and path above it. name: by name and file only — when the fix moved it in the tree.'
+          ),
       },
     },
     async ({ before, after, top, match }) => {
