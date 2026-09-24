@@ -29,6 +29,8 @@
 - Only the top level of a module is named: a `memo` inside a function keeps React's `Memo`.
 - StrictMode doubles render-time selector calls.
 - Hook names re-run the component: side effects in render run once more.
+- Names come from the functions themselves. A build made with `enabled: true` that bundles modules together renames
+  clashing ones (three `Line`s become `Line`, `Line$1`, `Line$2`); build with `preserveModules` to keep them.
 - State names are known for the roots whose hooks are named at Stop (the top 30 inside the area, 10 outside), and
   dependency names for the memos of the 15 components inspected; the rest keep their number. A dependency is named
   only when the array is a literal in the app's code, and inside a custom hook only when it has one memo.

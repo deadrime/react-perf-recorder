@@ -11,7 +11,11 @@ import { aliases } from './vite.config';
 /** GitHub Pages answers an unknown path with 404.html: the app itself, which routes it. */
 const spaFallback = (outDir: string): Plugin => ({
   name: 'spa-fallback',
-  closeBundle: () => fs.copyFileSync(path.join(outDir, 'index.html'), path.join(outDir, '404.html')),
+  // Also called after a failed build, with no page to copy; its own error must not hide the build's.
+  closeBundle: () => {
+    const page = path.join(outDir, 'index.html');
+    if (fs.existsSync(page)) fs.copyFileSync(page, path.join(outDir, '404.html'));
+  },
 });
 
 const outDir = path.resolve(__dirname, '../../../dist-pages');
@@ -31,7 +35,15 @@ export default defineConfig(({ command }) => ({
   // `npm run dev:pages` serves the site as it is built, under its base; the fixture's own server keeps 5391.
   server: { port: 5393 },
   cacheDir: path.resolve(__dirname, '../../../node_modules/.vite-pages'),
-  build: { outDir, emptyOutDir: true, minify: false, sourcemap: false },
+  // A module a file: in one bundle Rollup renames clashing names (three `Line`s become Line$1, Line$2), and a
+  // component's name is what the recorder shows.
+  build: {
+    outDir,
+    emptyOutDir: true,
+    minify: false,
+    sourcemap: false,
+    rollupOptions: { preserveEntrySignatures: 'strict', output: { preserveModules: true } },
+  },
   plugins: [
     react(),
     perfRecorder({
