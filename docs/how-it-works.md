@@ -16,7 +16,8 @@
 - The app's `react-dom/client` is proxied so the recorder learns of a root the moment `createRoot` returns — that is
   what makes recording from the page load possible.
 - Store and memoizer plugins replace `zustand` and `proxy-memoize` for the app's imports only, so libraries keep the
-  originals and memoization behaves the same.
+  originals and memoization behaves the same. The zustand plugin also rewrites `zustand/vanilla` itself, in the
+  dependency optimizer too, so a store a library makes (xyflow's) is followed, named by its package (`@xyflow/react#1`).
 - The panel is a preact view in a shadow root on `<html>`, never the app's React; the outlines are drawn on one
   canvas with `pointer-events: none`.
 

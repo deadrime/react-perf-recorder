@@ -21,6 +21,11 @@ export const myStore = () =>
   });
 ```
 
+`transform` sees the app's modules. A library's own file — to reach what the libraries on the page do with it —
+goes to `transformDep: { filter, transform(code, id) }`: it runs in the dependency optimizer (esbuild before Vite 8,
+Rolldown from 8) and on files served from `node_modules` or a linked package. Changing it needs `vite --force` once:
+the optimizer keeps its bundle until the lockfile or the config changes.
+
 ```ts
 // src/dev/myStorePlugin.ts
 import { definePlugin } from 'react-perf-recorder/runtime';

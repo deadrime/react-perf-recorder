@@ -8,6 +8,7 @@ import { ENDPOINT, type JsonValue } from '../shared/schema';
 import { addComponentNames, DEFAULT_WRAPPERS, type ComponentNamesOptions } from './component-names';
 import { ENTRY_ID, entryCode, RESOLVED_ENTRY_ID, runtimeSpecifier } from './entry';
 import type { Statement } from '@babel/types';
+import { optimizerConfig, transformServedDep } from './helpers/dep-transform';
 import { createFilter } from './helpers/filter';
 import { memoDepsAt, memoDepsInHook } from './helpers/hook-deps';
 import { parseModule } from './helpers/name-declarations';
@@ -242,15 +243,36 @@ export function perfRecorder(options: PerfRecorderOptions = {}): VitePluginLike[
 
   const wrapped: Plugin[] = plugins
     .filter((p) => p.vite)
-    .map((p) => ({
-      name: `react-perf-recorder:${p.name}`,
-      enforce: 'pre' as const,
-      apply,
-      ...(p.vite!.config ? { config: (config) => p.vite!.config!(config) ?? undefined } : {}),
-      ...(p.vite!.resolveId ? { resolveId: (source, importer) => p.vite!.resolveId!(source, importer) ?? null } : {}),
-      ...(p.vite!.load ? { load: (id) => p.vite!.load!(id) ?? null } : {}),
-      ...(p.vite!.transform ? { transform: (code, id) => p.vite!.transform!(code, id) ?? null } : {}),
-    }));
+    .map((p) => {
+      const { config, resolveId, load, transform, transformDep } = p.vite!;
+      const name = `react-perf-recorder:${p.name}`;
+      return {
+        name,
+        enforce: 'pre' as const,
+        apply,
+        ...(config || transformDep
+          ? {
+              config(this: { meta?: { rolldownVersion?: string } } | void, userConfig) {
+                const own = config?.(userConfig) ?? undefined;
+                if (!transformDep) return own;
+                const deps = optimizerConfig(name, transformDep, !!this?.meta?.rolldownVersion);
+                return { ...own, optimizeDeps: { ...own?.optimizeDeps, ...deps.optimizeDeps } };
+              },
+            }
+          : {}),
+        ...(resolveId ? { resolveId: (source, importer) => resolveId(source, importer) ?? null } : {}),
+        ...(load ? { load: (id) => load(id) ?? null } : {}),
+        ...(transform || transformDep
+          ? {
+              transform(code, id) {
+                const dep = transformDep && transformServedDep(transformDep, code, id);
+                if (dep != null) return { code: dep, map: null };
+                return transform?.(code, id) ?? null;
+              },
+            }
+          : {}),
+      } satisfies Plugin;
+    });
 
   return [core, ...wrapped] as unknown as VitePluginLike[];
 }

@@ -13,6 +13,27 @@ export interface ZustandOptions {
 }
 
 const RUNTIME = 'react-perf-recorder/plugins/zustand/runtime';
+/** Where every store made on the page is handed over, also before the runtime has loaded. */
+export const STORES_GLOBAL = '__REACT_PERF_RECORDER_ZUSTAND__';
+const IMPL = 'const createStoreImpl = ';
+
+/**
+ * `create`, `createWithEqualityFn` and `createStore` all end in `createStoreImpl` of zustand/vanilla (v4 and v5), so
+ * a store made inside a library — xyflow's, one per component — is followed too, not only those the app imports.
+ */
+export function registerStores(code: string): string | null {
+  if (!code.includes(IMPL) || code.includes('__rprCreateStoreImpl')) return null;
+  return [
+    code.replace(IMPL, 'const __rprCreateStoreImpl = '),
+    `const __rprStores = globalThis.${STORES_GLOBAL} || (globalThis.${STORES_GLOBAL} = { made: [] });`,
+    'const createStoreImpl = (createState) => {',
+    '  const api = __rprCreateStoreImpl(createState);',
+    '  const stack = new Error().stack;',
+    '  if (__rprStores.register) __rprStores.register(api, stack); else __rprStores.made.push([api, stack]);',
+    '  return api;',
+    '};',
+  ].join('\n');
+}
 
 /**
  * Store causes for commits: which action wrote to which store and which top-level keys it changed (with the same
@@ -52,6 +73,7 @@ export function zustand(options: ZustandOptions = {}): PerfRecorderPlugin {
     init: (ctx) => void (context = ctx),
     vite: {
       config: () => ({ optimizeDeps: { include: ['zustand', 'zustand/vanilla', 'zustand/react/shallow'] } }),
+      transformDep: { filter: /[\\/]zustand[\\/]esm[\\/]vanilla\.mjs$/, transform: registerStores },
       resolveId: (id, importer) => proxies.resolveId(id, importer),
       load: (id) => proxies.load(id),
       transform(code, id) {

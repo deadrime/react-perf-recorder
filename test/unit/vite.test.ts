@@ -4,6 +4,8 @@ import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import { createServer, type ViteDevServer } from 'vite';
+import { perfRecorder } from '../../src/vite';
+import { zustand } from '../../src/plugins/zustand';
 
 const fixture = path.resolve(__dirname, '../e2e/fixture-app');
 let server: ViteDevServer;
@@ -66,6 +68,26 @@ describe('perfRecorder vite plugin', () => {
     expect((await server.pluginContainer.resolveId('zustand', app))?.id).toBe('\0react-perf-recorder:zustand:zustand');
     const fromLib = await server.pluginContainer.resolveId('zustand', path.resolve(__dirname, '../../node_modules/zustand/esm/middleware.mjs'));
     expect(fromLib?.id.startsWith('\0')).toBe(false);
+  });
+
+  it("rewrites zustand/vanilla in the optimizer and when it is served as it is, so a library's stores are followed", async () => {
+    const [, plugin] = perfRecorder({ plugins: [zustand()] }) as Array<{ config: Function; transform: Function }>;
+    const esbuild = plugin.config.call(undefined, {});
+    expect(esbuild.optimizeDeps.include).toContain('zustand/vanilla');
+    expect(esbuild.optimizeDeps.esbuildOptions.plugins).toHaveLength(1);
+    expect(esbuild.optimizeDeps.rolldownOptions).toBeUndefined();
+    // Vite 8 bundles dependencies with Rolldown, and says so in the context of the config hook.
+    const rolldown = plugin.config.call({ meta: { rolldownVersion: '1.0.0' } }, {});
+    expect(rolldown.optimizeDeps.esbuildOptions).toBeUndefined();
+    const [inRolldown] = rolldown.optimizeDeps.rolldownOptions.plugins;
+    const vanilla = 'const createStoreImpl = (createState) => { return {}; };\nexport const createStore = (s) => createStoreImpl(s);';
+    expect(inRolldown.transform(vanilla, '/app/node_modules/.pnpm/zustand@5.0.12/node_modules/zustand/esm/vanilla.mjs')).toContain(
+      '__rprCreateStoreImpl'
+    );
+    expect(inRolldown.transform(vanilla, '/app/node_modules/zustand/esm/react.mjs')).toBeNull();
+    // A linked package or an excluded dependency comes through the plugin's own transform.
+    expect(plugin.transform(vanilla, '/repo/node_modules/zustand/esm/vanilla.mjs?v=1')?.code).toContain('__REACT_PERF_RECORDER_ZUSTAND__');
+    expect(plugin.transform(vanilla, '/repo/src/vanilla.mjs')).toBeNull();
   });
 
   it("points the app's createRoot at the proxy, whatever the resolver would have done with it", async () => {

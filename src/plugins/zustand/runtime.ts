@@ -30,6 +30,47 @@ function register(result: unknown) {
   return result;
 }
 
+const origins = new WeakMap<StoreApi, string>();
+
+/** A frame's package; '' for a shared chunk of the optimizer (`chunk-X` of esbuild, `react-dom-DVjBvCsW` of Rolldown). */
+function packageOfUrl(url: string): string | null {
+  const dep = /\/\.vite\/deps\/([^/]+)\.js$/.exec(url)?.[1];
+  if (dep) return /^chunk-|-[\w$]{8}$/.test(dep) ? '' : dep.replace(/_/g, '/');
+  const at = url.lastIndexOf('/node_modules/');
+  if (at < 0) return null;
+  const parts = url.slice(at + '/node_modules/'.length).split('/');
+  return parts[0].startsWith('@') ? `${parts[0]}/${parts[1]}` : parts[0];
+}
+
+/** The package that made a store, from the stack of `createStoreImpl`: `@xyflow/react` for `.vite/deps/@xyflow_react.js`. */
+export function packageOfStack(stack: string | undefined): string | null {
+  for (const line of (stack ?? '').split('\n').slice(1)) {
+    const url = /(?:(?:https?|file):\/\/|\/)[^\s()]+/
+      .exec(line)?.[0]
+      .replace(/[?#].*$/, '')
+      .replace(/(:\d+)+$/, '');
+    if (!url) continue;
+    const pkg = packageOfUrl(url);
+    // The app's code, or a linked package served by its path: the store is theirs, and the declaration names it.
+    if (pkg === null) return null;
+    if (pkg && !/^zustand(\/|$)|^react-perf-recorder$/.test(pkg)) return pkg;
+  }
+  return null;
+}
+
+// Filled by zustand/vanilla itself (`registerStores` in ./index.ts): the stores of the app and of its libraries.
+const made = ((globalThis as Record<string, any>).__REACT_PERF_RECORDER_ZUSTAND__ ??= { made: [] }) as {
+  made: Array<[unknown, string | undefined]>;
+  register?: (api: unknown, stack?: string) => unknown;
+};
+made.register = (result, stack) => {
+  const api = apiOf(result);
+  const origin = api && packageOfStack(stack);
+  if (api && origin) origins.set(api, origin);
+  return register(result);
+};
+made.made.splice(0).forEach(([api, stack]) => made.register!(api, stack));
+
 /** `create(fn)` and the curried `create<T>()(fn)` of zustand, `createStore` of zustand/vanilla. */
 export function wrapCreate<F extends (...args: any[]) => any>(factory: F): F {
   if (typeof factory !== 'function') return factory;
@@ -59,7 +100,7 @@ export function nameStore(store: unknown, name: string) {
 
 const storeName = (api: StoreApi) => {
   let name = names.get(api);
-  if (!name) names.set(api, (name = `store${++anonymous}`));
+  if (!name) names.set(api, (name = origins.has(api) ? `${origins.get(api)}#${++anonymous}` : `store${++anonymous}`));
   return name;
 };
 
