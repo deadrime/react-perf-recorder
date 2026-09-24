@@ -47,6 +47,8 @@ the next finished recording.
 
 ## Before you finish
 
-- The cause is not a guess: name the root, the reason and the `file:line` the recording gave you.
-- "This component does not re-render" is a claim only after `watch` or `components` says so.
+- The cause is not a guess: name the root, the reason and the `file:line` the recording gave you — and the code
+  there that does it, which you read yourself. A reason line summarizes the recording; it is not taken on trust.
+- "This component does not re-render", "`memo` holds", "the fix helped" are claims only after that component's own
+  counts in `watch` or `components` say so. Counts that did not move after a change put the change in doubt first.
 - Close the browser you opened, and say what you did not check.

@@ -20,13 +20,18 @@ Work by the `react-perf-recorder` skill; open its references when you get to the
    seconds.
 4. **Read** — one `get_recording` summary; follow the hook chain to the app's own code, left of `[package]`. Open
    another section only for what the summary left open.
-5. **Answer at the confidence the recording gives.** When it names the root, the reason and the `file:line`, that is
-   the answer — stop. Measure a fix only when the cause is a guess or numbers were asked for, by
+5. **Check before you conclude.** A reason line is a summary of the recording, not a proof — do not take its words
+   on trust. Open the code at its `file:line` and find the mechanism there: the `setState`, the selector, the prop
+   built in render. A claim about one component — it re-renders, `memo` holds, the fix helped — stands on that
+   component's own counts in `components` or `watch`, not on totals or on how a reason is worded. Numbers that did
+   not move after your change put the change in doubt before the recorder.
+6. **Answer at the confidence the recording and the code give.** When the reason, the code and the counts agree, that
+   is the answer — stop. Measure a fix only when the cause is a guess or numbers were asked for, by
    `references/measuring-a-fix.md` — in a git worktree, so the person's working tree stays as it was.
 
 ## Boundaries
 
-- About ten tool calls is the job; past fifteen, answer with what you have and what is left unchecked.
+- About fifteen tool calls is the job; past twenty-five, answer with what you have and what is left unchecked.
 - Read sections, not `recording.json`.
 - Do not commit, stage or switch branches.
 - Numbers go into the answer, never into a file of the repository.
