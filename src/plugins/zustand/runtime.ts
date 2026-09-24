@@ -1,4 +1,5 @@
 import { definePlugin, type PluginContext } from '../../runtime';
+import { libraryOf } from '../../core/stack';
 import { installDevtoolsShim } from './devtools-shim';
 
 interface StoreApi {
@@ -33,17 +34,6 @@ function register(result: unknown) {
 
 const origins = new WeakMap<Function, string>();
 
-/** A frame's package; '' for a shared chunk of the optimizer (`chunk-X` of esbuild, `react-dom-DVjBvCsW` of Rolldown). */
-function packageOfUrl(url: string): string | null {
-  // Any cacheDir: `.vite/deps`, or `.vite-fixture-18/deps` of a config that moves it.
-  const dep = /\/deps\/([^/]+)\.js$/.exec(url)?.[1];
-  if (dep) return /^chunk-|-[\w$]{8}$/.test(dep) ? '' : dep.replace(/_/g, '/');
-  const at = url.lastIndexOf('/node_modules/');
-  if (at < 0) return null;
-  const parts = url.slice(at + '/node_modules/'.length).split('/');
-  return parts[0].startsWith('@') ? `${parts[0]}/${parts[1]}` : parts[0];
-}
-
 /** The package that made a store, from the stack of `createStoreImpl`: `@xyflow/react` for `.vite/deps/@xyflow_react.js`. */
 export function packageOfStack(stack: string | undefined): string | null {
   for (const line of (stack ?? '').split('\n').slice(1)) {
@@ -52,10 +42,10 @@ export function packageOfStack(stack: string | undefined): string | null {
       .replace(/[?#].*$/, '')
       .replace(/(:\d+)+$/, '');
     if (!url) continue;
-    const pkg = packageOfUrl(url);
+    const pkg = libraryOf(url);
     // The app's code, or a linked package served by its path: the store is theirs, and the declaration names it.
     if (pkg === null) return null;
-    if (pkg && !/^zustand(\/|$)|^react-perf-recorder$/.test(pkg)) return pkg;
+    if (pkg && pkg !== 'zustand' && pkg !== 'react-perf-recorder') return pkg;
   }
   return null;
 }

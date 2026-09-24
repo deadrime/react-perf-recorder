@@ -46,7 +46,10 @@ export function libraryOf(url: string): string | null {
   const path = url.split(/[?#]/)[0];
   if (OWN.some((prefix) => path.startsWith(prefix))) return 'react-perf-recorder';
   const deps = /\/deps\/([^/]+)\.js$/.exec(path);
-  if (deps && (url.includes('?v=') || path.includes('/.vite'))) return deps[1].startsWith('chunk-') ? '' : packageOf(deps[1].replace(/_/g, '/'));
+  // A shared chunk has no package: `chunk-XYZ` from esbuild, a module's name and a mixed-case hash from Rolldown
+  // (`react-dom-DVjBvCsW`); npm names are lower case, so `react-markdown` stays a package.
+  if (deps && (url.includes('?v=') || path.includes('/.vite')))
+    return /^chunk-|-(?=[\w$]*[A-Z])(?=[\w$]*[a-z])[\w$]{8}$/.test(deps[1]) ? '' : packageOf(deps[1].replace(/_/g, '/'));
   const at = path.lastIndexOf('/node_modules/');
   if (at >= 0) return packageOf(path.slice(at + '/node_modules/'.length));
   return null;

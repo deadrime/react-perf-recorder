@@ -1,7 +1,7 @@
 import { sameContent } from '../shared/same-content';
 import type { ReasonKind } from '../shared/schema';
-import { hasHooks, Tag, type ContextDependency, type Fiber, type Hook } from './fiber';
-import { hookCells } from './react-compat';
+import { hasHooks, isComposite, nameOf, Tag, type ContextDependency, type Fiber, type Hook } from './fiber';
+import { contextOf, hookCells, isProviderTag } from './react-compat';
 
 export interface Snapshot {
   props: unknown;
@@ -74,6 +74,31 @@ function propsReason(before: unknown, after: unknown): Reason {
   };
 }
 
+const unnamedContexts = new WeakMap<object, string>();
+
+/**
+ * A context without a displayName — most packages' — is named by the component that provides it, the nearest one
+ * above its provider: `(unnamed, provided by DndContext)` says whose it is where `(unnamed)` said nothing.
+ */
+function contextLabel(context: { displayName?: string }, f: Fiber): string {
+  if (context.displayName) return context.displayName;
+  let label = unnamedContexts.get(context);
+  if (label !== undefined) return label;
+  label = '(unnamed)';
+  for (let p = f.return; p; p = p.return) {
+    if (!isProviderTag(p.tag) || contextOf(p) !== context) continue;
+    for (let owner = p.return; owner; owner = owner.return) {
+      if (isComposite(owner)) {
+        label = `(unnamed, provided by ${nameOf(owner)})`;
+        break;
+      }
+    }
+    break;
+  }
+  unnamedContexts.set(context, label);
+  return label;
+}
+
 /** Why a rendered fiber rendered, compared with its snapshot from the previous commit it was seen in. */
 export function reasonsOf(prev: Snapshot, f: Fiber, describe: Describer): Reason[] {
   if (prev.props !== f.memoizedProps) return [propsReason(prev.props, f.memoizedProps)];
@@ -111,7 +136,7 @@ export function reasonsOf(prev: Snapshot, f: Fiber, describe: Describer): Reason
       if (!old.has(d.context) || old.get(d.context) === d.memoizedValue) continue;
       out.push({
         kind: 'context',
-        context: d.context.displayName || '(unnamed)',
+        context: contextLabel(d.context, f),
         contextObject: d.context,
         ...(same(old.get(d.context), d.memoizedValue) ? { sameContent: true } : {}),
       });

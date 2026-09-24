@@ -69,6 +69,29 @@ describe('render reasons', () => {
     expect(reasonsOf(rec, badge).sort()).toEqual(['context Theme', 'context Theme SAME-CONTENT']);
   });
 
+  it("names a package's context without a displayName by the component that provides it", () => {
+    // A package's context, like dnd-kit's: no displayName, provided inside the package's own component.
+    const Internal = createContext({ over: 0 });
+    const Card = memo(() => <i>{useContext(Internal).over}</i>);
+    Card.displayName = 'Card';
+    let move!: Setter;
+    const DndContext = ({ children }: { children: React.ReactNode }) => {
+      const [over, setOver] = useState(0);
+      move = setOver;
+      return <Internal.Provider value={{ over }}>{children}</Internal.Provider>;
+    };
+    mount(
+      <DndContext>
+        <Card />
+      </DndContext>
+    );
+    const { recorder } = makeRecorder();
+    recorder.start();
+    flush(() => move(1));
+    const rec = recorder.stop();
+    expect(reasonsOf(rec, rec.components.find((c) => c.name === 'Card')!)).toEqual(['context (unnamed, provided by DndContext)']);
+  });
+
   it('calls a render that set a state to its current value a bailout', () => {
     let dispatch!: (value: number) => void;
     const Radio = () => {

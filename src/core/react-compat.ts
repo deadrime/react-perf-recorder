@@ -1,4 +1,4 @@
-import { parseStack } from './stack';
+import { libraryOf, parseStack, type Frame } from './stack';
 import type { Fiber } from './fiber';
 
 /**
@@ -19,6 +19,7 @@ export interface Site {
 const BOTTOM_FRAME = /react_stack_bottom_frame/;
 
 const ownerStackSites = new WeakMap<Error, Site | null>();
+const ownerStackFrames = new WeakMap<Error, Frame[]>();
 let sawSite = false;
 let sawFiberWithoutSite = false;
 
@@ -41,9 +42,9 @@ export function siteOf(f: Fiber): Site | null {
 }
 
 /** `prepareStackTrace` is turned off so no other tool reformats the stack; the first read costs, so it is kept. */
-function ownerStackSite(error: Error): Site | null {
-  const known = ownerStackSites.get(error);
-  if (known !== undefined) return known;
+function framesOf(error: Error): Frame[] {
+  const cached = ownerStackFrames.get(error);
+  if (cached) return cached;
   const holder = Error as ErrorConstructor & { prepareStackTrace?: unknown };
   const previous = holder.prepareStackTrace;
   let text = '';
@@ -56,10 +57,34 @@ function ownerStackSite(error: Error): Site | null {
     holder.prepareStackTrace = previous;
   }
   const frames = parseStack(text);
+  ownerStackFrames.set(error, frames);
+  return frames;
+}
+
+function ownerStackSite(error: Error): Site | null {
+  const known = ownerStackSites.get(error);
+  if (known !== undefined) return known;
+  const frames = framesOf(error);
   // frames[0] is `jsxDEV` or `createElement` itself: the element was written one frame below it.
   const frame = frames[1];
   const site = frame && !BOTTOM_FRAME.test(frame.fn) ? { url: frame.url, line: frame.line, column: frame.column, exact: false } : null;
   ownerStackSites.set(error, site);
+  return site;
+}
+
+/**
+ * The site to show for a fiber: an element a package wrote — `flexRender` of a table, a Radix trigger — is shown at
+ * the app's line that handed it over, the first app frame below in the owner stack. Whether a component is a
+ * package's still reads the element's own site.
+ */
+export function shownSiteOf(f: Fiber): Site | null {
+  const site = siteOf(f);
+  const stack = f._debugStack;
+  if (!site || site.exact || libraryOf(site.url) === null || !(stack instanceof Error)) return site;
+  for (const frame of framesOf(stack).slice(2)) {
+    if (BOTTOM_FRAME.test(frame.fn)) break;
+    if (libraryOf(frame.url) === null) return { url: frame.url, line: frame.line, column: frame.column, exact: false };
+  }
   return site;
 }
 
