@@ -26,7 +26,7 @@ function pluginSets(file?: string): ParserPlugin[][] {
   return [['typescript', 'jsx'], ['typescript']];
 }
 
-function parseModule(code: string, file?: string): Statement[] | null {
+export function parseModule(code: string, file?: string): Statement[] | null {
   for (const plugins of pluginSets(file)) {
     try {
       return parse(code, { sourceType: 'module', plugins: [...plugins, 'decorators-legacy'], errorRecovery: true }).program.body;

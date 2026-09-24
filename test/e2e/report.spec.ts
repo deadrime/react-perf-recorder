@@ -236,7 +236,9 @@ test('a useMemo that recomputes on every render is named, with the dependency th
   const row = fold.locator('[data-rpr="memo"]', { hasText: 'InlineReport' });
   await expect(row).toHaveAttribute('data-every', 'true');
   await expect(row.locator('.badge')).toHaveText('0/3 reused');
-  await expect(row).toContainText('dependency 1 is a new object with the same content every time');
+  // By the name the code gives it, read from the array three lines below the call.
+  await expect(row.locator('.memo-why')).toHaveText('filter is a new object with the same content every time');
+  await expect(row.locator('.memo-why code')).toHaveText('filter');
   await expect(row.locator('.site')).toContainText('MemoDeps.tsx');
   await expect(row.locator('.chain')).toHaveText(/^useOpenRows › /);
   // The report with the constant filter remembers: it is not listed.

@@ -12,7 +12,7 @@ export interface SessionStoreOptions {
   /** Inside the project the folder gets a `.gitignore` with `*`. */
   gitignore: boolean;
   /** Turns a generated call site into `src/file.ts:line` and the source line; set by the Vite plugin. */
-  mapSite?: (url: string, line: number, column: number) => Promise<{ site: string; code?: string } | null>;
+  mapSite?: (url: string, line: number, column: number, hooks?: string[]) => Promise<{ site: string; code?: string; deps?: string[] } | null>;
 }
 
 const ID = /^\d{8}-\d{6}-[\w.-]+$/;
@@ -113,7 +113,10 @@ export class SessionStore {
     writeAtomic(path.join(dir, 'session.json'), JSON.stringify(meta, null, 2));
   }
 
-  async finish(id: string, recording: RecordingV2): Promise<{ id: string; dir: string; sites: Record<string, { site: string; code?: string }> }> {
+  async finish(
+    id: string,
+    recording: RecordingV2
+  ): Promise<{ id: string; dir: string; sites: Record<string, { site: string; code?: string; deps?: string[] }> }> {
     const dir = this.sessionDir(id);
     const sites = await this.mapSites(recording);
     writeAtomic(path.join(dir, 'recording.json'), JSON.stringify({ ...recording, id }, null, 1));
@@ -142,20 +145,22 @@ export class SessionStore {
   }
 
   /** Turns built positions back into source lines: every hook's call site, and on React 19 the component's own. */
-  private async mapSites(recording: RecordingV2): Promise<Record<string, { site: string; code?: string }>> {
-    const sites: Record<string, { site: string; code?: string }> = {};
+  private async mapSites(recording: RecordingV2): Promise<Record<string, { site: string; code?: string; deps?: string[] }>> {
+    const sites: Record<string, { site: string; code?: string; deps?: string[] }> = {};
     const mapSite = this.options.mapSite;
     if (!mapSite) return sites;
-    const cache = new Map<string, Promise<{ site: string; code?: string } | null>>();
-    const map = (g: { url: string; line: number; column: number }) => {
+    const cache = new Map<string, Promise<{ site: string; code?: string; deps?: string[] } | null>>();
+    // A memo's position is mapped again with its hooks: the same position mapped for a root has no dependencies.
+    const map = (g: { url: string; line: number; column: number }, hooks?: string[]) => {
       const key = `${g.url}:${g.line}:${g.column}`;
-      if (!cache.has(key))
+      const cacheKey = hooks ? `${key}|memo` : key;
+      if (!cache.has(cacheKey))
         cache.set(
-          key,
-          mapSite(g.url, g.line, g.column).catch(() => null)
+          cacheKey,
+          mapSite(g.url, g.line, g.column, hooks).catch(() => null)
         );
-      return cache.get(key)!.then((mapped) => {
-        if (mapped) sites[key] = mapped;
+      return cache.get(cacheKey)!.then((mapped) => {
+        if (mapped) sites[key] = { ...sites[key], ...mapped };
         return mapped;
       });
     };
@@ -189,10 +194,11 @@ export class SessionStore {
     for (const memo of recording.memos ?? []) {
       const g = memo.info?.generated;
       if (!g) continue;
-      const mapped = await map(g);
+      const mapped = await map(g, (memo.info!.path ?? []).slice(0, -1));
       if (mapped) {
         memo.info!.site = mapped.site;
         if (mapped.code) memo.info!.code = mapped.code;
+        if (mapped.deps) memo.info!.deps = mapped.deps;
       }
       delete memo.info!.generated;
     }

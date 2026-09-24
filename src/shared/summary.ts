@@ -366,7 +366,8 @@ export function memoWhy(m: MemoHookStat): string {
   if (m.noDeps) return 'no dependency array: it runs on every render';
   const dep = m.deps[0];
   if (!dep) return 'its dependencies changed';
-  const which = `dependency ${dep.index + 1}`;
+  const name = m.info?.deps?.[dep.index];
+  const which = name ? `\`${name}\`` : `dependency ${dep.index + 1}`;
   return dep.sameContent === dep.changed
     ? `${which} is a new object with the same content every time`
     : dep.sameContent

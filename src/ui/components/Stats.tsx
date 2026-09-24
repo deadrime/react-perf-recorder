@@ -236,8 +236,6 @@ export function StatCard({
   );
 }
 
-/** Past this many links a way reads down the card, a link a line; in a row it would wrap into a paragraph. */
-const IN_A_ROW = 4;
 /** A column this long shows its two top links, its last four and the ones worth fixing; the rest behind a button. */
 const FOLDED = 8;
 
@@ -268,8 +266,7 @@ function WayStepItem({ step }: { step: WayStep }): JSX.Element {
 function WayRow({ way }: { way: Way }): JSX.Element {
   const [open, setOpen] = useState(false);
   const { steps } = way;
-  const column = steps.length > IN_A_ROW;
-  const folded = column && !open && steps.length > FOLDED;
+  const folded = !open && steps.length > FOLDED;
   // Folded, the middle keeps the links worth fixing: equal props, or a prop new with the same content.
   const shown = (i: number) => !folded || i < 2 || i >= steps.length - 4 || Boolean(steps[i].equal || steps[i].same);
   const items: JSX.Element[] = [];
@@ -288,7 +285,7 @@ function WayRow({ way }: { way: Way }): JSX.Element {
     i = end - 1;
   }
   return (
-    <div class="way" data-rpr="way" data-column={column ? 'true' : undefined} title={`${way.n} renders came down this way`}>
+    <div class="way" data-rpr="way" title={`${way.n} renders came down this way`}>
       <span class="way-n">{`×${way.n}`}</span>
       {way.cause ? (
         <span class="way-cause" title={way.cause}>

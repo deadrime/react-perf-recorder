@@ -6,7 +6,10 @@ import type { VitePluginLike } from './plugin-api';
 import { ENDPOINT, type JsonValue } from '../shared/schema';
 import { addComponentNames, DEFAULT_WRAPPERS, type ComponentNamesOptions } from './component-names';
 import { ENTRY_ID, entryCode, RESOLVED_ENTRY_ID, runtimeSpecifier } from './entry';
+import type { Statement } from '@babel/types';
 import { createFilter } from './helpers/filter';
+import { memoDepsAt, memoDepsInHook } from './helpers/hook-deps';
+import { parseModule } from './helpers/name-declarations';
 import { proxyModule } from './helpers/proxy-module';
 import { createMiddleware, SessionStore } from './middleware';
 import type { BuildContext, PerfRecorderPlugin } from './plugin-api';
@@ -53,7 +56,52 @@ function linesOf(file: string): string[] {
   return lines;
 }
 
-async function mapSite(server: ViteDevServer, root: string, url: string, line: number, column: number) {
+const parsedFiles = new Map<string, { mtimeMs: number; code: string; body: Statement[] | null }>();
+
+function parsedOf(file: string) {
+  const mtimeMs = fs.statSync(file).mtimeMs;
+  let parsed = parsedFiles.get(file);
+  if (parsed?.mtimeMs !== mtimeMs) {
+    if (parsedFiles.size > 50) parsedFiles.clear();
+    const code = linesOf(file).join('\n');
+    parsedFiles.set(file, (parsed = { mtimeMs, code, body: parseModule(code, file) }));
+  }
+  return parsed;
+}
+
+const EXTENSIONS = ['', '.ts', '.tsx', '.js', '.jsx', '/index.ts', '/index.tsx', '/index.js'];
+
+/**
+ * A memo's dependencies by name: the useMemo on the line, or — when the line calls a custom hook — the one useMemo
+ * inside the innermost of `hooks`, looked up in this module and the modules it imports relatively, three at most.
+ */
+function depsOf(file: string, line: number, hooks: string[] = []): string[] | null {
+  const here = parsedOf(file);
+  if (!here.body) return null;
+  const direct = memoDepsAt(here.body, here.code, line);
+  if (direct || !hooks.length) return direct;
+  const innermost = hooks[hooks.length - 1];
+  let at = file;
+  for (let hop = 0; hop < 3; hop++) {
+    const parsed = parsedOf(at);
+    if (!parsed.body) return null;
+    // The innermost hook, or the outermost that leads there: the module that has one imports the other.
+    const found =
+      memoDepsInHook(parsed.body, parsed.code, innermost) ??
+      (hop === 0 && hooks.length > 1 ? memoDepsInHook(parsed.body, parsed.code, hooks[0]) : null);
+    if (!found) return null;
+    if (found.kind === 'deps') return found.deps;
+    if (!found.source.startsWith('.')) return null;
+    const base = path.resolve(path.dirname(at), found.source);
+    const next = EXTENSIONS.map((ext) => base + ext).find((candidate) => fs.existsSync(candidate) && fs.statSync(candidate).isFile());
+    if (!next) return null;
+    at = next;
+  }
+  return null;
+}
+
+/** `hooks`: for a memo, the custom hooks down to it; its dependencies are then named too. */
+async function mapSite(server: ViteDevServer, root: string, url: string, line: number, column: number, hooks?: string[]) {
   const parsed = new URL(url, 'http://localhost');
   const mod = await server.moduleGraph.getModuleByUrl(parsed.pathname + parsed.search);
   const map = mod?.transformResult?.map as ConstructorParameters<typeof TraceMap>[0] | null | undefined;
@@ -65,7 +113,9 @@ async function mapSite(server: ViteDevServer, root: string, url: string, line: n
   const file = pos.source ? (path.isAbsolute(pos.source) ? pos.source : path.resolve(path.dirname(mod.file), pos.source)) : mod.file;
   const real = fs.existsSync(file) ? file : mod.file;
   const code = linesOf(real)[pos.line - 1]?.trim().slice(0, 140);
-  return { site: `${path.relative(root, real).replace(/\\/g, '/')}:${pos.line}`, ...(code ? { code } : {}) };
+  // A useMemo or useCallback: its dependencies by the names the code gives them, wherever the array is written.
+  const deps = hooks ? depsOf(real, pos.line, hooks) : null;
+  return { site: `${path.relative(root, real).replace(/\\/g, '/')}:${pos.line}`, ...(code ? { code } : {}), ...(deps ? { deps } : {}) };
 }
 
 /**
@@ -156,7 +206,7 @@ export function perfRecorder(options: PerfRecorderOptions = {}): VitePluginLike[
         maxBytes: options.maxBytes ?? 64 * 1024 * 1024,
         retain: { sessions: options.retain?.sessions ?? 100, bytes: options.retain?.bytes ?? 500 * 1024 * 1024 },
         gitignore: !path.relative(root, dir).startsWith('..'),
-        mapSite: (url, line, column) => mapSite(server, root, url, line, column),
+        mapSite: (url, line, column, hooks) => mapSite(server, root, url, line, column, hooks),
       });
       server.middlewares.use(createMiddleware(store, base, VERSION));
       server.config.logger.info(`  react-perf-recorder: sessions → ${dir}`);

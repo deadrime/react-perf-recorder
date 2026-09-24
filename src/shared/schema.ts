@@ -74,6 +74,8 @@ export interface HookInfo {
   generated?: { url: string; line: number; column: number };
   site?: string;
   code?: string;
+  /** For a useMemo or useCallback: its dependency list as the code writes it, `['items', 'filter']`. */
+  deps?: string[];
 }
 
 /** What made a component render, as fields rather than a sentence; `text` is the sentence, built from them. */

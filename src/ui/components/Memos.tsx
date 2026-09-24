@@ -18,7 +18,12 @@ const MemoRow = ({ m }: { m: MemoHookStat }) => {
           {`${m.renders - m.recomputed}/${m.renders} reused`}
         </span>
       </div>
-      <div class="memo-why">{memoWhy(m)}</div>
+      <div class="memo-why">
+        {/* The sentence marks a name from the code with backticks: here it is set as code instead. */}
+        {memoWhy(m)
+          .split('`')
+          .map((part, i) => (i % 2 ? <code key={i}>{part}</code> : part))}
+      </div>
       {/* Inside a custom hook the line is the hook's call: the chain says which memo in it. */}
       {m.info?.path && m.info.path.length > 1 ? <div class="chain">{m.info.path.join(' › ')}</div> : null}
       {m.info?.site ? <CopyLine className="site" text={m.info.site} title="Copy the file and line" /> : null}

@@ -60,7 +60,7 @@ export interface Saved extends RecordingV2 {
   saveError?: string;
 }
 
-function applySites(recording: RecordingV2, sites: Record<string, { site: string; code?: string }>) {
+function applySites(recording: RecordingV2, sites: Record<string, { site: string; code?: string; deps?: string[] }>) {
   // The dev server has answered everything it could; a built position that stayed unmapped is an absolute URL of a
   // pre-bundled dependency, the longest string in the recording and of no use to anyone reading it.
   for (const action of recording.actions ?? []) {
@@ -95,6 +95,7 @@ function applySites(recording: RecordingV2, sites: Record<string, { site: string
     if (mapped) {
       memo.info!.site = mapped.site;
       if (mapped.code) memo.info!.code = mapped.code;
+      if (mapped.deps) memo.info!.deps = mapped.deps;
     }
     delete memo.info!.generated;
   }

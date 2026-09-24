@@ -216,6 +216,7 @@ button.icon { padding: 3px 7px; }
 .memo-head .badge { margin-left: auto; }
 .memo[data-every="true"] .who { color: var(--warn); }
 .memo-why { margin: 2px 0 2px; color: var(--text-2); }
+.memo-why code { color: var(--text-strong); }
 .memo .chain { color: var(--muted); font-size: 11px; }
 .memo .site { width: 100%; color: var(--accent); }
 .memo .site .copy-text { flex: 1; }
@@ -300,19 +301,13 @@ details.fold[open] > summary::before { content: '▾'; }
 .stat-src:hover { color: var(--text-strong); }
 /* A render's way down from its root: the cause, the root and its reason, then what each parent handed on. */
 .ways { margin-top: 3px; padding-top: 3px; border-top: 1px dashed var(--rule-soft); }
-/* The count and the cause on one line, the components under them; a line breaks after a ›, never before one. */
 .way { display: grid; grid-template-columns: auto 1fr; column-gap: 6px; margin: 4px 0; }
 .way-n { grid-row: span 2; min-width: 26px; color: var(--number); font-size: 11px; font-variant-numeric: tabular-nums; }
 .way-cause { color: var(--muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.way-steps { grid-column: 2; display: flex; flex-wrap: wrap; align-items: baseline; gap: 1px 0; margin: 0; padding: 0; list-style: none; min-width: 0; }
-.way-steps > li { display: inline-flex; align-items: baseline; gap: 4px; min-width: 0; }
-.way-steps > li:not(:last-child)::after { content: '›'; margin: 0 6px 0 2px; color: var(--faint); }
-.way-name { color: var(--text-strong); }
-.way-why { color: var(--muted); font-size: 11px; }
-/* A long way, a link a line, each after the first led by an arrow from the one that rendered it. */
-.way[data-column="true"] .way-steps { flex-direction: column; flex-wrap: nowrap; }
-.way[data-column="true"] .way-steps > li::after { content: none; }
-.way[data-column="true"] .way-steps > li + li::before { content: '↳'; margin-right: 4px; color: var(--faint); }
+/* A way reads down the card, a link a line, each after the first led by an arrow from the one that rendered it. */
+.way-steps { grid-column: 2; display: flex; flex-direction: column; margin: 0; padding: 0; list-style: none; min-width: 0; }
+.way-steps > li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px; min-width: 0; }
+.way-steps > li + li::before { content: '↳'; color: var(--faint); }
 .way-more button { padding: 0 6px; font-size: 11px; color: var(--muted); }
 .way-why { display: inline-flex; align-items: baseline; gap: 3px; }
 .way-why[data-tone="warn"] { color: var(--warn); }
