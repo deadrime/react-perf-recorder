@@ -41,7 +41,7 @@ describe('render reasons', () => {
       'parent: props new ref, same content: style, onClick',
       'parent: props price | new ref, same content: style, onClick',
     ]);
-    expect(reasonPairs(rec, rec.components.find((c) => c.name === 'Plain')!)).toEqual([['parent: props equal', 2]]);
+    expect(reasonPairs(rec, rec.components.find((c) => c.name === 'Plain')!)).toEqual([['parent: same props, memo would skip it', 2]]);
   });
 
   it('shows a context change that reaches a memo component past its parent', () => {

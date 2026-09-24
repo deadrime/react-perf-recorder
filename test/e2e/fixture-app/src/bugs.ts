@@ -79,7 +79,7 @@ export const BUGS: Record<Bug, BugCard> = {
     title: 'watch() in the form root',
     what: 'The composer watches its own values, so every keystroke renders the whole form.',
     scenario: 'type',
-    shows: 'Composer as the root with [react-hook-form] useForm; the fields below say parent: props equal — memo would have skipped them.',
+    shows: 'Composer as the root with [react-hook-form] useForm; the fields below say parent: same props, memo would skip it.',
     file: 'src/components/Composer/index.tsx',
   },
   'memo-cache-slot': {

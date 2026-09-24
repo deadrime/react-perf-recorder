@@ -102,7 +102,7 @@ test.describe('seeded re-render bugs', () => {
     const form = root(rec, 'Composer');
     expect(chain(rec, form)).toMatch(/^\[react-hook-form\] useForm/);
     expect(form.perHit).toBeGreaterThan(5);
-    expect(reasons(rec, component(rec, 'MetaInput'))).toContain('parent: props equal');
+    expect(reasons(rec, component(rec, 'MetaInput'))).toContain('parent: same props, memo would skip it');
 
     expect(root(await record(page, 'typing', ''), 'Composer')).toBeUndefined();
   });

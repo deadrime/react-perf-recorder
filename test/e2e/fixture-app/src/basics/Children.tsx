@@ -90,7 +90,7 @@ export const Children = () => (
       <Panel
         kind="broken"
         title="<Frame /> renders <Report />"
-        says="The recorder says: the report renders once a second, with parent: props equal."
+        says="The recorder says: the report renders once a second, with parent: same props, memo would skip it."
         code={BROKEN}
       >
         <FrameThatRenders />

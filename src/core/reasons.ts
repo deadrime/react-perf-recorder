@@ -37,6 +37,7 @@ const MAX_PROPS = 10;
 export interface Describer {
   selector(fn: Function): string;
   store(getSnapshot: Function): string | null;
+  snapshot(getSnapshot: Function): string | null;
 }
 
 const same = (a: unknown, b: unknown) => sameContent(a, b, 20_000) === true;
@@ -112,8 +113,11 @@ export function reasonsOf(prev: Snapshot, f: Fiber, describe: Describer): Reason
           // use-sync-external-store/with-selector (zustand v4, react-redux) keeps [getSnapshot, getServerSnapshot, selector, isEqual]
           // in the deps of the useMemo right before the store hook.
           const deps = Array.isArray(before?.memoizedState) ? (before!.memoizedState as unknown[])[1] : null;
-          const selector = Array.isArray(deps) && typeof deps[2] === 'function' ? describe.selector(deps[2] as Function) : '';
-          const store = Array.isArray(deps) && typeof deps[0] === 'function' ? describe.store(deps[0] as Function) : null;
+          const withSelector = Array.isArray(deps) && typeof deps[0] === 'function' && typeof deps[2] === 'function';
+          // Otherwise the library passed a getSnapshot of its own, which its plugin may know (zustand 5, `connect`).
+          const getSnapshot = b.queue.getSnapshot as Function;
+          const selector = withSelector ? describe.selector(deps[2] as Function) : describe.snapshot(getSnapshot) ?? '';
+          const store = describe.store(withSelector ? (deps[0] as Function) : getSnapshot);
           out.push({ kind: 'store', hook: i, ...(store ? { store } : {}), ...(selector ? { selector } : {}), ...mark });
         } else if (b.queue.lastRenderedReducer) {
           out.push({ kind: 'state', hook: i, ...mark });

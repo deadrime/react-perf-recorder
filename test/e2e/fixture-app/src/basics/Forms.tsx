@@ -110,7 +110,7 @@ export const Forms = () => (
       <Panel
         kind="broken"
         title="useState in the form"
-        says="The recorder says: the form is a cascade root on every keystroke, with parent: props equal below it."
+        says="The recorder says: the form is a cascade root on every keystroke, with parent: same props, memo would skip it — below it."
         code={BROKEN}
       >
         <ControlledForm />

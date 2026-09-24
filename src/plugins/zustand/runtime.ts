@@ -35,11 +35,17 @@ function register(result: unknown) {
 export const packageOfStack = (stack: string | undefined) => storeOrigin(stack, ['zustand']);
 
 // Filled by zustand/vanilla itself (`registerStores` in ./index.ts): the stores of the app and of its libraries.
-receiveStores(ZUSTAND_GLOBAL, (result, made) => {
+const hook = receiveStores(ZUSTAND_GLOBAL, (result, made) => {
   const api = apiOf(result);
   if (api) names.madeAt(api.getState, made);
   register(result);
 });
+
+// zustand 5's own getSnapshot of each `useStore` (`followSnapshots` in ./index.ts): its store and selector.
+const snapshots = new WeakMap<Function, { api: StoreApi; selector: Function }>();
+hook.snapshot = (fn: Function, api: StoreApi, selector: Function) => {
+  if (!snapshots.has(fn)) snapshots.set(fn, { api, selector });
+};
 
 /** `create(fn)` and the curried `create<T>()(fn)` of zustand, `createStore` of zustand/vanilla. */
 export function wrapCreate<F extends (...args: any[]) => any>(factory: F): F {
@@ -96,7 +102,10 @@ export default definePlugin((options: { devtools?: boolean } | null) => {
         const inner = shallowInner.get(fn);
         return inner ? `useShallow(${next(inner)})` : null;
       }
-      const api = apiByGetState.get(fn);
+      const snapshot = snapshots.get(fn);
+      // `useStore(api)` without a selector reads the whole state through zustand's own `identity`.
+      if (kind === 'snapshot') return snapshot ? (snapshot.selector.name === 'identity' ? 'whole state' : next(snapshot.selector)) : null;
+      const api = apiByGetState.get(fn) ?? snapshot?.api;
       return api ? storeName(api) : null;
     },
     start(session) {

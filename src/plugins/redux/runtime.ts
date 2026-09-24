@@ -59,12 +59,29 @@ function dispatchOf(store: Store, dispatch: Dispatch, action: unknown) {
 }
 
 // Filled by redux itself (`registerStores` in ./index.ts): its dispatch is routed here while a recording runs.
-receiveStores(REDUX_GLOBAL, register).dispatch = dispatchOf;
+const hook = receiveStores(REDUX_GLOBAL, register);
+hook.dispatch = dispatchOf;
+
+// Told by react-redux as it renders (`followSelectors` in ./index.ts): the app's selector behind useSelector's
+// wrapper, and the store and mapStateToProps behind a `connect`'s getSnapshot.
+const appSelectors = new WeakMap<Function, Function>();
+const connected = new WeakMap<Function, { getState: Function; mapState: Function | null }>();
+hook.selector = (wrapped: Function, selector: Function) => appSelectors.set(wrapped, selector);
+hook.snapshot = (fn: Function, store: Store, mapState: unknown) => {
+  if (!connected.has(fn)) connected.set(fn, { getState: store.getState, mapState: typeof mapState === 'function' ? mapState : null });
+};
 
 export default definePlugin(() => ({
   name: 'redux',
-  describe(fn, kind) {
-    return kind === 'store' && byGetState.has(fn) ? storeName(fn) : null;
+  describe(fn, kind, next) {
+    if (kind === 'selector') {
+      const selector = appSelectors.get(fn);
+      return selector ? next(selector) : null;
+    }
+    const connection = connected.get(fn);
+    if (kind === 'snapshot') return connection ? `connect(${connection.mapState ? next(connection.mapState) : ''})` : null;
+    const getState = connection?.getState ?? fn;
+    return byGetState.has(getState) ? storeName(getState) : null;
   },
   start(context) {
     counts.clear();

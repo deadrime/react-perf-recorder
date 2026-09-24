@@ -41,7 +41,8 @@ export interface SessionContext extends PluginContext {
   findFibers(predicate: (fiber: Fiber) => boolean, limit?: number): Fiber[];
 }
 
-export type DescribeKind = 'selector' | 'store';
+/** `snapshot`: the selector behind a getSnapshot a library hands to useSyncExternalStore itself (zustand 5, `connect`). */
+export type DescribeKind = 'selector' | 'store' | 'snapshot';
 
 export interface RuntimePlugin<Data = unknown> {
   name: string;

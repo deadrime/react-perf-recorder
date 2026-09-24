@@ -1,9 +1,10 @@
 import fs from 'node:fs';
+import path from 'node:path';
 import { Provider, useSelector } from 'react-redux';
 import { PluginHost } from '../../src/core/plugins';
-import { registerStores } from '../../src/plugins/redux';
+import { followSelectors, registerStores } from '../../src/plugins/redux';
 import plugin, { nameStore, packageOfStack } from '../../src/plugins/redux/runtime';
-import { flush, makeRecorder, mount, reasonsOf } from './helpers';
+import { flush, makeRecorder, mount, nodeModules, reasonsOf } from './helpers';
 
 type Redux = typeof import('redux');
 
@@ -66,6 +67,40 @@ describe('redux plugin runtime', () => {
     const count = rec.roots.find((r) => r.name === 'Count')!;
     expect(reasonsOf(rec, count)[0]).toMatch(/^external store #\d+ \[appStore\]/);
     expect(rec.causes.map((c) => c.key)).toContain('redux:todos/add');
+  });
+
+  it('names the store, the app selector and what a connect reads, through react-redux as the dev server hands it over', async () => {
+    const redux = await patchedRedux();
+    const source = path.join(nodeModules(), 'react-redux', 'dist', 'react-redux.mjs');
+    const code = followSelectors(fs.readFileSync(source, 'utf8'));
+    expect(code).toBeTruthy();
+    expect(followSelectors(code!)).toBeNull();
+    // Beside the original, so its own imports resolve as they do in the app.
+    const file = source.replace(/react-redux\.mjs$/, 'rpr-test.mjs');
+    fs.writeFileSync(file, code!);
+    try {
+      const rr = (await import(/* @vite-ignore */ file)) as typeof import('react-redux');
+      const store = redux.legacy_createStore(todos);
+      nameStore(store, 'appStore');
+      const Count = () => <b>{rr.useSelector((s: ReturnType<typeof todos>) => s.todos.length)}</b>;
+      const mapStateToProps = (s: ReturnType<typeof todos>) => ({ n: s.todos.length });
+      const Connected = rr.connect(mapStateToProps)(({ n }: { n: number }) => <i>{n}</i>);
+      mount(
+        <rr.Provider store={store}>
+          <Count />
+          <Connected />
+        </rr.Provider>
+      );
+      const { recorder } = makeRecorder({}, [[plugin, null]]);
+      recorder.start();
+      flush(() => void store.dispatch({ type: 'todos/add', text: 'milk' }));
+      const rec = recorder.stop();
+      const reason = (name: RegExp) => reasonsOf(rec, rec.roots.find((r) => name.test(r.name))!)[0];
+      expect(reason(/^Count$/)).toMatch(/^external store #\d+ \[appStore\] \(s\) => s\.todos\.length/);
+      expect(reason(/^Connect/)).toMatch(/^external store #\d+ \[appStore\] connect\(mapStateToProps\)/);
+    } finally {
+      fs.rmSync(file, { force: true });
+    }
   });
 
   it("names a library's store after its package, passing redux and RTK over", () => {

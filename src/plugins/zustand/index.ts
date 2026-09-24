@@ -34,6 +34,21 @@ export function registerStores(code: string): string | null {
   ].join('\n');
 }
 
+const SNAPSHOT = 'React.useCallback(() => selector(api.getState()), [api, selector])';
+
+/**
+ * zustand 5's `useStore` hands useSyncExternalStore a getSnapshot of its own: each one is told to the runtime with its
+ * store and selector, so a reason names them. v4 goes through use-sync-external-store/with-selector, read as it is.
+ */
+export function followSnapshots(code: string): string | null {
+  if (!code.includes(SNAPSHOT) || code.includes('__rprSnapshot')) return null;
+  return [
+    code.replace(SNAPSHOT, `__rprSnapshot(${SNAPSHOT}, api, selector)`),
+    handOverCode(ZUSTAND_GLOBAL).declare,
+    'function __rprSnapshot(fn, api, selector) { if (__rprHook.snapshot) __rprHook.snapshot(fn, api, selector); return fn; }',
+  ].join('\n');
+}
+
 /**
  * Store causes for commits: which action wrote to which store and which top-level keys it changed (with the same
  * content or not); labels `useShallow(selector)` and the store in `external store` reasons.
@@ -72,7 +87,10 @@ export function zustand(options: ZustandOptions = {}): PerfRecorderPlugin {
     init: (ctx) => void (context = ctx),
     vite: {
       config: () => ({ optimizeDeps: { include: ['zustand', 'zustand/vanilla', 'zustand/react/shallow'] } }),
-      transformDep: { filter: /[\\/]zustand[\\/]esm[\\/]vanilla\.mjs$/, transform: registerStores },
+      transformDep: {
+        filter: /[\\/]zustand[\\/]esm[\\/](?:vanilla|react)\.mjs$/,
+        transform: (code) => registerStores(code) ?? followSnapshots(code),
+      },
       resolveId: (id, importer) => proxies.resolveId(id, importer),
       load: (id) => proxies.load(id),
       transform: nameStoresTransform(filter, functions, RUNTIME, '__rprNameStore'),

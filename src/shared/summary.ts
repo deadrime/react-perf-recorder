@@ -130,7 +130,7 @@ export function reasonText(reason: Omit<ReasonInfo, 'i' | 'text'>): string {
     case 'props':
       return `props: ${props || '(new object)'}`;
     case 'parent':
-      if (reason.equal) return 'parent: props equal';
+      if (reason.equal) return 'parent: same props, memo would skip it';
       if (!props) return 'parent: children';
       return `parent: props ${props}${reason.children ? ' +children' : ''}`;
     case 'bailout':

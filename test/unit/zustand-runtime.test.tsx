@@ -1,12 +1,13 @@
 import fs from 'node:fs';
+import path from 'node:path';
 import { create, useStore } from 'zustand';
 import { devtools } from 'zustand/middleware';
 import { createStore } from 'zustand/vanilla';
 import { useShallow } from 'zustand/react/shallow';
 import { PluginHost } from '../../src/core/plugins';
-import { registerStores } from '../../src/plugins/zustand';
+import { followSnapshots, registerStores } from '../../src/plugins/zustand';
 import plugin, { nameStore, packageOfStack, wrapCreate, wrapUseShallow } from '../../src/plugins/zustand/runtime';
-import { flush, makeRecorder, mount, reasonsOf } from './helpers';
+import { flush, makeRecorder, mount, nodeModules, reasonsOf } from './helpers';
 
 describe('zustand plugin runtime', () => {
   afterEach(() => {
@@ -138,5 +139,37 @@ describe('zustand plugin runtime', () => {
     expect(host.drain()[0].type).toBe('useCounter.setState');
     expect(host.store(api.getState)).toBe('useCounter');
     host.stop({ scope: null, findFibers: () => [] });
+  });
+
+  it("names the store and the selector of zustand 5's useStore, which hands React a getSnapshot of its own", async () => {
+    // zustand 5's react.mjs as the dev server hands it over; this repository has zustand 4, so it is written out here.
+    const v5 = [
+      "import React from 'react';",
+      'export function useStore(api, selector) {',
+      '  return React.useSyncExternalStore(api.subscribe, React.useCallback(() => selector(api.getState()), [api, selector]));',
+      '}',
+    ].join('\n');
+    const code = followSnapshots(v5);
+    expect(code).toContain('__rprSnapshot(');
+    expect(followSnapshots(code!)).toBeNull();
+    // Beside the React under test, so its `import 'react'` finds that one.
+    const file = path.join(nodeModules(), 'react', 'rpr-zustand5-test.mjs');
+    fs.writeFileSync(file, code!);
+    try {
+      const { useStore: useStore5 } = (await import(/* @vite-ignore */ file)) as { useStore: Function };
+      const api = createStore<{ n: number; other: number }>()(() => ({ n: 0, other: 0 }));
+      const useCounter = Object.assign(() => api.getState(), api);
+      nameStore(useCounter, 'useCounter');
+      const selectN = (s: { n: number }) => s.n;
+      const Count = () => <b>{useStore5(api, selectN)}</b>;
+      mount(<Count />);
+      const { recorder } = makeRecorder({}, [[plugin, null]]);
+      recorder.start();
+      flush(() => api.setState({ n: 1 }));
+      const rec = recorder.stop();
+      expect(reasonsOf(rec, rec.roots.find((r) => r.name === 'Count')!)[0]).toMatch(/^external store #\d+ \[useCounter\] selectN/);
+    } finally {
+      fs.rmSync(file, { force: true });
+    }
   });
 });
