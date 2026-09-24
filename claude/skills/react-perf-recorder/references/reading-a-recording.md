@@ -20,6 +20,8 @@ component declared inside a render, or an unstable `key`.
 - `SAME-CONTENT` — a new reference with the same content: almost always a subscription that asks for more than it
   shows, not new data;
 - `bailout: state set to the same value` — React called the component and threw the result away.
+- `#17` in `state #17` or `external store #17` is the hook's place in that component's own list: the same number
+  in two components is two unrelated hooks.
 
 **The hook chain** turns the reason into the code that owns it:
 

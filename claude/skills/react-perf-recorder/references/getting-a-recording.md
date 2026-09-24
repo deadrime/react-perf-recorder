@@ -19,10 +19,15 @@ from the panel.
   A failed script answers with the page's url, the start of its text and a screenshot.
 - `setup` — a module like `script`, run before the page is opened for the recording and not recorded: seed
   `localStorage` (`goto` the dev server, `evaluate`, return), sign in, build the data through the UI. An app that
-  starts empty is set up here, not in the recording.
+  starts empty is set up here, not in the recording. A backend the machine cannot reach is stubbed here with
+  `page.route`: the routes stay on the page for the recording.
+- A page that re-renders a lot replaces its elements: look an element up again for each step (`page.locator`,
+  not a handle kept from before). A form inside a frame is reached through `page.frameLocator(...)`.
 - Keep a run well under a minute: past the client's limit the call gives up while the page goes on recording.
 - Another agent may record into the same folder: take the id `record_page` returns, give `wait_for_recording`
   an `afterId`, and filter `list_recordings` by `url` or `label` — never lean on `latest`.
+- `scope` must be on the page when the recording starts; for a component the script's own steps bring up (a
+  trace opened from a list), record the whole page with `watch: ['Name']` instead.
 - `scope: 'MessageList'` — only what renders inside that component; a render from above is kept as an outside root
   with its reason. Read the component's file and take the name it is exported under. An area not on the page
   answers with the names that are.
