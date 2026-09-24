@@ -137,13 +137,15 @@ export function section(rec: RecordingV2 & { id?: string; status?: string }, nam
       return Object.fromEntries(
         Object.entries(rec.plugins).map(([n, s]) => [
           n,
-          {
-            version: s.version,
-            highlights: s.highlights ?? [],
-            metrics: Object.entries(s.metrics ?? {})
-              .sort((a, b) => b[1].value - a[1].value)
-              .slice(0, top),
-          },
+          s.active === false
+            ? { version: s.version, active: false, note: 'the library is not on the page' }
+            : {
+                version: s.version,
+                highlights: s.highlights ?? [],
+                metrics: Object.entries(s.metrics ?? {})
+                  .sort((a, b) => b[1].value - a[1].value)
+                  .slice(0, top),
+              },
         ])
       );
     default: {
@@ -240,16 +242,16 @@ export function createServer(dir: string) {
     'record_page',
     {
       description:
-        'Records a page in a browser of its own and returns the session id, so a fix can be measured: record, change the code, record again with the same arguments, then compare_recordings. Needs the dev server running with the Vite plugin and playwright installed in the project. A page behind a sign-in needs a session: `react-perf-recorder login <url>` once (a headed browser, the person signs in), or cdp to record in a browser they are already signed in to. A scenario of clicks and typing goes in a script module, or replay does again what a recording did — the person\'s own clicks and typing, at their pace, from the page load; without either it records ms of the page as it is, and fromLoad records the page load itself.',
+        "Records a page in a browser of its own and returns the session id, so a fix can be measured: record, change the code, record again with the same arguments, then compare_recordings. Needs the dev server running with the Vite plugin and playwright installed in the project. A page behind a sign-in needs a session: `react-perf-recorder login <url>` once (a headed browser, the person signs in), or cdp to record in a browser they are already signed in to. A scenario of clicks and typing goes in a script module, or replay does again what a recording did — the person's own clicks and typing, at their pace, from the page load; without either it records ms of the page as it is, and fromLoad records the page load itself.",
       inputSchema: {
-        url: z.string().optional().describe('The page to open, on the dev server. With replay, the recording\'s page when left out.'),
+        url: z.string().optional().describe("The page to open, on the dev server. With replay, the recording's page when left out."),
         ms: z.number().int().min(200).max(60_000).optional(),
         label: z.string().optional().describe('What this run is, e.g. "before" and "after".'),
         scope: z
           .union([z.string(), z.object({ names: z.array(z.string()) }), z.object({ selector: z.string(), component: z.string().optional() })])
           .optional()
           .describe(
-            "Record only what renders inside an area: a component's name as the page calls it (\"MessageList\"), the path down to it when the name repeats, or an element. Renders that came from above are kept as outside roots, with their reason."
+            'Record only what renders inside an area: a component\'s name as the page calls it ("MessageList"), the path down to it when the name repeats, or an element. Renders that came from above are kept as outside roots, with their reason.'
           ),
         watch: z.array(z.string()).optional(),
         script: z.string().optional().describe('A module with `export default async (page) => {…}`, run while recording.'),
@@ -261,10 +263,7 @@ export function createServer(dir: string) {
           ),
         fromLoad: z.boolean().optional().describe('Record from the first commit of the page load.'),
         viewport: z.string().optional().describe('1280x800; keep it the same across runs that will be compared.'),
-        sample: z
-          .boolean()
-          .optional()
-          .describe('Faster on lists of thousands: reasons of renders a parent caused are a sample, counts stay exact.'),
+        sample: z.boolean().optional().describe('Faster on lists of thousands: reasons of renders a parent caused are a sample, counts stay exact.'),
         throttle: z.number().min(1).max(20).optional().describe('CPU slowdown, 4 = four times slower.'),
         state: z.string().optional().describe('A session saved by `login`; the default beside the recordings is used when it is there.'),
         cdp: z.string().optional().describe('http://localhost:9222 of a browser already running and signed in.'),

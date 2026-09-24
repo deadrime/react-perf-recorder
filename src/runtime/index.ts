@@ -44,6 +44,8 @@ export interface RuntimePlugin<Data = unknown> {
   /** Label for a store selector or a store (by its getSnapshot); `null` when the function is not the plugin's. */
   describe?(fn: Function, kind: DescribeKind, next: (fn: Function) => string): string | null;
   start?(session: SessionContext): void;
+  /** After each commit of a recording, for what mounts late (a lazy provider); keep it cheap. */
+  commit?(session: SessionContext): void;
   stop?(session: SessionContext): PluginSection<Data> | void;
   conditions?(): Conditions;
 }

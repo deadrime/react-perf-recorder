@@ -1,3 +1,4 @@
+import { libraryOf, parseStack, servedPath } from '../core/stack';
 export interface MemoStat {
   name: string;
   file: string;
@@ -23,7 +24,8 @@ interface MemoRecord {
   file: string;
   kind: string;
   size: number;
-  site?: string;
+  /** Where an unnamed one was created: a stack, formatted only if it gets into a report. */
+  created?: Error;
   calls: number;
   recomputes: number;
   nestedCalls: number;
@@ -41,12 +43,25 @@ export interface MemoInstrumentation {
   /** Names a memoized function; the build transform calls it after `const selectX = memoize(...)`. */
   name(fn: unknown, name: string, file: string): void;
   label(fn: Function): string | null;
+  /** Whether any memoized function made through `instrument` is still alive: the library is in use on the page. */
+  readonly used: boolean;
   start(): void;
   stop(): MemoStat[];
   readonly recording: boolean;
 }
 
 const MAX_DISTINCT = 64;
+
+/** An unnamed memoized function goes by the first app frame that created it: `memoize in Row · Messages.tsx`. */
+function createdAt(rec: MemoRecord): { name: string; file: string } {
+  const frame = parseStack(rec.created?.stack ?? '')
+    .slice(1)
+    .find((f) => libraryOf(f.url) === null);
+  if (!frame) return { name: rec.kind, file: '' };
+  const file = servedPath(frame.url).replace(/^src\//, '');
+  const fn = /^[A-Za-z_$][\w$]*$/.test(frame.fn) ? frame.fn : '';
+  return { name: `${rec.kind} in ${fn ? `${fn} · ` : ''}${file.split('/').pop()}`, file };
+}
 
 /**
  * Counting must not change memoization: arguments inside nested selector calls are proxy-compare proxies, and any
@@ -95,6 +110,7 @@ export function createMemoInstrumentation(): MemoInstrumentation {
         lastKey: null,
         evictions: 0,
         storedAt: new Map(),
+        created: new Error(),
       };
       const inner = function (this: unknown, ...innerArgs: unknown[]) {
         if (state.on) rec.recomputes++;
@@ -109,7 +125,6 @@ export function createMemoInstrumentation(): MemoInstrumentation {
         rec.calls++;
         const nested = state.depth > 0;
         if (nested) rec.nestedCalls++;
-        else if (!rec.name && !rec.site) rec.site = new Error().stack?.split('\n')[2]?.trim().slice(0, 160);
         const before = rec.recomputes;
         state.depth++;
         try {
@@ -150,6 +165,9 @@ export function createMemoInstrumentation(): MemoInstrumentation {
     get recording() {
       return state.on;
     },
+    get used() {
+      return records().length > 0;
+    },
     name(fn, name, file) {
       const rec = typeof fn === 'function' ? byFn.get(fn) : undefined;
       if (rec) Object.assign(rec, { name, file });
@@ -178,11 +196,11 @@ export function createMemoInstrumentation(): MemoInstrumentation {
       const merged = new Map<string, MemoStat>();
       for (const rec of records()) {
         if (!rec.calls) continue;
-        const name = rec.name || `${rec.kind}@${rec.site ?? 'unknown'}`;
-        const key = `${name}|${rec.file}`;
+        const { name, file } = rec.name ? rec : createdAt(rec);
+        const key = `${name}|${file}`;
         const stat = merged.get(key) ?? {
           name,
-          file: rec.file,
+          file,
           kind: rec.kind,
           size: rec.size,
           calls: 0,

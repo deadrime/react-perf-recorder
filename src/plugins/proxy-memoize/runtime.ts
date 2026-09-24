@@ -14,17 +14,22 @@ export default definePlugin(() => ({
     const evicting = selectors.filter((s) => s.evicting);
     return {
       version: 1,
-      highlights: [
-        ...evicting.slice(0, 5).map((s) =>
-          s.distinctArgs > s.size
-            ? `${s.name}: ${s.recomputes}/${s.calls} recomputes, ${s.distinctArgs} argument sets > cache size ${s.size}`
-            : `${s.name}: ${s.recomputes}/${s.calls} recomputes, ${s.evictions} after the answer was pushed out of cache size ${s.size} (${s.distinctArgs} argument sets)`
-        ),
-        ...selectors
-          .filter((s) => !s.evicting)
-          .slice(0, 3)
-          .map((s) => `${s.name}: ${s.recomputes}/${s.calls} recomputes`),
-      ],
+      active: memo.used,
+      highlights: selectors.length
+        ? [
+            ...evicting
+              .slice(0, 5)
+              .map((s) =>
+                s.distinctArgs > s.size
+                  ? `${s.name}: ${s.recomputes}/${s.calls} recomputes, ${s.distinctArgs} argument sets > cache size ${s.size}`
+                  : `${s.name}: ${s.recomputes}/${s.calls} recomputes, ${s.evictions} after the answer was pushed out of cache size ${s.size} (${s.distinctArgs} argument sets)`
+              ),
+            ...selectors
+              .filter((s) => !s.evicting)
+              .slice(0, 3)
+              .map((s) => `${s.name}: ${s.recomputes}/${s.calls} recomputes`),
+          ]
+        : ['no selector calls during the recording'],
       metrics: Object.fromEntries(
         selectors.slice(0, 30).flatMap((s) => [
           [`${s.name}.calls`, { value: s.calls, kind: 'count' as const }],

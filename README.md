@@ -103,7 +103,7 @@ now is readable without stopping. The area's name opens the tree again, `◎` fo
 recording (renders and which root pulled it), and `⧉` copies the area as text for an assistant
 (component, file and line, the path above it, its DOM, what is inside, the `scope` for scripts). A recording's
 `label` — what the run was about, shown in `list_recordings` — comes from scripts and `record_page`; the panel's note
-field is off for now, so panel recordings arrive without one. `highlight` outlines renders in the area, both while recording
+field is off for now, so panel recordings arrive without one. `highlights` outlines renders in the area, both while recording
 and between recordings; a recording made with it on says so in its warnings, because drawing costs frame time.
 `fast` (off by default) works out the reason of a render its parent caused for 50 instances of a component a commit
 rather than all of them: on a list of thousands recording costs about half as much, counts of renders stay exact, and

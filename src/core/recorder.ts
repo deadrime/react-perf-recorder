@@ -343,7 +343,7 @@ export class Recorder {
     this.resolveZones();
     for (const root of this.roots) this.seed(root.current);
     this.conditions = this.readConditions();
-    this.deps.plugins.start({ scope: this.scopeInfo, findFibers: (pred, limit) => this.findFibers(pred, limit) }, this.t0);
+    this.deps.plugins.start(this.pluginSession(), this.t0);
     if (this.scope) this.dom.setScopeHosts(this.scopeHosts());
     this.dom.start();
     this.hook = hookCommits(
@@ -430,7 +430,7 @@ export class Recorder {
     this.counting = false;
     this.actions?.stop();
     this.stopHistory?.();
-    const sections = this.deps.plugins.stop({ scope: this.scopeInfo, findFibers: (pred, limit) => this.findFibers(pred, limit) });
+    const sections = this.deps.plugins.stop(this.pluginSession());
     this.warnings.push(...this.deps.plugins.warnings.splice(0));
     const conditionsAfter = this.readConditions();
     this.overlayMs += this.deps.highlight?.takeCostMs?.() ?? 0;
@@ -455,6 +455,7 @@ export class Recorder {
     const timer = runningTimer();
     if (timer) this.deps.plugins.emit('core', { type: timer });
     const causes = this.deps.plugins.drain();
+    this.deps.plugins.commit(this.pluginSession());
     const c: CommitState = {
       t,
       renders: 0,
@@ -915,6 +916,10 @@ export class Recorder {
       if (f.sibling) stack.push([f.sibling, zoneTag]);
       if (f.child) stack.push([f.child, zone]);
     }
+  }
+
+  private pluginSession() {
+    return { scope: this.scopeInfo, findFibers: (pred: (f: Fiber) => boolean, limit?: number) => this.findFibers(pred, limit) };
   }
 
   private findFibers(pred: (f: Fiber) => boolean, limit = Infinity): Fiber[] {

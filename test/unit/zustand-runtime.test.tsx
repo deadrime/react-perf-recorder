@@ -31,7 +31,13 @@ describe('zustand plugin runtime', () => {
     expect(sent).toEqual([{ type: 'counter/inc' }]);
     useStore.setState({ n: 5 });
     expect(host.drain()[0]).toMatchObject({ type: 'useStore.setState', changes: [{ key: 'n' }] });
-    host.stop({ scope: null, findFibers: () => [] });
+    expect(host.stop({ scope: null, findFibers: () => [] }).zustand).toMatchObject({ active: true });
+    // A store that nothing changed: the plugin is still on, and says so.
+    host.start({ scope: null, findFibers: () => [] }, performance.now());
+    expect(host.stop({ scope: null, findFibers: () => [] }).zustand).toMatchObject({
+      active: true,
+      highlights: ['no store updates during the recording'],
+    });
   });
 
   it('labels stores without devtools and useShallow selectors', () => {

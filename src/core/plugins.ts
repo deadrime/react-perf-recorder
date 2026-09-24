@@ -129,6 +129,13 @@ export class PluginHost implements Describer {
     }
   }
 
+  commit(session: Omit<SessionContext, keyof PluginContext>) {
+    for (const entry of this.loaded) {
+      if (entry.error || !entry.plugin.commit) continue;
+      this.guard(entry, () => entry.plugin.commit!({ ...this.context(entry.plugin.name), ...session }));
+    }
+  }
+
   stop(session: Omit<SessionContext, keyof PluginContext>): Record<string, PluginSection> {
     this.recording = false;
     this.buffer = [];

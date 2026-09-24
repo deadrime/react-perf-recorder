@@ -115,7 +115,10 @@ test.describe('seeded re-render bugs', () => {
 
     const clean = await record(page, 'idle', '');
     // The clean rows keep a memoized selector each; none of them evicts.
-    expect((clean.plugins['proxy-memoize'].data as { selectors: Array<{ evicting: boolean }> }).selectors.some((s) => s.evicting)).toBe(false);
+    const rows = (clean.plugins['proxy-memoize'].data as { selectors: Array<{ name: string; evicting: boolean }> }).selectors;
+    expect(rows.some((s) => s.evicting)).toBe(false);
+    // Unnamed, they go by where they were made: one entry for all the rows.
+    expect(rows.filter((s) => /^memoize in .*Messages\.tsx$/.test(s.name))).toHaveLength(1);
     expect(reasons(clean, root(clean, 'Status'))).not.toContainEqual(expect.stringContaining('SAME-CONTENT'));
   });
 

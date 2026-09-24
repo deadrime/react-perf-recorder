@@ -17,6 +17,8 @@ export interface PluginInfo {
 
 export interface PluginSection<Data = unknown> {
   version: number;
+  /** false: the plugin's library is not on the page, and the report leaves the plugin out. */
+  active?: boolean;
   highlights?: string[];
   metrics?: Record<string, { value: number; kind: 'count' | 'gauge' }>;
   data?: Data;

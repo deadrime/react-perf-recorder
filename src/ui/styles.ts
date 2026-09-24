@@ -191,7 +191,7 @@ button.icon { padding: 3px 7px; }
 .area-pill { display: inline-flex; align-items: stretch; min-width: 0; border: 1px solid var(--edge-strong); border-radius: 6px; background: var(--button); overflow: hidden; }
 .area-pill > button { display: inline-flex; align-items: center; justify-content: center; gap: 5px; border: 0; border-radius: 0; background: none; }
 /* The flex display above outranks the plain rule for hidden buttons; a hidden one in the pill stays hidden. */
-.area-pill > button[hidden] { display: none; }
+.area-pill[hidden], .area-pill > button[hidden] { display: none; }
 /* Inside the pill a ring round the button would be cut by its edge into a stray line: it goes inside instead. */
 .area-pill > button:focus-visible { outline: none; box-shadow: inset 0 0 0 1px var(--focus); }
 .pick-icon { flex: none; width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 1.2; stroke-linecap: round; }
@@ -264,7 +264,14 @@ details.fold[open] > summary::before { content: '▾'; }
 .action-at { color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
 .action-what { color: var(--text); margin-right: 2px; }
 .action .reason { margin-left: 10px; }
-.watched, .plugin { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px; margin: 3px 0; }
+.watched { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px; margin: 3px 0; }
+.plugin { padding: 5px 0; border-top: 1px solid var(--rule-soft); }
+.plugin:first-child { border-top: 0; }
+.plugin-name { font-size: 11px; font-weight: 600; color: var(--label); margin-bottom: 2px; }
+.plugin-line { display: flex; align-items: baseline; gap: 8px; padding: 1px 0 1px 8px; }
+.plugin-key { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-strong); }
+.plugin-value { margin-left: auto; color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; text-align: right; }
+.plugin-line[data-tone="warn"] .plugin-key, .plugin-line[data-tone="warn"] .plugin-value { color: var(--warn); }
 /* The causes are the legend of the tracks' colours, and each one a switch that lights up its commits. */
 .causes { display: flex; flex-direction: column; gap: 1px; margin-bottom: 6px; }
 .cause { display: flex; align-items: baseline; gap: 6px; width: 100%; padding: 2px 6px; border: 1px solid transparent; border-radius: 6px; background: none; text-align: left; }

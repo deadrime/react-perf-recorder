@@ -101,6 +101,22 @@ describe('memo instrumentation', () => {
     select(makeState(1));
     memo.start();
     expect(memo.stop()).toEqual([]);
+    // Nothing was called, but the library is on the page.
+    expect(memo.used).toBe(true);
     expect(memo.label(select)).toBe('selectTick');
+  });
+
+  it('names an unnamed selector by the function that created it, one entry for all its copies', () => {
+    const memo = createMemoInstrumentation();
+    const m = memo.instrument(memoize, 'memoize', 0);
+    function rowSelector(id: string) {
+      return m((state: State) => state.items[id]);
+    }
+    const rows = ['a', 'b'].map(rowSelector);
+    memo.start();
+    for (const select of rows) select(makeState(1));
+    const [stat] = memo.stop();
+    expect(stat).toMatchObject({ name: 'memoize in rowSelector · proxy-memoize.test.ts', calls: 2 });
+    expect(stat.file).toMatch(/proxy-memoize\.test\.ts$/);
   });
 });

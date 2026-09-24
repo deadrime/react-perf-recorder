@@ -248,14 +248,19 @@ export function Result({
       {Object.keys(s.plugins).length ? (
         <Fold id="plugins" title="Plugins" note={Object.keys(s.plugins).join(' · ')} open={false}>
           {Object.entries(s.plugins).map(([name, plugin]) => (
-            <div class="plugin" key={name}>
-              <span class="who">{name}</span>
-              {plugin.highlights.slice(0, 3).map((text) => (
-                // A cache smaller than the arguments it is called with is the one line here that is always a bug.
-                <span class="badge" key={text} data-tone={/cache size/.test(text) ? 'warn' : undefined}>
-                  {text}
-                </span>
-              ))}
+            <div class="plugin" key={name} data-rpr="plugin">
+              <div class="plugin-name">{name}</div>
+              {plugin.highlights.slice(0, 3).map((text) => {
+                // "selectX: 8/81 recomputes" reads as a name and its numbers; a line without a name stays whole.
+                const at = text.indexOf(': ');
+                return (
+                  // A cache smaller than the arguments it is called with is the one line here that is always a bug.
+                  <div class="plugin-line" key={text} data-tone={/cache size/.test(text) ? 'warn' : undefined}>
+                    {at > 0 ? <code class="plugin-key">{text.slice(0, at)}</code> : null}
+                    <span class="plugin-value">{at > 0 ? text.slice(at + 2) : text}</span>
+                  </div>
+                );
+              })}
             </div>
           ))}
         </Fold>

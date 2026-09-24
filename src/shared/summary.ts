@@ -177,8 +177,8 @@ export function memoWhy(m: MemoHookStat): string {
   return dep.sameContent === dep.changed
     ? `${which} is a new object with the same content every time`
     : dep.sameContent
-      ? `${which} changed ${dep.changed}×, ${dep.sameContent} of them to the same content`
-      : `${which} changed ${dep.changed}×`;
+    ? `${which} changed ${dep.changed}×, ${dep.sameContent} of them to the same content`
+    : `${which} changed ${dep.changed}×`;
 }
 
 /** `Report · useMemo #2 · recomputed 12 of 12 renders — dependency 1 is a new object… · src/Report.tsx:14` */
@@ -280,10 +280,10 @@ export function summarize(rec: RecordingV2 & { id?: string; status?: string }, t
     })),
     actions,
     plugins: Object.fromEntries(
-      Object.entries(rec.plugins).map(([name, section]: [string, PluginSection]) => [
-        name,
-        { version: section.version, highlights: (section.highlights ?? []).slice(0, 3) },
-      ])
+      Object.entries(rec.plugins)
+        // A plugin whose library is not on the page is left out; one that is says so even when nothing happened.
+        .filter(([, section]: [string, PluginSection]) => section.active ?? Boolean(section.highlights?.length))
+        .map(([name, section]: [string, PluginSection]) => [name, { version: section.version, highlights: section.highlights!.slice(0, 3) }])
     ),
     frames: {
       longTasks: rec.frames.longTasks.count,

@@ -42,13 +42,14 @@ export function Controls({ p }: { p: PanelViewProps }): JSX.Element {
       <button type="button" class="stop" data-rpr="stop" title={`Stop (${p.shortcuts.record})`} hidden={!p.recording} onClick={p.on.stop}>
         ■ Stop
       </button>
-      <span class="area-pill" data-scoped={scoped ? 'true' : undefined} data-lost={String(Boolean(p.scope?.lost))}>
+      {/* While recording the area cannot change: the pill only names it, and is gone when it is the whole app. */}
+      <span class="area-pill" hidden={p.recording && !scoped} data-scoped={scoped ? 'true' : undefined} data-lost={String(Boolean(p.scope?.lost))}>
         <button
           type="button"
           data-rpr="pick"
           title={`${scoped ? 'Pick another area' : 'Pick an area — the whole app is recorded until you do'} (${p.shortcuts.pick})`}
           aria-label={scoped ? 'Pick another area' : 'Pick an area'}
-          disabled={p.recording}
+          hidden={p.recording}
           onClick={p.on.pick}
         >
           <PickIcon />
@@ -107,7 +108,7 @@ export function HighlightToggle({ p }: { p: PanelViewProps }): JSX.Element {
   return (
     <label class="toggle highlight-toggle" title={HIGHLIGHT_LEGEND}>
       <input type="checkbox" data-rpr="highlight" checked={p.highlight} onChange={(e) => p.on.setHighlight((e.target as HTMLInputElement).checked)} />
-      highlight
+      highlights
     </label>
   );
 }

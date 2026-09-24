@@ -42,6 +42,8 @@ export class Panel {
   private result: Saved | null = null;
   private message: Message = { text: '', kind: 'muted' };
   private highlighter: Highlighter | null = null;
+  /** A commit or action picked on the timeline: its outlines alone are on the page until the pick is undone. */
+  private outlining = false;
   /** The pointer that just finished a drag of the dot; its click opens nothing. */
   private dragged = false;
   private readonly handlers: PanelHandlers;
@@ -108,7 +110,7 @@ export class Panel {
     const on = this.visible && this.state.highlight;
     // A hidden panel draws nothing, so an automated browser gets clean screenshots.
     if (this.highlighter) this.highlighter.enabled = on;
-    this.engine.highlightWhenIdle(on, this.scope);
+    this.engine.highlightWhenIdle(on && !this.outlining, this.scope);
   }
 
   private initialVisibility() {
@@ -160,7 +162,7 @@ export class Panel {
       dragStart: (event) => this.onDragStart(event),
       outlineRoots: (entries) => this.outlineRoots(entries),
       dismissResult: () => {
-        this.highlighter?.pin([]);
+        this.outlineRoots(null);
         this.result = null;
         this.compared = null;
         this.sync();
@@ -312,6 +314,13 @@ export class Panel {
   /** The roots of a picked commit or action, on the page as it is now: every instance of each, labelled with its hits. */
   private outlineRoots(entries: Array<{ i: number; hits: number }> | null): number {
     const rec = this.result;
+    const outlining = Boolean(entries && rec);
+    if (outlining !== this.outlining) {
+      this.outlining = outlining;
+      // The fading render boxes would bury the picked ones.
+      if (outlining) this.highlighter?.reset();
+      this.syncIdleHighlight();
+    }
     if (!entries || !rec) {
       this.highlighter?.pin([]);
       return 0;

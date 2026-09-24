@@ -127,9 +127,12 @@ export default definePlugin((options: { devtools?: boolean } | null) => {
       follow = null;
       unsubscribes.splice(0).forEach((unsubscribe) => unsubscribe());
       const list = [...counts].sort((a, b) => b[1] - a[1]);
+      let active = false;
+      for (const ref of stores) if (ref.deref()) active = true;
       return {
         version: 1,
-        highlights: list.slice(0, 3).map(([name, n]) => `${name}: ${n} updates`),
+        active,
+        highlights: list.length ? list.slice(0, 3).map(([name, n]) => `${name}: ${n} updates`) : ['no store updates during the recording'],
         metrics: {
           'actions.named': { value: actions, kind: 'count' },
           ...Object.fromEntries(list.map(([name, n]) => [`${name}.updates`, { value: n, kind: 'count' as const }])),

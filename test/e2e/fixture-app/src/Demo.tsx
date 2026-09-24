@@ -67,7 +67,7 @@ export const Catalogue = () => (
           cascade roots and why they rendered.
         </li>
         <li>
-          Turn on <code>highlight</code> to see the renders outlined live, and <code>⌖ Pick</code> to record one of the
+          Turn on <code>highlights</code> to see the renders outlined live, and <code>⌖ Pick</code> to record one of the
           two versions only.
         </li>
       </ol>
@@ -79,7 +79,7 @@ export const Catalogue = () => (
       <h2 className="section">The textbook ones</h2>
       <p>
         Two versions of one widget side by side, one of them wrong, with the renders counted on every row. Turn on{' '}
-        <code>highlight</code> and press the button.
+        <code>highlights</code> and press the button.
       </p>
       <div className="cards">
         {Object.entries(BASICS).map(([id, basic]) => (

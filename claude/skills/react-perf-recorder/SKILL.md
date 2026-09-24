@@ -73,7 +73,7 @@ a session is masked, in the path, the query and the fragment alike. Driving the 
   that started the cascade, with its reason.
 - **`⧉`** copies the area as text for a chat: component, file and line, the path above it, its DOM, what is inside,
   and the `scope` to pass to a script. This is what a person sends instead of "that panel on the right".
-- **highlight** outlines renders inside the area, live, with or without a recording — grey where the render changed
+- **highlights** outlines renders inside the area, live, with or without a recording — grey where the render changed
   no DOM. Turn it off for timing runs: a recording made with it on carries a warning, and `compare_recordings`
   complains if one side had it and the other did not.
 - **`◎`** in a tree row follows a component by name through the recording: how many times it rendered and which root

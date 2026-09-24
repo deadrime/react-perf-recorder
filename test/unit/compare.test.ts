@@ -41,6 +41,12 @@ describe('partial recordings and comparison', () => {
     expect(summary.topCauses[0]).toMatchObject({ key: 'zustand:rows/set', commits: 2 });
   });
 
+  it('leaves out a plugin that found nothing of its library', () => {
+    const rec = aggregateEvents(meta, events(3));
+    rec.plugins = { 'react-query': { version: 1, highlights: [] }, zustand: { version: 1, highlights: ['rows: 2 updates'] } };
+    expect(Object.keys(summarize(rec).plugins)).toEqual(['zustand']);
+  });
+
   it('compares roots, causes and the same action before and after', () => {
     const before = aggregateEvents(meta, events(30));
     const after = aggregateEvents({ ...meta, id: '20260919-120100-app-panel-beef' }, events(3));

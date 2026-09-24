@@ -170,12 +170,16 @@ test('Repeat reloads, does the same actions again and sets the two side by side'
 
 test('a commit picked on the timeline outlines its components on the page, until the pick goes', async ({ page }) => {
   await recordFromPanel(page, '/app?rpr=panel&tick=150', async () => {
+    // With the highlights on, the live render boxes step aside while a pick is outlined.
+    await page.locator('input[data-rpr="highlight"]').check();
     await page.getByTestId('tab-people').click();
     await page.getByTestId('tab-chat').click();
     await page.getByTestId('message').pressSequentially('hi', { delay: 60 });
   });
   const pinned = () => page.evaluate(() => ((window as any).__REACT_PERF_RECORDER__.panel.highlighter.pinned as unknown[]).length);
+  const live = () => page.evaluate(() => Boolean((window as any).__REACT_PERF_RECORDER__.engine.idleHighlighting));
   expect(await pinned()).toBe(0);
+  await expect.poll(live).toBe(true);
 
   // The last commit is from the typing: its roots are on the page, and they are outlined there.
   await page.locator('.tl-bar').last().click();
@@ -184,15 +188,18 @@ test('a commit picked on the timeline outlines its components on the page, until
   const found = Number(await note.getAttribute('data-found'));
   expect(found).toBeGreaterThan(0);
   expect(await pinned()).toBe(found);
+  expect(await live()).toBe(false);
 
   // Show all takes the pick away, and the outlines with it; so does closing the report.
   await page.locator('[data-rpr="tl-reset"]').click();
   await expect(note).toHaveCount(0);
   expect(await pinned()).toBe(0);
+  await expect.poll(live).toBe(true);
   await page.locator('.tl-bar').last().click();
   await expect(note).toBeVisible();
   await page.locator('.result-bar button', { hasText: 'Dismiss' }).click();
   expect(await pinned()).toBe(0);
+  await expect.poll(live).toBe(true);
 });
 
 test('Repeat replays in the area the report was recorded in, not the one the panel shows now', async ({ page }) => {

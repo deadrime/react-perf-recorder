@@ -134,7 +134,7 @@ test('follows a component picked in the tree and shows the leading roots live', 
   await expect(page.locator('[data-rpr="watch"] [data-name="Status"]')).toBeVisible();
 
   // In a bottom corner the panel grows upwards, so the roots filling in must not move the buttons: they sit above.
-  const buttonAt = () => page.locator('[data-rpr="pick"]').evaluate((el) => Math.round(el.getBoundingClientRect().top));
+  const buttonAt = () => page.locator('.row.controls').evaluate((el) => Math.round(el.getBoundingClientRect().top));
   const atRest = await buttonAt();
   await page.locator('[data-rpr="record"]').click();
   // While it records, the panel names the roots leading so far.
@@ -184,8 +184,12 @@ test('outlines renders inside the area while nothing is recorded, and marks reco
   await expect.poll(() => painted(page)).toBe(true);
 
   await page.locator('[data-rpr="record"]').click();
+  // The area is named while recording, but it cannot be picked again.
+  await expect(page.locator('[data-rpr="pick"]')).toBeHidden();
+  await expect(page.locator('[data-rpr="scope"]')).toBeVisible();
   await page.waitForTimeout(600);
   await page.locator('[data-rpr="stop"]').click();
+  await expect(page.locator('[data-rpr="pick"]')).toBeVisible();
   const { recording } = await newRecording(page);
   expect(recording.overhead.highlight).toBe(true);
   expect(recording.warnings.some((w) => w.startsWith('highlight was on'))).toBe(true);
