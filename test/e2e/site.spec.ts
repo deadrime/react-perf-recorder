@@ -29,10 +29,10 @@ test('the front page and the docs keep the panel away; a page with something to 
 });
 
 test('the docs switch pages even where scrollTo returns something', async ({ page }) => {
-  // Some browsers and extensions return a value from scrollTo; an effect that returned it broke the next page.
-  await page.addInitScript(() => {
-    const original = window.scrollTo.bind(window);
-    window.scrollTo = ((...args: [number, number]) => (original(...args), Promise.resolve())) as unknown as typeof window.scrollTo;
+  // Some browsers and extensions return a value from scrollTo; an effect that returned it broke the next page. The
+  // stand-in breaks scrollTo's own type on purpose, so it goes in as the page's script rather than as typed code.
+  await page.addInitScript({
+    content: 'const scrollTo = window.scrollTo; window.scrollTo = function (...args) { scrollTo.apply(this, args); return Promise.resolve(); };',
   });
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
