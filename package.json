@@ -65,6 +65,7 @@
     "test:matrix": "npm run test && npm run test:19 && npm run test:e2e",
     "test:e2e": "playwright test",
     "fixture": "vite --config test/e2e/fixture-app/vite.config.ts",
+    "dev:pages": "vite --config test/e2e/fixture-app/vite.pages.config.ts",
     "build:pages": "NODE_ENV=development vite build --config test/e2e/fixture-app/vite.pages.config.ts",
     "fixture:19": "RPR_REACT=19 FIXTURE_PORT=5392 vite --config test/e2e/fixture-app/vite.config.ts",
     "format": "prettier --write ."

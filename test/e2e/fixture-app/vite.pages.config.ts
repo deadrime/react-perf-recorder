@@ -18,23 +18,28 @@ const outDir = path.resolve(__dirname, '../../../dist-pages');
 
 /**
  * The fixture as the project's site: the demo with the recorder on it and the docs, built for GitHub Pages. React is
- * the development build — the recorder reads what only it keeps (component files, hook types) — and recordings stay
- * in the tab, since there is no dev server to keep them.
+ * the development build — the recorder reads what only it keeps (component files, hook types) — and a built site's
+ * recordings stay in the tab, since there is no dev server to keep them.
  */
-export default defineConfig({
+export default defineConfig(({ command }) => ({
   root: __dirname,
   base: process.env.PAGES_BASE ?? '/react-perf-recorder/',
   mode: 'development',
-  define: { 'process.env.NODE_ENV': JSON.stringify('development') },
+  // For the build only: the dev server has React's development build already, and pre-bundles it by itself.
+  define: command === 'build' ? { 'process.env.NODE_ENV': JSON.stringify('development') } : {},
   resolve: { alias: aliases },
+  // `npm run dev:pages` serves the site as it is built, under its base; the fixture's own server keeps 5391.
+  server: { port: 5393 },
+  cacheDir: path.resolve(__dirname, '../../../node_modules/.vite-pages'),
   build: { outDir, emptyOutDir: true, minify: false, sourcemap: false },
   plugins: [
     react(),
     perfRecorder({
       enabled: true,
-      save: false,
+      // Under `dev:pages` recordings are kept where the fixture's own server keeps them.
+      outDir: path.resolve(__dirname, '../../../.agent-artifacts/fixture-sessions'),
       plugins: [zustand(), proxyMemoize({ functions: ['memoize', 'memoizeWithArgs'] }), reactQuery()],
     }),
     spaFallback(outDir),
   ],
-});
+}));

@@ -205,11 +205,11 @@ export function perfRecorder(options: PerfRecorderOptions = {}): VitePluginLike[
       const named = addComponentNames(rewritten ?? code, components.wrappers ?? DEFAULT_WRAPPERS, id);
       return named ? { code: named, map: null } : rewritten ? { code: rewritten, map: null } : null;
     },
-    // The dev server serves a virtual module under /@id/; a build bundles it from its id, which it does only for a
-    // tag that is there before Vite reads the page's scripts.
+    // The dev server serves a virtual module under /@id/ and puts the base in front itself for a tag added before it
+    // reads the page's scripts; a build bundles the module from its id, and only for such a tag.
     transformIndexHtml: {
       order: 'pre',
-      handler: () => [{ tag: 'script', attrs: { type: 'module', src: serving ? `${base}@id/${ENTRY_ID}` : ENTRY_ID }, injectTo: 'head-prepend' }],
+      handler: () => [{ tag: 'script', attrs: { type: 'module', src: serving ? `/@id/${ENTRY_ID}` : ENTRY_ID }, injectTo: 'head-prepend' }],
     },
     configureServer(server) {
       const dir = resolveOutDir(root, options.outDir);

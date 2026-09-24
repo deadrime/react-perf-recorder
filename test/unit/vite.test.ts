@@ -45,6 +45,21 @@ describe('perfRecorder vite plugin', () => {
     expect(html.indexOf('virtual:react-perf-recorder/entry')).toBeLessThan(html.indexOf('/src/main.tsx'));
   });
 
+  it('puts the base in front of the entry once, for an app not served from the root', async () => {
+    const site = await createServer({
+      configFile: path.join(fixture, 'vite.pages.config.ts'),
+      logLevel: 'silent',
+      server: { middlewareMode: true, watch: null },
+      appType: 'custom',
+    });
+    try {
+      const html = await site.transformIndexHtml('/index.html', fs.readFileSync(path.join(fixture, 'index.html'), 'utf8'));
+      expect(html).toContain('<script type="module" src="/react-perf-recorder/@id/virtual:react-perf-recorder/entry"></script>');
+    } finally {
+      await Promise.race([site.close(), new Promise((resolve) => setTimeout(resolve, 3000))]);
+    }
+  });
+
   it('proxies store and memoizer modules for app code only', async () => {
     const app = path.join(fixture, 'src/store/selectors.ts');
     expect((await server.pluginContainer.resolveId('proxy-memoize', app))?.id).toBe('\0react-perf-recorder:proxy-memoize:proxy-memoize');

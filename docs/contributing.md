@@ -12,7 +12,8 @@
 `/` lists the basics and the advanced cases. The e2e suite needs a dev server because the Vite plugin is half of
 what is under test.
 
-`npm run fixture` opens it by hand on http://localhost:5391. Playwright starts its own copies of the server on 5391
+`npm run fixture` opens it by hand on http://localhost:5391; `npm run dev:pages` serves it as the project's site,
+under `/react-perf-recorder/` on http://localhost:5393, and `npm run build:pages` builds that site into `dist-pages`. Playwright starts its own copies of the server on 5391
 (React 18) and 5392 (React 19): stop yours first, or move the tests with `FIXTURE_PORT` / `FIXTURE_PORT_19`.
 `E2E_PROJECT=react18` runs one version only.
 
