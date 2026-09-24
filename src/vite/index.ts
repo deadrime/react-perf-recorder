@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import { createRequire } from 'node:module';
 import path from 'node:path';
 import { TraceMap, originalPositionFor } from '@jridgewell/trace-mapping';
 import type { Plugin, ViteDevServer } from 'vite';
@@ -38,6 +39,16 @@ export interface PerfRecorderOptions {
   /** `timers: false` leaves setTimeout, setInterval and requestAnimationFrame unwrapped: no timer causes. */
   engine?: { bigCommit?: number; timelineLimit?: number; maxDurationMs?: number; timers?: boolean };
   plugins?: PerfRecorderPlugin[];
+}
+
+/** Whether a package can be imported from the project: an `include` of one that is not there fails the optimizer. */
+function resolvable(specifier: string, root = process.cwd()): boolean {
+  try {
+    createRequire(path.join(path.resolve(root), 'package.json')).resolve(specifier);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 const DEFAULT_WRAPPER_PATTERN = '^(Anonymous|ForwardRef|Memo)$';
@@ -181,7 +192,11 @@ export function perfRecorder(options: PerfRecorderOptions = {}): VitePluginLike[
     name: 'react-perf-recorder',
     enforce: 'pre',
     apply,
-    config: () => ({ optimizeDeps: { exclude: ['react-perf-recorder'] } }),
+    // The app's import of react-dom/client is rewritten to the proxy, so the optimizer's scan never meets it and
+    // would find it on the first page load, then reload the page with two copies of React for a moment.
+    config: (config) => ({
+      optimizeDeps: { exclude: ['react-perf-recorder'], include: resolvable('react-dom/client', config.root) ? ['react-dom/client'] : [] },
+    }),
     configResolved(config) {
       root = config.root;
       base = config.base;

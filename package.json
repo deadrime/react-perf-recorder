@@ -3,6 +3,28 @@
   "version": "0.1.0",
   "description": "Record React re-renders in the browser: cascade roots, hook-level reasons, store causes and user actions, saved as sessions an agent reads over MCP",
   "license": "MIT",
+  "author": "Eugene",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/deadrime/react-perf-recorder.git"
+  },
+  "homepage": "https://deadrime.github.io/react-perf-recorder/",
+  "bugs": {
+    "url": "https://github.com/deadrime/react-perf-recorder/issues"
+  },
+  "keywords": [
+    "react",
+    "re-render",
+    "performance",
+    "profiler",
+    "vite",
+    "vite-plugin",
+    "mcp",
+    "claude",
+    "zustand",
+    "react-query",
+    "devtools"
+  ],
   "type": "module",
   "files": [
     "dist",
@@ -10,7 +32,7 @@
     "docs/*.md"
   ],
   "bin": {
-    "react-perf-recorder": "./dist/cli.js"
+    "react-perf-recorder": "dist/cli.js"
   },
   "exports": {
     "./vite": {
@@ -68,7 +90,8 @@
     "dev:pages": "vite --config test/e2e/fixture-app/vite.pages.config.ts",
     "build:pages": "NODE_ENV=development vite build --config test/e2e/fixture-app/vite.pages.config.ts",
     "fixture:19": "RPR_REACT=19 FIXTURE_PORT=5392 vite --config test/e2e/fixture-app/vite.config.ts",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "prepublishOnly": "npm run typecheck && npm test && npm run build"
   },
   "dependencies": {
     "@babel/parser": "^7.29.9"
