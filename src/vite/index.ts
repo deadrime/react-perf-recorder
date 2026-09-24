@@ -195,9 +195,21 @@ export function perfRecorder(options: PerfRecorderOptions = {}): VitePluginLike[
     apply,
     // The app's import of react-dom/client is rewritten to the proxy, so the optimizer's scan never meets it and
     // would find it on the first page load, then reload the page with two copies of React for a moment.
-    config: (config) => ({
-      optimizeDeps: { exclude: ['react-perf-recorder'], include: resolvable('react-dom/client', config.root) ? ['react-dom/client'] : [] },
-    }),
+    config(this: { meta?: { rolldownVersion?: string } } | void, config) {
+      const output = (config.optimizeDeps as { rolldownOptions?: { output?: { chunkFileNames?: unknown } } } | undefined)?.rolldownOptions?.output;
+      // Rolldown names a shared chunk after a module in it (`react-dom-DVjBvCsW`), which reads as a package in a stack.
+      const chunks =
+        this?.meta?.rolldownVersion && output?.chunkFileNames === undefined
+          ? { rolldownOptions: { output: { chunkFileNames: 'chunk-[hash].js' } } }
+          : {};
+      return {
+        optimizeDeps: {
+          exclude: ['react-perf-recorder'],
+          include: resolvable('react-dom/client', config.root) ? ['react-dom/client'] : [],
+          ...chunks,
+        },
+      };
+    },
     configResolved(config) {
       root = config.root;
       base = config.base;

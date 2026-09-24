@@ -91,6 +91,15 @@ describe('perfRecorder vite plugin', () => {
     expect(plugin.transform(vanilla, '/repo/src/vanilla.mjs')).toBeNull();
   });
 
+  it("names Rolldown's shared chunks chunk-[hash], unless the project named them itself", () => {
+    const [core] = perfRecorder() as Array<{ config: Function }>;
+    const rolldown = { meta: { rolldownVersion: '1.0.0' } };
+    expect(core.config.call(rolldown, {}).optimizeDeps.rolldownOptions.output.chunkFileNames).toBe('chunk-[hash].js');
+    const own = { optimizeDeps: { rolldownOptions: { output: { chunkFileNames: 'dep-[name].js' } } } };
+    expect(core.config.call(rolldown, own).optimizeDeps.rolldownOptions).toBeUndefined();
+    expect(core.config.call(undefined, {}).optimizeDeps.rolldownOptions).toBeUndefined();
+  });
+
   it("rewrites redux's createStore wherever it is loaded from, redux 5 and 4", async () => {
     const [, plugin] = perfRecorder({ plugins: [redux()] }) as Array<{ config: Function; transform: Function }>;
     const [inRolldown] = plugin.config.call({ meta: { rolldownVersion: '1.0.0' } }, {}).optimizeDeps.rolldownOptions.plugins;

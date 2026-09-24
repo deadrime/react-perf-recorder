@@ -38,8 +38,8 @@ const packageOf = (path: string) => {
   return parts[0]?.startsWith('@') ? parts.slice(0, 2).join('/') : parts[0] ?? '';
 };
 
-// A shared chunk has no package: `chunk-XYZ` from esbuild, `[name]-[hash]` from Rolldown, whose hash may hold `-`
-// and `_`. npm names are lower case: an upper-case letter in the last eight marks a hash, `react-markdown` stays.
+// A shared chunk has no package: `chunk-XYZ` from esbuild and, set by our plugin, Rolldown. A project's own Rolldown
+// names are `[name]-[hash]`: npm names are lower case, so an upper-case letter in the last eight marks a hash.
 const SHARED_CHUNK = /^chunk-|-(?=[\w$-]{0,7}[A-Z])[\w$-]{8}$/;
 
 /**
