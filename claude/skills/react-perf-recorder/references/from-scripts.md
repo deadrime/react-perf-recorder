@@ -1,7 +1,7 @@
 # Driving the recorder from a script
 
 The page carries the engine at `window.__REACT_PERF_RECORDER__.engine`, so a Playwright or CDP script can record
-without touching the panel. The README's "From scripts" section has the full API; this is what a measuring run
+without touching the panel. `docs/mcp.md` in the repository has the full API; this is what a measuring run
 needs.
 
 ```js
