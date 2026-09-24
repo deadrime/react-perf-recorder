@@ -14,13 +14,14 @@ const recording = await page.evaluate(async () => {
   engine.start({ source: 'script', label: 'tab switch', highlight: false });
   document.querySelector('[data-testid="tab-orders"]').click();
   await new Promise((r) => setTimeout(r, 1500));
-  return engine.stop();         // the Recording, and it is saved to the sessions folder too
+  return engine.stop(); // the Recording, and it is saved to the sessions folder too
 });
 ```
 
 - `engine.record(ms, options)` is start, wait, stop in one call; `engine.last` keeps the last recording.
 - Options: `scope` (an area — `{ names: ['OrdersPanel', 'PositionTable'] }` or `{ selector }`), `watch` (component
-  names to follow), `zones` (named parts of the page, by selector), `label`, `highlight`, `frames`, `hookNames`,
+  names to follow), `zones` (named parts of the page, by selector), `label`, `highlight`, `sampleReasons` (fast),
+  `frames`, `hookNames`,
   `prune`, `actions`, `bigCommit`, `timeline` (how many commits to keep), `meta`.
 - The answer carries `id`: read the whole thing later with `get_recording`, and compare two runs with
   `compare_recordings`.
