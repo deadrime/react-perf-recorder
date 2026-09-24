@@ -69,8 +69,11 @@ export const DocsPage = () => {
   const { page: slug = 'readme' } = useParams();
   const page = pages.get(slug) ?? pages.get('readme')!;
   const html = useMemo(() => render(page.slug, page.text), [page]);
-  // Another page of the docs opens at its top, as a page load would.
-  useEffect(() => window.scrollTo(0, 0), [page]);
+  // Another page of the docs opens at its top, as a page load would. A block, not an expression: whatever scrollTo
+  // returns — a browser or an extension may return something — would be taken for the effect's cleanup.
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [page]);
   return (
     <>
       <style>{DEMO_STYLES}</style>

@@ -27,3 +27,19 @@ test('the front page and the docs keep the panel away; a page with something to 
   await page.goto('/basics/state');
   await expect(page.locator('[data-rpr="record"]')).toBeVisible();
 });
+
+test('the docs switch pages even where scrollTo returns something', async ({ page }) => {
+  // Some browsers and extensions return a value from scrollTo; an effect that returned it broke the next page.
+  await page.addInitScript(() => {
+    const original = window.scrollTo.bind(window);
+    window.scrollTo = ((...args: Parameters<typeof window.scrollTo>) => (original(...args), Promise.resolve())) as typeof window.scrollTo;
+  });
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  await page.goto('/docs/recording');
+  await page.locator('.docs nav a', { hasText: 'The panel and the report' }).click();
+  await expect(page.locator('.docs article h1')).toHaveText('The panel and the report');
+  await page.locator('.docs nav a', { hasText: 'Options' }).click();
+  await expect(page.locator('.docs article h1')).toHaveText('Options');
+  expect(errors).toEqual([]);
+});
