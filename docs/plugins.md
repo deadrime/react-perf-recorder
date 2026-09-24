@@ -34,7 +34,9 @@ export default definePlugin((options: { verbose: boolean }) => ({
   name: 'my-store',
   setup(ctx) {}, // at page boot, before the app
   describe(fn, kind, next) {
-    return null; // a label for a store selector or a store
+    // a label for a selector, a store (by its getSnapshot), or the selector behind a getSnapshot the library
+    // hands useSyncExternalStore itself (`snapshot`: zustand 5's useStore, react-redux's connect)
+    return null;
   },
   start(session) {}, // session.emitCause({ type, changes }) queues a cause for the next commit
   commit(session) {}, // after each commit of a recording: find what mounted late; keep it cheap

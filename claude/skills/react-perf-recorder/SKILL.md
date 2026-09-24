@@ -19,11 +19,13 @@ numbers belong in the answer.
 | The person reproduces the problem in their browser   | Ask them to press **Rec**, do it, press **Stop**; meanwhile `wait_for_recording`, then `get_recording`. |
 | You drive the page                                   | `record_page` — one call, one recording; clicks and typing go in a `script` module.                     |
 | The problem is the page load                         | `record_page` with `fromLoad`, or the panel's `↺ Page load`.                                            |
-| Before and after a fix, nothing waits on the network | `record_page` with `replay: <id>` after the change → `compare_recordings`.                              |
+| Before and after a fix, nothing waits on the network | `record_page` with `replay: <id>` after the change (its `setup` runs again) → `compare_recordings`.     |
 | Before and after a fix, actions wait on requests     | Two `record_page` runs with the same `script`; compare them yourself.                                   |
 
 About one component: pass the name it is exported under as `scope`. Details, sign-in and the traps of each route:
-`references/getting-a-recording.md`.
+`references/getting-a-recording.md`. The two that cost most: a `script` only acts — no `goto` or `reload`, the
+page is already open and recording; and `setup` reaches the recording only through what outlives a page load
+(storage, cookies, `page.route`), not through state it built in the page.
 
 ## Reading it
 

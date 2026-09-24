@@ -10,7 +10,8 @@ code as it was and one on the change, set side by side.
 2. **Make the change** — in a separate worktree when the project is a git repository (below).
 3. **Do the same scenario again.**
    - The actions happen in the page (tabs, filters, typing, modals, store updates): **↻ Repeat** in the panel, or
-     `record_page` with `replay: <id>`. It reloads the page and does the same clicks and typing at the same pace.
+     `record_page` with `replay: <id>`. It reloads the page and does the same clicks and typing at the same pace,
+     after the `setup` the recording ran.
    - The actions wait on requests (server search, paging, saving): a replay does not wait for data. Write a `script`
      that waits for what shows the data is there, and run it with `record_page` on both sides.
 4. **Compare.** The panel sets a second recording of the same page and area against the one before it;

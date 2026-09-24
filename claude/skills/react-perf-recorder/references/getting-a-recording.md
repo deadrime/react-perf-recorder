@@ -20,9 +20,13 @@ from the panel.
 - `setup` — a module like `script`, run before the page is opened for the recording and not recorded: seed
   `localStorage` (`goto` the dev server, `evaluate`, return), sign in, build the data through the UI. An app that
   starts empty is set up here, not in the recording. A backend the machine cannot reach is stubbed here with
-  `page.route`: the routes stay on the page for the recording.
+  `page.route`: the routes stay on the page for the recording. Only what outlives a page load reaches the recording
+  (storage, cookies, routes, the server's data): state built in the page's memory is gone when the url opens — do
+  that in the `script`. A replay of the recording runs its setup again.
 - A page that re-renders a lot replaces its elements: look an element up again for each step (`page.locator`,
-  not a handle kept from before). A form inside a frame is reached through `page.frameLocator(...)`.
+  not a handle kept from before). A form inside a frame is reached through `page.frameLocator(...)`; the recording
+  follows a same-origin frame by itself, and a frame whose React runs in the parent page (`react-frame-component`)
+  is the page's own tree.
 - Keep a run well under a minute: past the client's limit the call gives up while the page goes on recording.
 - Another agent may record into the same folder: take the id `record_page` returns, give `wait_for_recording`
   an `afterId`, and filter `list_recordings` by `url` or `label` — never lean on `latest`.

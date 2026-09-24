@@ -31,7 +31,10 @@ Work by the `react-perf-recorder` skill; open its references when you get to the
 
 ## Boundaries
 
-- About fifteen tool calls is the job; past twenty-five, answer with what you have and what is left unchecked.
+- The recorder, about six calls: a recording, its summary, perhaps one more section, the fix's recording, one
+  compare. Past ten, answer with what you have and what is left unchecked.
+- Every answer stays in the context for the rest of the job: read the code around the `file:line` the recording
+  names (`Read` with `offset` and `limit`, `Grep -n`), not whole files; ask for one section, not all of them.
 - Read sections, not `recording.json`.
 - Do not commit, stage or switch branches.
 - Numbers go into the answer, never into a file of the repository.
