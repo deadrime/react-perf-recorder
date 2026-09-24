@@ -23,10 +23,10 @@ const names = (list: string[] | undefined) => (list ?? []).slice(0, 5).join(', '
 
 /**
  * A reason in the parts a row draws: the kind is a chip of its own, so the words next to it never repeat it.
- * `props: price | same: style` becomes `props` · `price` · `same: style`.
+ * `props: price | new ref, same content: style` becomes `props` · `price` · `new ref, same content: style`.
  */
 function partsOf(reason: ReasonInfo, hook?: HookInfo): { what: string; same?: string } {
-  const same = reason.sameRef?.length ? `same: ${names(reason.sameRef)}` : undefined;
+  const same = reason.sameRef?.length ? `new ref, same content: ${names(reason.sameRef)}` : undefined;
   switch (reason.kind) {
     case 'state':
       return { what: stateName(hook) ?? (reason.hook === undefined ? 'of a class' : `#${reason.hook}`) };
@@ -268,7 +268,7 @@ function WayRow({ way }: { way: Way }): JSX.Element {
   const { steps } = way;
   const folded = !open && steps.length > FOLDED;
   // Folded, the middle keeps the links worth fixing: equal props, or a prop new with the same content.
-  const shown = (i: number) => !folded || i < 2 || i >= steps.length - 4 || Boolean(steps[i].equal || steps[i].same);
+  const shown = (i: number) => !folded || i < 2 || i >= steps.length - 4 || Boolean(steps[i].equal || steps[i].newRefSameContent);
   const items: JSX.Element[] = [];
   for (let i = 0; i < steps.length; i++) {
     if (shown(i)) {

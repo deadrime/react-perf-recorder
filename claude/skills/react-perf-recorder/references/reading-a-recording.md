@@ -16,7 +16,7 @@ component declared inside a render, or an unstable `key`.
 ## Reasons
 
 - `state now` (the name the code gives it; `#2` when it is not known), `external store #3 [useStore] selectPrice`,
-  `context Theme`, `props: value | same: style, onClick`;
+  `context Theme`, `props: value | new ref, same content: style, onClick`;
 - `SAME-CONTENT` — a new reference with the same content: almost always a subscription that asks for more than it
   shows, not new data;
 - `bailout: state set to the same value` — React called the component and threw the result away.
@@ -35,7 +35,9 @@ In an `external store` reason, `[useStore]` names the store and what follows is 
 
 `section: components` has a reason per component, parent-caused renders included:
 
-- `parent: props price | same: style, onClick` — what broke `memo`, and which props were only new references;
+- `parent: props price | new ref, same content: style, onClick` — the component did render: `price` changed, `style`
+  and `onClick` were new references to equal values, which is what breaks `memo`. A render that `memo` skipped is
+  never counted or listed;
 - `parent: props equal` — a `memo` would have skipped this render;
 - `chains` — up to three ways its renders came down, as `way`: the root's leading cause, the root and its reason,
   then the props each parent handed on:

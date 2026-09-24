@@ -100,7 +100,7 @@ export const BUGS: Record<Bug, BugCard> = {
     title: 'A JSX element built in render defeats memo',
     what: 'A prop holds an element created during render, so it is a new object on every render of the parent.',
     scenario: 'type',
-    shows: 'StatRow renders with parent: props same: title — the prop changed identity, not content.',
+    shows: 'StatRow renders with parent: props new ref, same content: title — the prop changed identity, not content.',
     file: 'src/components/Composer/index.tsx',
   },
   'inline-context': {

@@ -114,12 +114,12 @@ export function hookOf(root: RootStat, reason: ReasonInfo | undefined) {
 const names = (list: string[] | undefined, max = 5) => (list ?? []).slice(0, max).join(', ');
 
 /**
- * The sentence behind a reason — `state #2 SAME-CONTENT`, `parent: props price | same: style` — built in one place
+ * The sentence behind a reason — `state #2 SAME-CONTENT`, `parent: props price | new ref, same content: style` — built in one place
  * so the panel, the MCP server and an agent all read the same words.
  */
 export function reasonText(reason: Omit<ReasonInfo, 'i' | 'text'>): string {
   const mark = reason.sameContent ? ' SAME-CONTENT' : '';
-  const props = [names(reason.changed), reason.sameRef?.length ? `same: ${names(reason.sameRef)}` : ''].filter(Boolean).join(' | ');
+  const props = [names(reason.changed), reason.sameRef?.length ? `new ref, same content: ${names(reason.sameRef)}` : ''].filter(Boolean).join(' | ');
   switch (reason.kind) {
     case 'state':
       return reason.hook === undefined ? `class state${mark}` : `state #${reason.hook}${mark}`;
@@ -152,7 +152,7 @@ export interface WayStep {
   what?: string;
   /** Props the parent changed, and props that were only new references to the same content. */
   props?: string[];
-  same?: string[];
+  newRefSameContent?: string[];
   children?: true;
   /** Props equal: the render a memo would have saved. */
   equal?: true;
@@ -186,7 +186,7 @@ function stepOf(name: string, reason: ReasonInfo | undefined, root?: RootStat): 
   return {
     name,
     ...(reason.changed?.length ? { props: reason.changed.slice(0, 5) } : {}),
-    ...(reason.sameRef?.length ? { same: reason.sameRef.slice(0, 5) } : {}),
+    ...(reason.sameRef?.length ? { newRefSameContent: reason.sameRef.slice(0, 5) } : {}),
     ...(reason.children || (!reason.changed?.length && !reason.sameRef?.length) ? { children: true as const } : {}),
   };
 }
@@ -199,7 +199,7 @@ export function stepParts(step: WayStep): Array<{ label?: string; text: string; 
   const parts: Array<{ label?: string; text: string; tone?: 'warn' }> = [];
   if (step.props?.length) parts.push({ label: step.props.length > 1 ? 'props' : 'prop', text: step.props.join(', ') });
   // A new reference with the same content: the prop a useMemo or a constant would have kept.
-  if (step.same?.length) parts.push({ label: 'same content', text: step.same.join(', '), tone: 'warn' });
+  if (step.newRefSameContent?.length) parts.push({ label: 'new ref, same content', text: step.newRefSameContent.join(', '), tone: 'warn' });
   if (step.children && !parts.length) parts.push({ text: 'children' });
   return parts;
 }
@@ -238,11 +238,11 @@ function mergeStep(a: WayStep, b: WayStep): WayStep {
   if (a.skipped || a.why !== undefined) return a;
   if (a.equal && b.equal) return a;
   const props = union(a.props, b.props);
-  const same = union(a.same, b.same);
+  const same = union(a.newRefSameContent, b.newRefSameContent);
   return {
     name: a.name,
     ...(props ? { props } : {}),
-    ...(same ? { same } : {}),
+    ...(same ? { newRefSameContent: same } : {}),
     ...(a.children || b.children ? { children: true as const } : {}),
   };
 }

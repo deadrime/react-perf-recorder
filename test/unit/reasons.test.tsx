@@ -37,7 +37,10 @@ describe('render reasons', () => {
     const row = rec.components.find((c) => c.name === 'Row')!;
     expect(row.memo).toBe(true);
     expect(row.byParent).toBe(2);
-    expect(reasonsOf(rec, row).sort()).toEqual(['parent: props price | same: style, onClick', 'parent: props same: style, onClick']);
+    expect(reasonsOf(rec, row).sort()).toEqual([
+      'parent: props new ref, same content: style, onClick',
+      'parent: props price | new ref, same content: style, onClick',
+    ]);
     expect(reasonPairs(rec, rec.components.find((c) => c.name === 'Plain')!)).toEqual([['parent: props equal', 2]]);
   });
 

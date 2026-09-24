@@ -133,10 +133,10 @@ test.describe('seeded re-render bugs', () => {
 
   test('a JSX element built in render defeats memo', async ({ page }) => {
     const rec = await record(page, 'typing', 'inline-jsx-prop');
-    expect(reasons(rec, component(rec, 'StatRow'))).toContain('parent: props same: title');
+    expect(reasons(rec, component(rec, 'StatRow'))).toContain('parent: props new ref, same content: title');
 
     const clean = await record(page, 'typing', '');
-    expect(reasons(clean, component(clean, 'StatRow'))).not.toContain('parent: props same: title');
+    expect(reasons(clean, component(clean, 'StatRow'))).not.toContain('parent: props new ref, same content: title');
   });
 
   test('a context value built inline in a provider that renders often', async ({ page }) => {

@@ -5,7 +5,7 @@ import { hookOf, hookText, reasonsById, textOf, waysOf, wayText } from '../../sr
 
 /**
  * Every panel of a textbook case says what the recorder will say about it. These record the scenario and check the
- * words: a page that promises `parent: props same: icon` and gets something else is teaching the wrong thing.
+ * words: a page that promises `parent: props new ref, same content: icon` and gets something else is teaching the wrong thing.
  */
 const record = async (page: Page, url: string, act: () => Promise<void>) => {
   await page.goto(url);
@@ -28,11 +28,11 @@ const said = (rec: RecordingV2, name: string) => {
   });
 };
 
-test('an element written in render: parent: props same: icon', async ({ page }) => {
+test('an element written in render: parent: props new ref, same content: icon', async ({ page }) => {
   const rec = await record(page, '/basics/props', async () => {
     for (let i = 0; i < 3; i++) await page.getByTestId('render').click();
   });
-  expect(said(rec, 'Badge')).toContain('parent: props same: icon');
+  expect(said(rec, 'Badge')).toContain('parent: props new ref, same content: icon');
 });
 
 test('a value object built in the provider: context SAME-CONTENT on the readers', async ({ page }) => {
@@ -109,7 +109,7 @@ test('a value only a handler reads, kept in state: state #0 for every move', asy
   expect(rec.roots.map((r) => r.name)).not.toContain('PadWithRef');
 });
 
-test('a handler with the text in its deps: parent: props same: onSend', async ({ page }) => {
+test('a handler with the text in its deps: parent: props new ref, same content: onSend', async ({ page }) => {
   const rec = await record(page, '/basics/ref', () => page.getByTestId('text-deps').pressSequentially('hello', { delay: 30 }));
-  expect(said(rec, 'SendButton')).toContain('parent: props same: onSend');
+  expect(said(rec, 'SendButton')).toContain('parent: props new ref, same content: onSend');
 });

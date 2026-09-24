@@ -4,12 +4,12 @@
   it pulled (`perHit`), how many instances fired at once. A component whose parent handed it the same props
   (`children` passed through, equal props to `memo`) is a root of its own.
 - **Reasons**
-  - `state now`, `store useChatStore selectPrice`, `context Theme`, `props: value | same: style, onClick`;
+  - `state now`, `store useChatStore selectPrice`, `context Theme`, `props: value | new ref, same content: style, onClick`;
   - `SAME-CONTENT` — a new reference with the same content, almost always a subscription bug rather than new data;
   - hook chains, with `[package]` where the app's hooks hand over to a library:
     `useOrderForm › [react-hook-form] useController › useFormState › State @ src/Form.tsx:48`.
 - **Per-component reasons**, renders a parent caused included: `parent: props equal` (a `memo` would skip it),
-  `parent: props price | same: style` (what broke `memo`).
+  `parent: props price | new ref, same content: style` (what broke `memo`).
 - **Ways and cascades** — for each component, up to three ways its renders came down from a root, up to 20 links
   each; for each commit, its cascade as a tree (the 30 busiest links and those above them).
 - **The app's components apart from the packages'** — told by the file of the element a component rendered, so a UI
