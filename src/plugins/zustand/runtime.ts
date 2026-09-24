@@ -1,5 +1,5 @@
 import { definePlugin, type PluginContext } from '../../runtime';
-import { libraryOf } from '../../core/stack';
+import { changedKeys, packageOfStack as packageOfStackOf } from '../store-shared';
 import { installDevtoolsShim } from './devtools-shim';
 
 interface StoreApi {
@@ -34,21 +34,8 @@ function register(result: unknown) {
 
 const origins = new WeakMap<Function, string>();
 
-/** The package that made a store, from the stack of `createStoreImpl`: `@xyflow/react` for `.vite/deps/@xyflow_react.js`. */
-export function packageOfStack(stack: string | undefined): string | null {
-  for (const line of (stack ?? '').split('\n').slice(1)) {
-    const url = /(?:(?:https?|file):\/\/|\/)[^\s()]+/
-      .exec(line)?.[0]
-      .replace(/[?#].*$/, '')
-      .replace(/(:\d+)+$/, '');
-    if (!url) continue;
-    const pkg = libraryOf(url);
-    // The app's code, or a linked package served by its path: the store is theirs, and the declaration names it.
-    if (pkg === null) return null;
-    if (pkg && pkg !== 'zustand' && pkg !== 'react-perf-recorder') return pkg;
-  }
-  return null;
-}
+/** The package that made a store, from the stack of `createStoreImpl`. */
+export const packageOfStack = (stack: string | undefined) => packageOfStackOf(stack, ['zustand']);
 
 // Filled by zustand/vanilla itself (`registerStores` in ./index.ts): the stores of the app and of its libraries.
 const made = ((globalThis as Record<string, any>).__REACT_PERF_RECORDER_ZUSTAND__ ??= { made: [] }) as {
@@ -98,17 +85,6 @@ const storeName = (api: StoreApi) => {
   }
   return name;
 };
-
-const MAX_KEYS = 40;
-
-function changedKeys(prev: unknown, next: unknown) {
-  if (!prev || !next || typeof prev !== 'object' || typeof next !== 'object') return [{ key: '(state)', prev, next }];
-  const a = prev as Record<string, unknown>;
-  const b = next as Record<string, unknown>;
-  const out: Array<{ key: string; prev: unknown; next: unknown }> = [];
-  for (const key of Object.keys(b)) if (a[key] !== b[key] && out.length < MAX_KEYS) out.push({ key, prev: a[key], next: b[key] });
-  return out;
-}
 
 export default definePlugin((options: { devtools?: boolean } | null) => {
   const unsubscribes: Array<() => void> = [];
