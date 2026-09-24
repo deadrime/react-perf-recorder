@@ -190,14 +190,23 @@ export function createServer(dir: string) {
       inputSchema: {
         limit: z.number().int().min(1).max(200).optional().describe('20 by default.'),
         status: z.enum(['recording', 'done', 'interrupted']).optional(),
-        scope: z.string().optional().describe('Only sessions whose area name contains this.'),
+        scope: z.string().optional().describe('Only sessions whose area name contains this; "whole app" for those with no area.'),
         source: z.string().optional().describe('Only sessions whose source contains this: panel, record, script:<name>.'),
+        url: z
+          .string()
+          .optional()
+          .describe('Only sessions whose page url contains this, e.g. "localhost:5406" — another agent may record another app into the same folder.'),
+        label: z.string().optional().describe('Only sessions whose label contains this.'),
       },
     },
-    async ({ limit = 20, status, scope, source }) => {
+    async ({ limit = 20, status, scope, source, url, label }) => {
       const sessions = listSessions(dir).filter(
         (s) =>
-          (!status || s.status === status) && (!scope || (s.meta.scope?.name ?? '').includes(scope)) && (!source || s.meta.source.includes(source))
+          (!status || s.status === status) &&
+          (!scope || (s.meta.scope?.name ?? 'whole app').includes(scope)) &&
+          (!source || s.meta.source.includes(source)) &&
+          (!url || s.meta.page.url.includes(url)) &&
+          (!label || (s.meta.label ?? '').includes(label))
       );
       return json({
         dir,
@@ -347,14 +356,21 @@ export function createServer(dir: string) {
         'Blocks until the person starts (until: "started") or finishes (until: "done", default) a recording in the browser, then returns its id and summary. Use when you asked them to record a scenario with the panel. Returns status "timeout" after timeoutMs; call again to keep waiting.',
       inputSchema: {
         timeoutMs: z.number().int().min(1000).max(600_000).optional().describe('120000 (two minutes) by default.'),
-        afterId: z.string().optional().describe('Only a session newer than this id: pass the latest one to skip what was there before you asked.'),
+        afterId: z
+          .string()
+          .optional()
+          .describe(
+            'Only a session newer than this id: pass the latest one to skip what was there before you asked — always, when others record into the same folder.'
+          ),
+        url: z.string().optional().describe("Only a session whose page url contains this: the person's app, not another agent's."),
         until: z.enum(['started', 'done']).optional(),
       },
     },
-    async ({ timeoutMs = 120_000, afterId, until = 'done' }, extra) => {
+    async ({ timeoutMs = 120_000, afterId, url, until = 'done' }, extra) => {
       const progressToken = extra._meta?.progressToken;
       const entry = await waitForSession(dir, {
         afterId,
+        url,
         until,
         timeoutMs,
         signal: extra.signal,

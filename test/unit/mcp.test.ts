@@ -121,6 +121,25 @@ describe('MCP server', () => {
     expect(await call('wait_for_recording', { timeoutMs: 1000 })).toMatchObject({ status: 'timeout' });
   });
 
+  it('keeps apart the recordings of apps that share a folder, by url and label', async () => {
+    // Another agent records another app into the same folder while this one waits for its own.
+    const waiting = call('wait_for_recording', { timeoutMs: 5000, url: 'localhost:5406' });
+    const other = { ...meta('20260919-130000-app-record-dddd', 'done'), page: { ...meta('x', 'done').page, url: 'http://localhost:5401/users' } };
+    const mine = {
+      ...meta('20260919-130100-app-record-eeee', 'done'),
+      label: 'before',
+      page: { ...meta('x', 'done').page, url: 'http://localhost:5406/' },
+    };
+    setTimeout(() => write(other, events(4)), 200);
+    setTimeout(() => write(mine, events(4)), 700);
+    expect(await waiting).toMatchObject({ status: 'done', id: mine.id });
+
+    const ids = async (args: Record<string, unknown>) => (await call('list_recordings', args)).recordings.map((r: { id: string }) => r.id.slice(-4));
+    expect(await ids({ url: 'localhost:5406' })).toEqual(['eeee']);
+    expect(await ids({ label: 'before' })).toEqual(['eeee']);
+    expect(await ids({ scope: 'whole app' })).toEqual([]);
+  });
+
   it('compares two sessions', async () => {
     const result = await call('compare_recordings', {
       before: '20260919-100000-OrderForm-panel-aaaa',

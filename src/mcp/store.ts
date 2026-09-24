@@ -76,6 +76,8 @@ export function readRecording(entry: SessionEntry): RecordingV2 & { status: Sess
 
 export interface WaitOptions {
   afterId?: string;
+  /** Only a session whose page url contains this: another agent may be recording another app into the same folder. */
+  url?: string;
   until: 'started' | 'done';
   timeoutMs: number;
   signal?: AbortSignal;
@@ -91,6 +93,7 @@ export async function waitForSession(dir: string, options: WaitOptions): Promise
     if (options.signal?.aborted) return null;
     for (const s of listSessions(dir)) {
       if (options.afterId && s.id <= options.afterId) continue;
+      if (options.url && !s.meta.page.url.includes(options.url)) continue;
       const before = known.get(s.id);
       if (options.until === 'started' && before === undefined) return s;
       if (options.until === 'done' && s.status !== 'recording' && before !== s.status && (before === undefined || before === 'recording')) return s;
