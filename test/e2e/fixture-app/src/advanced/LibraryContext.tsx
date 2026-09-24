@@ -39,7 +39,9 @@ const Board = ({ side, stable }: { side: string; stable: boolean }) => {
   const ids = useMemo(() => CARDS.map((card) => card.id), []);
   return (
     <>
-      <input data-testid={`note-${side}`} placeholder="a note on the board" value={note} onChange={(e) => setNote(e.target.value)} />
+      <label className="field">
+        <input data-testid={`note-${side}`} placeholder="a note on the board" value={note} onChange={(e) => setNote(e.target.value)} />
+      </label>
       <ul className="rows">
         <SortableList items={stable ? ids : CARDS.map((card) => card.id)}>
           {CARDS.map((card) => (
