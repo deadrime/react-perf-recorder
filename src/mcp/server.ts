@@ -1,3 +1,5 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
@@ -21,7 +23,7 @@ import {
 import type { RecordingV2 } from '../shared/schema';
 import { listingOf } from '../shared/listing';
 import { planReplay } from '../shared/replay';
-import { recordPage } from './record';
+import { recordPage, SETUP_FILE } from './record';
 import { findSession, latestWarning, listSessions, readRecording, waitForSession } from './store';
 
 declare const __VERSION__: string;
@@ -46,7 +48,44 @@ const SECTIONS = [
   'plugins',
 ] as const;
 
-const json = (value: unknown) => ({ content: [{ type: 'text' as const, text: JSON.stringify(value, null, 1) }] });
+// No indentation: an agent reads compact JSON as well, and indented answers cost it a fifth more.
+const json = (value: unknown) => ({ content: [{ type: 'text' as const, text: JSON.stringify(value) }] });
+
+/** The setup record_page ran before a recording: its replay needs the same mocks, storage or sign-in. */
+const setupOf = (sessionDir: string): string | undefined => {
+  try {
+    return JSON.parse(fs.readFileSync(path.join(sessionDir, SETUP_FILE), 'utf8')).setup;
+  } catch {
+    return undefined;
+  }
+};
+
+type DeltaLike = { before: number | null; after: number | null; pct: number | null };
+const isDelta = (v: unknown): v is DeltaLike & { key?: string } => !!v && typeof v === 'object' && 'before' in v && 'after' in v && 'pct' in v;
+/** `80 → 8 (-90%)`: a before/after in a third of the object's size. */
+const deltaText = (d: DeltaLike) => `${d.before ?? '–'} → ${d.after ?? '–'}${d.pct === null ? '' : ` (${d.pct > 0 ? '+' : ''}${d.pct}%)`}`;
+const compactDeltas = (v: unknown): unknown =>
+  Array.isArray(v)
+    ? v.map(compactDeltas)
+    : isDelta(v)
+    ? v.key !== undefined
+      ? `${v.key}: ${deltaText(v)}`
+      : deltaText(v)
+    : v && typeof v === 'object'
+    ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, compactDeltas(x)]))
+    : v;
+/** A plugin's metrics that moved: a tenth or more, or one side missing. The rest is only counted. */
+const movedMetrics = (plugins: Record<string, DeltaLike[]>) => {
+  let unchanged = 0;
+  const moved = Object.fromEntries(
+    Object.entries(plugins).map(([name, rows]) => {
+      const kept = rows.filter((r) => (r.pct === null ? r.before !== r.after : Math.abs(r.pct) >= 10));
+      unchanged += rows.length - kept.length;
+      return [name, kept];
+    })
+  );
+  return { moved, unchanged };
+};
 
 export function section(rec: RecordingV2 & { id?: string; status?: string }, name: string, top: number, offset: number, hooks: HookMode = 'full') {
   const page = <T>(list: T[]) => ({ total: list.length, offset, items: list.slice(offset, offset + top) });
@@ -324,7 +363,7 @@ export function createServer(dir: string) {
           .string()
           .optional()
           .describe(
-            'A recording id (or "latest") whose actions to do again, from the page load, on its page and in its area unless url and scope say otherwise: record it after the fix, then compare_recordings with the original.'
+            'A recording id (or "latest") whose actions to do again, from the page load, on its page and in its area unless url and scope say otherwise, after the setup it ran: record it after the fix, then compare_recordings with the original.'
           ),
         fromLoad: z.boolean().optional().describe('Record from the first commit of the page load.'),
         viewport: z.string().optional().describe('1280x800; keep it the same across runs that will be compared.'),
@@ -345,11 +384,15 @@ export function createServer(dir: string) {
     },
     async ({ replay, ...args }) => {
       if (!replay) return json(await recordPage(args, dir));
-      const rec = readRecording(findSession(dir, replay));
+      const entry = findSession(dir, replay);
+      const rec = readRecording(entry);
       const plan = planReplay({ ...rec, id: rec.id ?? replay });
       if (!plan.steps.length) throw new Error(`${replay} has no actions to replay${plan.skipped.length ? `: ${plan.skipped.join('; ')}` : ''}`);
       const scope = args.scope ?? rec.scope?.name;
-      return json(await recordPage({ ...args, ...(scope ? { scope } : {}), replay: { ...plan, url: rec.page.url } }, dir));
+      const setup = args.setup ?? setupOf(entry.dir);
+      return json(
+        await recordPage({ ...args, ...(scope ? { scope } : {}), ...(setup ? { setup } : {}), replay: { ...plan, url: rec.page.url } }, dir)
+      );
     }
   );
 
@@ -411,7 +454,9 @@ export function createServer(dir: string) {
       const sessions = listSessions(dir);
       const [beforeEntry, afterEntry] = [findSession(dir, before, sessions), findSession(dir, after, sessions)];
       const latestWarnings = [latestWarning(sessions, before, beforeEntry), latestWarning(sessions, after, afterEntry)].filter(Boolean);
-      const result = compareRecordings(readRecording(beforeEntry), readRecording(afterEntry), { top, match });
+      const full = compareRecordings(readRecording(beforeEntry), readRecording(afterEntry), { top, match });
+      const { moved, unchanged } = movedMetrics(full.plugins as unknown as Record<string, DeltaLike[]>);
+      const result = compactDeltas({ ...full, plugins: moved, ...(unchanged ? { pluginMetricsUnchanged: unchanged } : {}) }) as typeof full;
       return json(latestWarnings.length ? { ...result, warnings: [...latestWarnings, ...result.warnings], comparable: false } : result);
     }
   );

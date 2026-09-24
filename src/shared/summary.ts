@@ -343,6 +343,24 @@ export function reasonLine(root: RootStat, reason: ReasonInfo | undefined, n: nu
   return `${n}× ${textOf(reason)}${hook ? ` · ${hook}` : ''}`;
 }
 
+/** A reason and its same-content twin as one line: `289× external store #15 (287 of them same content) · …`. */
+export function mergeSameContent(lines: Array<[string, number]>): Array<[string, number]> {
+  const groups = new Map<string, { n: number; same: number; sameText: string }>();
+  for (const [text, n] of lines) {
+    const key = text.replace(' SAME-CONTENT', '');
+    const group = groups.get(key) ?? { n: 0, same: 0, sameText: '' };
+    group.n += n;
+    if (key !== text) [group.same, group.sameText] = [group.same + n, text];
+    groups.set(key, group);
+  }
+  return [...groups]
+    .map(([key, g]): [string, number] => [
+      !g.same ? key : g.same === g.n ? g.sameText : g.sameText.replace(' SAME-CONTENT', ` (${g.same} of them same content)`),
+      g.n,
+    ])
+    .sort((a, b) => b[1] - a[1]);
+}
+
 export function rootLine(root: RootStat, durationMs: number, reasons: Map<number, ReasonInfo>, mode: HookMode = 'full'): RootLine {
   return {
     root: root.name,
@@ -355,7 +373,9 @@ export function rootLine(root: RootStat, durationMs: number, reasons: Map<number
     noDomChange: root.noDomChange,
     ...(root.mounts ? { mounts: root.mounts } : {}),
     ...(root.renderMs ? { renderMsPerHit: +(root.renderMs / Math.max(1, root.hits)).toFixed(2) } : {}),
-    reasons: root.reasons.slice(0, 3).map(([id, n]) => reasonLine(root, reasons.get(id), n, mode)),
+    reasons: mergeSameContent(root.reasons.map(([id, n]) => [reasonLine(root, reasons.get(id), n, mode).replace(/^\d+× /, ''), n]))
+      .slice(0, 3)
+      .map(([text, n]) => `${n}× ${text}`),
     causes: root.causes.slice(0, 3).map(([k, n]) => `${n}× ${k}`),
     ...(root.lanes.length ? { lanes: root.lanes.map(([l, n]) => `${l}:${n}`).join(' ') } : {}),
   };

@@ -149,7 +149,7 @@ describe('MCP server', () => {
       before: '20260919-100000-OrderForm-panel-aaaa',
       after: '20260919-110000-OrderForm-panel-bbbb',
     });
-    expect(result.roots[0]).toMatchObject({ root: 'Amount', perHit: { before: 80, after: 8 } });
-    expect(result.actions[0]).toMatchObject({ per: 'char', renders: { before: 80, after: 8 } });
+    expect(result.roots[0]).toMatchObject({ root: 'Amount', perHit: '80 → 8 (-90%)' });
+    expect(result.actions[0]).toMatchObject({ per: 'char', renders: '80 → 8 (-90%)' });
   });
 });

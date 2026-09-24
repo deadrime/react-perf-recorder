@@ -116,6 +116,8 @@ interface PageLike {
 }
 
 const ENGINE = 'window.__REACT_PERF_RECORDER__';
+/** Beside a recording made by record_page: the `setup` it ran, which a replay of it runs again. */
+export const SETUP_FILE = 'record-page.json';
 
 const messageOf = (error: unknown) => String((error as Error)?.message ?? error);
 
@@ -152,10 +154,16 @@ async function runModule(file: string, page: PageLike) {
  * A failed script says what the page was doing, not only what Playwright waited for: where it was, what it showed,
  * a screenshot beside the recordings — and the two ways a script ends a recording it did not start.
  */
-async function explainFailure(error: unknown, page: PageLike, navigatedTo: string | null, dir: string): Promise<Error> {
+async function explainFailure(error: unknown, page: PageLike, navigatedTo: string | null, opened: string, dir: string): Promise<Error> {
   const message = messageOf(error).split('\n')[0];
   const hints: string[] = [];
-  if (navigatedTo)
+  const same = (a: string, b: string) => a.split('#')[0] === b.split('#')[0];
+  if (navigatedTo && same(navigatedTo, opened))
+    hints.push(
+      'the page reloaded itself at the url it was opened on, and the recording ended with it: the dev server does that when it ' +
+        'optimizes dependencies found on a first visit — record again'
+    );
+  else if (navigatedTo)
     hints.push(
       `the script navigated to ${safeUrl(navigatedTo)}: the recording lives in the page and ended with it. record_page has already ` +
         'opened the url and is recording — a script only does the actions; storage to seed or a sign-in goes in `setup`, run before the page opens'
@@ -300,9 +308,12 @@ export async function recordPage(options: RecordPageOptions, sessionsDir: string
       }
       saved = await page.evaluate<Stopped>(`${ENGINE}.engine.stop().then((r) => ({ id: r.id ?? null, recording: r }))`);
     } catch (error) {
-      throw options.script ? await explainFailure(error, page, navigatedTo, sessionsDir) : error;
+      throw options.script || options.replay ? await explainFailure(error, page, navigatedTo, url, sessionsDir) : error;
     }
     const rec = saved.recording;
+    // A replay does again what the person did, not what prepared the page: the setup stays with the recording for it.
+    const at = saved.id && path.join(sessionsDir, saved.id);
+    if (at && options.setup && fs.existsSync(at)) fs.writeFileSync(path.join(at, SETUP_FILE), JSON.stringify({ setup: path.resolve(options.setup) }));
     return {
       id: saved.id,
       url: safeUrl(page.url()),

@@ -138,4 +138,13 @@ test('setup runs before the page opens for the recording, and is not in it', asy
   const rec = saved(result.id!);
   expect(result.rendersPerCommit).toBe(rec.totals.rendersPerScopeCommit);
   expect(rec.page.url).toContain('/app');
+  // A replay of it runs the same setup: the server finds it beside the recording.
+  expect(JSON.parse(fs.readFileSync(path.join(SESSIONS_DIR, result.id!, 'record-page.json'), 'utf8'))).toEqual({ setup });
+});
+
+test('a page that reloads itself is not blamed on the script', async ({ baseURL }) => {
+  const script = moduleOf('reloads', 'await page.reload();');
+  const failure = await recordPage({ url: `${baseURL}/app?tick=120`, script }, SESSIONS_DIR).catch((error: Error) => error);
+  expect((failure as Error).message).toMatch(/reloaded itself at the url it was opened on/);
+  fs.rmSync(/screenshot (\S+\.png)/.exec((failure as Error).message)?.[1] ?? '', { force: true });
 });

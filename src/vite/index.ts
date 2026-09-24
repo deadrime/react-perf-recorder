@@ -132,8 +132,15 @@ async function mapSite(server: ViteDevServer, root: string, url: string, line: n
   const code = linesOf(real)[pos.line - 1]?.trim().slice(0, 140);
   // A useMemo or useCallback: its dependencies by the names the code gives them, wherever the array is written.
   const deps = hooks ? depsOf(real, pos.line, hooks) : null;
-  return { site: `${path.relative(root, real).replace(/\\/g, '/')}:${pos.line}`, ...(code ? { code } : {}), ...(deps ? { deps } : {}) };
+  return { site: `${shownPath(root, real)}:${pos.line}`, ...(code ? { code } : {}), ...(deps ? { deps } : {}) };
 }
+
+/** A package's file from where its name starts: pnpm's `../../node_modules/.pnpm/react-redux@9.3.0_…/node_modules/` says nothing more. */
+const shownPath = (root: string, file: string) => {
+  const relative = path.relative(root, file).replace(/\\/g, '/');
+  const at = relative.lastIndexOf('node_modules/');
+  return at >= 0 ? relative.slice(at + 'node_modules/'.length) : relative;
+};
 
 /**
  * Records React re-renders from the page: injects the recorder into the dev page, names memo components and
