@@ -394,6 +394,8 @@ export function actionText(action: ActionRecord): string {
       return `${action.key} on «${field}»${where}`;
     case 'scroll':
       return `scroll «${field}» ${action.scroll?.pixels ?? 0}px`;
+    case 'drag':
+      return `drag «${field}»${where} ${action.drag?.pixels ?? 0}px`;
     case 'navigation':
       return `back/forward to ${action.url}`;
     default:

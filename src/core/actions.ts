@@ -39,6 +39,11 @@ export function isSecretField(el: Element, secretSelector: string): boolean {
   return SECRET_AUTOCOMPLETE.test(el.getAttribute('autocomplete') ?? '');
 }
 
+/** How far the pointer goes with the button held before a press is a drag, not a click. */
+const DRAG_PX = 8;
+const DRAG_CLICK_MS = 50;
+const DRAGGABLE = '[draggable="true"], [aria-roledescription="sortable"], [data-testid], [role="slider"], button, [role="button"]';
+
 const isTextField = (el: Element): el is HTMLInputElement | HTMLTextAreaElement =>
   el instanceof HTMLTextAreaElement || (el instanceof HTMLInputElement && TEXT_INPUT.test(el.type));
 
@@ -47,6 +52,9 @@ export class ActionTracker {
   private nextId = 1;
   private typing: { el: Element; action: ActionRecord } | null = null;
   private scrolling = new Map<EventTarget, { action: ActionRecord; timer: ReturnType<typeof setTimeout> }>();
+  private pointer: { el: Element; x: number; y: number; lastX: number; lastY: number; action: ActionRecord | null } | null = null;
+  /** A drag's release ends in a click on the same element; the drag was the action, not the click. */
+  private draggedUntil = -Infinity;
   private listeners: Array<[string, EventListener]> = [];
 
   constructor(private options: ActionOptions, private now: () => number, private emit: (action: ActionRecord) => void) {}
@@ -70,6 +78,10 @@ export class ActionTracker {
     on('keydown', (e) => this.onKey(e as KeyboardEvent));
     on('submit', (e) => this.push('submit', e.target as Element));
     on('scroll', (e) => this.onScroll(e));
+    on('pointerdown', (e) => this.onPointerDown(e as PointerEvent));
+    on('pointermove', (e) => this.onPointerMove(e as PointerEvent));
+    on('pointerup', () => this.endDrag());
+    on('pointercancel', () => this.endDrag());
   }
 
   /** Called by the navigation tracker: back and forward are user actions, push and replace are consequences. */
@@ -82,10 +94,11 @@ export class ActionTracker {
     for (const [type, listener] of this.listeners) window.removeEventListener(type, listener, { capture: true });
     this.listeners = [];
     this.flushTyping();
+    this.endDrag();
     for (const [target, pending] of this.scrolling) {
       clearTimeout(pending.timer);
       this.scrolling.delete(target);
-      this.record(pending.action);
+      this.recordScroll(pending.action);
     }
   }
 
@@ -235,6 +248,7 @@ export class ActionTracker {
   }
 
   private onClick(event: Event) {
+    if (this.now() - this.draggedUntil < DRAG_CLICK_MS) return;
     const el = event.target instanceof Element ? event.target : null;
     this.push('click', el?.closest(INTERACTIVE) ?? el, {}, event);
   }
@@ -245,18 +259,61 @@ export class ActionTracker {
     this.push('key', el ?? document.body, { key: event.key });
   }
 
+  private onPointerDown(event: PointerEvent) {
+    if (event.button !== 0 || !(event.target instanceof Element)) return;
+    this.pointer = { el: event.target, x: event.clientX, y: event.clientY, lastX: event.clientX, lastY: event.clientY, action: null };
+  }
+
+  private onPointerMove(event: PointerEvent) {
+    const p = this.pointer;
+    if (!p || !(event.buttons & 1)) return;
+    const dx = event.clientX - p.x;
+    const dy = event.clientY - p.y;
+    if (!p.action) {
+      if (Math.hypot(dx, dy) < DRAG_PX) return;
+      this.flushTyping();
+      const at = Math.round(this.now());
+      const el = p.el.closest(DRAGGABLE) ?? p.el;
+      p.action = { id: this.nextId++, kind: 'drag', atMs: at, endMs: at, target: this.describe(el), drag: { dx: 0, dy: 0, pixels: 0 } };
+    }
+    const drag = p.action.drag!;
+    drag.pixels += Math.round(Math.hypot(event.clientX - p.lastX, event.clientY - p.lastY));
+    drag.dx = Math.round(dx);
+    drag.dy = Math.round(dy);
+    p.action.endMs = Math.round(this.now());
+    p.lastX = event.clientX;
+    p.lastY = event.clientY;
+  }
+
+  private endDrag() {
+    const action = this.pointer?.action;
+    this.pointer = null;
+    if (!action) return;
+    this.draggedUntil = this.now();
+    this.record(action);
+  }
+
+  /** `left` is kept only for an element that moved sideways: most scroll up and down alone. */
+  private recordScroll(action: ActionRecord) {
+    if (action.scroll?.left && action.scroll.left.from === action.scroll.left.to) delete action.scroll.left;
+    this.record(action);
+  }
+
   private onScroll(event: Event) {
     const target = event.target;
     const el = target === document ? document.scrollingElement : (target as Element);
     if (!(el instanceof Element)) return;
     const top = Math.round(el.scrollTop);
+    const left = Math.round(el.scrollLeft);
     const now = Math.round(this.now());
     const pending = this.scrolling.get(target!);
     if (pending) {
       clearTimeout(pending.timer);
       const scroll = pending.action.scroll!;
-      scroll.pixels += Math.abs(top - scroll.to);
+      // A board or a carousel moves sideways: counted too, or its scroll reads 0px.
+      scroll.pixels += Math.abs(top - scroll.to) + Math.abs(left - scroll.left!.to);
       scroll.to = top;
+      scroll.left!.to = left;
       pending.action.endMs = now;
     }
     const entry = pending ?? {
@@ -266,13 +323,13 @@ export class ActionTracker {
         atMs: now,
         endMs: now,
         target: this.describe(el),
-        scroll: { from: top, to: top, pixels: 0 },
+        scroll: { from: top, to: top, pixels: 0, left: { from: left, to: left } },
       },
       timer: 0 as unknown as ReturnType<typeof setTimeout>,
     };
     entry.timer = setTimeout(() => {
       this.scrolling.delete(target!);
-      this.record(entry.action);
+      this.recordScroll(entry.action);
     }, SCROLL_GAP_MS);
     this.scrolling.set(target!, entry);
   }

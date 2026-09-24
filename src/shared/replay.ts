@@ -16,6 +16,7 @@ export interface ReplayStep {
   /** The typed or chosen value, only when the recording kept values. */
   value?: string;
   scrollTo?: number;
+  scrollLeft?: number;
 }
 
 export interface ReplayPlan {
@@ -52,6 +53,10 @@ export function planReplay(rec: Pick<RecordingV2, 'actions' | 'durationMs'> & { 
       skipped.push(`${what}: back and forward are not replayed`);
       continue;
     }
+    if (action.kind === 'drag') {
+      skipped.push(`${what}: drags are not replayed — a script with page.mouse down, move and up does one`);
+      continue;
+    }
     // The click on a submit button submits; the click on a checkbox changes it. Doing both would do it twice.
     if ((action.kind === 'submit' || action.kind === 'change') && soon && prev?.kind === 'click') continue;
     // A label passes its click on to its field, and both are recorded: the label's click is the one to do.
@@ -75,7 +80,7 @@ export function planReplay(rec: Pick<RecordingV2, 'actions' | 'durationMs'> & { 
       ...(action.key ? { key: action.key } : {}),
       ...(action.chars ? { chars: action.chars } : {}),
       ...(action.value !== undefined && !action.secret ? { value: action.value } : {}),
-      ...(action.scroll ? { scrollTo: action.scroll.to } : {}),
+      ...(action.scroll ? { scrollTo: action.scroll.to, ...(action.scroll.left ? { scrollLeft: action.scroll.left.to } : {}) } : {}),
     });
     lastAt = at;
   }
