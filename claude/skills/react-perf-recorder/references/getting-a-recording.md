@@ -13,8 +13,16 @@ It opens the page in a browser of its own, records and returns the session id. I
 from the panel.
 
 - `ms` — 3–12 seconds of one scenario; `fromLoad` records the page load from its first commit.
-- `script` — a module with `export default async (page) => {…}`, run while recording: clicks, typing. Wait for what
-  shows the result (a list, a spinner gone), not for a time.
+- `script` — a module with `export default async (page) => {…}`: clicks, typing. When it runs the page is already
+  open at `url` and recording, and the recording stops when it returns — so no `goto`, `reload` or `engine.start`
+  in it: a navigation ends the recording. Wait for what shows the result (a list, a spinner gone), not for a time.
+  A failed script answers with the page's url, the start of its text and a screenshot.
+- `setup` — a module like `script`, run before the page is opened for the recording and not recorded: seed
+  `localStorage` (`goto` the dev server, `evaluate`, return), sign in, build the data through the UI. An app that
+  starts empty is set up here, not in the recording.
+- Keep a run well under a minute: past the client's limit the call gives up while the page goes on recording.
+- Another agent may record into the same folder: take the id `record_page` returns, give `wait_for_recording`
+  an `afterId`, and filter `list_recordings` by `url` or `label` — never lean on `latest`.
 - `scope: 'MessageList'` — only what renders inside that component; a render from above is kept as an outside root
   with its reason. Read the component's file and take the name it is exported under. An area not on the page
   answers with the names that are.

@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { expect, test } from '@playwright/test';
 import { recordPage } from '../../src/mcp/record';
@@ -98,4 +99,43 @@ test('a recording from the page load of an area that never mounts says what the 
   await expect(recordPage({ url: `${baseURL}/app?tick=120`, fromLoad: true, ms: 500, scope: 'NoSuchThing' }, SESSIONS_DIR)).rejects.toThrow(
     /did not start.*NoSuchThing.*the page has .*MessageList/
   );
+});
+
+const moduleOf = (name: string, body: string) => {
+  const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'rpr-script-')), `${name}.mjs`);
+  fs.writeFileSync(file, `export default async (page) => {\n${body}\n};\n`);
+  return file;
+};
+
+test('a script that leaves the page is told it ended the recording, and what the page showed', async ({ baseURL }) => {
+  const script = moduleOf('leaves', `await page.goto(${JSON.stringify(`${baseURL}/`)});`);
+  const failure = await recordPage({ url: `${baseURL}/app?tick=120`, script }, SESSIONS_DIR).catch((error: Error) => error);
+  expect(failure).toBeInstanceOf(Error);
+  const message = (failure as Error).message;
+  expect(message).toMatch(/the script navigated to .*ended with it/);
+  expect(message).toMatch(/`setup`/);
+  const shot = /screenshot (\S+\.png)/.exec(message)?.[1];
+  expect(shot && fs.existsSync(shot)).toBe(true);
+  fs.rmSync(shot!, { force: true });
+});
+
+test('a script that starts the recording itself is told record_page does it', async ({ baseURL }) => {
+  const script = moduleOf('starts', "await page.evaluate(() => window.__REACT_PERF_RECORDER__.engine.start({ source: 'script' }));");
+  await expect(recordPage({ url: `${baseURL}/app?tick=120`, script }, SESSIONS_DIR)).rejects.toThrow(/must not call engine\.start/);
+});
+
+test('setup runs before the page opens for the recording, and is not in it', async ({ baseURL }) => {
+  const setup = moduleOf(
+    'setup',
+    `await page.goto(${JSON.stringify(`${baseURL}/`)});\nawait page.evaluate(() => localStorage.setItem('rpr-e2e-seed', 'seeded'));`
+  );
+  const script = moduleOf(
+    'reads',
+    "const seed = await page.evaluate(() => localStorage.getItem('rpr-e2e-seed'));\nif (seed !== 'seeded') throw new Error(`no seed: ${seed}`);\nawait page.waitForTimeout(300);"
+  );
+  const result = await recordPage({ url: `${baseURL}/app?tick=120`, setup, script }, SESSIONS_DIR);
+  expect(result.id).toBeTruthy();
+  const rec = saved(result.id!);
+  expect(result.rendersPerCommit).toBe(+(rec.totals.renders / Math.max(1, rec.totals.commits)).toFixed(1));
+  expect(rec.page.url).toContain('/app');
 });

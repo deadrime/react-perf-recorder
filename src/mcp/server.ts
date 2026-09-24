@@ -274,7 +274,7 @@ export function createServer(dir: string) {
     'record_page',
     {
       description:
-        "Records a page in a browser of its own and returns the session id, so a fix can be measured: record, change the code, record again with the same arguments, then compare_recordings. Needs the dev server running with the Vite plugin and playwright installed in the project. A scenario of clicks and typing goes in a script module, or replay does again what a recording did — the person's own clicks and typing, at their pace, from the page load; replay does not wait for data, so a scenario whose actions wait on requests needs a script. Without either it records ms of the page as it is, and fromLoad records the page load itself. Behind a sign-in: via (a link that signs in), then a session saved once by `react-perf-recorder login <url>`, then cdp; a page that redirects to a login says so. Outlines are off in these runs.",
+        "Records a page in a browser of its own and returns the session id, so a fix can be measured: record, change the code, record again with the same arguments, then compare_recordings. Needs the dev server running with the Vite plugin and playwright installed in the project. A scenario of clicks and typing goes in a script module, or replay does again what a recording did — the person's own clicks and typing, at their pace, from the page load; replay does not wait for data, so a scenario whose actions wait on requests needs a script. Without either it records ms of the page as it is, and fromLoad records the page load itself. Behind a sign-in: via (a link that signs in), then a session saved once by `react-perf-recorder login <url>`, then cdp; a page that redirects to a login says so. Outlines are off in these runs. A run that outlasts the client's time limit (about a minute) keeps recording in the page: list_recordings shows it as recording until it ends — keep a script well under a minute.",
       inputSchema: {
         url: z.string().optional().describe("The page to open, on the dev server. With replay, the recording's page when left out."),
         ms: z
@@ -295,7 +295,18 @@ export function createServer(dir: string) {
           .array(z.string())
           .optional()
           .describe('Components to follow by name through the whole page: how often each rendered and which root pulled it.'),
-        script: z.string().optional().describe('A module with `export default async (page) => {…}`, run while recording.'),
+        script: z
+          .string()
+          .optional()
+          .describe(
+            'A module with `export default async (page) => {…}`: the page is already open at url and recording when it runs, and the recording stops when it returns — so it only does the actions. No goto, reload or engine.start/stop in it: a navigation ends the recording. A failure answers with the page url, its text and a screenshot.'
+          ),
+        setup: z
+          .string()
+          .optional()
+          .describe(
+            'A module like script, run before the page is opened for the recording and not recorded: seed localStorage or IndexedDB (goto the dev server, evaluate, return), sign in, build data through the UI.'
+          ),
         replay: z
           .string()
           .optional()
