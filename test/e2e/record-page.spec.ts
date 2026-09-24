@@ -136,6 +136,6 @@ test('setup runs before the page opens for the recording, and is not in it', asy
   const result = await recordPage({ url: `${baseURL}/app?tick=120`, setup, script }, SESSIONS_DIR);
   expect(result.id).toBeTruthy();
   const rec = saved(result.id!);
-  expect(result.rendersPerCommit).toBe(+(rec.totals.renders / Math.max(1, rec.totals.commits)).toFixed(1));
+  expect(result.rendersPerCommit).toBe(rec.totals.rendersPerScopeCommit);
   expect(rec.page.url).toContain('/app');
 });

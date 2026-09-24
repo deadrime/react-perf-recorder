@@ -21,6 +21,8 @@ describe('libraryOf', () => {
     ['http://localhost:5173/node_modules/.vite/deps/chunk-LIAXWF56.js?v=1a2b', ''],
     // Rolldown (Vite 8) names a shared chunk after a module in it, with a hash; a package's name is lower case.
     ['http://localhost:5173/node_modules/.vite/deps/react-dom-DVjBvCsW.js?v=1a2b', ''],
+    ['http://localhost:5173/node_modules/.vite/deps/react-dom-Dv-j_c9w.js?v=1a2b', ''],
+    ['http://localhost:5173/node_modules/.vite/deps/vanilla-A1B2C3D4.js', ''],
     ['http://localhost:5173/node_modules/.vite/deps/react-markdown.js?v=1a2b', 'react-markdown'],
     ['http://localhost:5173/node_modules/.pnpm/zustand@4.5.7/node_modules/zustand/esm/index.mjs', 'zustand'],
     ['http://localhost:5173/src/components/Row.tsx?t=123', null],

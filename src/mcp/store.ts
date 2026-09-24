@@ -52,10 +52,10 @@ export function findSession(dir: string, ref: string): SessionEntry {
   return entry;
 }
 
-const pageOf = (url: string) => {
+// Another route of the same app is the same person's run: only another dev server is someone else's.
+const appOf = (url: string) => {
   try {
-    const u = new URL(url);
-    return `${u.host}${u.pathname}`;
+    return new URL(url).host;
   } catch {
     return url;
   }
@@ -68,11 +68,11 @@ const pageOf = (url: string) => {
 export function latestWarning(dir: string, ref: string, entry: SessionEntry): string | undefined {
   if (!/^latest/.test(ref)) return undefined;
   const at = Date.parse(entry.meta.createdAt);
-  const page = pageOf(entry.meta.page.url);
+  const page = appOf(entry.meta.page.url);
   const others = new Set(
     listSessions(dir)
-      .filter((s) => Math.abs(Date.parse(s.meta.createdAt) - at) < 10 * 60_000 && pageOf(s.meta.page.url) !== page)
-      .map((s) => pageOf(s.meta.page.url))
+      .filter((s) => Math.abs(Date.parse(s.meta.createdAt) - at) < 10 * 60_000 && appOf(s.meta.page.url) !== page)
+      .map((s) => appOf(s.meta.page.url))
   );
   if (!others.size) return undefined;
   return `"${ref}" is ${entry.id} on ${page}; ${[...others].slice(0, 3).join(', ')} ${

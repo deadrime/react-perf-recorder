@@ -9,7 +9,9 @@ interface Store {
 type Dispatch = (action: unknown) => unknown;
 
 // By `getState`: an enhancer's store is another object around the same state, and useSelector hands getState over.
-const stores = new Map<Function, WeakRef<Store>>();
+// Weak both ways: a store a page let go of is not kept alive by the recorder.
+const byGetState = new WeakMap<Function, WeakRef<Store>>();
+const stores = new Set<WeakRef<Store>>();
 const names = new WeakMap<Function, string>();
 const origins = new WeakMap<Function, string>();
 let anonymous = 0;
@@ -21,8 +23,10 @@ const isStore = (value: unknown): value is Store =>
   Boolean(value) && typeof (value as Store).getState === 'function' && typeof (value as Store).dispatch === 'function';
 
 function register(store: unknown, stack?: string) {
-  if (!isStore(store) || stores.has(store.getState)) return;
-  stores.set(store.getState, new WeakRef(store));
+  if (!isStore(store) || byGetState.has(store.getState)) return;
+  const ref = new WeakRef(store);
+  byGetState.set(store.getState, ref);
+  stores.add(ref);
   const origin = packageOfStack(stack);
   if (origin) origins.set(store.getState, origin);
 }
@@ -78,7 +82,7 @@ hook.made.splice(0).forEach(([store, stack]) => register(store, stack));
 export default definePlugin(() => ({
   name: 'redux',
   describe(fn, kind) {
-    return kind === 'store' && stores.has(fn) ? storeName(fn) : null;
+    return kind === 'store' && byGetState.has(fn) ? storeName(fn) : null;
   },
   start(context) {
     counts.clear();
@@ -87,9 +91,9 @@ export default definePlugin(() => ({
   stop() {
     session = null;
     let active = false;
-    for (const [getState, ref] of stores) {
+    for (const ref of stores) {
       if (ref.deref()) active = true;
-      else stores.delete(getState);
+      else stores.delete(ref);
     }
     const perStore = [...counts]
       .map(([store, byType]) => {

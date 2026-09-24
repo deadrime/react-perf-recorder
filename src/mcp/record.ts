@@ -110,8 +110,7 @@ interface PageLike {
   waitForTimeout(ms: number): Promise<void>;
   addInitScript<T>(fn: (arg: T) => void, arg: T): Promise<void>;
   setDefaultTimeout(ms: number): void;
-  on(event: 'framenavigated', listener: (frame: { url(): string }) => void): void;
-  mainFrame(): unknown;
+  on(event: 'domcontentloaded', listener: () => void): void;
   screenshot(options: { path: string }): Promise<unknown>;
   close(): Promise<void>;
 }
@@ -282,8 +281,9 @@ export async function recordPage(options: RecordPageOptions, sessionsDir: string
     }
     let navigatedTo: string | null = null;
     const current = page;
-    current.on('framenavigated', (frame) => {
-      if (frame === current.mainFrame()) navigatedTo = frame.url();
+    // A new document, not framenavigated: pushState of a client-side router keeps the recording alive.
+    current.on('domcontentloaded', () => {
+      navigatedTo = current.url();
     });
     let saved: { id: string | null; recording: RecordingV2 };
     try {
@@ -310,7 +310,7 @@ export async function recordPage(options: RecordPageOptions, sessionsDir: string
       commits: rec.totals.commitsInScope,
       renders: rec.totals.renders,
       rendersWithoutDom: rec.totals.rendersWithoutDom,
-      rendersPerCommit: +(rec.totals.renders / Math.max(1, rec.totals.commits)).toFixed(1),
+      rendersPerCommit: rec.totals.rendersPerScopeCommit,
       topRoot: rec.roots[0] ? `${rec.roots[0].name} ×${rec.roots[0].hits}` : null,
       warnings: [...warnings, ...rec.warnings],
     };
