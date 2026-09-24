@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import type { RecordingV2 } from '../shared/schema';
 import type { ReplayPlan } from '../shared/replay';
 import { safeUrl } from '../shared/url';
@@ -221,7 +222,10 @@ export async function recordPage(options: RecordPageOptions, sessionsDir: string
       await page.evaluate(`${ENGINE}.replay(${JSON.stringify(options.replay)})`);
       if (options.replay.skipped.length) warnings.push(`not replayed: ${options.replay.skipped.join('; ')}`);
     } else if (options.script) {
-      const module = (await import(/* @vite-ignore */ path.isAbsolute(options.script) ? options.script : path.resolve(options.script))) as {
+      // The server lives for the whole session and Node keeps a module by its URL: an edited script would run as it was.
+      const file = path.resolve(options.script);
+      const url = `${pathToFileURL(file).href}?v=${fs.statSync(file).mtimeMs}`;
+      const module = (await import(/* @vite-ignore */ url)) as {
         default?: (page: unknown) => Promise<void> | void;
       };
       if (typeof module.default !== 'function') throw new Error(`${options.script} must export default async (page) => { … }`);
