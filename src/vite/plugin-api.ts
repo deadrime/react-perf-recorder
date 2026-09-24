@@ -35,11 +35,7 @@ export interface PerfRecorderPlugin {
     resolveId?: (source: string, importer: string | undefined) => string | null | undefined;
     load?: (id: string) => string | null | undefined;
     transform?: (code: string, id: string) => { code: string; map: null } | string | null | undefined;
-    /**
-     * A file of a dependency itself, wherever Vite loads it from: the optimizer's bundle (esbuild before Vite 8,
-     * Rolldown from 8), or `node_modules` and linked packages served as they are. Reaches what the libraries on
-     * the page import too, not only the app.
-     */
+    /** A dependency's own file, in the optimizer or served as it is: reaches what the page's libraries import too. */
     transformDep?: { filter: RegExp; transform: (code: string, id: string) => string | null | undefined };
   };
   runtime?: { module: string; options?: JsonValue };

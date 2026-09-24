@@ -238,11 +238,11 @@ function mergeStep(a: WayStep, b: WayStep): WayStep {
   if (a.skipped || a.why !== undefined) return a;
   if (a.equal && b.equal) return a;
   const props = union(a.props, b.props);
-  const same = union(a.newRefSameContent, b.newRefSameContent);
+  const newRefSameContent = union(a.newRefSameContent, b.newRefSameContent);
   return {
     name: a.name,
     ...(props ? { props } : {}),
-    ...(same ? { newRefSameContent: same } : {}),
+    ...(newRefSameContent ? { newRefSameContent } : {}),
     ...(a.children || b.children ? { children: true as const } : {}),
   };
 }

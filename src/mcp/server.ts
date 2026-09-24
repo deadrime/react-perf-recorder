@@ -200,13 +200,14 @@ export function createServer(dir: string) {
       },
     },
     async ({ limit = 20, status, scope, source, url, label }) => {
+      const has = (value: string, part?: string) => !part || value.includes(part);
       const sessions = listSessions(dir).filter(
         (s) =>
           (!status || s.status === status) &&
-          (!scope || (s.meta.scope?.name ?? 'whole app').includes(scope)) &&
-          (!source || s.meta.source.includes(source)) &&
-          (!url || s.meta.page.url.includes(url)) &&
-          (!label || (s.meta.label ?? '').includes(label))
+          has(s.meta.scope?.name ?? 'whole app', scope) &&
+          has(s.meta.source, source) &&
+          has(s.meta.page.url, url) &&
+          has(s.meta.label ?? '', label)
       );
       return json({
         dir,
@@ -267,9 +268,10 @@ export function createServer(dir: string) {
       },
     },
     async ({ id, section: name = 'summary', top = 10, offset = 0, hooks = 'full' }) => {
-      const entry = findSession(dir, id);
+      const sessions = listSessions(dir);
+      const entry = findSession(dir, id, sessions);
       const rec = readRecording(entry);
-      const warning = latestWarning(dir, id, entry);
+      const warning = latestWarning(sessions, id, entry);
       return json({
         ...(warning ? { warning } : {}),
         id: entry.id,
@@ -406,10 +408,11 @@ export function createServer(dir: string) {
       },
     },
     async ({ before, after, top, match }) => {
-      const [ea, eb] = [findSession(dir, before), findSession(dir, after)];
-      const latest = [latestWarning(dir, before, ea), latestWarning(dir, after, eb)].filter(Boolean);
-      const result = compareRecordings(readRecording(ea), readRecording(eb), { top, match });
-      return json(latest.length ? { ...result, warnings: [...latest, ...result.warnings], comparable: false } : result);
+      const sessions = listSessions(dir);
+      const [beforeEntry, afterEntry] = [findSession(dir, before, sessions), findSession(dir, after, sessions)];
+      const latestWarnings = [latestWarning(sessions, before, beforeEntry), latestWarning(sessions, after, afterEntry)].filter(Boolean);
+      const result = compareRecordings(readRecording(beforeEntry), readRecording(afterEntry), { top, match });
+      return json(latestWarnings.length ? { ...result, warnings: [...latestWarnings, ...result.warnings], comparable: false } : result);
     }
   );
 

@@ -1,6 +1,6 @@
 import path from 'node:path';
 
-const cleanId = (id: string) => id.split('?')[0].replace(/\\/g, '/');
+export const cleanId = (id: string) => id.split('?')[0].replace(/\\/g, '/');
 
 const globToRegExp = (glob: string) => {
   let re = '';

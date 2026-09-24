@@ -44,8 +44,7 @@ export function listSessions(dir: string): SessionEntry[] {
   return out.sort((a, b) => (a.id < b.id ? 1 : -1));
 }
 
-export function findSession(dir: string, ref: string): SessionEntry {
-  const sessions = listSessions(dir);
+export function findSession(dir: string, ref: string, sessions = listSessions(dir)): SessionEntry {
   const latest = /^latest(?:-(\d+))?$/.exec(ref);
   const entry = latest ? sessions[Number(latest[1] ?? 0)] : sessions.find((s) => s.id === ref) ?? sessions.find((s) => s.id.includes(ref));
   if (!entry) throw new Error(sessions.length ? `no session ${ref}; latest is ${sessions[0].id}` : `no sessions in ${dir} yet`);
@@ -65,14 +64,15 @@ const appOf = (url: string) => {
  * `latest` is whoever recorded last into the folder. When other pages were recorded around the same time — another
  * agent on another app — the answer says so, rather than hand over someone else's recording as yours.
  */
-export function latestWarning(dir: string, ref: string, entry: SessionEntry): string | undefined {
-  if (!/^latest/.test(ref)) return undefined;
+export function latestWarning(sessions: SessionEntry[], ref: string, entry: SessionEntry): string | undefined {
+  if (!ref.startsWith('latest')) return undefined;
   const at = Date.parse(entry.meta.createdAt);
   const page = appOf(entry.meta.page.url);
   const others = new Set(
-    listSessions(dir)
-      .filter((s) => Math.abs(Date.parse(s.meta.createdAt) - at) < 10 * 60_000 && appOf(s.meta.page.url) !== page)
+    sessions
+      .filter((s) => Math.abs(Date.parse(s.meta.createdAt) - at) < 10 * 60_000)
       .map((s) => appOf(s.meta.page.url))
+      .filter((app) => app !== page)
   );
   if (!others.size) return undefined;
   return `"${ref}" is ${entry.id} on ${page}; ${[...others].slice(0, 3).join(', ')} ${

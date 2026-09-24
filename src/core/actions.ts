@@ -36,8 +36,10 @@ function shortText(el: Element, max: number): string {
 
 // An element of a same-origin frame belongs to that frame's realm: `instanceof HTMLInputElement` of the page is false
 // for it, so elements are told apart by what they are, not by whose constructor made them.
-const isElement = (value: unknown): value is Element => (value as Node | null)?.nodeType === 1;
+const isElement = (value: unknown): value is Element => (value as Node | null)?.nodeType === Node.ELEMENT_NODE;
+const isDocument = (value: unknown): value is Document => (value as Node | null)?.nodeType === Node.DOCUMENT_NODE;
 const isInput = (el: Element): el is HTMLInputElement => el.tagName === 'INPUT';
+const isCheckable = (el: Element): el is HTMLInputElement => isInput(el) && (el.type === 'checkbox' || el.type === 'radio');
 const isFormField = (el: Element) => el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT';
 
 export function isSecretField(el: Element, secretSelector: string): boolean {
@@ -61,8 +63,8 @@ export class ActionTracker {
   private scrolling = new Map<EventTarget, { action: ActionRecord; timer: ReturnType<typeof setTimeout> }>();
   private pointer: { el: Element; x: number; y: number; lastX: number; lastY: number; action: ActionRecord | null } | null = null;
   /** A drag's release ends in a click on the same element; the drag was the action, not the click. */
-  private draggedUntil = -Infinity;
-  private listeners: Array<[Window, string, EventListener]> = [];
+  private dragEndedAt = -Infinity;
+  private windows = new Set<Window>();
   private handlers: Array<[string, EventListener]> = [];
   private frames: MutationObserver | null = null;
   private watched = new WeakSet<HTMLIFrameElement>();
@@ -94,39 +96,35 @@ export class ActionTracker {
     this.listen(window);
     // A form in a same-origin frame (a playground, an editor's preview) is the person's too: its window is listened
     // to as the page's is, again after each load of the frame, which brings a new window.
-    this.watchFrames(document);
-    this.frames = new MutationObserver((records) => {
-      for (const r of records)
-        for (const node of r.addedNodes) if (isElement(node) && (node.tagName === 'IFRAME' || node.querySelector('iframe'))) this.watchFrames(node);
-    });
+    // A live list: a commit that adds no frame costs a look at an empty list, not a search of what it added.
+    const iframes = document.getElementsByTagName('iframe');
+    const watchNew = () => {
+      for (const frame of iframes) if (!this.watched.has(frame)) this.watchFrame(frame);
+    };
+    watchNew();
+    this.frames = new MutationObserver(watchNew);
     this.frames.observe(document, { childList: true, subtree: true });
   }
 
   private listen(win: Window) {
-    if (this.listeners.some(([w]) => w === win)) return;
-    for (const [type, listener] of this.handlers) {
-      win.addEventListener(type, listener, { capture: true, passive: true });
-      this.listeners.push([win, type, listener]);
-    }
+    if (this.windows.has(win)) return;
+    this.windows.add(win);
+    for (const [type, listener] of this.handlers) win.addEventListener(type, listener, { capture: true, passive: true });
   }
 
-  private watchFrames(root: ParentNode) {
-    const frames = isElement(root) && root.tagName === 'IFRAME' ? [root as HTMLIFrameElement] : root.querySelectorAll('iframe');
-    for (const frame of frames) {
-      const attach = () => {
-        try {
-          const win = frame.contentWindow;
-          // Reading the document throws for another origin: nothing there is the app's.
-          if (win?.document) this.listen(win);
-        } catch {
-          // Cross-origin: not followed.
-        }
-      };
-      attach();
-      if (this.watched.has(frame)) continue;
-      this.watched.add(frame);
-      frame.addEventListener('load', attach);
-    }
+  private watchFrame(frame: HTMLIFrameElement) {
+    const attach = () => {
+      try {
+        const win = frame.contentWindow;
+        // Reading the document throws for another origin: nothing there is the app's.
+        if (win?.document) this.listen(win);
+      } catch {
+        // Cross-origin: not followed.
+      }
+    };
+    this.watched.add(frame);
+    frame.addEventListener('load', attach);
+    attach();
   }
 
   /** Called by the navigation tracker: back and forward are user actions, push and replace are consequences. */
@@ -136,8 +134,8 @@ export class ActionTracker {
   }
 
   stop() {
-    for (const [win, type, listener] of this.listeners) win.removeEventListener(type, listener, { capture: true });
-    this.listeners = [];
+    for (const win of this.windows) for (const [type, listener] of this.handlers) win.removeEventListener(type, listener, { capture: true });
+    this.windows.clear();
     this.handlers = [];
     this.frames?.disconnect();
     this.frames = null;
@@ -169,7 +167,7 @@ export class ActionTracker {
     const href = el.getAttribute('href');
     if (href) target.href = href.slice(0, 200);
     if (el.hasAttribute('disabled')) target.disabled = true;
-    if (isInput(el) && (el.type === 'checkbox' || el.type === 'radio')) target.checked = el.checked;
+    if (isCheckable(el)) target.checked = el.checked;
     // Which one it is, not just what it is: a page has many «Add» buttons and only one of them was clicked.
     const selector = this.selectorOf(el);
     if (selector) {
@@ -285,15 +283,13 @@ export class ActionTracker {
     const extra: Partial<ActionRecord> = isSecretField(el, this.options.secretSelector)
       ? { secret: true }
       : this.options.values
-      ? {
-          value: isInput(el) && /checkbox|radio/.test(el.type) ? String(el.checked) : String((el as HTMLSelectElement).value ?? '').slice(0, 200),
-        }
+      ? { value: isCheckable(el) ? String(el.checked) : String((el as HTMLSelectElement).value ?? '').slice(0, 200) }
       : {};
     this.push('change', el, extra);
   }
 
   private onClick(event: Event) {
-    if (this.now() - this.draggedUntil < DRAG_CLICK_MS) return;
+    if (this.now() - this.dragEndedAt < DRAG_CLICK_MS) return;
     const el = isElement(event.target) ? event.target : null;
     this.push('click', el?.closest(INTERACTIVE) ?? el, {}, event);
   }
@@ -334,7 +330,7 @@ export class ActionTracker {
     const action = this.pointer?.action;
     this.pointer = null;
     if (!action) return;
-    this.draggedUntil = this.now();
+    this.dragEndedAt = this.now();
     this.record(action);
   }
 
@@ -346,7 +342,7 @@ export class ActionTracker {
 
   private onScroll(event: Event) {
     const target = event.target;
-    const el = (target as Node | null)?.nodeType === 9 ? (target as Document).scrollingElement : target;
+    const el = isDocument(target) ? target.scrollingElement : target;
     if (!isElement(el)) return;
     const top = Math.round(el.scrollTop);
     const left = Math.round(el.scrollLeft);

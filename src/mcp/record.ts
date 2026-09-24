@@ -117,18 +117,18 @@ interface PageLike {
 
 const ENGINE = 'window.__REACT_PERF_RECORDER__';
 
-/** A browser of the machine's own, when the one Playwright expects is not there: CI images, cloud sandboxes. */
-const launchOptions = (headless: boolean) => ({
-  headless,
-  ...(process.env.REACT_PERF_RECORDER_BROWSER ? { executablePath: process.env.REACT_PERF_RECORDER_BROWSER } : {}),
-});
+const messageOf = (error: unknown) => String((error as Error)?.message ?? error);
 
-/** A browser Playwright cannot find is named in words: the machine may have another one to point at. */
+/**
+ * REACT_PERF_RECORDER_BROWSER is a browser of the machine's own, for CI images and cloud sandboxes; a browser
+ * Playwright cannot find is named in words.
+ */
 async function launch(chromium: Playwright['chromium'], headless: boolean) {
+  const executablePath = process.env.REACT_PERF_RECORDER_BROWSER;
   try {
-    return await chromium.launch(launchOptions(headless));
+    return await chromium.launch({ headless, ...(executablePath ? { executablePath } : {}) });
   } catch (error) {
-    const message = String((error as Error)?.message ?? error);
+    const message = messageOf(error);
     if (!/Executable doesn't exist/.test(message)) throw error;
     throw new Error(
       `${message.split('\n')[0]}\nThe browser this Playwright expects is not installed. Point at one the machine has: ` +
@@ -153,7 +153,7 @@ async function runModule(file: string, page: PageLike) {
  * a screenshot beside the recordings — and the two ways a script ends a recording it did not start.
  */
 async function explainFailure(error: unknown, page: PageLike, navigatedTo: string | null, dir: string): Promise<Error> {
-  const message = String((error as Error)?.message ?? error).split('\n')[0];
+  const message = messageOf(error).split('\n')[0];
   const hints: string[] = [];
   if (navigatedTo)
     hints.push(
@@ -163,11 +163,13 @@ async function explainFailure(error: unknown, page: PageLike, navigatedTo: strin
   else if (/recording is already running|no recording is running/.test(message))
     hints.push('record_page starts and stops the recording itself: a script must not call engine.start, stop or record');
   const shot = path.join(dir, `record-page-failure-${Date.now()}.png`);
-  const saved = await page
-    .screenshot({ path: shot })
-    .then(() => true)
-    .catch(() => false);
-  const text = await page.evaluate<string>('(document.body?.innerText ?? "").replace(/\\s+/g, " ").trim().slice(0, 300)').catch(() => '');
+  const [saved, text] = await Promise.all([
+    page
+      .screenshot({ path: shot })
+      .then(() => true)
+      .catch(() => false),
+    page.evaluate<string>('(document.body?.innerText ?? "").replace(/\\s+/g, " ").trim().slice(0, 300)').catch(() => ''),
+  ]);
   const where = [`page ${safeUrl(page.url())}`, text ? `showing: "${text}"` : '', saved ? `screenshot ${shot}` : ''].filter(Boolean);
   return new Error([message, ...hints, where.join('; ')].join('\n'));
 }
@@ -270,7 +272,7 @@ export async function recordPage(options: RecordPageOptions, sessionsDir: string
       try {
         await page.evaluate(`${ENGINE}.engine.start(${JSON.stringify(start)})`);
       } catch (error) {
-        const message = String((error as Error)?.message ?? error);
+        const message = messageOf(error);
         // An area that is not on the page is a dead end unless the answer says what is: the names it could have meant.
         if (!/is not mounted|no element matches|does not own/.test(message)) throw error;
         const names = await page.evaluate<string[]>(`${ENGINE}.engine.componentNames()`).catch(() => []);
@@ -285,7 +287,8 @@ export async function recordPage(options: RecordPageOptions, sessionsDir: string
     current.on('domcontentloaded', () => {
       navigatedTo = current.url();
     });
-    let saved: { id: string | null; recording: RecordingV2 };
+    type Stopped = { id: string | null; recording: RecordingV2 };
+    let saved: Stopped;
     try {
       if (options.replay) {
         await page.evaluate(`${ENGINE}.replay(${JSON.stringify(options.replay)})`);
@@ -295,9 +298,7 @@ export async function recordPage(options: RecordPageOptions, sessionsDir: string
       } else {
         await page.waitForTimeout(ms);
       }
-      saved = await page.evaluate<{ id: string | null; recording: RecordingV2 }>(
-        `${ENGINE}.engine.stop().then((r) => ({ id: r.id ?? null, recording: r }))`
-      );
+      saved = await page.evaluate<Stopped>(`${ENGINE}.engine.stop().then((r) => ({ id: r.id ?? null, recording: r }))`);
     } catch (error) {
       throw options.script ? await explainFailure(error, page, navigatedTo, sessionsDir) : error;
     }

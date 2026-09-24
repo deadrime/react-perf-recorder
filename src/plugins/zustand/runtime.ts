@@ -1,5 +1,5 @@
 import { definePlugin, type PluginContext } from '../../runtime';
-import { changedKeys, packageOfStack as packageOfStackOf } from '../store-shared';
+import { changedKeys, receiveStores, StoreNames, storeOrigin, ZUSTAND_GLOBAL } from '../store-shared';
 import { installDevtoolsShim } from './devtools-shim';
 
 interface StoreApi {
@@ -10,10 +10,9 @@ interface StoreApi {
 const stores = new Set<WeakRef<StoreApi>>();
 const apiByGetState = new WeakMap<Function, StoreApi>();
 // By `getState`: `create` hands out a hook and zustand/vanilla the api it wraps, two objects for one store.
-const names = new WeakMap<Function, string>();
+const names = new StoreNames(['zustand']);
 const shallowInner = new WeakMap<Function, Function>();
 const eventByState = new WeakMap<object, { type: string }>();
-let anonymous = 0;
 /** Set while a recording runs: a store made from now on — a lazy module, one per component — is followed at once. */
 let follow: ((api: StoreApi) => void) | null = null;
 
@@ -32,23 +31,15 @@ function register(result: unknown) {
   return result;
 }
 
-const origins = new WeakMap<Function, string>();
-
 /** The package that made a store, from the stack of `createStoreImpl`. */
-export const packageOfStack = (stack: string | undefined) => packageOfStackOf(stack, ['zustand']);
+export const packageOfStack = (stack: string | undefined) => storeOrigin(stack, ['zustand']);
 
 // Filled by zustand/vanilla itself (`registerStores` in ./index.ts): the stores of the app and of its libraries.
-const made = ((globalThis as Record<string, any>).__REACT_PERF_RECORDER_ZUSTAND__ ??= { made: [] }) as {
-  made: Array<[unknown, string | undefined]>;
-  register?: (api: unknown, stack?: string) => unknown;
-};
-made.register = (result, stack) => {
+receiveStores(ZUSTAND_GLOBAL, (result, made) => {
   const api = apiOf(result);
-  const origin = api && packageOfStack(stack);
-  if (api && origin) origins.set(api.getState, origin);
-  return register(result);
-};
-made.made.splice(0).forEach(([api, stack]) => made.register!(api, stack));
+  if (api) names.madeAt(api.getState, made);
+  register(result);
+});
 
 /** `create(fn)` and the curried `create<T>()(fn)` of zustand, `createStore` of zustand/vanilla. */
 export function wrapCreate<F extends (...args: any[]) => any>(factory: F): F {
@@ -77,14 +68,7 @@ export function nameStore(store: unknown, name: string) {
   if (api) names.set(api.getState, name);
 }
 
-const storeName = (api: StoreApi) => {
-  let name = names.get(api.getState);
-  if (!name) {
-    const origin = origins.get(api.getState);
-    names.set(api.getState, (name = origin ? `${origin}#${++anonymous}` : `store${++anonymous}`));
-  }
-  return name;
-};
+const storeName = (api: StoreApi) => names.get(api.getState);
 
 export default definePlugin((options: { devtools?: boolean } | null) => {
   const unsubscribes: Array<() => void> = [];
@@ -139,8 +123,7 @@ export default definePlugin((options: { devtools?: boolean } | null) => {
       follow = null;
       unsubscribes.splice(0).forEach((unsubscribe) => unsubscribe());
       const list = [...counts].sort((a, b) => b[1] - a[1]);
-      let active = false;
-      for (const ref of stores) if (ref.deref()) active = true;
+      const active = [...stores].some((ref) => ref.deref());
       return {
         version: 1,
         active,

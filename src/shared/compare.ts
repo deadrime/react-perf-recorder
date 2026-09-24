@@ -35,13 +35,17 @@ function compareRoots(a: RootStat[], b: RootStat[], msA: number, msB: number, ma
   const before = new Map(a.map((r) => [keyOf(r), r]));
   const after = new Map(b.map((r) => [keyOf(r), r]));
   // What found no pair is paired by the key without lines, when that points at one root on each side.
-  const lone = (from: Map<string, RootStat>, other: Map<string, RootStat>) => {
-    const byLines = new Map<string, string[]>();
-    for (const key of from.keys()) if (!other.has(key)) byLines.set(withoutLines(key), [...(byLines.get(withoutLines(key)) ?? []), key]);
-    return byLines;
+  const unpairedByLooseKey = (from: Map<string, RootStat>, other: Map<string, RootStat>) => {
+    const out = new Map<string, string[]>();
+    for (const key of from.keys()) {
+      if (other.has(key)) continue;
+      const loose = withoutLines(key);
+      out.set(loose, [...(out.get(loose) ?? []), key]);
+    }
+    return out;
   };
-  const gone = lone(before, after);
-  for (const [loose, keys] of lone(after, before)) {
+  const gone = unpairedByLooseKey(before, after);
+  for (const [loose, keys] of unpairedByLooseKey(after, before)) {
     const was = gone.get(loose);
     if (keys.length !== 1 || was?.length !== 1) continue;
     after.set(was[0], after.get(keys[0])!);
@@ -240,6 +244,8 @@ export function compareRecordings(a: RecordingV2, b: RecordingV2, options: Compa
   const top = options.top ?? 15;
   const match = options.match ?? 'key';
   const warnings: string[] = [];
+  // Said, but no reason to distrust the comparison.
+  const notes: string[] = [];
   const ms = [a.durationMs, b.durationMs];
   if (a.page.viewport !== b.page.viewport) warnings.push(`viewport differs: ${a.page.viewport} vs ${b.page.viewport}`);
   if (new URL(a.page.url || 'http://x').pathname !== new URL(b.page.url || 'http://x').pathname)
@@ -248,7 +254,7 @@ export function compareRecordings(a: RecordingV2, b: RecordingV2, options: Compa
     warnings.push(`area differs: ${a.scope?.name ?? 'whole app'} vs ${b.scope?.name ?? 'whole app'}`);
   if (Math.max(...ms) > 2 * Math.min(...ms)) warnings.push(`durations differ more than twice: ${ms[0]}ms vs ${ms[1]}ms`);
   else if (Math.max(...ms) > 1.2 * Math.min(...ms))
-    warnings.push(
+    notes.push(
       `durations differ (${ms[0]}ms vs ${ms[1]}ms): rates per second move with the length too — a scenario run twice compares by its actions and by the whole-run totals`
     );
   for (const key of new Set([...Object.keys(a.conditions), ...Object.keys(b.conditions)])) {
@@ -264,7 +270,7 @@ export function compareRecordings(a: RecordingV2, b: RecordingV2, options: Compa
     warnings.push(
       `highlight was on only ${lit(a) ? 'before' : 'after'}: its drawing inflates frame and long-task times, compare renders, not timings`
     );
-  if (a.partial || b.partial) warnings.push('a partial recording is compared: hook names, components and plugin sections may be missing');
+  if (a.partial || b.partial) notes.push('a partial recording is compared: hook names, components and plugin sections may be missing');
   const text = (r: RecordingV2) => r.totals.domTextChanges;
   const totals = {
     // The whole run: what a script done twice compares by, whatever the time the page took to do it.
@@ -293,8 +299,8 @@ export function compareRecordings(a: RecordingV2, b: RecordingV2, options: Compa
   }
   return {
     // Notes, not differences in how the runs were taken: a partial side, and lengths apart by less than twice.
-    comparable: warnings.filter((w) => !w.startsWith('a partial') && !w.startsWith('durations differ (')).length === 0,
-    warnings,
+    comparable: warnings.length === 0,
+    warnings: [...warnings, ...notes],
     before: { id: a.id, durationMs: ms[0] },
     after: { id: b.id, durationMs: ms[1] },
     totals,

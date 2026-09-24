@@ -76,6 +76,12 @@ function propsReason(before: unknown, after: unknown): Reason {
 
 const unnamedContexts = new WeakMap<object, string>();
 
+const above = (f: Fiber, test: (p: Fiber) => boolean) => {
+  let p = f.return;
+  while (p && !test(p)) p = p.return;
+  return p;
+};
+
 /**
  * A context without a displayName — most packages' — is named by the component that provides it, the nearest one
  * above its provider: `(unnamed, provided by DndContext)` says whose it is where `(unnamed)` said nothing.
@@ -84,17 +90,9 @@ function contextLabel(context: { displayName?: string }, f: Fiber): string {
   if (context.displayName) return context.displayName;
   let label = unnamedContexts.get(context);
   if (label !== undefined) return label;
-  label = '(unnamed)';
-  for (let p = f.return; p; p = p.return) {
-    if (!isProviderTag(p.tag) || contextOf(p) !== context) continue;
-    for (let owner = p.return; owner; owner = owner.return) {
-      if (isComposite(owner)) {
-        label = `(unnamed, provided by ${nameOf(owner)})`;
-        break;
-      }
-    }
-    break;
-  }
+  const provider = above(f, (p) => isProviderTag(p.tag) && contextOf(p) === context);
+  const owner = provider && above(provider, isComposite);
+  label = owner ? `(unnamed, provided by ${nameOf(owner)})` : '(unnamed)';
   unnamedContexts.set(context, label);
   return label;
 }

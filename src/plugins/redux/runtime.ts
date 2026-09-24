@@ -1,5 +1,5 @@
 import { definePlugin, type SessionContext } from '../../runtime';
-import { changedKeys, packageOfStack as packageOfStackOf } from '../store-shared';
+import { changedKeys, receiveStores, REDUX_GLOBAL, StoreNames, storeOrigin } from '../store-shared';
 
 interface Store {
   getState(): unknown;
@@ -12,37 +12,27 @@ type Dispatch = (action: unknown) => unknown;
 // Weak both ways: a store a page let go of is not kept alive by the recorder.
 const byGetState = new WeakMap<Function, WeakRef<Store>>();
 const stores = new Set<WeakRef<Store>>();
-const names = new WeakMap<Function, string>();
-const origins = new WeakMap<Function, string>();
-let anonymous = 0;
+const names = new StoreNames(['redux', '@reduxjs/toolkit']);
 
 /** The package that made a store, from the stack of redux's createStore; RTK's configureStore is passed over. */
-export const packageOfStack = (stack: string | undefined) => packageOfStackOf(stack, ['redux', '@reduxjs/toolkit']);
+export const packageOfStack = (stack: string | undefined) => storeOrigin(stack, ['redux', '@reduxjs/toolkit']);
 
 const isStore = (value: unknown): value is Store =>
   Boolean(value) && typeof (value as Store).getState === 'function' && typeof (value as Store).dispatch === 'function';
 
-function register(store: unknown, stack?: string) {
+function register(store: unknown, made?: Error) {
   if (!isStore(store) || byGetState.has(store.getState)) return;
   const ref = new WeakRef(store);
   byGetState.set(store.getState, ref);
   stores.add(ref);
-  const origin = packageOfStack(stack);
-  if (origin) origins.set(store.getState, origin);
+  names.madeAt(store.getState, made);
 }
 
 export function nameStore(store: unknown, name: string) {
   if (isStore(store)) names.set(store.getState, name);
 }
 
-const storeName = (getState: Function) => {
-  let name = names.get(getState);
-  if (!name) {
-    const origin = origins.get(getState);
-    names.set(getState, (name = origin ? `${origin}#${++anonymous}` : `store${++anonymous}`));
-  }
-  return name;
-};
+const storeName = (getState: Function) => names.get(getState);
 
 let session: SessionContext | null = null;
 // Per store, per action type: a page with a chart library's store and the app's keeps them apart.
@@ -68,16 +58,8 @@ function dispatchOf(store: Store, dispatch: Dispatch, action: unknown) {
   return out;
 }
 
-// Filled by redux itself: the stores made before this module loaded wait in `made`.
-const hook = ((globalThis as Record<string, any>).__REACT_PERF_RECORDER_REDUX__ ??= { made: [], seen: new WeakSet() }) as {
-  made: Array<[unknown, string | undefined]>;
-  seen: WeakSet<Function>;
-  register?: (store: unknown, stack?: string) => void;
-  dispatch?: (store: Store, dispatch: Dispatch, action: unknown) => unknown;
-};
-hook.register = register;
-hook.dispatch = dispatchOf;
-hook.made.splice(0).forEach(([store, stack]) => register(store, stack));
+// Filled by redux itself (`registerStores` in ./index.ts): its dispatch is routed here while a recording runs.
+receiveStores(REDUX_GLOBAL, register).dispatch = dispatchOf;
 
 export default definePlugin(() => ({
   name: 'redux',
@@ -90,11 +72,8 @@ export default definePlugin(() => ({
   },
   stop() {
     session = null;
-    let active = false;
-    for (const ref of stores) {
-      if (ref.deref()) active = true;
-      else stores.delete(ref);
-    }
+    for (const ref of stores) if (!ref.deref()) stores.delete(ref);
+    const active = stores.size > 0;
     const perStore = [...counts]
       .map(([store, byType]) => {
         const actions = [...byType].sort((a, b) => b[1] - a[1]);

@@ -8,7 +8,7 @@ import { ENDPOINT, type JsonValue } from '../shared/schema';
 import { addComponentNames, DEFAULT_WRAPPERS, type ComponentNamesOptions } from './component-names';
 import { ENTRY_ID, entryCode, RESOLVED_ENTRY_ID, runtimeSpecifier } from './entry';
 import type { Statement } from '@babel/types';
-import { optimizerConfig, transformServedDep } from './helpers/dep-transform';
+import { optimizeDepsFor, transformServedDep } from './helpers/dep-transform';
 import { createFilter } from './helpers/filter';
 import { memoDepsAt, memoDepsInHook } from './helpers/hook-deps';
 import { parseModule } from './helpers/name-declarations';
@@ -255,8 +255,8 @@ export function perfRecorder(options: PerfRecorderOptions = {}): VitePluginLike[
               config(this: { meta?: { rolldownVersion?: string } } | void, userConfig) {
                 const own = config?.(userConfig) ?? undefined;
                 if (!transformDep) return own;
-                const deps = optimizerConfig(name, transformDep, !!this?.meta?.rolldownVersion);
-                return { ...own, optimizeDeps: { ...own?.optimizeDeps, ...deps.optimizeDeps } };
+                const deps = optimizeDepsFor(name, transformDep, !!this?.meta?.rolldownVersion);
+                return { ...own, optimizeDeps: { ...own?.optimizeDeps, ...deps } };
               },
             }
           : {}),
@@ -265,8 +265,8 @@ export function perfRecorder(options: PerfRecorderOptions = {}): VitePluginLike[
         ...(transform || transformDep
           ? {
               transform(code, id) {
-                const dep = transformDep && transformServedDep(transformDep, code, id);
-                if (dep != null) return { code: dep, map: null };
+                const depCode = transformDep && transformServedDep(transformDep, code, id);
+                if (depCode != null) return { code: depCode, map: null };
                 return transform?.(code, id) ?? null;
               },
             }

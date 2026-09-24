@@ -117,3 +117,16 @@ export function appendLines(code: string, lines: string[]): string | null {
  * later transform) is skipped rather than breaking the module.
  */
 export const ifDeclared = (name: string, call: string) => `if (typeof ${name} !== "undefined") ${call}`;
+
+/** A transform for the app's modules: `nameStore(X, "X")` of a store plugin's runtime after each `const X = factory(…)`. */
+export const nameStoresTransform =
+  (filter: (id: string) => boolean, functions: string[], runtime: string, alias: string) => (code: string, id: string) => {
+    if (!filter(id) || !functions.some((fn) => code.includes(fn))) return null;
+    const names = findDeclarations(code, functions, { file: id });
+    if (!names.length) return null;
+    const out = appendLines(code, [
+      `import { nameStore as ${alias} } from ${JSON.stringify(runtime)};`,
+      ...names.map((name) => ifDeclared(name, `${alias}(${name}, ${JSON.stringify(name)});`)),
+    ]);
+    return out ? { code: out, map: null } : null;
+  };
