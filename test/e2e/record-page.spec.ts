@@ -72,9 +72,13 @@ test('replays what a recording did, from the page load, at its pace', async ({ b
   // A click made by the replay is a click to the recording: its renders are the reaction to it, as they were.
   expect(people.renders.after).toBe(people.renders.before);
   expect(people.renders.after).toBeGreaterThan(0);
-  // And a replayed keystroke is scheduled by React as a person's is: the same renders per character.
+  // And a replayed keystroke is scheduled by React as a person's is: the same renders per character. A feed tick
+  // landing on one of the five keystrokes adds a render to one run and not the other; a keystroke React batched
+  // differently would take renders away.
   const typing = cmp.actions.find((a) => a.per === 'char')!;
-  expect(typing.renders.after).toBe(typing.renders.before);
+  const extra = Math.round((typing.renders.after - typing.renders.before) * 'hello'.length);
+  expect(extra).toBeGreaterThanOrEqual(0);
+  expect(extra).toBeLessThanOrEqual(1);
 });
 
 test('a recording from the page load keeps the area, the label and what to watch', async ({ baseURL }) => {
