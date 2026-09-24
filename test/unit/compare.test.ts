@@ -74,8 +74,8 @@ describe('partial recordings and comparison', () => {
       },
     ]);
     expect(ways.map(wayText)).toEqual([
-      'core:timer setInterval › Row · external store #2 selectRow › Due · props over, renders',
-      'core:timer setInterval › Row · external store #2 selectRow › Item · props equal › Due · prop renders',
+      'core:timer setInterval › Row · store selectRow › Due · props over, renders',
+      'core:timer setInterval › Row · store selectRow › Item · props equal › Due · prop renders',
     ]);
     expect(ways.map((w) => w.n)).toEqual([3, 1]);
     expect(ways[1].steps[1]).toMatchObject({ equal: true });

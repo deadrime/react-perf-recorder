@@ -89,6 +89,18 @@ export function hookText(hook: HookInfo | undefined, mode: HookMode = 'full'): s
   return `${hookChain(hook, mode)}${site}`;
 }
 
+/**
+ * What a state hook is called in the code: the variable of `const [now, setNow] = useState()`, or the custom hook
+ * that keeps it — the package API for a package's (`useForm`), the innermost of the app's otherwise (`useSecond`).
+ */
+export function stateName(hook: HookInfo | undefined): string | undefined {
+  if (!hook) return undefined;
+  const custom = (hook.path ?? []).slice(0, -1);
+  if (hook.library && hook.libraryAt !== undefined) return hook.path?.[hook.libraryAt];
+  if (custom.length) return custom[custom.length - 1];
+  return /\[\s*([A-Za-z_$][\w$]*)\s*,[^\]]*\]\s*=\s*(?:React\.)?use(?:State|Reducer)\b/.exec(hook.code ?? '')?.[1];
+}
+
 /** Key of a context's hooks entry in `RootStat.hooks`: `ctx:Location`. */
 export const contextKey = (name: string) => `ctx:${name}`;
 
@@ -134,8 +146,10 @@ export const textOf = (reason: Pick<ReasonInfo, 'kind'> & Partial<ReasonInfo>) =
 /** One step of a way down, ready to print; the first carries its root's leading cause. */
 export interface WayStep {
   name: string;
-  /** The root's own reason: `state #0`, `external store #2 [chat]`. */
+  /** The root's own reason: `state now`, `store chat selectRow`; `kind` and `what` split it for the panel. */
   why?: string;
+  kind?: string;
+  what?: string;
   /** Props the parent changed, and props that were only new references to the same content. */
   props?: string[];
   same?: string[];
@@ -145,9 +159,29 @@ export interface WayStep {
   skipped?: number;
 }
 
-function stepOf(name: string, reason: ReasonInfo | undefined): WayStep {
+/** A root's reason as the chip and the words after it, with the state named as the code names it. */
+function rootWhy(reason: ReasonInfo, root: RootStat | undefined): { kind?: string; what: string } {
+  const mark = reason.sameContent ? ' SAME-CONTENT' : '';
+  switch (reason.kind) {
+    case 'state': {
+      const name = root ? stateName(hookOf(root, reason)) : undefined;
+      return { kind: 'state', what: `${name ?? (reason.hook === undefined ? 'of a class' : `#${reason.hook}`)}${mark}` };
+    }
+    case 'store':
+      return { kind: 'store', what: `${[reason.store, reason.selector].filter(Boolean).join(' ') || `#${reason.hook}`}${mark}` };
+    case 'context':
+      return { kind: 'context', what: `${reason.context || '(unnamed)'}${mark}` };
+    default:
+      return { what: textOf(reason) };
+  }
+}
+
+function stepOf(name: string, reason: ReasonInfo | undefined, root?: RootStat): WayStep {
   if (!reason) return { name };
-  if (reason.kind !== 'parent') return { name, why: textOf(reason) };
+  if (reason.kind !== 'parent') {
+    const { kind, what } = rootWhy(reason, root);
+    return { name, why: kind ? `${kind} ${what}` : what, ...(kind ? { kind } : {}), what };
+  }
   if (reason.equal) return { name, equal: true };
   return {
     name,
@@ -160,7 +194,7 @@ function stepOf(name: string, reason: ReasonInfo | undefined): WayStep {
 /** What a step says after the name, split for the panel: `prop` and `renders`, or only the words for a root. */
 export function stepParts(step: WayStep): Array<{ label?: string; text: string; tone?: 'warn' }> {
   if (step.skipped) return [{ text: `${step.skipped} more` }];
-  if (step.why) return [{ text: step.why }];
+  if (step.why) return [{ label: step.kind, text: step.what ?? step.why }];
   if (step.equal) return [{ label: 'props', text: 'equal', tone: 'warn' }];
   const parts: Array<{ label?: string; text: string; tone?: 'warn' }> = [];
   if (step.props?.length) parts.push({ label: step.props.length > 1 ? 'props' : 'prop', text: step.props.join(', ') });
@@ -180,8 +214,10 @@ export function wayOf(rec: Pick<RecordingV2, 'roots' | 'outsideRoots' | 'reasons
   const root = links[0]?.root !== undefined ? [...rec.roots, ...rec.outsideRoots][links[0].root] : undefined;
   const cause = root?.causes.find(([key]) => key !== 'core:none')?.[0];
   const steps = links.map(
-    (link): WayStep =>
-      link.skipped ? { name: '…', skipped: link.skipped } : stepOf(link.name, link.reason !== undefined ? reasons.get(link.reason) : undefined)
+    (link, i): WayStep =>
+      link.skipped
+        ? { name: '…', skipped: link.skipped }
+        : stepOf(link.name, link.reason !== undefined ? reasons.get(link.reason) : undefined, i === 0 ? root : undefined)
   );
   return { ...(cause ? { cause } : {}), steps };
 }

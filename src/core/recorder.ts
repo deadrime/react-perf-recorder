@@ -201,6 +201,7 @@ const MAX_CAUSE_KEYS = 300;
 /** Distinct links of render chains; past it, chains are not kept, counts and reasons still are. */
 const MAX_CHAIN_NODES = 50_000;
 const CHAINS_PER_COMPONENT = 3;
+const MAX_CHAIN_LINKS = 20;
 const MAX_SEGMENT_COMMITS = 20_000;
 
 const currentEventType = (): string | undefined => {
@@ -616,7 +617,8 @@ export class Recorder {
           if (firstId < 0) firstId = id;
           comp.reasons.set(id, (comp.reasons.get(id) ?? 0) + 1);
         }
-        if (rootAgg) chain = this.chainLink(-1, name, firstId, rootAgg);
+        // Fast recordings keep no chains: they are there to cost less, and a chain is a sample of nothing.
+        if (rootAgg) chain = this.options.sampleReasons ? -1 : this.chainLink(-1, name, firstId, rootAgg);
         // A link of its own for what the app wrote; a package's internals and bare wrappers pass the chain through.
         else if (chain >= 0 && isComposite(f) && !isProvider(name) && !comp.library && !comp.wrapper) {
           chain = this.chainLink(chain, name, firstId);
@@ -684,7 +686,7 @@ export class Recorder {
     return id;
   }
 
-  /** The links of a chain from its root down; a long one keeps its root, the two below it and the last four. */
+  /** The links of a chain from its root down; one past 20 keeps its root, the two below it and the last sixteen. */
   private chainLinks(id: number, rootIndex: (agg: RootAgg) => number | undefined): ChainLink[] {
     const links: ChainLink[] = [];
     for (let at = id; at >= 0; at = this.chainNodes[at].up) {
@@ -693,7 +695,9 @@ export class Recorder {
       links.push({ name: node.name, ...(node.reason >= 0 ? { reason: node.reason } : {}), ...(root !== undefined ? { root } : {}) });
     }
     links.reverse();
-    return links.length > 8 ? [...links.slice(0, 3), { name: '…', skipped: links.length - 7 }, ...links.slice(-4)] : links;
+    return links.length > MAX_CHAIN_LINKS
+      ? [...links.slice(0, 3), { name: '…', skipped: links.length - (MAX_CHAIN_LINKS - 1) }, ...links.slice(-(MAX_CHAIN_LINKS - 4))]
+      : links;
   }
 
   private componentOf(name: string, f: Fiber): ComponentAgg {

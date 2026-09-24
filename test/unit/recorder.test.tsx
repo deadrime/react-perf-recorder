@@ -261,6 +261,41 @@ describe('Recorder', () => {
     expect(rec.components.find((c) => c.name === 'Stats')!.chains).toBeUndefined();
   });
 
+  it('keeps a way of twenty links whole, folds a longer one, and keeps none when recording fast', () => {
+    let set!: Setter;
+    const Leaf = ({ v }: { v: number }) => <i>{v}</i>;
+    const levels = (depth: number) => {
+      let Inner: (p: { v: number }) => JSX.Element = Leaf;
+      for (let i = depth; i > 0; i--) {
+        const Next = Inner;
+        const Level = ({ v }: { v: number }) => <div>{<Next v={v} />}</div>;
+        Object.defineProperty(Level, 'name', { value: `Level${i}` });
+        Inner = Level;
+      }
+      return Inner;
+    };
+    const run = (depth: number, sampleReasons = false) => {
+      const Top = levels(depth);
+      const Root = () => {
+        const [v, setV] = useState(0);
+        set = setV;
+        return <Top v={v} />;
+      };
+      mount(<Root />);
+      const { recorder } = makeRecorder({ sampleReasons });
+      recorder.start();
+      flush(() => set(1));
+      return recorder.stop().components.find((c) => c.name === 'Leaf')!;
+    };
+    // Root, 18 levels and the leaf: twenty links, all of them.
+    expect(run(18).chains![0].links).toHaveLength(20);
+    const long = run(28).chains![0].links;
+    expect(long).toHaveLength(20);
+    expect(long[3]).toEqual({ name: '…', skipped: 11 });
+    expect(long.at(-1)!.name).toBe('Leaf');
+    expect(run(5, true).chains).toBeUndefined();
+  });
+
   it('lists the useMemo that recomputes on every render, and says which dependency moved', () => {
     let set!: Setter;
     const OPEN = { status: 'open' };

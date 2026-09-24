@@ -2,7 +2,7 @@
 import type { JSX } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { HookInfo, ReasonInfo } from '../../shared/schema';
-import { hookChain, stepParts, type Way } from '../../shared/summary';
+import { hookChain, stateName, stepParts, type Way, type WayStep } from '../../shared/summary';
 
 /** A number worth seeing at a glance next to a component's name; `warn` is for the ones that mean wasted work. */
 export interface Badge {
@@ -25,11 +25,11 @@ const names = (list: string[] | undefined) => (list ?? []).slice(0, 5).join(', '
  * A reason in the parts a row draws: the kind is a chip of its own, so the words next to it never repeat it.
  * `props: price | same: style` becomes `props` · `price` · `same: style`.
  */
-function partsOf(reason: ReasonInfo): { what: string; same?: string } {
+function partsOf(reason: ReasonInfo, hook?: HookInfo): { what: string; same?: string } {
   const same = reason.sameRef?.length ? `same: ${names(reason.sameRef)}` : undefined;
   switch (reason.kind) {
     case 'state':
-      return { what: reason.hook === undefined ? 'of a class' : `#${reason.hook}` };
+      return { what: stateName(hook) ?? (reason.hook === undefined ? 'of a class' : `#${reason.hook}`) };
     case 'store':
       return { what: reason.store || (reason.hook === undefined ? 'subscription' : `#${reason.hook}`) };
     case 'context':
@@ -106,7 +106,7 @@ function ReasonRow({
 }): JSX.Element {
   const { reason, hook, n } = entry;
   const detail = hasDetail(entry);
-  const parts = reason ? partsOf(reason) : { what: 'unknown', same: undefined };
+  const parts = reason ? partsOf(reason, entry.hook) : { what: 'unknown', same: undefined };
   const chain = hookChain(hook, 'short');
   const head = (
     <>
@@ -228,31 +228,65 @@ export function StatCard({
       {ways?.length ? (
         <div class="ways">
           {ways.map((way, i) => (
-            <div class="way" data-rpr="way" key={i} title={`${way.n} renders came down this way`}>
-              <span class="way-n">{`×${way.n}`}</span>
-              {way.cause ? (
-                <span class="way-cause" title={way.cause}>
-                  {shortCause(way.cause)}
-                </span>
-              ) : null}
-              <ol class="way-steps">
-                {way.steps.map((step, j) => (
-                  // Props equal on a link: the parent rendered for nothing this child needed — a memo would stop it here.
-                  <li key={j} class="way-step" data-equal={step.equal ? 'true' : undefined} data-skipped={step.skipped ? 'true' : undefined}>
-                    <span class="way-name">{step.name}</span>
-                    {stepParts(step).map((part, k) => (
-                      <span class="way-why" key={k} data-tone={part.tone}>
-                        {part.label ? <span class="way-label">{part.label}</span> : null}
-                        {part.text}
-                      </span>
-                    ))}
-                  </li>
-                ))}
-              </ol>
-            </div>
+            <WayRow key={i} way={way} />
           ))}
         </div>
       ) : null}
+    </div>
+  );
+}
+
+/** Past this many links a way reads down the card, a link a line; in a row it would wrap into a paragraph. */
+const IN_A_ROW = 4;
+/** A column this long shows its two top links, its last four and the ones worth fixing; the rest behind a button. */
+const FOLDED = 8;
+
+function WayStepItem({ step }: { step: WayStep }): JSX.Element {
+  return (
+    // Props equal on a link: the parent rendered for nothing this child needed — a memo would stop it here.
+    <li class="way-step" data-equal={step.equal ? 'true' : undefined} data-skipped={step.skipped ? 'true' : undefined}>
+      <span class="way-name">{step.name}</span>
+      {stepParts(step).map((part, k) => (
+        <span class="way-why" key={k} data-tone={part.tone}>
+          {part.label ? <span class="way-label">{part.label}</span> : null}
+          {part.text}
+        </span>
+      ))}
+    </li>
+  );
+}
+
+function WayRow({ way }: { way: Way }): JSX.Element {
+  const [open, setOpen] = useState(false);
+  const { steps } = way;
+  const column = steps.length > IN_A_ROW;
+  const folded = column && !open && steps.length > FOLDED;
+  // Folded, the middle keeps the links worth fixing: equal props, or a prop new with the same content.
+  const shown = (i: number) => !folded || i < 2 || i >= steps.length - 4 || Boolean(steps[i].equal || steps[i].same);
+  const items: JSX.Element[] = [];
+  for (let i = 0; i < steps.length; i++) {
+    if (shown(i)) {
+      items.push(<WayStepItem key={i} step={steps[i]} />);
+      continue;
+    }
+    let end = i;
+    while (end < steps.length && !shown(end)) end++;
+    items.push(
+      <li class="way-step way-more" key={`more-${i}`}>
+        <button type="button" data-rpr="way-more" onClick={() => setOpen(true)}>{`… ${end - i} more`}</button>
+      </li>
+    );
+    i = end - 1;
+  }
+  return (
+    <div class="way" data-rpr="way" data-column={column ? 'true' : undefined} title={`${way.n} renders came down this way`}>
+      <span class="way-n">{`×${way.n}`}</span>
+      {way.cause ? (
+        <span class="way-cause" title={way.cause}>
+          {shortCause(way.cause)}
+        </span>
+      ) : null}
+      <ol class="way-steps">{items}</ol>
     </div>
   );
 }

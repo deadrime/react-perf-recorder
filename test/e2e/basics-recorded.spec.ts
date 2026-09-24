@@ -53,7 +53,7 @@ test('a clock hidden in a hook: the hook chain names it', async ({ page }) => {
 test('a render that came down from a clock keeps its way: the timer, the card, the item that got equal props', async ({ page }) => {
   const rec = await record(page, '/basics/state', () => page.waitForTimeout(2500));
   const ways = waysOf(rec, rec.components.find((c) => c.name === 'RenderCount')?.chains).map(wayText);
-  expect(ways).toContainEqual(expect.stringMatching(/^core:timer setInterval @ src\/basics\/StateDown\.tsx › CardWithClock · state #0 › Item · props equal › RenderCount · prop renders$/));
+  expect(ways).toContainEqual(expect.stringMatching(/^core:timer setInterval @ src\/basics\/StateDown\.tsx › CardWithClock · state useSecond › Item · props equal › RenderCount · prop renders$/));
 
   // The panel draws the same way, with the link where a memo would stop it marked.
   await page.goto('/basics/state?rpr=panel');

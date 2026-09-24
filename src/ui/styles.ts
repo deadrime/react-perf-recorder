@@ -304,6 +304,11 @@ details.fold[open] > summary::before { content: '▾'; }
 .way-steps > li:not(:last-child)::after { content: '›'; margin: 0 6px 0 2px; color: var(--faint); }
 .way-name { color: var(--text-strong); }
 .way-why { color: var(--muted); font-size: 11px; }
+/* A long way, a link a line, each after the first led by an arrow from the one that rendered it. */
+.way[data-column="true"] .way-steps { flex-direction: column; flex-wrap: nowrap; }
+.way[data-column="true"] .way-steps > li::after { content: none; }
+.way[data-column="true"] .way-steps > li + li::before { content: '↳'; margin-right: 4px; color: var(--faint); }
+.way-more button { padding: 0 6px; font-size: 11px; color: var(--muted); }
 .way-why { display: inline-flex; align-items: baseline; gap: 3px; }
 .way-why[data-tone="warn"] { color: var(--warn); }
 /* "prop" in the chip the reason rows use for their kind: the word after it is a prop's name, not a component's. */
