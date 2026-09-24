@@ -20,6 +20,11 @@ const VERSION = typeof __VERSION__ === 'string' ? __VERSION__ : 'dev';
 export interface PerfRecorderOptions {
   /** Defaults to the dev server only: never in `vite build`, never under Vitest. */
   enabled?: boolean;
+  /**
+   * Whether recordings are sent to the dev server to be kept; true when it serves the page. A build made with
+   * `enabled: true` (a demo) has no server, and its recordings stay in the tab.
+   */
+  save?: boolean;
   /** Where sessions are written: relative to the root or absolute. Falls back to REACT_PERF_RECORDER_DIR, then `.agent-artifacts/perf-recorder`. */
   outDir?: string;
   /** Largest request body, the final recording included. */
@@ -125,6 +130,7 @@ async function mapSite(server: ViteDevServer, root: string, url: string, line: n
 export function perfRecorder(options: PerfRecorderOptions = {}): VitePluginLike[] {
   let root = process.cwd();
   let base = '/';
+  let serving = true;
   const plugins = options.plugins ?? [];
   const ctx: BuildContext = { root: () => root };
   plugins.forEach((p) => p.init?.(ctx));
@@ -160,7 +166,7 @@ export function perfRecorder(options: PerfRecorderOptions = {}): VitePluginLike[
     bigCommit: options.engine?.bigCommit ?? 150,
     timelineLimit: options.engine?.timelineLimit ?? 5000,
     timers: options.engine?.timers ?? true,
-    endpoint: `${base.replace(/\/$/, '')}/${ENDPOINT}`,
+    endpoint: options.save ?? serving ? `${base.replace(/\/$/, '')}/${ENDPOINT}` : null,
     panel:
       options.panel === false
         ? false
@@ -179,6 +185,7 @@ export function perfRecorder(options: PerfRecorderOptions = {}): VitePluginLike[
     configResolved(config) {
       root = config.root;
       base = config.base;
+      serving = config.command === 'serve';
     },
     resolveId: (id, importer) => (id === ENTRY_ID ? RESOLVED_ENTRY_ID : rootProxy.resolveId(id, importer)),
     load(id) {
@@ -198,7 +205,12 @@ export function perfRecorder(options: PerfRecorderOptions = {}): VitePluginLike[
       const named = addComponentNames(rewritten ?? code, components.wrappers ?? DEFAULT_WRAPPERS, id);
       return named ? { code: named, map: null } : rewritten ? { code: rewritten, map: null } : null;
     },
-    transformIndexHtml: () => [{ tag: 'script', attrs: { type: 'module', src: `${base}@id/${ENTRY_ID}` }, injectTo: 'head-prepend' }],
+    // The dev server serves a virtual module under /@id/; a build bundles it from its id, which it does only for a
+    // tag that is there before Vite reads the page's scripts.
+    transformIndexHtml: {
+      order: 'pre',
+      handler: () => [{ tag: 'script', attrs: { type: 'module', src: serving ? `${base}@id/${ENTRY_ID}` : ENTRY_ID }, injectTo: 'head-prepend' }],
+    },
     configureServer(server) {
       const dir = resolveOutDir(root, options.outDir);
       const store = new SessionStore({

@@ -1,3 +1,4 @@
+import { appPath } from './base';
 /**
  * Seeded re-render bugs, one per page: `/bug/whole-object` (several at once with `/bug/whole-object,field-state`).
  * Each is a pattern any React app can have; the demo page at `/` lists them, `/app` is the same app with none of
@@ -146,7 +147,7 @@ export const BUGS: Record<Bug, BugCard> = {
   },
 };
 
-const onThisPage = /^\/bug\/(.+)$/.exec(decodeURIComponent(location.pathname))?.[1] ?? '';
+const onThisPage = /^\/bug\/(.+)$/.exec(appPath())?.[1] ?? '';
 const enabled = new Set(onThisPage.split(',').filter(Boolean));
 
 export const bug = (name: Bug) => enabled.has(name);

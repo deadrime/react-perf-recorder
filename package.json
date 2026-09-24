@@ -65,6 +65,7 @@
     "test:matrix": "npm run test && npm run test:19 && npm run test:e2e",
     "test:e2e": "playwright test",
     "fixture": "vite --config test/e2e/fixture-app/vite.config.ts",
+    "build:pages": "NODE_ENV=development vite build --config test/e2e/fixture-app/vite.pages.config.ts",
     "fixture:19": "RPR_REACT=19 FIXTURE_PORT=5392 vite --config test/e2e/fixture-app/vite.config.ts",
     "format": "prettier --write ."
   },
@@ -96,6 +97,7 @@
     "@types/react-dom": "18.3.7",
     "@vitejs/plugin-react-swc": "3.10.2",
     "happy-dom": "20.8.9",
+    "marked": "18.0.14",
     "preact": "10.29.8",
     "prettier": "2.8.8",
     "proxy-memoize": "3.0.1",

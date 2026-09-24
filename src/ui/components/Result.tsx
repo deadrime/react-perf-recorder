@@ -282,7 +282,16 @@ export function Result({
       ) : null}
 
       <div class="result-bar" data-rpr="result-bar">
-        {rec.id ? <span class="muted saved">{`saved ${rec.id}`}</span> : <span class="error">{rec.saveError ?? 'not saved'}</span>}
+        {rec.id ? (
+          <span class="muted saved">{`saved ${rec.id}`}</span>
+        ) : rec.saveError ? (
+          <span class="error">{rec.saveError}</span>
+        ) : (
+          // No dev server to keep it (a built demo, the script-tag engine): not a failure, and Download still works.
+          <span class="muted saved" title="There is no dev server here to keep recordings: Download saves this one">
+            kept in this tab
+          </span>
+        )}
         {rec.id ? (
           <button type="button" onClick={() => void navigator.clipboard?.writeText(rec.id ?? '')}>
             Copy id
