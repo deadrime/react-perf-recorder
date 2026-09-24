@@ -14,6 +14,8 @@ export default definePlugin(() => {
   let found = false;
   let searchedAt = -Infinity;
   const counts = new Map<string, number>();
+  /** What a waiting event has gathered: `fetch → success ["presence"]`. */
+  const kinds = new WeakMap<object, string[]>();
 
   function search(session: SessionContext) {
     searchedAt = session.now();
@@ -24,15 +26,29 @@ export default definePlugin(() => {
     const cache: QueryCache = provider.memoizedProps.client.getQueryCache();
     unsubscribe = cache.subscribe((event) => {
       const action = event.action?.type;
-      if (!(event.type === 'added' || event.type === 'removed' || (event.type === 'updated' && action && ACTIONS.has(action)))) return;
-      const type = `${event.type}${action ? `:${action}` : ''} ${JSON.stringify(event.query.queryKey).slice(0, 70)}`;
-      counts.set(type, (counts.get(type) ?? 0) + 1);
-      session.emitCause({ type });
+      const updated = event.type === 'updated';
+      if (!(event.type === 'added' || event.type === 'removed' || (updated && action && ACTIONS.has(action)))) return;
+      const key = JSON.stringify(event.query.queryKey).slice(0, 70);
+      const kind = updated ? action! : event.type;
+      counts.set(`${kind} ${key}`, (counts.get(`${kind} ${key}`) ?? 0) + 1);
+      if (!updated) {
+        session.emitCause({ type: `${kind} ${key}` });
+        return;
+      }
+      // Observers hear of an update in react-query's own timer: the event waits for it, one per query.
+      const cause = session.emitCause({ type: `${kind} ${key}`, waitForTimer: true, merge: key });
+      if (!cause) return;
+      const seen = kinds.get(cause);
+      if (seen) {
+        if (!seen.includes(kind)) seen.push(kind);
+        cause.type = `${seen.join(' → ')} ${key}`;
+      } else kinds.set(cause, [kind]);
     });
   }
 
   return {
     name: 'react-query',
+    packages: ['@tanstack/react-query', '@tanstack/query-core'],
     start(session) {
       counts.clear();
       found = false;

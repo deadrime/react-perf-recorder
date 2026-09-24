@@ -50,7 +50,7 @@ import type { CauseEvent, PluginHost } from './plugins';
 import { didRender, hookTypeAt, parentReason, reasonsOf, snapshotOf, type Reason, type Snapshot } from './reasons';
 import { ScopeTracker, type ScopeHandle, type ScopeResolution } from './scope';
 import { updateOrigin, type UpdateOrigin } from './env/origin';
-import { runningTimer, setTimerSink } from './env/timers';
+import { runningTimer, runningTimerLibrary, setTimerSink } from './env/timers';
 
 export interface EngineConfig {
   version: string;
@@ -356,10 +356,17 @@ export class Recorder {
     // marked are the ones this event updated.
     this.deps.plugins.targets = () => this.freshUpdates();
     setTimerSink({
-      after: (text, ours) => {
+      after: (text, ours, library, startedAt) => {
+        const plugins = this.deps.plugins;
+        if (!this.freshUpdates(false).size) {
+          // A library's timer that updated no one: what waited for it woke no one either.
+          if (plugins.hasWaiting) plugins.deliver(library(), () => new Set(), startedAt);
+          return;
+        }
         // A timer of the recorder's own — the panel's clock, its outlines — takes no one's updates.
-        if (!this.freshUpdates(false).size || ours()) return;
-        this.deps.plugins.emit('core', { type: text() }, this.freshUpdates());
+        if (ours()) return;
+        if (plugins.hasWaiting && plugins.deliver(library(), () => this.freshUpdates(), startedAt)) return;
+        plugins.emit('core', { type: text() }, this.freshUpdates());
       },
     });
     this.frames.start();
@@ -453,7 +460,9 @@ export class Recorder {
     const origins = this.origins;
     this.origins = [];
     const timer = runningTimer();
-    if (timer) this.deps.plugins.emit('core', { type: timer });
+    // A commit inside a library's timer (a legacy root): its waiting events are the cause, the timer is how they came.
+    if (timer && !(this.deps.plugins.hasWaiting && this.deps.plugins.deliver(runningTimerLibrary(), () => null)))
+      this.deps.plugins.emit('core', { type: timer });
     const causes = this.deps.plugins.drain();
     this.deps.plugins.commit(this.pluginSession());
     const c: CommitState = {

@@ -14,7 +14,7 @@ export interface TimerSink {
    * Called after every timer callback; `text` names the timer and `ours` says the recorder scheduled it — both are
    * worked out only if there are updates to give it.
    */
-  after(text: () => string, ours: () => boolean): void;
+  after(text: () => string, ours: () => boolean, library: () => string | null, startedAt: number): void;
 }
 
 let sink: TimerSink | null = null;
@@ -30,6 +30,25 @@ export function setTimerSink(next: TimerSink | null) {
 /** The timer callback on the stack, when a commit happens inside it (flushSync, a sync lane flushed in place). */
 export function runningTimer(): string | null {
   return running ? timerText(running) : null;
+}
+
+/** The package that called the running timer; null for app code or no timer. */
+export function runningTimerLibrary(): string | null {
+  return running ? libraryOfCaller(running) : null;
+}
+
+const callers = new WeakMap<Error, string | null>();
+
+/** Who called `setTimeout`, not whose code is further down: a query notified from an app's handler is still the library's. */
+function libraryOfCaller(t: Scheduled): string | null {
+  let library = callers.get(t.origin);
+  if (library === undefined) {
+    const caller = parseStack(t.origin.stack ?? '')
+      .slice(1)
+      .find((f) => libraryOf(f.url) !== 'react-perf-recorder');
+    callers.set(t.origin, (library = caller ? libraryOf(caller.url) : null));
+  }
+  return library;
 }
 
 /** `timer setInterval useCountdown @ src/hooks/useCountdown.ts`, or the package that scheduled it. */
@@ -78,6 +97,7 @@ function wrap(kind: Kind) {
         const s = sink;
         if (!s) return callback.apply(this, args);
         const outer = running;
+        const startedAt = performance.now();
         running = scheduled;
         try {
           return callback.apply(this, args);
@@ -85,7 +105,9 @@ function wrap(kind: Kind) {
           running = outer;
           s.after(
             () => timerText(scheduled),
-            () => ours(scheduled)
+            () => ours(scheduled),
+            () => libraryOfCaller(scheduled),
+            startedAt
           );
         }
       },

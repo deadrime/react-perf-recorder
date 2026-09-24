@@ -52,3 +52,39 @@ describe('react-query plugin runtime', () => {
     expect(host.stop(tree(null))['react-query']).toMatchObject({ active: true, highlights: ['no query events during the recording'] });
   });
 });
+
+describe('events that wait for their library timer', () => {
+  const fiber = { tag: 0 } as unknown as Fiber;
+  const host = () => {
+    const h = new PluginHost([[{ name: 'q', packages: ['@tanstack/query-core'] }, null]]);
+    h.start({ scope: null, findFibers: () => [] }, performance.now());
+    return h;
+  };
+
+  it('go, as one per key, to the components the timer updated, and the timer stays out of it', () => {
+    const h = host();
+    h.emit('q', { type: 'fetch ["a"]', waitForTimer: true, merge: '["a"]' });
+    h.emit('q', { type: 'fetch → success ["a"]', waitForTimer: true, merge: '["a"]' });
+    expect(h.drain()).toEqual([]);
+    // Some other package's timer is not the delivery.
+    expect(h.deliver('zustand', () => new Set([fiber]))).toBe(false);
+    expect(h.deliver('@tanstack/query-core', () => new Set([fiber]))).toBe(true);
+    expect(h.drain()).toEqual([expect.objectContaining({ type: 'fetch → success ["a"]', aimed: true, fibers: new Set([fiber]) })]);
+  });
+
+  it('are dropped when the timer updated no one, and one emitted inside the timer waits for the next', () => {
+    let now = 1000;
+    vi.spyOn(performance, 'now').mockImplementation(() => now);
+    const h = host();
+    h.emit('q', { type: 'success ["a"]', waitForTimer: true });
+    now += 5;
+    const startedAt = now;
+    h.emit('q', { type: 'fetch ["b"]', waitForTimer: true });
+    expect(h.deliver('@tanstack/query-core', () => new Set(), startedAt)).toBe(true);
+    expect(h.drain()).toEqual([]);
+    expect(h.hasWaiting).toBe(true);
+    h.deliver('@tanstack/query-core', () => null);
+    expect(h.drain()).toEqual([expect.objectContaining({ type: 'fetch ["b"]' })]);
+    vi.restoreAllMocks();
+  });
+});

@@ -17,6 +17,13 @@ export interface CauseInput {
    * Leave it out when the event runs ahead of React, as a query cache or a navigation does.
    */
   aim?: true;
+  /**
+   * The library tells React later, from a timer of its own (react-query's notify batch): the event waits for that
+   * timer and goes to the components it updated. Needs the plugin's `packages`.
+   */
+  waitForTimer?: true;
+  /** Events with the same key still waiting are one: the later one's type replaces the earlier's. */
+  merge?: string;
 }
 
 export interface PluginContext {
@@ -39,6 +46,8 @@ export type DescribeKind = 'selector' | 'store';
 export interface RuntimePlugin<Data = unknown> {
   name: string;
   sectionVersion?: number;
+  /** npm packages whose timers deliver this plugin's `waitForTimer` events. */
+  packages?: string[];
   /** Runs at page boot, before the app's modules. */
   setup?(ctx: PluginContext): void;
   /** Label for a store selector or a store (by its getSnapshot); `null` when the function is not the plugin's. */

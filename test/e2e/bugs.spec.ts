@@ -228,7 +228,12 @@ test.describe('seeded re-render bugs', () => {
     const rec = await record(page, 'idle', '');
     const keys = rec.causes.map((c) => c.key);
     expect(keys).toEqual(expect.arrayContaining(['zustand:feed/tick', 'zustand:presenceStore.setState', 'core:message Worker']));
-    expect(keys.some((k) => k.startsWith('react-query:'))).toBe(true);
+    // A poll is one cause, on the commits of its own subscribers: not three, and not on a feed tick's commit.
+    const poll = rec.causes.find((c) => c.key === 'react-query:fetch → success ["presence"]')!;
+    expect(poll).toBeDefined();
+    expect(keys.filter((k) => k.includes('@tanstack'))).toEqual([]);
+    const pollRoots = rec.commits.list.filter((c) => c.causeIds?.includes(poll.i)).flatMap((c) => (c.roots ?? []).map((r) => rec.roots[r.i].name));
+    expect(new Set(pollRoots)).toEqual(new Set(['ChannelStats']));
     // Every commit is explained: nothing falls through to "no known cause".
     expect(keys).not.toContain('core:none');
     // And the other way round: most feed ticks wake nobody, so their events are dropped instead of counted.

@@ -226,14 +226,20 @@ export default definePlugin((options: { verbose: boolean }) => ({
     return null;
   }, // a label for a store selector or a store
   start(session) {}, // session.emitCause({ type, changes }) queues a cause for the next commit
+  commit(session) {}, // after each commit of a recording: find what mounted late; keep it cheap
   stop(session) {
-    return { version: 1, highlights: [], metrics: {} };
+    // active: false when the library is not on the page; the report then leaves the plugin out
+    return { version: 1, active: true, highlights: [], metrics: {} };
   },
   conditions() {
     return { account: 'demo' };
   },
 }));
 ```
+
+A library that tells React from a timer of its own, as react-query does, lists its packages (`packages:
+['@tanstack/query-core']`) and emits with `waitForTimer: true`: the event waits for that timer and goes to the
+components it updated, and `merge: key` folds the events of one key into one (`fetch → success ["presence"]`).
 
 Helpers for build halves: `proxyModule` replaces a module for the app's imports only, `findDeclarations` +
 `appendLines` name `const X = factory(…)` declarations without shifting lines, `createFilter` matches app files.

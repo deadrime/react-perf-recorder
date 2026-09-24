@@ -15,6 +15,14 @@ export interface CauseEvent {
   aimed?: true;
 }
 
+interface Waiting extends CauseEvent {
+  merge?: string;
+  emittedAt: number;
+}
+
+/** A waiting event whose timer never came (a scheduler of the app's own) goes to the next commit as it is. */
+const WAIT_MS = 1000;
+
 export type PluginEntry = [RuntimePluginFactory | RuntimePlugin, unknown];
 
 interface Loaded {
@@ -31,6 +39,9 @@ export class PluginHost implements Describer {
   /** Set by the recorder: components that got updates since the last commit, to aim a cause at their roots. */
   targets: (() => Set<Fiber>) | null = null;
   private buffer: CauseEvent[] = [];
+  /** `waitForTimer` events, until a timer of their plugin's packages runs. */
+  private waiting: Waiting[] = [];
+  private readonly owners = new Map<string, string>();
   private t0 = 0;
   readonly warnings: string[] = [];
 
@@ -40,6 +51,7 @@ export class PluginHost implements Describer {
         const plugin = typeof factoryOrPlugin === 'function' ? factoryOrPlugin(options) : factoryOrPlugin;
         if (!plugin?.name) throw new Error('plugin without a name');
         this.loaded.push({ plugin });
+        for (const name of plugin.packages ?? []) this.owners.set(name, plugin.name);
       } catch (error) {
         this.loaded.push({ plugin: { name: `plugin#${this.loaded.length}` }, error: String((error as Error)?.message ?? error) });
       }
@@ -72,6 +84,24 @@ export class PluginHost implements Describer {
   /** Aimed only when the caller says it can be: an event that runs before React cannot say whom it woke. */
   emit(plugin: string, event: CauseInput, fibers?: Set<Fiber>): CauseEvent | null {
     if (!this.recording || this.buffer.length >= MAX_BUFFER) return null;
+    if (event.waitForTimer && this.waiting.length < MAX_BUFFER) {
+      const same = event.merge ? this.waiting.find((w) => w.plugin === plugin && w.merge === event.merge) : undefined;
+      if (same) {
+        same.type = event.type;
+        return same;
+      }
+      const cause: Waiting = {
+        plugin,
+        type: event.type,
+        atMs: Math.round(this.now()),
+        changes: event.changes,
+        data: event.data,
+        merge: event.merge,
+        emittedAt: performance.now(),
+      };
+      this.waiting.push(cause);
+      return cause;
+    }
     const aimed = fibers ?? (event.aim ? this.targets?.() : undefined);
     const cause: CauseEvent = {
       plugin,
@@ -86,7 +116,35 @@ export class PluginHost implements Describer {
     return cause;
   }
 
+  get hasWaiting() {
+    return this.waiting.length > 0;
+  }
+
+  /**
+   * A timer of `library` ran: the events its plugin had waiting since before it started go to the components it
+   * updated — `null` when the commit ran inside the timer and they cannot be told — or nowhere if it updated none.
+   * Returns whether the timer was a plugin's delivery, which then needs no cause of its own.
+   */
+  deliver(library: string | null, fibers: () => Set<Fiber> | null, startedAt = Infinity): boolean {
+    const plugin = library ? this.owners.get(library) : undefined;
+    if (!plugin) return false;
+    const mine = this.waiting.filter((w) => w.plugin === plugin && w.emittedAt < startedAt);
+    if (!mine.length) return false;
+    this.waiting = this.waiting.filter((w) => !mine.includes(w));
+    const aimed = fibers();
+    for (const { merge, emittedAt, ...cause } of mine) {
+      if (!aimed) this.buffer.push(cause);
+      else if (aimed.size) this.buffer.push({ ...cause, aimed: true, fibers: aimed });
+    }
+    return true;
+  }
+
   drain(): CauseEvent[] {
+    if (this.waiting.length && performance.now() - this.waiting[0].emittedAt > WAIT_MS) {
+      const cutoff = performance.now() - WAIT_MS;
+      for (const { merge, emittedAt, ...cause } of this.waiting.filter((w) => w.emittedAt <= cutoff)) this.buffer.push(cause);
+      this.waiting = this.waiting.filter((w) => w.emittedAt > cutoff);
+    }
     if (!this.buffer.length) return this.buffer;
     const out = this.buffer;
     this.buffer = [];
@@ -122,6 +180,7 @@ export class PluginHost implements Describer {
   start(session: Omit<SessionContext, keyof PluginContext>, t0: number) {
     this.t0 = t0;
     this.buffer = [];
+    this.waiting = [];
     this.recording = true;
     for (const entry of this.loaded) {
       if (entry.error || !entry.plugin.start) continue;
@@ -139,6 +198,7 @@ export class PluginHost implements Describer {
   stop(session: Omit<SessionContext, keyof PluginContext>): Record<string, PluginSection> {
     this.recording = false;
     this.buffer = [];
+    this.waiting = [];
     const sections: Record<string, PluginSection> = {};
     for (const entry of this.loaded) {
       if (entry.error || !entry.plugin.stop) continue;
