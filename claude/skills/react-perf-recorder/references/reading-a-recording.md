@@ -49,6 +49,9 @@ name of a memoized one, `useShallow(<selector>)`, or the text of an inline arrow
   Stats · state online › Line · prop online › Badge · prop count`. Up to 20 links; a longer way keeps its root end and
   the last sixteen. The first link with `props equal` is where a `memo` stops the whole rest of the way. Fast
   recordings keep no ways;
+- `section: timeline` gives each commit whose roots rendered anyone a `cascade`: the commit's tree as indented lines,
+  busiest branch first (`CardWithClock · state useSecond` / `  Item · props equal ×4` / `    RenderCount · prop renders
+  ×4`) — who rendered whom, and through which props, in that one commit;
 - `library` / `wrapper` mark a component of a package and an unnamed one (`Anonymous`, `Memo`, `ForwardRef`). The
   app's own come first; the picker tree and root paths hide package internals and the providers that only hand a
   context down, each behind a checkbox. Which is which is decided by the file of the element a component rendered:

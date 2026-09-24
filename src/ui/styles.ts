@@ -71,7 +71,7 @@ export const STYLES = `
 .box .tag { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 /* Whatever is a name, a number or a piece of code reads in the monospace face: it is copied, compared and searched. */
 code, input[type="text"], .who, .what, .n, .badge, .kind, .flag, .sel, .chain, .site, .code, .stat-name, .stat-src,
-.scope, .cause-key, .way-name, .way-cause, .cause-chip, .kpi-value, .saved, .action-at, header .live, .picker li, [class^="tl-"], .tl-detail * {
+.scope, .cause-key, .way-name, .way-cause, .cascade-n, .cause-chip, .kpi-value, .saved, .action-at, header .live, .picker li, [class^="tl-"], .tl-detail * {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 button:focus-visible, summary:focus-visible, .reason-head:focus-visible { outline: 1px solid var(--focus); outline-offset: 1px; }
@@ -167,6 +167,11 @@ header .live { flex: 1; color: var(--muted-soft); white-space: nowrap; overflow:
 .tl-causes { margin: 3px 0; }
 .tl-row { display: grid; grid-template-columns: 52px 1fr; align-items: baseline; gap: 6px; margin: 4px 0; }
 .tl-row-label { color: var(--muted); font-size: 11px; }
+.cascade-tree { margin: 0; padding: 0; list-style: none; min-width: 0; }
+.cascade-row { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px; padding: 1px 0; }
+.cascade-arrow { color: var(--faint); }
+.cascade-n { color: var(--number); font-size: 11px; font-variant-numeric: tabular-nums; }
+.cascade-row[data-equal="true"] .way-name { text-decoration: underline dotted var(--warn); }
 .chips { display: flex; flex-wrap: wrap; gap: 4px; }
 .root-chip { display: inline-flex; align-items: baseline; gap: 4px; padding: 0 6px; border-radius: 4px; background: var(--chip); font-size: 11px; }
 .root-chip .n, .cause-chip .n { color: var(--number); }

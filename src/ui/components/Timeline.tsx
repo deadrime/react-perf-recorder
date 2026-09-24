@@ -2,8 +2,8 @@
 import type { JSX } from 'preact';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { ActionRecord, CommitRecord, RecordingV2 } from '../../shared/schema';
-import { actionText, hookOf, reasonsById } from '../../shared/summary';
-import { ReasonLine } from './Stats';
+import { actionText, cascadeOf, hookOf, reasonsById, type CascadeNode } from '../../shared/summary';
+import { ReasonLine, StepView } from './Stats';
 
 /**
  * The colour says what woke the commit; the eye finds the rhythm of one store or one timer faster than a list does.
@@ -243,6 +243,43 @@ function CommitDetail({ rec, commit, more }: { rec: RecordingV2; commit: CommitR
           />
         );
       })}
+      <Cascade rec={rec} commit={commit} />
+    </div>
+  );
+}
+
+/** Whom the roots rendered in turn, and with which props: the commit's cascade as a tree, busiest branch first. */
+function Cascade({ rec, commit }: { rec: RecordingV2; commit: CommitRecord }): JSX.Element | null {
+  const tree = useMemo(() => cascadeOf(rec, commit), [rec, commit]);
+  // Roots alone are the rows above already.
+  if (!tree.some((node) => node.children.length)) return null;
+  const rows: JSX.Element[] = [];
+  const walk = (list: CascadeNode[], depth: number) => {
+    for (const node of list) {
+      rows.push(
+        <li
+          key={rows.length}
+          class="cascade-row"
+          data-rpr="cascade-row"
+          data-equal={node.step.equal ? 'true' : undefined}
+          style={`padding-left:${depth * 14}px`}
+        >
+          {depth ? <span class="cascade-arrow">↳</span> : null}
+          {/* The count before the name: after it, "props equal ×4" would read as part of the reason. */}
+          {node.n > 1 ? <span class="cascade-n">{`${node.n}×`}</span> : null}
+          <StepView step={node.step} />
+        </li>
+      );
+      walk(node.children, depth + 1);
+    }
+  };
+  walk(tree, 0);
+  return (
+    <div class="tl-row cascade">
+      <span class="tl-row-label">cascade</span>
+      <ol class="cascade-tree" data-rpr="cascade">
+        {rows}
+      </ol>
     </div>
   );
 }

@@ -241,10 +241,10 @@ const IN_A_ROW = 4;
 /** A column this long shows its two top links, its last four and the ones worth fixing; the rest behind a button. */
 const FOLDED = 8;
 
-function WayStepItem({ step }: { step: WayStep }): JSX.Element {
+/** A link: who rendered, and why — a root's own reason, or the props its parent handed on, each after its chip. */
+export function StepView({ step }: { step: WayStep }): JSX.Element {
   return (
-    // Props equal on a link: the parent rendered for nothing this child needed — a memo would stop it here.
-    <li class="way-step" data-equal={step.equal ? 'true' : undefined} data-skipped={step.skipped ? 'true' : undefined}>
+    <>
       <span class="way-name">{step.name}</span>
       {stepParts(step).map((part, k) => (
         <span class="way-why" key={k} data-tone={part.tone}>
@@ -252,6 +252,15 @@ function WayStepItem({ step }: { step: WayStep }): JSX.Element {
           {part.text}
         </span>
       ))}
+    </>
+  );
+}
+
+function WayStepItem({ step }: { step: WayStep }): JSX.Element {
+  return (
+    // Props equal on a link: the parent rendered for nothing this child needed — a memo would stop it here.
+    <li class="way-step" data-equal={step.equal ? 'true' : undefined} data-skipped={step.skipped ? 'true' : undefined}>
+      <StepView step={step} />
     </li>
   );
 }

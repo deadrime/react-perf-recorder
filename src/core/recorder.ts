@@ -15,6 +15,7 @@ import {
   type CommitRecord,
   type ReasonInfo,
   type ChainLink,
+  type ChainNodeInfo,
 } from '../shared/schema';
 import { buildSegments, eventName, USER_EVENTS, type SegmentCommit } from '../shared/segments';
 import { safeUrl } from '../shared/url';
@@ -164,6 +165,8 @@ interface CommitState {
   withoutDom: Set<Fiber>;
   mounted: Set<Fiber>;
   touched: Set<Fiber>;
+  /** Renders by chain link in this commit, its cascade as a tree; null when recording fast. */
+  ways: Map<number, number> | null;
 }
 
 /** The app's components above a fiber, nearest first, shared by every fiber below: text only when a root needs it. */
@@ -202,6 +205,8 @@ const MAX_CAUSE_KEYS = 300;
 const MAX_CHAIN_NODES = 50_000;
 const CHAINS_PER_COMPONENT = 3;
 const MAX_CHAIN_LINKS = 20;
+/** Links of a commit's cascade tree kept, the busiest; the links above them come along. */
+const WAYS_PER_COMMIT = 30;
 const MAX_SEGMENT_COMMITS = 20_000;
 
 const currentEventType = (): string | undefined => {
@@ -489,6 +494,7 @@ export class Recorder {
       pairs: [],
       withoutDom: new Set(),
       mounted: new Set(),
+      ways: this.options.sampleReasons ? null : new Map(),
       touched: this.dom.takeForCommit(),
     };
     if (this.scope) {
@@ -618,11 +624,15 @@ export class Recorder {
           comp.reasons.set(id, (comp.reasons.get(id) ?? 0) + 1);
         }
         // Fast recordings keep no chains: they are there to cost less, and a chain is a sample of nothing.
-        if (rootAgg) chain = this.options.sampleReasons ? -1 : this.chainLink(-1, name, firstId, rootAgg);
+        if (rootAgg) {
+          chain = this.options.sampleReasons ? -1 : this.chainLink(-1, name, firstId, rootAgg);
+          if (chain >= 0) c.ways?.set(chain, (c.ways.get(chain) ?? 0) + 1);
+        }
         // A link of its own for what the app wrote; a package's internals and bare wrappers pass the chain through.
         else if (chain >= 0 && isComposite(f) && !isProvider(name) && !comp.library && !comp.wrapper) {
           chain = this.chainLink(chain, name, firstId);
           comp.chains.set(chain, (comp.chains.get(chain) ?? 0) + 1);
+          c.ways?.set(chain, (c.ways.get(chain) ?? 0) + 1);
         }
         const agg = key ? this.rootsByKey.get(key) : undefined;
         if (agg) {
@@ -698,6 +708,33 @@ export class Recorder {
     return links.length > MAX_CHAIN_LINKS
       ? [...links.slice(0, 3), { name: '…', skipped: links.length - (MAX_CHAIN_LINKS - 1) }, ...links.slice(-(MAX_CHAIN_LINKS - 4))]
       : links;
+  }
+
+  /** A commit's busiest links and every link above them, so the tree they make has no holes. */
+  private commitWays(ways: Map<number, number>): Array<[number, number]> {
+    const kept = new Map(topEntries(ways, WAYS_PER_COMMIT));
+    for (const id of [...kept.keys()])
+      for (let up = this.chainNodes[id].up; up >= 0 && !kept.has(up); up = this.chainNodes[up].up) kept.set(up, ways.get(up) ?? 0);
+    return [...kept];
+  }
+
+  /** The links the commits point at, numbered afresh from 0, and each commit's links in those numbers. */
+  private exportNodes(rootIndex: (agg: RootAgg) => number | undefined) {
+    const used = new Set<number>();
+    for (const commit of this.commitList) for (const [id] of commit.ways ?? []) used.add(id);
+    const ids = [...used].sort((a, b) => a - b);
+    const renumber = new Map(ids.map((id, i) => [id, i]));
+    const nodes: ChainNodeInfo[] = ids.map((id) => {
+      const node = this.chainNodes[id];
+      const root = node.root ? rootIndex(node.root) : undefined;
+      return {
+        up: node.up >= 0 ? renumber.get(node.up) ?? -1 : -1,
+        name: node.name,
+        ...(node.reason >= 0 ? { reason: node.reason } : {}),
+        ...(root !== undefined ? { root } : {}),
+      };
+    });
+    return { nodes, renumber };
   }
 
   private componentOf(name: string, f: Fiber): ComponentAgg {
@@ -869,6 +906,7 @@ export class Recorder {
         : {}),
       ...(c.outside ? { outside: c.outside.index } : {}),
       ...(c.noDom ? { noDom: c.noDom } : {}),
+      ...(c.ways?.size ? { ways: this.commitWays(c.ways) } : {}),
     };
     const limit = this.options.timeline ?? this.config.timelineLimit;
     if (this.commitList.length < limit) this.commitList.push(record);
@@ -1142,6 +1180,7 @@ export class Recorder {
     allOrdered.forEach((index, i) => remap.set(index, i));
     const mapRoots = (pairs?: Array<[number, number]>) => pairs?.map(([index, n]) => [remap.get(index)!, n] as [number, number]);
     const rootsOrdered = allOrdered.map((index) => statsByIndex.get(index)!);
+    const ways = this.exportNodes((agg) => remap.get(agg.index));
     const changed = Object.fromEntries(
       Object.keys({ ...this.conditions, ...conditionsAfter })
         .filter((key) => this.conditions[key] !== conditionsAfter[key])
@@ -1269,9 +1308,11 @@ export class Recorder {
       ...(memos.length ? { memos } : {}),
       latency: this.frames.latency,
       reasons: this.reasonList,
+      ...(ways.nodes.length ? { chainNodes: ways.nodes } : {}),
       commits: {
         list: this.commitList.map((commit) => ({
           ...commit,
+          ...(commit.ways ? { ways: commit.ways.map(([id, n]) => [ways.renumber.get(id)!, n] as [number, number]) } : {}),
           ...(commit.roots ? { roots: commit.roots.map((r) => ({ ...r, i: remap.get(r.i)! })) } : {}),
           ...(commit.outside !== undefined ? { outside: remap.get(commit.outside) } : {}),
           ...(actionOfCommit.get(commit.i) !== undefined ? { actionId: actionOfCommit.get(commit.i) } : {}),

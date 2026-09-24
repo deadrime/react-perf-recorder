@@ -1,4 +1,4 @@
-import type { ActionRecord, ChainLink, HookInfo, MemoHookStat, PluginSection, ReasonInfo, RecordingV2, RootStat } from './schema';
+import type { ActionRecord, ChainLink, CommitRecord, HookInfo, MemoHookStat, PluginSection, ReasonInfo, RecordingV2, RootStat } from './schema';
 
 export interface RootLine {
   root: string;
@@ -264,6 +264,57 @@ export function waysOf(rec: Pick<RecordingV2, 'roots' | 'outsideRoots' | 'reason
     }
   }
   return [...byRoute.values()].sort((a, b) => b.n - a.n);
+}
+
+/** A link of a commit's cascade tree: who rendered, how many times, why, and whom it rendered in turn. */
+export interface CascadeNode {
+  step: WayStep;
+  n: number;
+  children: CascadeNode[];
+}
+
+/** A commit's cascade as trees from its roots, busiest first; empty for a fast recording or an old one. */
+export function cascadeOf(
+  rec: Pick<RecordingV2, 'roots' | 'outsideRoots' | 'reasons' | 'chainNodes'>,
+  commit: Pick<CommitRecord, 'ways'>
+): CascadeNode[] {
+  const nodes = rec.chainNodes ?? [];
+  if (!commit.ways?.length || !nodes.length) return [];
+  const reasons = reasonsById(rec.reasons);
+  const roots = [...rec.roots, ...rec.outsideRoots];
+  const byId = new Map<number, CascadeNode>();
+  for (const [id, n] of commit.ways) {
+    const node = nodes[id];
+    if (!node) continue;
+    const reason = node.reason !== undefined ? reasons.get(node.reason) : undefined;
+    byId.set(id, { step: stepOf(node.name, reason, node.root !== undefined ? roots[node.root] : undefined), n, children: [] });
+  }
+  const top: CascadeNode[] = [];
+  for (const [id, entry] of byId) {
+    const parent = byId.get(nodes[id].up);
+    (parent ? parent.children : top).push(entry);
+  }
+  const sort = (list: CascadeNode[]) => {
+    list.sort((a, b) => b.n - a.n);
+    for (const entry of list) sort(entry.children);
+    return list;
+  };
+  return sort(top);
+}
+
+/** The tree as indented lines, for an answer in text: `  Line · prop online ×3`. */
+export function cascadeLines(tree: CascadeNode[], max = 15): string[] {
+  const lines: string[] = [];
+  const walk = (list: CascadeNode[], depth: number) => {
+    for (const entry of list) {
+      if (lines.length >= max) return;
+      const why = stepText(entry.step);
+      lines.push(`${'  '.repeat(depth)}${entry.step.name}${why ? ` · ${why}` : ''}${entry.n > 1 ? ` ×${entry.n}` : ''}`);
+      walk(entry.children, depth + 1);
+    }
+  };
+  walk(tree, 0);
+  return lines;
 }
 
 /** `react-query:fetch ["presence"] › Stats · state #0 › Line · online › Badge · count` */

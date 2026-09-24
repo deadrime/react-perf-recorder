@@ -3,7 +3,21 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
 import { z } from 'zod';
 import { compareRecordings } from '../shared/compare';
-import { actionText, hookOf, hookText, memoLine, reasonsById, rootLine, summarize, textOf, waysOf, wayText, type HookMode } from '../shared/summary';
+import {
+  actionText,
+  cascadeLines,
+  cascadeOf,
+  hookOf,
+  hookText,
+  memoLine,
+  reasonsById,
+  rootLine,
+  summarize,
+  textOf,
+  waysOf,
+  wayText,
+  type HookMode,
+} from '../shared/summary';
 import type { RecordingV2 } from '../shared/schema';
 import { listingOf } from '../shared/listing';
 import { planReplay } from '../shared/replay';
@@ -116,6 +130,11 @@ export function section(rec: RecordingV2 & { id?: string; status?: string }, nam
               }),
               ...(roots[entry.i] ? { hook: hookText(hookOf(roots[entry.i], reasons.get(entry.reasonIds[0])), hooks) } : {}),
             })),
+            // Whom the roots rendered in turn, and with which props: only when there is more than the roots.
+            ...(() => {
+              const tree = cascadeOf(rec, commit);
+              return tree.some((node) => node.children.length) ? { cascade: cascadeLines(tree, 12) } : {};
+            })(),
           }))
         ),
       };

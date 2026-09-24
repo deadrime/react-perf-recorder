@@ -5,7 +5,7 @@ import { flushSync } from 'react-dom';
 import { findRoots, fiberFromNode } from '../../src/core/fiber';
 import { PluginHost } from '../../src/core/plugins';
 import { scopeFromFiber } from '../../src/core/scope';
-import { hookText, reasonText } from '../../src/shared/summary';
+import { cascadeLines, cascadeOf, hookText, reasonText } from '../../src/shared/summary';
 import { config, flush, makeRecorder, mount, reasonsOf } from './helpers';
 
 type Setter = (n: number) => void;
@@ -259,10 +259,13 @@ describe('Recorder', () => {
     expect(text(links[2].reason)).toBe('parent: props count');
     // The root itself has no chain: nothing above it.
     expect(rec.components.find((c) => c.name === 'Stats')!.chains).toBeUndefined();
+    // Each commit keeps its cascade as a tree.
+    expect(cascadeLines(cascadeOf(rec, rec.commits.list[1]))).toEqual(['Stats · state #0', '  Line · prop online', '    Badge · prop count']);
   });
 
   it('keeps a way of twenty links whole, folds a longer one, and keeps none when recording fast', () => {
     let set!: Setter;
+    let lastRec!: ReturnType<ReturnType<typeof makeRecorder>['recorder']['stop']>;
     const Leaf = ({ v }: { v: number }) => <i>{v}</i>;
     const levels = (depth: number) => {
       let Inner: (p: { v: number }) => JSX.Element = Leaf;
@@ -285,7 +288,8 @@ describe('Recorder', () => {
       const { recorder } = makeRecorder({ sampleReasons });
       recorder.start();
       flush(() => set(1));
-      return recorder.stop().components.find((c) => c.name === 'Leaf')!;
+      lastRec = recorder.stop();
+      return lastRec.components.find((c) => c.name === 'Leaf')!;
     };
     // Root, 18 levels and the leaf: twenty links, all of them.
     expect(run(18).chains![0].links).toHaveLength(20);
@@ -294,6 +298,7 @@ describe('Recorder', () => {
     expect(long[3]).toEqual({ name: '…', skipped: 11 });
     expect(long.at(-1)!.name).toBe('Leaf');
     expect(run(5, true).chains).toBeUndefined();
+    expect(lastRec.commits.list.every((c) => !c.ways)).toBe(true);
   });
 
   it('lists the useMemo that recomputes on every render, and says which dependency moved', () => {

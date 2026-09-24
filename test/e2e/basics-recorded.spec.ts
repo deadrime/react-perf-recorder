@@ -67,6 +67,18 @@ test('a render that came down from a clock keeps its way: the timer, the card, t
   // The way ends in what the parent changed, so the card does not say it again as a reason of its own.
   const card = page.locator('.stat', { has: page.locator('.stat-name', { hasText: /^RenderCount$/ }) });
   await expect(card.locator('.kind', { hasText: 'parent' })).toHaveCount(0);
+
+  // A commit of the card's clock, picked on the timeline, shows its cascade as a tree.
+  const bars = page.locator('.tl-bar');
+  const tree = page.locator('[data-rpr="cascade"]');
+  for (let i = 0; i < (await bars.count()); i++) {
+    await bars.nth(i).click();
+    if (await tree.filter({ hasText: 'CardWithClock' }).count()) break;
+  }
+  const rows = tree.locator('[data-rpr="cascade-row"]');
+  await expect(rows.first()).toContainText('CardWithClock');
+  await expect(tree.locator('[data-rpr="cascade-row"][data-equal="true"]').first()).toContainText('Item');
+  await expect(rows.filter({ hasText: 'RenderCount' }).first()).toContainText('prop');
 });
 
 test('a subscription for a click: external store on the composer', async ({ page }) => {

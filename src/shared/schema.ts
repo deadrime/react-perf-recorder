@@ -28,6 +28,15 @@ export interface PluginSection<Data = unknown> {
  * One render on the way down: the root first (`root` indexes the recording's roots, inside then outside), the
  * component itself last. `reason` indexes `RecordingV2.reasons`; `skipped` stands for links left out of a long chain.
  */
+/** A link of the commits' cascade trees: the link above it (-1 for a root), who rendered, and why. */
+export interface ChainNodeInfo {
+  up: number;
+  name: string;
+  reason?: number;
+  /** For a root's link: the root, as `ChainLink.root`. */
+  root?: number;
+}
+
 export interface ChainLink {
   name: string;
   reason?: number;
@@ -262,6 +271,11 @@ export interface CommitRecord {
   mounts?: number;
   /** Cascade roots of this commit: which root, how many of its instances, and why each rendered. */
   roots?: Array<{ i: number; hits: number; reasonIds: number[] }>;
+  /**
+   * The commit's cascade as a tree: `[link, renders]` into `RecordingV2.chainNodes`, the busiest links and every link
+   * above them. Absent in fast recordings.
+   */
+  ways?: Array<[number, number]>;
 }
 
 export interface Navigation {
@@ -318,6 +332,8 @@ export interface RecordingV2 {
   /** Every reason any root or component gave, once; everything else points here by id. */
   reasons: ReasonInfo[];
   commits: { list: CommitRecord[]; truncated: boolean };
+  /** The links the commits' `ways` point at; only in the final recording. */
+  chainNodes?: ChainNodeInfo[];
   bigCommits: number[];
   frames: { longTasks: { count: number; maxMs: number; totalMs: number }; loaf: LongFrame[]; fps?: number };
   dom: { text: number; attr?: number; child?: number };
