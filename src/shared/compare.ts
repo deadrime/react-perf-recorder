@@ -27,10 +27,26 @@ function rootMetrics(r: RootStat | undefined, ms: number) {
   return { hitsPerSec: rate(r.hits, ms), perHit: r.perHit, instances: r.instances, cascadePerSec: rate(r.cascade, ms) };
 }
 
+/** A key without its line numbers: the fix edited the file above the root, and the root is still the same one. */
+const withoutLines = (key: string) => key.replace(/:\d+(?::\d+)?(?=\||$)/g, '');
+
 function compareRoots(a: RootStat[], b: RootStat[], msA: number, msB: number, match: 'key' | 'name', top: number) {
   const keyOf = (r: RootStat) => (match === 'name' ? `${r.name}|${r.source}` : r.key);
   const before = new Map(a.map((r) => [keyOf(r), r]));
   const after = new Map(b.map((r) => [keyOf(r), r]));
+  // What found no pair is paired by the key without lines, when that points at one root on each side.
+  const lone = (from: Map<string, RootStat>, other: Map<string, RootStat>) => {
+    const byLines = new Map<string, string[]>();
+    for (const key of from.keys()) if (!other.has(key)) byLines.set(withoutLines(key), [...(byLines.get(withoutLines(key)) ?? []), key]);
+    return byLines;
+  };
+  const gone = lone(before, after);
+  for (const [loose, keys] of lone(after, before)) {
+    const was = gone.get(loose);
+    if (keys.length !== 1 || was?.length !== 1) continue;
+    after.set(was[0], after.get(keys[0])!);
+    after.delete(keys[0]);
+  }
   const keys = new Set([...before.keys(), ...after.keys()]);
   return [...keys]
     .map((key) => {
@@ -231,6 +247,10 @@ export function compareRecordings(a: RecordingV2, b: RecordingV2, options: Compa
   if ((a.scope?.name ?? null) !== (b.scope?.name ?? null))
     warnings.push(`area differs: ${a.scope?.name ?? 'whole app'} vs ${b.scope?.name ?? 'whole app'}`);
   if (Math.max(...ms) > 2 * Math.min(...ms)) warnings.push(`durations differ more than twice: ${ms[0]}ms vs ${ms[1]}ms`);
+  else if (Math.max(...ms) > 1.2 * Math.min(...ms))
+    warnings.push(
+      `durations differ (${ms[0]}ms vs ${ms[1]}ms): rates per second move with the length too — a scenario run twice compares by its actions and by the whole-run totals`
+    );
   for (const key of new Set([...Object.keys(a.conditions), ...Object.keys(b.conditions)])) {
     if (key !== 'url' && a.conditions[key] !== b.conditions[key]) warnings.push(`condition ${key}: ${a.conditions[key]} vs ${b.conditions[key]}`);
   }
@@ -247,6 +267,9 @@ export function compareRecordings(a: RecordingV2, b: RecordingV2, options: Compa
   if (a.partial || b.partial) warnings.push('a partial recording is compared: hook names, components and plugin sections may be missing');
   const text = (r: RecordingV2) => r.totals.domTextChanges;
   const totals = {
+    // The whole run: what a script done twice compares by, whatever the time the page took to do it.
+    commits: delta(a.totals.commitsInScope, b.totals.commitsInScope),
+    renders: delta(a.totals.renders, b.totals.renders),
     commitsPerSec: delta(rate(a.totals.commitsInScope, ms[0]), rate(b.totals.commitsInScope, ms[1])),
     rendersPerSec: delta(rate(a.totals.renders, ms[0]), rate(b.totals.renders, ms[1])),
     rendersPerCommit: delta(a.totals.rendersPerScopeCommit, b.totals.rendersPerScopeCommit),
@@ -269,7 +292,8 @@ export function compareRecordings(a: RecordingV2, b: RecordingV2, options: Compa
       .slice(0, top);
   }
   return {
-    comparable: warnings.filter((w) => !w.startsWith('a partial')).length === 0,
+    // Notes, not differences in how the runs were taken: a partial side, and lengths apart by less than twice.
+    comparable: warnings.filter((w) => !w.startsWith('a partial') && !w.startsWith('durations differ (')).length === 0,
     warnings,
     before: { id: a.id, durationMs: ms[0] },
     after: { id: b.id, durationMs: ms[1] },
