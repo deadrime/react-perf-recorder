@@ -229,12 +229,24 @@ export function createServer(dir: string) {
   server.registerTool(
     'get_recording',
     {
-      description: `One session. id: an id from list_recordings, "latest" or "latest-1". section: ${SECTIONS.join(
-        ', '
-      )}, or plugin:<name> for a plugin's raw data. The default summary has totals, top cascade roots with reasons and hook names, roots outside the area, causes (store actions, queries) and the most expensive user actions. \`timeline\` is one line per commit in order — when it happened, how many rendered, how many changed nothing, the action and the causes behind it, and each cascade root with its reasons — which is how to answer "what happened at 2.4s" or "what did that click set off". \`actions\` says which element each one landed on: its selector, which of the like-named it was, the component and the file it was written in. A running or interrupted session is rebuilt from its events (partial). The answer carries the session folder for grep.`,
+      description:
+        'One session, in words: reasons, hook chains and causes resolved from the ids recording.json keeps them as — read sections, not the file. ' +
+        'id: an id from list_recordings, "latest" or "latest-1". A running or interrupted session is rebuilt from its events (partial: ' +
+        'no hook names, components, ways or plugin sections). The answer carries the session folder for grep.',
       inputSchema: {
         id: z.string().default('latest'),
-        section: z.string().optional(),
+        section: z
+          .string()
+          .optional()
+          .describe(
+            `${SECTIONS.join(', ')}, or plugin:<name> for a plugin's raw data. summary (default): totals, cascade roots with reason, ` +
+              'hook chain and file:line, roots from outside the area, causes, the costliest actions, memos that keep recomputing, ' +
+              "plugin highlights — usually the whole answer. components: each component's reasons and its ways down from a root, " +
+              'with the props each parent handed on. timeline: one line per commit — when, what rendered, the action and causes, each ' +
+              'root with its reasons, and the commit\'s cascade as a tree — for "what happened at 2.4s". actions: the element each ' +
+              'one landed on, its component and file, what it cost. memos: useMemo/useCallback that keep recomputing, the dependency ' +
+              'that moved and its line.'
+          ),
         top: z.number().int().min(1).max(100).optional(),
         offset: z.number().int().min(0).optional(),
         hooks: z

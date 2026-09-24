@@ -32,12 +32,15 @@ with their reason, hook chain and `file:line`, what scheduled the commits, the c
 keep recomputing and the plugins' highlights. Read the file it points at; open another section only for what the
 summary leaves open — `components` for the way a render came down, `timeline` for one commit's cascade.
 
+No `react-perf-recorder` tools in this session? The server starts with the session; from a terminal the same data
+is `node node_modules/react-perf-recorder/dist/cli.js list`, `show latest --section roots`, and `pull` to wait for
+the next finished recording.
+
 ## References
 
 - `references/getting-a-recording.md` — `record_page`, replay or script, the area, sign-in, fast recordings.
 - `references/reading-a-recording.md` — roots, reasons, hook chains, components and their ways, memos.
 - `references/causes-and-actions.md` — what scheduled each commit, the person's actions, plugin sections, traps.
-- `references/mcp-tools.md` — the tools, the sections of `get_recording`, the CLI when there is no MCP server.
 - `references/panel.md` — the panel, for guiding a person who records it themselves.
 - `references/from-scripts.md` — the page API for a Playwright or CDP script.
 
