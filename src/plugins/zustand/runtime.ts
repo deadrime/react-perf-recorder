@@ -8,7 +8,8 @@ interface StoreApi {
 
 const stores = new Set<WeakRef<StoreApi>>();
 const apiByGetState = new WeakMap<Function, StoreApi>();
-const names = new WeakMap<StoreApi, string>();
+// By `getState`: `create` hands out a hook and zustand/vanilla the api it wraps, two objects for one store.
+const names = new WeakMap<Function, string>();
 const shallowInner = new WeakMap<Function, Function>();
 const eventByState = new WeakMap<object, { type: string }>();
 let anonymous = 0;
@@ -30,11 +31,12 @@ function register(result: unknown) {
   return result;
 }
 
-const origins = new WeakMap<StoreApi, string>();
+const origins = new WeakMap<Function, string>();
 
 /** A frame's package; '' for a shared chunk of the optimizer (`chunk-X` of esbuild, `react-dom-DVjBvCsW` of Rolldown). */
 function packageOfUrl(url: string): string | null {
-  const dep = /\/\.vite\/deps\/([^/]+)\.js$/.exec(url)?.[1];
+  // Any cacheDir: `.vite/deps`, or `.vite-fixture-18/deps` of a config that moves it.
+  const dep = /\/deps\/([^/]+)\.js$/.exec(url)?.[1];
   if (dep) return /^chunk-|-[\w$]{8}$/.test(dep) ? '' : dep.replace(/_/g, '/');
   const at = url.lastIndexOf('/node_modules/');
   if (at < 0) return null;
@@ -66,7 +68,7 @@ const made = ((globalThis as Record<string, any>).__REACT_PERF_RECORDER_ZUSTAND_
 made.register = (result, stack) => {
   const api = apiOf(result);
   const origin = api && packageOfStack(stack);
-  if (api && origin) origins.set(api, origin);
+  if (api && origin) origins.set(api.getState, origin);
   return register(result);
 };
 made.made.splice(0).forEach(([api, stack]) => made.register!(api, stack));
@@ -95,12 +97,15 @@ export function wrapUseShallow<F extends (...args: any[]) => any>(useShallow: F)
 
 export function nameStore(store: unknown, name: string) {
   const api = apiOf(store);
-  if (api) names.set(api, name);
+  if (api) names.set(api.getState, name);
 }
 
 const storeName = (api: StoreApi) => {
-  let name = names.get(api);
-  if (!name) names.set(api, (name = origins.has(api) ? `${origins.get(api)}#${++anonymous}` : `store${++anonymous}`));
+  let name = names.get(api.getState);
+  if (!name) {
+    const origin = origins.get(api.getState);
+    names.set(api.getState, (name = origin ? `${origin}#${++anonymous}` : `store${++anonymous}`));
+  }
   return name;
 };
 

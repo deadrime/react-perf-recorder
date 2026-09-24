@@ -94,8 +94,10 @@ describe('zustand plugin runtime', () => {
     expect(packageOfStack(`Error\ncreateStoreImpl@${vanilla}:3:1\nmake@http://localhost:5173/node_modules/.vite/deps/some-lib.js:9:9`)).toBe(
       'some-lib'
     );
-    // The app's own stores keep the name their declaration gives them.
+    // The app's own stores keep the name their declaration gives them, whatever the cacheDir.
     expect(packageOfStack(stack(vanilla, 'http://localhost:5173/src/store/chat.ts'))).toBeNull();
+    const moved = 'http://localhost:5391/node_modules/.vite-fixture-18/deps/zustand_vanilla.js?v=9';
+    expect(packageOfStack(stack(moved, 'http://localhost:5391/src/store/chat.ts'))).toBeNull();
     // Shared chunks of the optimizer are passed over; a linked package served by its path counts as the app's.
     const react = 'http://localhost:5173/node_modules/.vite/deps/react-dom-DVjBvCsW.js';
     expect(packageOfStack(stack(vanilla, 'http://localhost:5173/node_modules/.vite/deps/chunk-ABC.js', react))).toBeNull();
@@ -125,6 +127,16 @@ describe('zustand plugin runtime', () => {
     store.setState({ n: 1 });
     expect(host.drain()[0]).toMatchObject({ type: expect.stringMatching(/^store\d+\.setState$/), changes: [{ key: 'n' }] });
     expect(host.store(store.getState)).toMatch(/^store\d+$/);
+    host.stop({ scope: null, findFibers: () => [] });
+
+    // `create` hands the app a hook wrapping that api: the name its declaration gives the hook is the store's.
+    const api = vanilla.createStore<{ n: number }>()(() => ({ n: 0 }));
+    const useCounter = Object.assign(() => api.getState(), api);
+    nameStore(useCounter, 'useCounter');
+    host.start({ scope: null, findFibers: () => [] }, performance.now());
+    useCounter.setState({ n: 1 });
+    expect(host.drain()[0].type).toBe('useCounter.setState');
+    expect(host.store(api.getState)).toBe('useCounter');
     host.stop({ scope: null, findFibers: () => [] });
   });
 });
