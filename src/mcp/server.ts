@@ -74,18 +74,6 @@ const compactDeltas = (v: unknown): unknown =>
     : v && typeof v === 'object'
     ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, compactDeltas(x)]))
     : v;
-/** A plugin's metrics that moved: a tenth or more, or one side missing. The rest is only counted. */
-const movedMetrics = (plugins: Record<string, DeltaLike[]>) => {
-  let unchanged = 0;
-  const moved = Object.fromEntries(
-    Object.entries(plugins).map(([name, rows]) => {
-      const kept = rows.filter((r) => (r.pct === null ? r.before !== r.after : Math.abs(r.pct) >= 10));
-      unchanged += rows.length - kept.length;
-      return [name, kept];
-    })
-  );
-  return { moved, unchanged };
-};
 
 export function section(rec: RecordingV2 & { id?: string; status?: string }, name: string, top: number, offset: number, hooks: HookMode = 'full') {
   const page = <T>(list: T[]) => ({ total: list.length, offset, items: list.slice(offset, offset + top) });
@@ -328,7 +316,12 @@ export function createServer(dir: string) {
       description:
         "Records a page in a browser of its own and returns the session id, so a fix can be measured: record, change the code, record again with the same arguments, then compare_recordings. Needs the dev server running with the Vite plugin and playwright installed in the project. A scenario of clicks and typing goes in a script module, or replay does again what a recording did — the person's own clicks and typing, at their pace, from the page load; replay does not wait for data, so a scenario whose actions wait on requests needs a script. Without either it records ms of the page as it is, and fromLoad records the page load itself. Behind a sign-in: via (a link that signs in), then a session saved once by `react-perf-recorder login <url>`, then cdp; a page that redirects to a login says so. Outlines are off in these runs. A run that outlasts the client's time limit (about a minute) keeps recording in the page: list_recordings shows it as recording until it ends — keep a script well under a minute.",
       inputSchema: {
-        url: z.string().optional().describe("The page to open, on the dev server. With replay, the recording's page when left out."),
+        url: z
+          .string()
+          .optional()
+          .describe(
+            "The page to open, on the dev server. With replay, the recording's page when left out. With setup, left out: the recording starts where setup left the page, with what it built in memory (an upload, a click-through)."
+          ),
         ms: z
           .number()
           .int()
@@ -357,7 +350,7 @@ export function createServer(dir: string) {
           .string()
           .optional()
           .describe(
-            'A module like script, run before the page is opened for the recording and not recorded: seed localStorage or IndexedDB (goto the dev server, evaluate, return), sign in, build data through the UI.'
+            'A module like script, run before the recording and not recorded: seed localStorage or IndexedDB (goto the dev server, evaluate, return), sign in, build data through the UI. With url, the page is opened again after it and only storage, cookies and routes carry over; without url, the recording starts on the page setup left.'
           ),
         replay: z
           .string()
@@ -455,8 +448,7 @@ export function createServer(dir: string) {
       const [beforeEntry, afterEntry] = [findSession(dir, before, sessions), findSession(dir, after, sessions)];
       const latestWarnings = [latestWarning(sessions, before, beforeEntry), latestWarning(sessions, after, afterEntry)].filter(Boolean);
       const full = compareRecordings(readRecording(beforeEntry), readRecording(afterEntry), { top, match });
-      const { moved, unchanged } = movedMetrics(full.plugins as unknown as Record<string, DeltaLike[]>);
-      const result = compactDeltas({ ...full, plugins: moved, ...(unchanged ? { pluginMetricsUnchanged: unchanged } : {}) }) as typeof full;
+      const result = compactDeltas(full) as typeof full;
       return json(latestWarnings.length ? { ...result, warnings: [...latestWarnings, ...result.warnings], comparable: false } : result);
     }
   );

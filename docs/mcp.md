@@ -26,9 +26,9 @@ by the name it is exported under; an area that is not mounted answers with the n
 
 A `script` runs with the page already open and recording, and the recording stops when it returns: it does the
 actions only — a `goto` or `reload` in it ends the recording. What has to happen before the page opens (storage to
-seed, a sign-in, data built through the UI) goes in `setup`, a module of the same shape that is not recorded. Only
-what outlives a page load reaches the recording: state built in the page's memory is gone when the url opens. A
-`replay` runs the setup of the recording it replays.
+seed, a sign-in, data built through the UI) goes in `setup`, a module of the same shape that is not recorded. With a
+`url` the page opens again after it, and only what outlives a page load carries over; without `url` the recording
+starts on the page setup left, with what it built in memory. A `replay` runs the setup of the recording it replays.
 
 A page behind a sign-in:
 

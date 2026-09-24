@@ -142,6 +142,25 @@ test('setup runs before the page opens for the recording, and is not in it', asy
   expect(JSON.parse(fs.readFileSync(path.join(SESSIONS_DIR, result.id!, 'record-page.json'), 'utf8'))).toEqual({ setup });
 });
 
+test('without a url, the recording starts on the page setup left, with what it built in memory', async ({ baseURL }) => {
+  const setup = moduleOf(
+    'in-memory',
+    `await page.goto(${JSON.stringify(`${baseURL}/app?tick=120`)});\nawait page.evaluate(() => { window.rprE2eBuilt = 'built'; });`
+  );
+  const script = moduleOf(
+    'finds-it',
+    "const built = await page.evaluate(() => window.rprE2eBuilt);\nif (built !== 'built') throw new Error(`not there: ${built}`);\nawait page.waitForTimeout(300);"
+  );
+  const result = await recordPage({ setup, script }, SESSIONS_DIR);
+  expect(saved(result.id!).page.url).toContain('/app');
+  // Given a url, the page opens again: the answer says what did not carry over.
+  const reopened = await recordPage(
+    { url: `${baseURL}/app?tick=120`, setup: moduleOf('elsewhere', `await page.goto(${JSON.stringify(`${baseURL}/`)});`) },
+    SESSIONS_DIR
+  );
+  expect(reopened.warnings.join('\n')).toMatch(/state built in the page did not/);
+});
+
 test('a page that reloads itself is not blamed on the script', async ({ baseURL }) => {
   const script = moduleOf('reloads', 'await page.reload();');
   const failure = await recordPage({ url: `${baseURL}/app?tick=120`, script }, SESSIONS_DIR).catch((error: Error) => error);

@@ -24,8 +24,9 @@ numbers belong in the answer.
 
 About one component: pass the name it is exported under as `scope`. Details, sign-in and the traps of each route:
 `references/getting-a-recording.md`. The two that cost most: a `script` only acts — no `goto` or `reload`, the
-page is already open and recording; and `setup` reaches the recording only through what outlives a page load
-(storage, cookies, `page.route`), not through state it built in the page.
+page is already open and recording; and with a `url`, `setup` reaches the recording only through what outlives a
+page load (storage, cookies, `page.route`) — state it built in the page (an upload, a click-through) needs `setup`
+without `url`: the recording then starts on the page setup left.
 
 ## Reading it
 

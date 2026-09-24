@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
+import { installedChromium } from '../../src/mcp/record';
 import { createServer, section } from '../../src/mcp/server';
 import type { RecordingV2, SessionEvent, SessionMeta } from '../../src/shared/schema';
 
@@ -151,5 +152,18 @@ describe('MCP server', () => {
     });
     expect(result.roots[0]).toMatchObject({ root: 'Amount', perHit: '80 → 8 (-90%)' });
     expect(result.actions[0]).toMatchObject({ per: 'char', renders: '80 → 8 (-90%)' });
+  });
+});
+
+describe('installedChromium', () => {
+  it('finds the newest Chromium Playwright installed, whatever revision this Playwright expects', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'rpr-browsers-'));
+    for (const dir of ['chromium-1179', 'chromium-1194', 'chromium_headless_shell-1200', 'ffmpeg-1011']) {
+      fs.mkdirSync(path.join(root, dir, 'chrome-linux'), { recursive: true });
+      fs.writeFileSync(path.join(root, dir, 'chrome-linux', 'chrome'), '');
+    }
+    expect(installedChromium(root)).toBe(path.join(root, 'chromium-1194', 'chrome-linux', 'chrome'));
+    expect(installedChromium(path.join(root, 'none'))).toBeUndefined();
+    fs.rmSync(root, { recursive: true, force: true });
   });
 });

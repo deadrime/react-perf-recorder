@@ -20,9 +20,10 @@ from the panel.
 - `setup` — a module like `script`, run before the page is opened for the recording and not recorded: seed
   `localStorage` (`goto` the dev server, `evaluate`, return), sign in, build the data through the UI. An app that
   starts empty is set up here, not in the recording. A backend the machine cannot reach is stubbed here with
-  `page.route`: the routes stay on the page for the recording. Only what outlives a page load reaches the recording
-  (storage, cookies, routes, the server's data): state built in the page's memory is gone when the url opens — do
-  that in the `script`. A replay of the recording runs its setup again.
+  `page.route`: the routes stay on the page for the recording. With a `url`, only what outlives a page load reaches the
+  recording (storage, cookies, routes, the server's data): the page opens again after setup. State built in the
+  page's memory — a file uploaded, a trace opened — needs `setup` without `url`: the recording starts on the page
+  setup left. A replay of the recording runs its setup again.
 - A page that re-renders a lot replaces its elements: look an element up again for each step (`page.locator`,
   not a handle kept from before). A form inside a frame is reached through `page.frameLocator(...)`; the recording
   follows a same-origin frame by itself, and a frame whose React runs in the parent page (`react-frame-component`)

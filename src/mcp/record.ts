@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import type { RecordingV2 } from '../shared/schema';
@@ -125,6 +126,27 @@ const messageOf = (error: unknown) => String((error as Error)?.message ?? error)
  * REACT_PERF_RECORDER_BROWSER is a browser of the machine's own, for CI images and cloud sandboxes; a browser
  * Playwright cannot find is named in words.
  */
+const CHROMIUM_BINARIES = [
+  'chrome-linux/chrome',
+  'chrome-linux64/chrome',
+  'chrome-mac/Chromium.app/Contents/MacOS/Chromium',
+  'chrome-win/chrome.exe',
+];
+
+/** Another Chromium Playwright installed on the machine, newest first: a CI image or sandbox often has one of its own. */
+export function installedChromium(root = process.env.PLAYWRIGHT_BROWSERS_PATH || path.join(os.homedir(), '.cache', 'ms-playwright')) {
+  let dirs: string[];
+  try {
+    dirs = fs.readdirSync(root).filter((d) => /^chromium-\d+$/.test(d));
+  } catch {
+    return undefined;
+  }
+  dirs.sort((a, b) => Number(b.slice(9)) - Number(a.slice(9)));
+  for (const dir of dirs)
+    for (const binary of CHROMIUM_BINARIES) if (fs.existsSync(path.join(root, dir, binary))) return path.join(root, dir, binary);
+  return undefined;
+}
+
 async function launch(chromium: Playwright['chromium'], headless: boolean) {
   const executablePath = process.env.REACT_PERF_RECORDER_BROWSER;
   try {
@@ -132,6 +154,9 @@ async function launch(chromium: Playwright['chromium'], headless: boolean) {
   } catch (error) {
     const message = messageOf(error);
     if (!/Executable doesn't exist/.test(message)) throw error;
+    // The build this Playwright expects is missing; another one installed beside it records as well.
+    const other = executablePath ? undefined : installedChromium();
+    if (other) return chromium.launch({ headless, executablePath: other }).catch(() => Promise.reject(error));
     throw new Error(
       `${message.split('\n')[0]}\nThe browser this Playwright expects is not installed. Point at one the machine has: ` +
         'REACT_PERF_RECORDER_BROWSER=/path/to/chromium in the environment of the MCP server (a CI image, a sandbox with its own ' +
@@ -188,10 +213,13 @@ async function explainFailure(error: unknown, page: PageLike, navigatedTo: strin
  */
 export async function recordPage(options: RecordPageOptions, sessionsDir: string): Promise<RecordPageResult> {
   const { chromium } = await loadPlaywright();
+  // A setup without a url: the recording starts where the setup left the page, with what it built in memory.
+  const stay = Boolean(options.setup) && !options.url && !options.replay;
+  if (stay && options.fromLoad) throw new Error('fromLoad reloads the page: pass the url, or leave out fromLoad to record where setup left it');
   const given = options.url ?? options.replay?.url;
   // A recording keeps its url with the tokens masked: a masked one cannot be opened, the caller has to give it.
-  if (!given || given.includes('***')) throw new Error('url is needed: the recording to replay does not carry a usable one');
-  const url: string = given;
+  if (!stay && (!given || given.includes('***'))) throw new Error('url is needed: the recording to replay does not carry a usable one');
+  let url: string = given ?? '';
   options = { ...options, url, ...(options.replay ? { fromLoad: options.fromLoad ?? true } : {}) };
   const ms = Math.max(200, options.ms ?? 3000);
   const timeout = options.timeoutMs ?? 30_000;
@@ -220,6 +248,15 @@ export async function recordPage(options: RecordPageOptions, sessionsDir: string
     // A link that signs the browser in — `/debug/<jwt>`, a magic link — is opened first and is never recorded.
     if (options.via) await page.goto(options.via, { waitUntil: 'load' });
     if (options.setup) await runModule(options.setup, page);
+    const leftAt = page.url();
+    if (stay) {
+      if (!/^https?:/.test(leftAt)) throw new Error('setup left no page open: goto the app in it, or pass url');
+      url = leftAt;
+    } else if (options.setup && /^https?:/.test(leftAt) && !samePage(leftAt, url))
+      warnings.push(
+        `setup ended on ${safeUrl(leftAt)} and the recording opened ${safeUrl(url)}: storage and cookies carried over, state built in ` +
+          'the page did not — leave out url to record where setup left the page'
+      );
     // A name is the form an agent has at hand: it read the component's file, so it knows what the component is called.
     const scope = typeof options.scope === 'string' ? { names: [options.scope] } : options.scope;
     const start = {
@@ -244,7 +281,7 @@ export async function recordPage(options: RecordPageOptions, sessionsDir: string
         { key: ON_LOAD_KEY, value: JSON.stringify(start) }
       );
     const requested = options.fromLoad ? withLoadFlag(url) : url;
-    await page.goto(requested, { waitUntil: 'load' });
+    if (!stay) await page.goto(requested, { waitUntil: 'load' });
     try {
       // The client script is injected at the top of <head>, so by `load` it has either booted or never will:
       // a few seconds of grace, not the navigation's whole budget.
