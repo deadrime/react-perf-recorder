@@ -59,6 +59,30 @@ describe('ActionTracker', () => {
     expect(actions[0]).toMatchObject({ kind: 'scroll', scroll: { pixels: 120, left: { from: 0, to: 120 } } });
   });
 
+  it('records typing in a same-origin frame, one there already and one added while recording', async () => {
+    document.body.innerHTML = '<iframe></iframe>';
+    const first = document.querySelector('iframe')!;
+    first.contentDocument!.body.innerHTML = '<input type="text" data-testid="in-frame">';
+    const { actions, stop } = track();
+    const type = (doc: Document, testId: string) => {
+      const field = doc.querySelector(`[data-testid="${testId}"]`) as HTMLInputElement;
+      field.value += 'a';
+      field.dispatchEvent(new (doc.defaultView as typeof window).Event('input', { bubbles: true }));
+    };
+    type(first.contentDocument!, 'in-frame');
+    // A playground mounts its preview frame after the page: it is picked up when it is added.
+    const late = document.createElement('iframe');
+    document.body.append(late);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    late.contentDocument!.body.innerHTML = '<input type="text" data-testid="late">';
+    type(late.contentDocument!, 'late');
+    stop();
+    expect(actions.map((a) => [a.kind, a.target?.testId])).toEqual([
+      ['typing', 'in-frame'],
+      ['typing', 'late'],
+    ]);
+  });
+
   it('still records typing into a text field', () => {
     document.body.innerHTML = '<input type="text" data-testid="q">';
     const { actions, stop } = track();

@@ -26,16 +26,23 @@ const INTERACTIVE =
  * element builds the whole page as a string, in a listener that runs before the app's own. The page itself has none.
  */
 function shortText(el: Element, max: number): string {
-  if (el === document.body || el === document.documentElement) return '';
-  const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+  const doc = el.ownerDocument;
+  if (el === doc.body || el === doc.documentElement) return '';
+  const walker = doc.createTreeWalker(el, NodeFilter.SHOW_TEXT);
   let text = '';
   for (let node = walker.nextNode(); node && text.length < max * 2; node = walker.nextNode()) text += ` ${node.nodeValue ?? ''}`;
   return text.replace(/\s+/g, ' ').trim().slice(0, max);
 }
 
+// An element of a same-origin frame belongs to that frame's realm: `instanceof HTMLInputElement` of the page is false
+// for it, so elements are told apart by what they are, not by whose constructor made them.
+const isElement = (value: unknown): value is Element => (value as Node | null)?.nodeType === 1;
+const isInput = (el: Element): el is HTMLInputElement => el.tagName === 'INPUT';
+const isFormField = (el: Element) => el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT';
+
 export function isSecretField(el: Element, secretSelector: string): boolean {
   if (secretSelector && el.matches(secretSelector)) return true;
-  if (el instanceof HTMLInputElement && el.type === 'password') return true;
+  if (isInput(el) && el.type === 'password') return true;
   return SECRET_AUTOCOMPLETE.test(el.getAttribute('autocomplete') ?? '');
 }
 
@@ -45,7 +52,7 @@ const DRAG_CLICK_MS = 50;
 const DRAGGABLE = '[draggable="true"], [aria-roledescription="sortable"], [data-testid], [role="slider"], button, [role="button"]';
 
 const isTextField = (el: Element): el is HTMLInputElement | HTMLTextAreaElement =>
-  el instanceof HTMLTextAreaElement || (el instanceof HTMLInputElement && TEXT_INPUT.test(el.type));
+  el.tagName === 'TEXTAREA' || (isInput(el) && TEXT_INPUT.test(el.type));
 
 export class ActionTracker {
   readonly actions: ActionRecord[] = [];
@@ -55,7 +62,10 @@ export class ActionTracker {
   private pointer: { el: Element; x: number; y: number; lastX: number; lastY: number; action: ActionRecord | null } | null = null;
   /** A drag's release ends in a click on the same element; the drag was the action, not the click. */
   private draggedUntil = -Infinity;
-  private listeners: Array<[string, EventListener]> = [];
+  private listeners: Array<[Window, string, EventListener]> = [];
+  private handlers: Array<[string, EventListener]> = [];
+  private frames: MutationObserver | null = null;
+  private watched = new WeakSet<HTMLIFrameElement>();
 
   constructor(private options: ActionOptions, private now: () => number, private emit: (action: ActionRecord) => void) {}
 
@@ -69,8 +79,7 @@ export class ActionTracker {
           // A broken description must never break the app's own handlers.
         }
       };
-      window.addEventListener(type, listener, { capture: true, passive: true });
-      this.listeners.push([type, listener]);
+      this.handlers.push([type, listener]);
     };
     on('input', (e) => this.onInput(e));
     on('change', (e) => this.onChange(e));
@@ -82,6 +91,42 @@ export class ActionTracker {
     on('pointermove', (e) => this.onPointerMove(e as PointerEvent));
     on('pointerup', () => this.endDrag());
     on('pointercancel', () => this.endDrag());
+    this.listen(window);
+    // A form in a same-origin frame (a playground, an editor's preview) is the person's too: its window is listened
+    // to as the page's is, again after each load of the frame, which brings a new window.
+    this.watchFrames(document);
+    this.frames = new MutationObserver((records) => {
+      for (const r of records)
+        for (const node of r.addedNodes) if (isElement(node) && (node.tagName === 'IFRAME' || node.querySelector('iframe'))) this.watchFrames(node);
+    });
+    this.frames.observe(document, { childList: true, subtree: true });
+  }
+
+  private listen(win: Window) {
+    if (this.listeners.some(([w]) => w === win)) return;
+    for (const [type, listener] of this.handlers) {
+      win.addEventListener(type, listener, { capture: true, passive: true });
+      this.listeners.push([win, type, listener]);
+    }
+  }
+
+  private watchFrames(root: ParentNode) {
+    const frames = isElement(root) && root.tagName === 'IFRAME' ? [root as HTMLIFrameElement] : root.querySelectorAll('iframe');
+    for (const frame of frames) {
+      const attach = () => {
+        try {
+          const win = frame.contentWindow;
+          // Reading the document throws for another origin: nothing there is the app's.
+          if (win?.document) this.listen(win);
+        } catch {
+          // Cross-origin: not followed.
+        }
+      };
+      attach();
+      if (this.watched.has(frame)) continue;
+      this.watched.add(frame);
+      frame.addEventListener('load', attach);
+    }
   }
 
   /** Called by the navigation tracker: back and forward are user actions, push and replace are consequences. */
@@ -91,8 +136,11 @@ export class ActionTracker {
   }
 
   stop() {
-    for (const [type, listener] of this.listeners) window.removeEventListener(type, listener, { capture: true });
+    for (const [win, type, listener] of this.listeners) win.removeEventListener(type, listener, { capture: true });
     this.listeners = [];
+    this.handlers = [];
+    this.frames?.disconnect();
+    this.frames = null;
     this.flushTyping();
     this.endDrag();
     for (const [target, pending] of this.scrolling) {
@@ -112,7 +160,7 @@ export class ActionTracker {
     if (label) target.label = label.slice(0, 60);
     const role = el.getAttribute('role');
     if (role) target.role = role;
-    if (!(el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement)) {
+    if (!isFormField(el)) {
       const text = shortText(el, 40);
       if (text) target.text = text;
     }
@@ -121,12 +169,12 @@ export class ActionTracker {
     const href = el.getAttribute('href');
     if (href) target.href = href.slice(0, 200);
     if (el.hasAttribute('disabled')) target.disabled = true;
-    if (el instanceof HTMLInputElement && (el.type === 'checkbox' || el.type === 'radio')) target.checked = el.checked;
+    if (isInput(el) && (el.type === 'checkbox' || el.type === 'radio')) target.checked = el.checked;
     // Which one it is, not just what it is: a page has many «Add» buttons and only one of them was clicked.
     const selector = this.selectorOf(el);
     if (selector) {
       target.selector = selector;
-      const like = document.querySelectorAll(selector);
+      const like = el.ownerDocument.querySelectorAll(selector);
       if (like.length > 1) target.nth = [...like].indexOf(el);
     }
     const box = el.getBoundingClientRect();
@@ -214,7 +262,7 @@ export class ActionTracker {
   private onInput(event: Event) {
     const el = event.target as Element;
     // Checkboxes, radios and selects fire `input` too: they are recorded by their click or change, not as typing.
-    if (!(el instanceof Element) || !(isTextField(el) || (el as HTMLElement).isContentEditable)) return;
+    if (!isElement(el) || !(isTextField(el) || (el as HTMLElement).isContentEditable)) return;
     const now = Math.round(this.now());
     if (this.typing && this.typing.el === el && now - this.typing.action.endMs < TYPING_GAP_MS) {
       const action = this.typing.action;
@@ -233,15 +281,12 @@ export class ActionTracker {
   private onChange(event: Event) {
     const el = event.target as Element;
     // Text fields fire change on blur after the input events already recorded as typing.
-    if (!(el instanceof Element) || isTextField(el)) return;
+    if (!isElement(el) || isTextField(el)) return;
     const extra: Partial<ActionRecord> = isSecretField(el, this.options.secretSelector)
       ? { secret: true }
       : this.options.values
       ? {
-          value:
-            el instanceof HTMLInputElement && /checkbox|radio/.test(el.type)
-              ? String(el.checked)
-              : String((el as HTMLSelectElement).value ?? '').slice(0, 200),
+          value: isInput(el) && /checkbox|radio/.test(el.type) ? String(el.checked) : String((el as HTMLSelectElement).value ?? '').slice(0, 200),
         }
       : {};
     this.push('change', el, extra);
@@ -249,18 +294,18 @@ export class ActionTracker {
 
   private onClick(event: Event) {
     if (this.now() - this.draggedUntil < DRAG_CLICK_MS) return;
-    const el = event.target instanceof Element ? event.target : null;
+    const el = isElement(event.target) ? event.target : null;
     this.push('click', el?.closest(INTERACTIVE) ?? el, {}, event);
   }
 
   private onKey(event: KeyboardEvent) {
     if (!KEYS.has(event.key) || event.repeat) return;
-    const el = event.target instanceof Element ? event.target : document.activeElement;
+    const el = isElement(event.target) ? event.target : document.activeElement;
     this.push('key', el ?? document.body, { key: event.key });
   }
 
   private onPointerDown(event: PointerEvent) {
-    if (event.button !== 0 || !(event.target instanceof Element)) return;
+    if (event.button !== 0 || !isElement(event.target)) return;
     this.pointer = { el: event.target, x: event.clientX, y: event.clientY, lastX: event.clientX, lastY: event.clientY, action: null };
   }
 
@@ -301,8 +346,8 @@ export class ActionTracker {
 
   private onScroll(event: Event) {
     const target = event.target;
-    const el = target === document ? document.scrollingElement : (target as Element);
-    if (!(el instanceof Element)) return;
+    const el = (target as Node | null)?.nodeType === 9 ? (target as Document).scrollingElement : target;
+    if (!isElement(el)) return;
     const top = Math.round(el.scrollTop);
     const left = Math.round(el.scrollLeft);
     const now = Math.round(this.now());
