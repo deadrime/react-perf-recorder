@@ -25,14 +25,7 @@ from the panel.
 
 ## Before and after
 
-**Replay** — `record_page` with `replay` set to the recording that showed the problem does the same clicks and
-typing again, from the page load, in the same area; then `compare_recordings` with the first one. No script.
-
-A replay keeps the person's pauses and does not wait for data. Use it when what follows the actions happens in the
-page: tabs, client-side filters, typing, forms not sent, modals, store updates. When an action waits on a request —
-server search, paging, saving, sign-in — write a `script` that waits for the data, run it before and after the
-change, and compare the two yourself, saying which numbers the data or the network may have moved. The recording
-tells them apart: an action's `background` renders, or `react-query:` causes, mean it waited on the network.
+`references/measuring-a-fix.md`: replay or script, a worktree for the change, and how to read the comparison.
 
 ## Behind a sign-in
 

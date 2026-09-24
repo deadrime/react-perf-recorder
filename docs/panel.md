@@ -55,4 +55,5 @@ renders per time each was done (per character for typing), so the runs need not 
 **↻ Repeat** makes them match anyway: it reloads the page and does the report's actions again at their pace — the
 clicks, the keys, as many characters as were typed — while recording. Events are dispatched the way the browser
 dispatches a person's, so React schedules the work as it did the first time; a step whose element is gone stops
-the replay and says which. For scenarios whose network timing matters, record two scripted runs instead.
+the replay and says which. For scenarios whose network timing matters, record two scripted runs instead —
+[Measuring a fix](measuring-a-fix.md) has the whole route, a worktree for the change, and how to read the result.

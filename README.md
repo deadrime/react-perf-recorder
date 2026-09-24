@@ -53,6 +53,7 @@ recorded — and answers with the cascade root, the hook behind it and the file 
 
 - [The panel and the report](docs/panel.md)
 - [What a recording holds](docs/recording.md)
+- [Measuring a fix](docs/measuring-a-fix.md)
 - [Options](docs/options.md)
 - [MCP server, CLI and scripts](docs/mcp.md)
 - [Plugins](docs/plugins.md)

@@ -21,8 +21,8 @@ Work by the `react-perf-recorder` skill; open its references when you get to the
 4. **Read** — one `get_recording` summary; follow the hook chain to the app's own code, left of `[package]`. Open
    another section only for what the summary left open.
 5. **Answer at the confidence the recording gives.** When it names the root, the reason and the `file:line`, that is
-   the answer — stop. Record a before/after (`replay`, or a `script` when actions wait on requests) only when the
-   cause is a guess or numbers were asked for; the file you changed goes back as it was.
+   the answer — stop. Measure a fix only when the cause is a guess or numbers were asked for, by
+   `references/measuring-a-fix.md` — in a git worktree, so the person's working tree stays as it was.
 
 ## Boundaries
 

@@ -38,7 +38,8 @@ the next finished recording.
 
 ## References
 
-- `references/getting-a-recording.md` — `record_page`, replay or script, the area, sign-in, fast recordings.
+- `references/getting-a-recording.md` — `record_page`, the area, sign-in, fast recordings.
+- `references/measuring-a-fix.md` — before and after: replay or script, a worktree for the change, reading the result.
 - `references/reading-a-recording.md` — roots, reasons, hook chains, components and their ways, memos.
 - `references/causes-and-actions.md` — what scheduled each commit, the person's actions, plugin sections, traps.
 - `references/panel.md` — the panel, for guiding a person who records it themselves.
