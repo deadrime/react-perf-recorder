@@ -28,7 +28,7 @@ const open = async (page: Page, id: string) => {
 
 test('the front page lists the harder cases apart from the textbook ones', async ({ page }) => {
   await page.goto('/');
-  await expect(page.locator('[data-testid="advanced"] [data-advanced]')).toHaveCount(4);
+  await expect(page.locator('[data-testid="advanced"] [data-advanced]')).toHaveCount(7);
   await page.locator('[data-advanced="chain"]').click();
   await expect(page.getByTestId('strip')).toContainText('a chain of effects');
 });
@@ -80,4 +80,37 @@ test('a query spread whole renders on every poll; read for its data, it does not
   expect(after.fixed).toEqual(before.fixed);
   const lit = await outlines(page);
   expect(lit.broken).toBeGreaterThan(lit.fixed);
+});
+
+test('an empty default renders every row for a click on one; a shared one, the two that changed', async ({ page }) => {
+  await open(page, 'empty');
+  const before = { broken: await countsOf(page, 'broken'), fixed: await countsOf(page, 'fixed') };
+  await page.getByTestId('select-next').click();
+  await page.getByTestId('select-next').click();
+  const after = { broken: await countsOf(page, 'broken'), fixed: await countsOf(page, 'fixed') };
+  const grew = (side: 'broken' | 'fixed') => after[side].filter((n, i) => n > before[side][i]).length;
+  // All but the two rows with marks: theirs is the same array from the map every time.
+  expect(grew('broken')).toBe(before.broken.length - 2);
+  // Rows 0, 1 and 2 changed their selection; no other row renders.
+  expect(grew('fixed')).toBe(3);
+});
+
+test('a whole copy of the form renders every group for a letter; a copy of the path, the one typed into', async ({ page }) => {
+  await open(page, 'copy');
+  const before = { broken: await countsOf(page, 'broken'), fixed: await countsOf(page, 'fixed') };
+  await page.getByTestId('broken-contact-name').pressSequentially('bc', { delay: 30 });
+  await page.getByTestId('fixed-contact-name').pressSequentially('bc', { delay: 30 });
+  const after = { broken: await countsOf(page, 'broken'), fixed: await countsOf(page, 'fixed') };
+  expect(after.broken.map((n, i) => n - before.broken[i])).toEqual([2, 2, 2, 2]);
+  expect(after.fixed.map((n, i) => n - before.fixed[i])).toEqual([2, 0, 0, 0]);
+});
+
+test("memo cards render through a package's context when its items are a new array; not when they keep it", async ({ page }) => {
+  await open(page, 'context');
+  const before = { broken: await countsOf(page, 'broken'), fixed: await countsOf(page, 'fixed') };
+  await page.getByTestId('note-broken').pressSequentially('abc', { delay: 30 });
+  await page.getByTestId('note-fixed').pressSequentially('abc', { delay: 30 });
+  const after = { broken: await countsOf(page, 'broken'), fixed: await countsOf(page, 'fixed') };
+  expect(after.broken.every((n, i) => n - before.broken[i] === 3)).toBe(true);
+  expect(after.fixed).toEqual(before.fixed);
 });

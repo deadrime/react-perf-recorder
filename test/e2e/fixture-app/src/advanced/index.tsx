@@ -2,9 +2,12 @@ import { useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import { BugStrip } from '../Demo';
 import { EffectChain } from './EffectChain';
+import { EmptyDefault } from './EmptyDefault';
 import { HeavyList } from './HeavyList';
+import { LibraryContext } from './LibraryContext';
 import { Measure } from './Measure';
 import { QueryFields } from './QueryFields';
+import { WholeCopy } from './WholeCopy';
 
 export interface AdvancedCase {
   title: string;
@@ -33,6 +36,22 @@ export const ADVANCED: Record<string, AdvancedCase> = {
     title: 'read only the fields you show',
     what: 'Spreading the rest of a useQuery result reads isFetching too: every poll renders the list with the same data.',
     element: QueryFields,
+  },
+  // Found in real apps: Jaeger UI, react-jsonschema-form, a dnd-kit kanban board.
+  empty: {
+    title: 'an empty default is a new array',
+    what: 'A row list of memos gets ?? [] for rows without marks: a click on one row renders all of them.',
+    element: EmptyDefault,
+  },
+  copy: {
+    title: 'a copy of the whole form for one field',
+    what: 'A structuredClone of the form on each keystroke gives every group a new object: every group renders for one letter.',
+    element: WholeCopy,
+  },
+  context: {
+    title: "memo does not stop a package's context",
+    what: 'A new array of ids handed to a sortable list changes its context: every memo card renders with each letter typed elsewhere.',
+    element: LibraryContext,
   },
 };
 

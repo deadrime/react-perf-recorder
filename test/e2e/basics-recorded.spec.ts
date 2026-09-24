@@ -53,7 +53,11 @@ test('a clock hidden in a hook: the hook chain names it', async ({ page }) => {
 test('a render that came down from a clock keeps its way: the timer, the card, the item that got equal props', async ({ page }) => {
   const rec = await record(page, '/basics/state', () => page.waitForTimeout(2500));
   const ways = waysOf(rec, rec.components.find((c) => c.name === 'RenderCount')?.chains).map(wayText);
-  expect(ways).toContainEqual(expect.stringMatching(/^core:timer setInterval @ src\/basics\/StateDown\.tsx › CardWithClock · state useSecond › Item · props equal › RenderCount · prop renders$/));
+  expect(ways).toContainEqual(
+    expect.stringMatching(
+      /^core:timer setInterval @ src\/basics\/StateDown\.tsx › CardWithClock · state useSecond › Item · props equal › RenderCount · prop renders$/
+    )
+  );
 
   // The panel draws the same way, with the link where a memo would stop it marked.
   await page.goto('/basics/state?rpr=panel');
@@ -112,4 +116,21 @@ test('a value only a handler reads, kept in state: state #0 for every move', asy
 test('a handler with the text in its deps: parent: props new ref, same content: onSend', async ({ page }) => {
   const rec = await record(page, '/basics/ref', () => page.getByTestId('text-deps').pressSequentially('hello', { delay: 30 }));
   expect(said(rec, 'SendButton')).toContain('parent: props new ref, same content: onSend');
+});
+
+test('an empty default: parent: props new ref, same content: marks, on rows nobody selected', async ({ page }) => {
+  const rec = await record(page, '/advanced/empty', () => page.getByTestId('select-next').click());
+  expect(said(rec, 'Row')).toContain('parent: props new ref, same content: marks');
+  expect(said(rec, 'Row')).toContain('parent: props selected');
+});
+
+test('a whole copy of the form: parent: props new ref, same content: value, on the groups not typed into', async ({ page }) => {
+  const rec = await record(page, '/advanced/copy', () => page.getByTestId('broken-contact-name').pressSequentially('bc', { delay: 30 }));
+  expect(said(rec, 'Group').sort()).toEqual(['parent: props new ref, same content: value', 'parent: props value']);
+});
+
+test("a package's context: named by the component that provides it", async ({ page }) => {
+  const rec = await record(page, '/advanced/context', () => page.getByTestId('note-broken').pressSequentially('ab', { delay: 30 }));
+  // A root here: the hook chain follows, down to the package's hook the card calls.
+  expect(said(rec, 'Card')).toEqual([expect.stringMatching(/^context \(unnamed, provided by SortableList\) SAME-CONTENT · useSortable/)]);
 });

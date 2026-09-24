@@ -729,3 +729,14 @@ input {
 .lag {
   font-variant-numeric: tabular-nums;
 }
+
+/* A long list in a case: its rows scroll inside the panel, not the page. */
+.rows.scroll {
+  max-height: 260px;
+  overflow: auto;
+}
+
+.rows li.selected {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  border-radius: 6px;
+}
