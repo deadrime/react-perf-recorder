@@ -76,7 +76,7 @@ test('replays what a recording did, from the page load, at its pace', async ({ b
   // landing on one of the five keystrokes adds a render to one run and not the other; a keystroke React batched
   // differently would take renders away.
   const typing = cmp.actions.find((a) => a.per === 'char')!;
-  const extra = Math.round((typing.renders.after - typing.renders.before) * 'hello'.length);
+  const extra = Math.round((typing.renders.after! - typing.renders.before!) * 'hello'.length);
   expect(extra).toBeGreaterThanOrEqual(0);
   expect(extra).toBeLessThanOrEqual(1);
 });

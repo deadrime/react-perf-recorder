@@ -71,8 +71,9 @@ test('a render that came down from a clock keeps its way: the timer, the card, t
   // A commit of the card's clock, picked on the timeline, shows its cascade as a tree.
   const bars = page.locator('.tl-bar');
   const tree = page.locator('[data-rpr="cascade"]');
+  // Clicked from the page: a bar scrolled out of the tracks is still a commit to look at, but never "visible".
   for (let i = 0; i < (await bars.count()); i++) {
-    await bars.nth(i).click();
+    await bars.nth(i).evaluate((bar) => (bar as HTMLElement).click());
     if (await tree.filter({ hasText: 'CardWithClock' }).count()) break;
   }
   const rows = tree.locator('[data-rpr="cascade-row"]');
