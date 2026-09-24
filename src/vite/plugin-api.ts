@@ -9,7 +9,7 @@ type Loose = Record<string, any>;
 
 /**
  * A Vite plugin described structurally: the public types never import `vite`, so a linked or hoisted copy of the
- * package with its own Vite and Rollup versions still type-checks against the project's Vite 5–7.
+ * package with its own Vite and Rollup versions still type-checks against the project's Vite 5–8.
  */
 export interface VitePluginLike {
   name: string;
