@@ -32,7 +32,7 @@ test('the docs switch pages even where scrollTo returns something', async ({ pag
   // Some browsers and extensions return a value from scrollTo; an effect that returned it broke the next page.
   await page.addInitScript(() => {
     const original = window.scrollTo.bind(window);
-    window.scrollTo = ((...args: Parameters<typeof window.scrollTo>) => (original(...args), Promise.resolve())) as typeof window.scrollTo;
+    window.scrollTo = ((...args: [number, number]) => (original(...args), Promise.resolve())) as unknown as typeof window.scrollTo;
   });
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
