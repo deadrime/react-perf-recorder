@@ -22,7 +22,7 @@ import type { RecordingV2 } from '../shared/schema';
 import { listingOf } from '../shared/listing';
 import { planReplay } from '../shared/replay';
 import { recordPage } from './record';
-import { findSession, listSessions, readRecording, waitForSession } from './store';
+import { findSession, latestWarning, listSessions, readRecording, waitForSession } from './store';
 
 declare const __VERSION__: string;
 const VERSION = typeof __VERSION__ === 'string' ? __VERSION__ : 'dev';
@@ -269,7 +269,9 @@ export function createServer(dir: string) {
     async ({ id, section: name = 'summary', top = 10, offset = 0, hooks = 'full' }) => {
       const entry = findSession(dir, id);
       const rec = readRecording(entry);
+      const warning = latestWarning(dir, id, entry);
       return json({
+        ...(warning ? { warning } : {}),
         id: entry.id,
         status: entry.status,
         dir: entry.dir,
@@ -404,9 +406,10 @@ export function createServer(dir: string) {
       },
     },
     async ({ before, after, top, match }) => {
-      const a = readRecording(findSession(dir, before));
-      const b = readRecording(findSession(dir, after));
-      return json(compareRecordings(a, b, { top, match }));
+      const [ea, eb] = [findSession(dir, before), findSession(dir, after)];
+      const latest = [latestWarning(dir, before, ea), latestWarning(dir, after, eb)].filter(Boolean);
+      const result = compareRecordings(readRecording(ea), readRecording(eb), { top, match });
+      return json(latest.length ? { ...result, warnings: [...latest, ...result.warnings], comparable: false } : result);
     }
   );
 

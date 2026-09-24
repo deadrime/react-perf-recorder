@@ -138,6 +138,10 @@ describe('MCP server', () => {
     expect(await ids({ url: 'localhost:5406' })).toEqual(['eeee']);
     expect(await ids({ label: 'before' })).toEqual(['eeee']);
     expect(await ids({ scope: 'whole app' })).toEqual([]);
+    // `latest` is the other app's now or mine, whoever came last: the answer says others recorded alongside.
+    const latest = await call('get_recording', { id: 'latest' });
+    expect(latest.warning).toMatch(/"latest" is .*recorded in the same ten minutes .*pass the id record_page returned/);
+    expect((await call('get_recording', { id: mine.id })).warning).toBeUndefined();
   });
 
   it('compares two sessions', async () => {

@@ -124,6 +124,21 @@ const launchOptions = (headless: boolean) => ({
   ...(process.env.REACT_PERF_RECORDER_BROWSER ? { executablePath: process.env.REACT_PERF_RECORDER_BROWSER } : {}),
 });
 
+/** A browser Playwright cannot find is named in words: the machine may have another one to point at. */
+async function launch(chromium: Playwright['chromium'], headless: boolean) {
+  try {
+    return await chromium.launch(launchOptions(headless));
+  } catch (error) {
+    const message = String((error as Error)?.message ?? error);
+    if (!/Executable doesn't exist/.test(message)) throw error;
+    throw new Error(
+      `${message.split('\n')[0]}\nThe browser this Playwright expects is not installed. Point at one the machine has: ` +
+        'REACT_PERF_RECORDER_BROWSER=/path/to/chromium in the environment of the MCP server (a CI image, a sandbox with its own ' +
+        'Chromium), or run `npx playwright install chromium`.'
+    );
+  }
+}
+
 async function runModule(file: string, page: PageLike) {
   // The server lives for the whole session and Node keeps a module by its URL: an edited script would run as it was.
   const resolved = path.resolve(file);
@@ -177,7 +192,7 @@ export async function recordPage(options: RecordPageOptions, sessionsDir: string
   if (options.state && !hasState) throw new Error(`no saved session at ${state}; make one with: react-perf-recorder login <url> --state ${state}`);
 
   const connected = Boolean(options.cdp);
-  const browser = connected ? await chromium.connectOverCDP(options.cdp!) : await chromium.launch(launchOptions(!options.headed));
+  const browser = connected ? await chromium.connectOverCDP(options.cdp!) : await launch(chromium, !options.headed);
   let page: PageLike | null = null;
   try {
     // A browser of the person's own already carries their session; a fresh one gets whatever `login` saved.
@@ -311,7 +326,7 @@ export async function recordPage(options: RecordPageOptions, sessionsDir: string
  */
 export async function saveLogin(url: string, file: string, done: (page: PageLike) => Promise<void>, headless = false): Promise<string> {
   const { chromium } = await loadPlaywright();
-  const browser = await chromium.launch(launchOptions(headless));
+  const browser = await launch(chromium, headless);
   try {
     const context = await browser.newContext();
     const page = (await context.newPage()) as unknown as PageLike;

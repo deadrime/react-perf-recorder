@@ -52,6 +52,34 @@ export function findSession(dir: string, ref: string): SessionEntry {
   return entry;
 }
 
+const pageOf = (url: string) => {
+  try {
+    const u = new URL(url);
+    return `${u.host}${u.pathname}`;
+  } catch {
+    return url;
+  }
+};
+
+/**
+ * `latest` is whoever recorded last into the folder. When other pages were recorded around the same time — another
+ * agent on another app — the answer says so, rather than hand over someone else's recording as yours.
+ */
+export function latestWarning(dir: string, ref: string, entry: SessionEntry): string | undefined {
+  if (!/^latest/.test(ref)) return undefined;
+  const at = Date.parse(entry.meta.createdAt);
+  const page = pageOf(entry.meta.page.url);
+  const others = new Set(
+    listSessions(dir)
+      .filter((s) => Math.abs(Date.parse(s.meta.createdAt) - at) < 10 * 60_000 && pageOf(s.meta.page.url) !== page)
+      .map((s) => pageOf(s.meta.page.url))
+  );
+  if (!others.size) return undefined;
+  return `"${ref}" is ${entry.id} on ${page}; ${[...others].slice(0, 3).join(', ')} ${
+    others.size > 1 ? 'were' : 'was'
+  } recorded in the same ten minutes — someone else may record into this folder: pass the id record_page returned`;
+}
+
 export function readEvents(entry: SessionEntry): SessionEvent[] {
   const file = path.join(entry.dir, 'events.ndjson');
   if (!fs.existsSync(file)) return [];
