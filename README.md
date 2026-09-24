@@ -29,10 +29,10 @@ an area of the page to record alone.
 
 ## What you get
 
-- **The root to fix** — the component that started a cascade, with its reason: `state now`, `store useChatStore
-selectMessages SAME-CONTENT`, `context Theme`, and the hook chain down to the line.
-- **The way a render came down** — `setInterval @ Clock.tsx › CardWithClock state useSecond › Item props equal ›
-RenderCount prop renders`; the link with equal props is where a `memo` stops the rest.
+- **The root to fix** — the component that started a cascade, with its reason (`state now`,
+  `store chat selectMessages SAME-CONTENT`, `context Theme`) and the hook chain down to the line.
+- **The way a render came down** — from the cause through each parent to the component, with the props each one
+  handed on; the link with equal props is where a `memo` stops the rest.
 - **Wasted renders** — those after which nothing in the DOM changed, and remounts.
 - **Causes** — the store action, query, timer, socket message or click behind each commit.
 - **A timeline** of actions and commits; a picked commit shows its cascade as a tree and outlines its components on
