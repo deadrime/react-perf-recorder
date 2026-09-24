@@ -134,3 +134,10 @@ test("a package's context: named by the component that provides it", async ({ pa
   // A root here: the hook chain follows, down to the package's hook the card calls.
   expect(said(rec, 'Card')).toEqual([expect.stringMatching(/^context \(unnamed, provided by SortableList\) SAME-CONTENT · useSortable/)]);
 });
+
+test('a Redux store: named after its declaration, with the action that changed it', async ({ page }) => {
+  const rec = await record(page, '/advanced/redux', () => page.locator('[data-case="fixed"]').getByTestId('like-Pikachu').click());
+  expect(said(rec, 'WholeList')[0]).toMatch(/^external store #\d+ \[pokedexStore\]/);
+  expect(rec.causes.map((c) => c.key)).toContain('redux:favorites/toggle');
+  expect(rec.plugins.redux).toMatchObject({ active: true, highlights: ['pokedexStore: 1 change, most by favorites/toggle ×1'] });
+});

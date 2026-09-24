@@ -7,6 +7,7 @@ import { HeavyList } from './HeavyList';
 import { LibraryContext } from './LibraryContext';
 import { Measure } from './Measure';
 import { QueryFields } from './QueryFields';
+import { ReduxFavorites } from './ReduxFavorites';
 import { WholeCopy } from './WholeCopy';
 
 export interface AdvancedCase {
@@ -52,6 +53,11 @@ export const ADVANCED: Record<string, AdvancedCase> = {
     title: "memo does not stop a package's context",
     what: 'A new array of ids handed to a sortable list changes its context: every memo card renders with each letter typed elsewhere.',
     element: LibraryContext,
+  },
+  redux: {
+    title: 'every card reads the whole list',
+    what: 'A Redux selector that returns the whole favourites array renders every card for a star on one.',
+    element: ReduxFavorites,
   },
 };
 

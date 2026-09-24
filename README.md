@@ -18,9 +18,10 @@ import { perfRecorder } from 'react-perf-recorder/vite';
 import { zustand } from 'react-perf-recorder/plugins/zustand';
 import { proxyMemoize } from 'react-perf-recorder/plugins/proxy-memoize';
 import { reactQuery } from 'react-perf-recorder/plugins/react-query';
+import { redux } from 'react-perf-recorder/plugins/redux';
 
 export default defineConfig({
-  plugins: [react(), perfRecorder({ plugins: [zustand(), proxyMemoize(), reactQuery()] })],
+  plugins: [react(), perfRecorder({ plugins: [zustand(), redux(), proxyMemoize(), reactQuery()] })],
 });
 ```
 

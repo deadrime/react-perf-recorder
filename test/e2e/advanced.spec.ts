@@ -28,7 +28,7 @@ const open = async (page: Page, id: string) => {
 
 test('the front page lists the harder cases apart from the textbook ones', async ({ page }) => {
   await page.goto('/');
-  await expect(page.locator('[data-testid="advanced"] [data-advanced]')).toHaveCount(7);
+  await expect(page.locator('[data-testid="advanced"] [data-advanced]')).toHaveCount(8);
   await page.locator('[data-advanced="chain"]').click();
   await expect(page.getByTestId('strip')).toContainText('a chain of effects');
 });
@@ -113,4 +113,16 @@ test("memo cards render through a package's context when its items are a new arr
   const after = { broken: await countsOf(page, 'broken'), fixed: await countsOf(page, 'fixed') };
   expect(after.broken.every((n, i) => n - before.broken[i] === 3)).toBe(true);
   expect(after.fixed).toEqual(before.fixed);
+});
+
+test('a selector of the whole list renders every card for a star; a selector of the card, the one starred', async ({ page }) => {
+  await open(page, 'redux');
+  const before = { broken: await countsOf(page, 'broken'), fixed: await countsOf(page, 'fixed') };
+  // One store for both sides: a star on the right changes the same list the left reads.
+  await page.locator('[data-case="fixed"]').getByTestId('like-Pikachu').click();
+  await page.locator('[data-case="fixed"]').getByTestId('like-Mew').click();
+  const after = { broken: await countsOf(page, 'broken'), fixed: await countsOf(page, 'fixed') };
+  expect(after.broken.map((n, i) => n - before.broken[i])).toEqual(before.broken.map(() => 2));
+  const grew = after.fixed.map((n, i) => n - before.fixed[i]);
+  expect(grew.filter((n) => n > 0)).toEqual([1, 1]);
 });

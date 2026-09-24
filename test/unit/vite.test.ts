@@ -6,6 +6,7 @@ import path from 'node:path';
 import { createServer, type ViteDevServer } from 'vite';
 import { perfRecorder } from '../../src/vite';
 import { zustand } from '../../src/plugins/zustand';
+import { redux } from '../../src/plugins/redux';
 
 const fixture = path.resolve(__dirname, '../e2e/fixture-app');
 let server: ViteDevServer;
@@ -88,6 +89,20 @@ describe('perfRecorder vite plugin', () => {
     // A linked package or an excluded dependency comes through the plugin's own transform.
     expect(plugin.transform(vanilla, '/repo/node_modules/zustand/esm/vanilla.mjs?v=1')?.code).toContain('__REACT_PERF_RECORDER_ZUSTAND__');
     expect(plugin.transform(vanilla, '/repo/src/vanilla.mjs')).toBeNull();
+  });
+
+  it("rewrites redux's createStore wherever it is loaded from, redux 5 and 4", async () => {
+    const [, plugin] = perfRecorder({ plugins: [redux()] }) as Array<{ config: Function; transform: Function }>;
+    const [inRolldown] = plugin.config.call({ meta: { rolldownVersion: '1.0.0' } }, {}).optimizeDeps.rolldownOptions.plugins;
+    const create = 'function createStore(reducer, preloadedState, enhancer) {\n  return {};\n}\nexport { createStore };';
+    for (const file of [
+      '/app/node_modules/redux/dist/redux.mjs',
+      '/app/node_modules/redux/dist/redux.browser.mjs',
+      '/app/node_modules/redux/es/redux.js',
+    ])
+      expect(inRolldown.transform(create, file)).toContain('__rprCreateStore');
+    expect(inRolldown.transform(create, '/app/node_modules/@reduxjs/toolkit/dist/redux-toolkit.modern.mjs')).toBeNull();
+    expect(plugin.transform(create, '/app/node_modules/redux/dist/redux.mjs?v=1')?.code).toContain('__REACT_PERF_RECORDER_REDUX__');
   });
 
   it("points the app's createRoot at the proxy, whatever the resolver would have done with it", async () => {

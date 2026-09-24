@@ -7,6 +7,7 @@ What scheduled each commit, aimed at the components it actually updated:
 | Cause                                 | Means                                                                            |
 | ------------------------------------- | -------------------------------------------------------------------------------- |
 | `zustand:<action>`                    | a store write, with the keys it changed and a `SAME-CONTENT` mark                |
+| `redux:<action type>`                 | a Redux action that changed the store, with the slices it changed                |
 | `react-query:fetch → success <key>`   | a query's events, one cause per query and commit, on its subscribers' commit     |
 | `core:input <event>`                  | the person's click, keystroke, scroll                                            |
 | `core:message WebSocket` / `Worker`   | a frame arrived                                                                  |

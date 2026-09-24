@@ -1,8 +1,8 @@
 # Plugins
 
-Three come with the package: `zustand()` names stores and their actions, `proxyMemoize()` counts memoized selectors'
-calls and recomputes, `reactQuery()` turns query cache events into causes. A plugin whose library is not on the page
-is left out of the report.
+Four come with the package: `zustand()` names stores and their actions, `redux()` does the same for Redux and Redux
+Toolkit, `proxyMemoize()` counts memoized selectors' calls and recomputes, `reactQuery()` turns query cache events into
+causes. A plugin whose library is not on the page is left out of the report.
 
 A plugin has two optional halves: build hooks for the dev server and a runtime module for the page.
 
