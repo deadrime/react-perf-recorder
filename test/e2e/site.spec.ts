@@ -12,3 +12,18 @@ test('the front page says what the tool is and leads to the docs, which are the 
   await expect(docs.locator('article h1')).toHaveText('Measuring a fix');
   await expect(docs.locator('nav a[aria-current="page"]')).toHaveText('Measuring a fix');
 });
+
+test('the front page and the docs keep the panel away; a page with something to record has it', async ({ page }) => {
+  // Asked for by the URL, which also remembers it: the pages with nothing to record still leave it out.
+  await page.goto('/?rpr=panel');
+  await expect(page.getByTestId('hero')).toBeVisible();
+  await expect(page.locator('[data-rpr="record"]')).toBeHidden();
+  await page.keyboard.press('Alt+Shift+KeyR');
+  expect(await page.evaluate(() => (window as any).__REACT_PERF_RECORDER__.engine.recording)).toBe(false);
+  await page.goto('/docs');
+  await expect(page.getByTestId('docs')).toBeVisible();
+  await expect(page.locator('[data-rpr="record"]')).toBeHidden();
+  // Nothing of it was remembered: the next page shows the panel.
+  await page.goto('/basics/state');
+  await expect(page.locator('[data-rpr="record"]')).toBeVisible();
+});

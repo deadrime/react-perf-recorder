@@ -1,4 +1,4 @@
-import { href } from './base';
+import { href, useNoPanel } from './base';
 import { ADVANCED } from './advanced';
 import { BASICS } from './basics';
 import { BUGS, SCENARIOS, enabledBugs } from './bugs';
@@ -60,85 +60,88 @@ const STRIP_STYLES = `
  * the e2e tests record it, and a link or a recording can point at it — but it is not how a person meets the tool:
  * a real app's bug is learnt faster from the two-widget version of the same mistake.
  */
-export const Catalogue = () => (
-  <>
-    <style>{DEMO_STYLES}</style>
-    <div className="demo">
-      <header className="hero" data-testid="hero">
-        <h1>react-perf-recorder</h1>
-        <p className="lead">
-          Record why a React app re-renders, from the page itself: press Rec, use the app, press Stop. The report names the component that started
-          each render cascade and why — the hook and its line, the store action, the props that broke <code>memo</code> — and the way each render came
-          down. An AI agent reads the same recordings through an MCP server. It runs only in the Vite dev server and never ships to a build.
+export const Catalogue = () => {
+  useNoPanel();
+  return (
+    <>
+      <style>{DEMO_STYLES}</style>
+      <div className="demo">
+        <header className="hero" data-testid="hero">
+          <h1>react-perf-recorder</h1>
+          <p className="lead">
+            Record why a React app re-renders, from the page itself: press Rec, use the app, press Stop. The report names the component that started
+            each render cascade and why — the hook and its line, the store action, the props that broke <code>memo</code> — and the way each render
+            came down. An AI agent reads the same recordings through an MCP server. It runs only in the Vite dev server and never ships to a build.
+          </p>
+          <pre>
+            <span className="c"># install</span>
+            {'\nnpm i -D -E react-perf-recorder\n\n'}
+            <span className="c">// vite.config.ts</span>
+            {"\nimport { perfRecorder } from 'react-perf-recorder/vite';\n\nplugins: [react(), perfRecorder()]\n\n"}
+            <span className="c"># with Claude Code: a skill, an agent and the MCP server</span>
+            {'\nnpx react-perf-recorder init-claude'}
+          </pre>
+          <div className="links">
+            <a className="primary" href={href('docs')}>
+              Docs
+            </a>
+            <a href={REPO}>GitHub</a>
+          </div>
+        </header>
+        <h2 className="section">Try it here</h2>
+        <p>
+          This page has the recorder on it — a build made for the demo, so recordings stay in the tab (Download keeps one). Textbook re-render
+          mistakes follow, each on a page of its own: the broken and the fixed version of one widget side by side, with the renders and the mounts
+          counted on every row. Open one, record a few seconds, and read what the recorder says about it.
         </p>
-        <pre>
-          <span className="c"># install</span>
-          {'\nnpm i -D -E react-perf-recorder\n\n'}
-          <span className="c">// vite.config.ts</span>
-          {"\nimport { perfRecorder } from 'react-perf-recorder/vite';\n\nplugins: [react(), perfRecorder()]\n\n"}
-          <span className="c"># with Claude Code: a skill, an agent and the MCP server</span>
-          {'\nnpx react-perf-recorder init-claude'}
-        </pre>
-        <div className="links">
-          <a className="primary" href={href('docs')}>
-            Docs
-          </a>
-          <a href={REPO}>GitHub</a>
+        <ol className="steps">
+          <li>
+            Open a card. The recorder's panel is in the corner (<code>Alt+Shift+R</code> opens and closes it) — drag it anywhere, it sticks to the
+            nearer side.
+          </li>
+          <li>
+            Press <code>● Rec</code>, press the button on the page, press <code>■ Stop</code>. The summary names the cascade roots and why they
+            rendered.
+          </li>
+          <li>
+            Turn on <code>highlights</code> to see the renders outlined live, and <code>⌖ Pick</code> to record one of the two versions only.
+          </li>
+        </ol>
+        {/* The chat with no bug on: a real-looking app to try the recorder on, with no answer waiting to be found. */}
+        <a className="sandbox" href={href('app')} data-testid="sandbox">
+          <b>▷ Sandbox</b>
+          <span>a small team chat with a store, a live feed and a form — open it and record whatever you like</span>
+        </a>
+        <h2 className="section">The textbook ones</h2>
+        <p>
+          Two versions of one widget side by side, one of them wrong, with the renders counted on every row. Turn on <code>highlights</code> and press
+          the button.
+        </p>
+        <div className="cards">
+          {Object.entries(BASICS).map(([id, basic]) => (
+            <a className="card" href={href(`basics/${id}`)} key={id} data-basic={id}>
+              <h2>{basic.title}</h2>
+              <p className="what">{basic.what}</p>
+            </a>
+          ))}
         </div>
-      </header>
-      <h2 className="section">Try it here</h2>
-      <p>
-        This page has the recorder on it — a build made for the demo, so recordings stay in the tab (Download keeps one). Textbook re-render mistakes
-        follow, each on a page of its own: the broken and the fixed version of one widget side by side, with the renders and the mounts counted on
-        every row. Open one, record a few seconds, and read what the recorder says about it.
-      </p>
-      <ol className="steps">
-        <li>
-          Open a card. The recorder's panel is in the corner (<code>Alt+Shift+R</code> opens and closes it) — drag it anywhere, it sticks to the
-          nearer side.
-        </li>
-        <li>
-          Press <code>● Rec</code>, press the button on the page, press <code>■ Stop</code>. The summary names the cascade roots and why they
-          rendered.
-        </li>
-        <li>
-          Turn on <code>highlights</code> to see the renders outlined live, and <code>⌖ Pick</code> to record one of the two versions only.
-        </li>
-      </ol>
-      {/* The chat with no bug on: a real-looking app to try the recorder on, with no answer waiting to be found. */}
-      <a className="sandbox" href={href('app')} data-testid="sandbox">
-        <b>▷ Sandbox</b>
-        <span>a small team chat with a store, a live feed and a form — open it and record whatever you like</span>
-      </a>
-      <h2 className="section">The textbook ones</h2>
-      <p>
-        Two versions of one widget side by side, one of them wrong, with the renders counted on every row. Turn on <code>highlights</code> and press
-        the button.
-      </p>
-      <div className="cards">
-        {Object.entries(BASICS).map(([id, basic]) => (
-          <a className="card" href={href(`basics/${id}`)} key={id} data-basic={id}>
-            <h2>{basic.title}</h2>
-            <p className="what">{basic.what}</p>
-          </a>
-        ))}
+        <h2 className="section">Harder ones</h2>
+        <p>
+          Mistakes of more than one step, the way they come in real code: effects in a chain, a measurement kept in state, a list too big for a
+          keystroke, a query read whole. The recording explains them where the counters alone would not.
+        </p>
+        <div className="cards" data-testid="advanced">
+          {Object.entries(ADVANCED).map(([id, item]) => (
+            <a className="card" href={href(`advanced/${id}`)} key={id} data-advanced={id}>
+              <h2>{item.title}</h2>
+              <p className="what">{item.what}</p>
+            </a>
+          ))}
+        </div>
       </div>
-      <h2 className="section">Harder ones</h2>
-      <p>
-        Mistakes of more than one step, the way they come in real code: effects in a chain, a measurement kept in state, a list too big for a
-        keystroke, a query read whole. The recording explains them where the counters alone would not.
-      </p>
-      <div className="cards" data-testid="advanced">
-        {Object.entries(ADVANCED).map(([id, item]) => (
-          <a className="card" href={href(`advanced/${id}`)} key={id} data-advanced={id}>
-            <h2>{item.title}</h2>
-            <p className="what">{item.what}</p>
-          </a>
-        ))}
-      </div>
-    </div>
-  </>
-);
+    </>
+  );
+};
 
 /** On every page but the front one: what is being shown here, and the way back to the cards. */
 export const BugStrip = ({ note }: { note?: string }) => {

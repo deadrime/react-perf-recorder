@@ -38,6 +38,8 @@ export class Panel {
   private picker: Picker;
   private busy = false;
   private visible: boolean;
+  /** Set by the page for as long as it has nothing to record (a front page, docs); never remembered. */
+  private suppressed = false;
   private tree: TreeProps | null = null;
   private result: Saved | null = null;
   private message: Message = { text: '', kind: 'muted' };
@@ -96,6 +98,14 @@ export class Panel {
     this.sync();
   }
 
+  /** Hides the panel, its outlines and its shortcuts while `on`, without touching what the person chose to see. */
+  suppress(on: boolean) {
+    if (this.suppressed === on) return;
+    this.suppressed = on;
+    this.sync();
+    this.syncIdleHighlight();
+  }
+
   show() {
     this.visible = true;
     this.state.visible = true;
@@ -107,7 +117,7 @@ export class Panel {
 
   /** Renders in the area are outlined all the time the panel is shown, not only while recording. */
   private syncIdleHighlight() {
-    const on = this.visible && this.state.highlight;
+    const on = this.visible && !this.suppressed && this.state.highlight;
     // A hidden panel draws nothing, so an automated browser gets clean screenshots.
     if (this.highlighter) this.highlighter.enabled = on;
     this.engine.highlightWhenIdle(on && !this.outlining, this.scope);
@@ -260,7 +270,7 @@ export class Panel {
   private viewProps(recording: boolean): PanelViewProps {
     const live = this.engine.live();
     return {
-      visible: this.visible,
+      visible: this.visible && !this.suppressed,
       collapsed: this.state.collapsed,
       recording,
       busy: this.busy,
@@ -513,6 +523,7 @@ export class Panel {
   }
 
   private onShortcut(event: KeyboardEvent) {
+    if (this.suppressed) return;
     if (matches(this.options.shortcuts.record, event)) {
       event.preventDefault();
       this.show();

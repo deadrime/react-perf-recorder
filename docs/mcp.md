@@ -56,5 +56,7 @@ rec.id; // saved session id
 
 `engine.start()` / `engine.stop()`; `scope: { selector, component?, level? } | { names: [...] }`, `zones`,
 `highlight: false` for timing runs, `sampleReasons: true` for fast recordings. `window.__REACT_PERF_RECORDER__.format`
-prints reasons and hook chains the way the panel and the MCP server do. Pages without the Vite plugin can load
+prints reasons and hook chains the way the panel and the MCP server do. A page with nothing to record — a landing
+page, docs — can call `window.__REACT_PERF_RECORDER__.panel?.suppress(true)` on mount and `suppress(false)` on
+unmount: the panel, its outlines and shortcuts are gone for that page only, and nothing is remembered. Pages without the Vite plugin can load
 `react-perf-recorder/engine.iife.js` (core only: no plugins, no saving).

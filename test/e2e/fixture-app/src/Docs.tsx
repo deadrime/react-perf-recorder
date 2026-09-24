@@ -1,7 +1,7 @@
 import { marked, type Tokens } from 'marked';
 import { useEffect, useMemo } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { href } from './base';
+import { href, useNoPanel } from './base';
 import { DEMO_STYLES, REPO } from './Demo';
 
 // The pages are the repository's own markdown, read at build time: the docs are written once, in docs/.
@@ -65,6 +65,7 @@ const DOCS_STYLES = `
 `;
 
 export const DocsPage = () => {
+  useNoPanel();
   const { page: slug = 'readme' } = useParams();
   const page = pages.get(slug) ?? pages.get('readme')!;
   const html = useMemo(() => render(page.slug, page.text), [page]);
