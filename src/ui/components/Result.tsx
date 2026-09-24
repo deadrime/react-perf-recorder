@@ -3,7 +3,7 @@ import type { ComponentChildren, JSX } from 'preact';
 import { useMemo, useState } from 'preact/hooks';
 import type { Saved } from '../../core/engine';
 import type { RootStat } from '../../shared/schema';
-import { hookOf, reasonsById, summarize } from '../../shared/summary';
+import { hookOf, reasonsById, summarize, wayOf } from '../../shared/summary';
 import { downloadJson } from '../download';
 import { Compare, compareNote, type Comparison } from './Compare';
 import { Memos } from './Memos';
@@ -15,7 +15,19 @@ import { causeColour, Timeline } from './Timeline';
  * A part of the report that folds away. The parts read first start open, the long tail starts closed; a fold a
  * person closed stays closed while they look around, because the `open` it was drawn with does not change.
  */
-const Fold = ({ id, title, note, open = true, children }: { id: string; title: string; note?: string; open?: boolean; children: ComponentChildren }) => (
+const Fold = ({
+  id,
+  title,
+  note,
+  open = true,
+  children,
+}: {
+  id: string;
+  title: string;
+  note?: string;
+  open?: boolean;
+  children: ComponentChildren;
+}) => (
   <details class="fold" data-fold={id} open={open}>
     <summary>
       <span class="fold-title">{title}</span>
@@ -239,7 +251,8 @@ export function Result({
             // Recorded fast: its reasons are a sample of its instances, its counts are not.
             if (c.sampled) badges.push({ text: 'reasons sampled' });
             const root = rootByName.get(c.name);
-            return <StatCard key={c.name} name={c.name} source={root?.source} badges={badges} reasons={stated(c, root)} />;
+            const ways = c.chains?.map((chain) => ({ n: chain.n, ...wayOf(rec, chain.links) }));
+            return <StatCard key={c.name} name={c.name} source={root?.source} badges={badges} reasons={stated(c, root)} ways={ways} />;
           })}
           {hidden ? <p class="muted">{`+ ${hidden} wrappers and components of packages`}</p> : null}
         </Fold>
@@ -278,7 +291,9 @@ export function Result({
             type="button"
             class="repeat"
             data-rpr="repeat"
-            title={`Reload the page and do these ${plan.steps.length} actions again at the same pace, recording — to see what a change of the code did${
+            title={`Reload the page and do these ${
+              plan.steps.length
+            } actions again at the same pace, recording — to see what a change of the code did${
               plan.skipped.length ? `. Not repeated: ${plan.skipped.join('; ')}` : ''
             }`}
             onClick={onRepeat}
@@ -289,7 +304,13 @@ export function Result({
         <button type="button" onClick={() => downloadJson(rec)}>
           Download
         </button>
-        <button type="button" data-rpr="wide" aria-pressed={wide} title={wide ? 'Back to the narrow panel' : 'A wider panel for the report'} onClick={onWide}>
+        <button
+          type="button"
+          data-rpr="wide"
+          aria-pressed={wide}
+          title={wide ? 'Back to the narrow panel' : 'A wider panel for the report'}
+          onClick={onWide}
+        >
           {wide ? '⤡ Narrow' : '⤢ Wide'}
         </button>
         <button type="button" onClick={onDismiss}>

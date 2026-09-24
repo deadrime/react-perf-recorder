@@ -136,7 +136,10 @@ export async function recordPage(options: RecordPageOptions, sessionsDir: string
     // A browser of the person's own already carries their session; a fresh one gets whatever `login` saved.
     const context = connected
       ? browser.contexts()[0] ?? (await browser.newContext())
-      : await browser.newContext({ ...(hasState ? { storageState: state } : {}), ...(sizeOf(options.viewport) ? { viewport: sizeOf(options.viewport) } : {}) });
+      : await browser.newContext({
+          ...(hasState ? { storageState: state } : {}),
+          ...(sizeOf(options.viewport) ? { viewport: sizeOf(options.viewport) } : {}),
+        });
     page = (await context.newPage()) as unknown as PageLike;
     page.setDefaultTimeout(timeout);
     if (options.throttle && options.throttle > 1) {
@@ -157,13 +160,17 @@ export async function recordPage(options: RecordPageOptions, sessionsDir: string
     };
     // A recording from the load starts in the page before this script can say anything: what it should be about
     // is left where the panel's own load button leaves it, for the page to pick up as it boots.
-    if (options.fromLoad) await page.addInitScript(({ key, value }) => {
-      try {
-        sessionStorage.setItem(key, value);
-      } catch {
-        // No storage: the page records the whole app, and the check below says so.
-      }
-    }, { key: ON_LOAD_KEY, value: JSON.stringify(start) });
+    if (options.fromLoad)
+      await page.addInitScript(
+        ({ key, value }) => {
+          try {
+            sessionStorage.setItem(key, value);
+          } catch {
+            // No storage: the page records the whole app, and the check below says so.
+          }
+        },
+        { key: ON_LOAD_KEY, value: JSON.stringify(start) }
+      );
     const requested = options.fromLoad ? withLoadFlag(url) : url;
     await page.goto(requested, { waitUntil: 'load' });
     try {
@@ -191,7 +198,11 @@ export async function recordPage(options: RecordPageOptions, sessionsDir: string
         .catch(() => false);
       if (!started) {
         const names = await page.evaluate<string[]>(`${ENGINE}.engine.componentNames()`).catch(() => []);
-        throw new Error(`the recording from the page load did not start${scope ? `: ${JSON.stringify(scope)} is not mounted` : ''}${names.length ? `; the page has ${names.slice(0, 20).join(', ')}` : ''}`);
+        throw new Error(
+          `the recording from the page load did not start${scope ? `: ${JSON.stringify(scope)} is not mounted` : ''}${
+            names.length ? `; the page has ${names.slice(0, 20).join(', ')}` : ''
+          }`
+        );
       }
     } else {
       try {

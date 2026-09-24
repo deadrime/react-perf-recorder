@@ -5,7 +5,7 @@ import { flushSync } from 'react-dom';
 import { findRoots, fiberFromNode } from '../../src/core/fiber';
 import { PluginHost } from '../../src/core/plugins';
 import { scopeFromFiber } from '../../src/core/scope';
-import { hookText } from '../../src/shared/summary';
+import { hookText, reasonText } from '../../src/shared/summary';
 import { config, flush, makeRecorder, mount, reasonsOf } from './helpers';
 
 type Setter = (n: number) => void;
@@ -225,6 +225,40 @@ describe('Recorder', () => {
     expect(item(sampled).reasons.reduce((n, [, count]) => n + count, 0)).toBe(100);
     expect(sampled.warnings.some((w) => w.includes('are a sample'))).toBe(true);
     expect(exact.warnings.some((w) => w.includes('are a sample'))).toBe(false);
+  });
+
+  it('keeps the way each render came down: the root and why, then the prop each parent handed on', () => {
+    let set!: Setter;
+    const Badge = ({ count }: { count: number }) => <b>{count}</b>;
+    const Line = ({ online }: { online: number }) => (
+      <p>
+        <Badge count={online} />
+      </p>
+    );
+    const Stats = () => {
+      const [online, setOnline] = useState(0);
+      set = setOnline;
+      return <Line online={online} />;
+    };
+    mount(<Stats />);
+    const { recorder } = makeRecorder();
+    recorder.start();
+    flush(() => set(1));
+    flush(() => set(2));
+    const rec = recorder.stop();
+    const badge = rec.components.find((c) => c.name === 'Badge')!;
+    expect(badge.chains).toHaveLength(1);
+    const [{ n, links }] = badge.chains!;
+    expect(n).toBe(2);
+    expect(links.map((l) => l.name)).toEqual(['Stats', 'Line', 'Badge']);
+    // The root is the report's root, with its own reason; each link below says what its parent changed.
+    expect(rec.roots[links[0].root!].name).toBe('Stats');
+    const text = (id?: number) => reasonText(rec.reasons.find((r) => r.i === id)!);
+    expect(text(links[0].reason)).toMatch(/^state #0/);
+    expect(text(links[1].reason)).toBe('parent: props online');
+    expect(text(links[2].reason)).toBe('parent: props count');
+    // The root itself has no chain: nothing above it.
+    expect(rec.components.find((c) => c.name === 'Stats')!.chains).toBeUndefined();
   });
 
   it('lists the useMemo that recomputes on every render, and says which dependency moved', () => {

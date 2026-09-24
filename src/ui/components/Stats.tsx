@@ -2,7 +2,7 @@
 import type { JSX } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { HookInfo, ReasonInfo } from '../../shared/schema';
-import { hookChain } from '../../shared/summary';
+import { hookChain, type WayStep } from '../../shared/summary';
 
 /** A number worth seeing at a glance next to a component's name; `warn` is for the ones that mean wasted work. */
 export interface Badge {
@@ -55,8 +55,7 @@ export const whatOf = (reason: ReasonInfo) => {
 };
 
 /** A reason opens only when there is more under it than the row already says. */
-const hasDetail = (entry: StatReason) =>
-  Boolean(entry.reason?.selector || entry.hook?.site || entry.hook?.code || hookChain(entry.hook, 'short'));
+const hasDetail = (entry: StatReason) => Boolean(entry.reason?.selector || entry.hook?.site || entry.hook?.code || hookChain(entry.hook, 'short'));
 
 const copy = (text: string) => void navigator.clipboard?.writeText(text);
 
@@ -185,17 +184,26 @@ export const Kpis = ({ items }: { items: Kpi[] }): JSX.Element => (
  * One component of the report: its name and numbers on the head, a row per reason under it; the hooks and the line
  * to open are one click away, so the reading stays short.
  */
+/** `core:timer setInterval @ src/basics/StateDown.tsx` reads as `setInterval @ StateDown.tsx`; the title keeps the whole key. */
+const shortCause = (key: string) =>
+  key
+    .replace(/^core:(timer )?/, '')
+    .replace(/@ \S*\/([^/\s]+)$/, '@ $1');
+
 export function StatCard({
   name,
   source,
   badges,
   reasons,
+  ways,
   openFirst,
 }: {
   name: string;
   source?: string;
   badges: Badge[];
   reasons: StatReason[];
+  /** How its renders came down from their roots, most frequent first. */
+  ways?: Array<{ n: number; cause?: string; steps: WayStep[] }>;
   /** Roots open their leading reason: it is the answer the report was opened for. */
   openFirst?: boolean;
 }): JSX.Element {
@@ -206,7 +214,12 @@ export function StatCard({
       <div class="stat-head">
         <span class="stat-name">{name}</span>
         {badges.map((badge) => (
-          <span class="badge" key={badge.text} data-tone={badge.tone} title={/ wasted$/.test(badge.text) ? 'Renders after which nothing in the DOM of that component changed' : undefined}>
+          <span
+            class="badge"
+            key={badge.text}
+            data-tone={badge.tone}
+            title={/ wasted$/.test(badge.text) ? 'Renders after which nothing in the DOM of that component changed' : undefined}
+          >
             {badge.text}
           </span>
         ))}
@@ -215,6 +228,29 @@ export function StatCard({
       {reasons.map((entry, i) => (
         <ReasonRow key={`${entry.id}-${i}`} entry={entry} open={open === i} onToggle={() => setOpen(open === i ? -1 : i)} />
       ))}
+      {ways?.length ? (
+        <div class="ways">
+          {ways.map((way, i) => (
+            <div class="way" data-rpr="way" key={i} title={`${way.n} renders came down this way`}>
+              <span class="way-n">{`×${way.n}`}</span>
+              <ol class="way-steps">
+                {way.cause ? (
+                  <li class="way-cause" title={way.cause}>
+                    {shortCause(way.cause)}
+                  </li>
+                ) : null}
+                {way.steps.map((step, j) => (
+                  // Props equal on a link: the parent rendered for nothing this child needed — a memo would stop it here.
+                  <li key={j} class="way-step" data-equal={step.equal ? 'true' : undefined} data-skipped={step.skipped ? 'true' : undefined}>
+                    <span class="way-name">{step.name}</span>
+                    {step.why ? <span class="way-why">{step.why}</span> : null}
+                  </li>
+                ))}
+              </ol>
+            </div>
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -114,7 +114,9 @@ after which the DOM did not change), the slowest action — and the root to fix,
 opened on its reason, hook chain and line. When no root wasted a render, the block says which rendered most
 instead of calling it a cause. Warnings come right under it, then the actions, the other roots and the timeline;
 the causes above the tracks are their colour legend, and pressing one lights up the commits it caused. Components
-and plugin notes start folded. The id, `Copy id`, `↻ Repeat`, `Download`, `⤢ Wide` and `Dismiss` stay at the
+and plugin notes start folded; a component's card shows the ways its renders came down — the cause, the root and
+why it rendered, the props each parent handed on — with the link where props were equal marked, since a `memo`
+there stops the rest. The id, `Copy id`, `↻ Repeat`, `Download`, `⤢ Wide` and `Dismiss` stay at the
 bottom of the panel however far the report is scrolled.
 
 **Memos that miss.** A `useMemo` or `useCallback` that recomputed on at least half of its component's renders is

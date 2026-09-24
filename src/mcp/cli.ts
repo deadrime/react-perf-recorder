@@ -17,7 +17,11 @@ const dir = resolveDir(flag('dir'));
 async function main() {
   if (command === 'mcp') {
     // --reload: the server is a child that is started again whenever this file is rebuilt.
-    if (args.includes('--reload')) superviseStdio(process.argv[1], args.filter((a) => a !== '--reload'));
+    if (args.includes('--reload'))
+      superviseStdio(
+        process.argv[1],
+        args.filter((a) => a !== '--reload')
+      );
     else await runStdio(dir);
     return;
   }

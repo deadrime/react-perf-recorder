@@ -71,7 +71,7 @@ export const STYLES = `
 .box .tag { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 /* Whatever is a name, a number or a piece of code reads in the monospace face: it is copied, compared and searched. */
 code, input[type="text"], .who, .what, .n, .badge, .kind, .flag, .sel, .chain, .site, .code, .stat-name, .stat-src,
-.scope, .cause-key, .cause-chip, .kpi-value, .saved, .action-at, header .live, .picker li, [class^="tl-"], .tl-detail * {
+.scope, .cause-key, .way-name, .way-cause, .cause-chip, .kpi-value, .saved, .action-at, header .live, .picker li, [class^="tl-"], .tl-detail * {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 button:focus-visible, summary:focus-visible, .reason-head:focus-visible { outline: 1px solid var(--focus); outline-offset: 1px; }
@@ -293,6 +293,18 @@ details.fold[open] > summary::before { content: '▾'; }
 .stat-name { font-weight: 700; color: var(--text-strong); }
 .stat-src { margin-left: auto; max-width: 190px; color: var(--faint-strong); }
 .stat-src:hover { color: var(--text-strong); }
+/* A render's way down from its root: the cause, the root and its reason, then what each parent handed on. */
+.ways { margin-top: 3px; padding-top: 3px; border-top: 1px dashed var(--rule-soft); }
+.way { display: flex; align-items: baseline; gap: 6px; margin: 2px 0; }
+.way-n { flex: none; min-width: 26px; color: var(--number); font-size: 11px; font-variant-numeric: tabular-nums; }
+.way-steps { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 0; margin: 0; padding: 0; list-style: none; min-width: 0; }
+.way-steps > li { display: inline-flex; align-items: baseline; gap: 4px; min-width: 0; }
+.way-steps > li + li::before { content: '›'; margin: 0 5px; color: var(--faint); }
+.way-cause { color: var(--muted); font-size: 11px; }
+.way-name { color: var(--text-strong); }
+.way-why { color: var(--muted); font-size: 11px; }
+.way-step[data-equal="true"] .way-why { color: var(--warn); }
+.way-step[data-skipped="true"] .way-name { color: var(--faint); }
 .badge { padding: 0 5px; border-radius: 8px; background: var(--badge); color: var(--label); font-size: 10px; }
 .badge[data-tone="count"] { color: var(--number); }
 .badge[data-tone="warn"] { background: color-mix(in srgb, var(--warn) 14%, transparent); color: var(--warn); }

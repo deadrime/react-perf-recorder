@@ -29,7 +29,6 @@ interface RootAgg {
   lanes: Map<string, number>;
 }
 
-
 /**
  * Rebuilds a partial recording from the streamed events of a session that is still running or was cut by a reload.
  * Hook names, components and plugin sections exist only in the final recording.

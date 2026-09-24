@@ -26,7 +26,14 @@ export function Controls({ p }: { p: PanelViewProps }): JSX.Element {
   const scoped = Boolean(p.scope);
   return (
     <div class="row controls">
-      <button type="button" class="rec" data-rpr="record" title={`Start recording (${p.shortcuts.record})`} hidden={p.recording || p.busy} onClick={p.on.record}>
+      <button
+        type="button"
+        class="rec"
+        data-rpr="record"
+        title={`Start recording (${p.shortcuts.record})`}
+        hidden={p.recording || p.busy}
+        onClick={p.on.record}
+      >
         ● Rec
       </button>
       <button
@@ -75,7 +82,11 @@ export function Controls({ p }: { p: PanelViewProps }): JSX.Element {
           class="icon"
           data-rpr="copy-scope"
           data-copied={p.copied === 'scope' ? 'true' : undefined}
-          title={p.copied === 'scope' ? 'Copied — paste it into the chat with the assistant' : 'Copy the area as text for an AI assistant: component, file, path, DOM'}
+          title={
+            p.copied === 'scope'
+              ? 'Copied — paste it into the chat with the assistant'
+              : 'Copy the area as text for an AI assistant: component, file, path, DOM'
+          }
           aria-label={p.copied === 'scope' ? 'Area copied' : 'Copy the area for an AI assistant'}
           hidden={!scoped}
           onClick={p.on.copyScope}

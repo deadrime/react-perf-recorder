@@ -105,7 +105,9 @@ const Watching = ({ p }: { p: PanelViewProps }) => (
 const LiveRoots = ({ p }: { p: PanelViewProps }) => (
   <div class="live-roots" data-rpr="live-roots">
     {/* The block keeps its height from the first moment, so say why it is empty rather than leave a hole. */}
-    {p.live && !p.live.topRoots.length ? <span class="live-empty">{p.scope ? 'Nothing has rendered in the area yet' : 'Nothing has rendered yet'}</span> : null}
+    {p.live && !p.live.topRoots.length ? (
+      <span class="live-empty">{p.scope ? 'Nothing has rendered in the area yet' : 'Nothing has rendered yet'}</span>
+    ) : null}
     {(p.live?.topRoots ?? []).map((r) => (
       <div class="live-root" key={r.name}>
         <span class="who">{r.name}</span>
@@ -162,7 +164,14 @@ const View = (p: PanelViewProps): JSX.Element => (
         </button>
       </header>
       {p.replaying ? (
-        <div class="replay-bar" data-rpr="replay-bar" role="progressbar" aria-valuemin={0} aria-valuemax={p.replaying.of} aria-valuenow={p.replaying.at}>
+        <div
+          class="replay-bar"
+          data-rpr="replay-bar"
+          role="progressbar"
+          aria-valuemin={0}
+          aria-valuemax={p.replaying.of}
+          aria-valuenow={p.replaying.at}
+        >
           <i style={{ width: `${(p.replaying.at / Math.max(1, p.replaying.of)) * 100}%` }} />
         </div>
       ) : null}
@@ -189,7 +198,17 @@ const View = (p: PanelViewProps): JSX.Element => (
         {p.message.text}
       </div>
       <div class="result" data-rpr="result">
-        {p.result ? <Result rec={p.result} compared={p.compared} onRepeat={p.on.repeat} onOutline={p.on.outlineRoots} onDismiss={p.on.dismissResult} wide={p.wide} onWide={() => p.on.setWide(!p.wide)} /> : null}
+        {p.result ? (
+          <Result
+            rec={p.result}
+            compared={p.compared}
+            onRepeat={p.on.repeat}
+            onOutline={p.on.outlineRoots}
+            onDismiss={p.on.dismissResult}
+            wide={p.wide}
+            onWide={() => p.on.setWide(!p.wide)}
+          />
+        ) : null}
       </div>
     </div>
   </div>

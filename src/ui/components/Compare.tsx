@@ -10,8 +10,7 @@ export interface Comparison extends DigestComparison {
 const MAX_ROWS = 5;
 
 /** Under a tenth, or under one render, is noise between two runs by hand. */
-const toneOf = (d: Delta) =>
-  d.pct === null || Math.abs(d.pct) < 10 || Math.abs(d.delta ?? 0) < 1 ? undefined : d.pct < 0 ? 'good' : 'bad';
+const toneOf = (d: Delta) => (d.pct === null || Math.abs(d.pct) < 10 || Math.abs(d.delta ?? 0) < 1 ? undefined : d.pct < 0 ? 'good' : 'bad');
 const num = (n: number | null) => (n === null ? '–' : String(n));
 const change = (d: Delta) => (toneOf(d) ? `${d.pct! > 0 ? '+' : '−'}${Math.abs(d.pct!)}%` : 'same');
 const VERB: Record<string, string> = { typing: 'type', click: 'click', key: 'key', change: 'change', submit: 'submit', scroll: 'scroll' };

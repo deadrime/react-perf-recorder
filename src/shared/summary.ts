@@ -1,4 +1,4 @@
-import type { ActionRecord, HookInfo, MemoHookStat, PluginSection, ReasonInfo, RecordingV2, RootStat } from './schema';
+import type { ActionRecord, ChainLink, HookInfo, MemoHookStat, PluginSection, ReasonInfo, RecordingV2, RootStat } from './schema';
 
 export interface RootLine {
   root: string;
@@ -130,6 +130,42 @@ export function reasonText(reason: Omit<ReasonInfo, 'i' | 'text'>): string {
 
 /** The sentence of a reason: what the recording stored, or what its fields say. */
 export const textOf = (reason: Pick<ReasonInfo, 'kind'> & Partial<ReasonInfo>) => reason.text ?? reasonText(reason);
+
+/** A link's reason in the fewest words: a parent's link is only the props it changed. */
+export function linkWhy(reason: ReasonInfo | undefined): string {
+  if (!reason) return '';
+  if (reason.kind !== 'parent') return textOf(reason);
+  if (reason.equal) return 'props equal';
+  const props = [names(reason.changed), reason.sameRef?.length ? `same: ${names(reason.sameRef)}` : ''].filter(Boolean).join(' | ');
+  return props || 'children';
+}
+
+/** One step of a way down, ready to print; the first carries its root's leading cause. */
+export interface WayStep {
+  name: string;
+  why: string;
+  /** Props equal: the render a memo would have saved. */
+  equal?: boolean;
+  skipped?: number;
+}
+
+export function wayOf(rec: Pick<RecordingV2, 'roots' | 'outsideRoots' | 'reasons'>, links: ChainLink[]): { cause?: string; steps: WayStep[] } {
+  const reasons = reasonsById(rec.reasons);
+  const root = links[0]?.root !== undefined ? [...rec.roots, ...rec.outsideRoots][links[0].root] : undefined;
+  const cause = root?.causes.find(([key]) => key !== 'core:none')?.[0];
+  const steps = links.map((link): WayStep => {
+    if (link.skipped) return { name: '…', why: `${link.skipped} more`, skipped: link.skipped };
+    const reason = link.reason !== undefined ? reasons.get(link.reason) : undefined;
+    return { name: link.name, why: linkWhy(reason), ...(reason?.kind === 'parent' && reason.equal ? { equal: true } : {}) };
+  });
+  return { ...(cause ? { cause } : {}), steps };
+}
+
+/** `react-query:fetch ["presence"] › Stats · state #0 › Line · online › Badge · count` */
+export function wayText(rec: Pick<RecordingV2, 'roots' | 'outsideRoots' | 'reasons'>, links: ChainLink[]): string {
+  const { cause, steps } = wayOf(rec, links);
+  return [cause, ...steps.map((s) => (s.skipped ? `… ${s.skipped} more` : s.why ? `${s.name} · ${s.why}` : s.name))].filter(Boolean).join(' › ');
+}
 
 /** Reasons of a recording by id, for everything that prints them. */
 export const reasonsById = (reasons: ReasonInfo[] = []) => new Map(reasons.map((r) => [r.i, r]));

@@ -24,6 +24,17 @@ export interface PluginSection<Data = unknown> {
   data?: Data;
 }
 
+/**
+ * One render on the way down: the root first (`root` indexes the recording's roots, inside then outside), the
+ * component itself last. `reason` indexes `RecordingV2.reasons`; `skipped` stands for links left out of a long chain.
+ */
+export interface ChainLink {
+  name: string;
+  reason?: number;
+  root?: number;
+  skipped?: number;
+}
+
 /** A useMemo or useCallback that recomputed on at least half of its component's renders. */
 export interface MemoHookStat {
   component: string;
@@ -291,6 +302,8 @@ export interface RecordingV2 {
     byParent: number;
     memo?: true;
     reasons: Array<[number, number]>;
+    /** Its most frequent ways down from a root, with how many renders came each way; only for renders a parent caused. */
+    chains?: Array<{ n: number; links: ChainLink[] }>;
     /** Its parent-caused renders had their reasons worked out for a sample of the instances in a commit, not all. */
     sampled?: true;
   }>;

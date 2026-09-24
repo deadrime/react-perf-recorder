@@ -209,7 +209,13 @@ function CommitDetail({ rec, commit, more }: { rec: RecordingV2; commit: CommitR
       <div class="tl-head">
         <b>{`${(commit.atMs / 1000).toFixed(2)}s`}</b>
         <span class="badge" data-tone="count">{`${commit.renders} renders`}</span>
-        {commit.noDom ? <span class="badge" data-tone="warn" title="Renders after which nothing in the DOM of that component changed">{`${commit.noDom} wasted`}</span> : null}
+        {commit.noDom ? (
+          <span
+            class="badge"
+            data-tone="warn"
+            title="Renders after which nothing in the DOM of that component changed"
+          >{`${commit.noDom} wasted`}</span>
+        ) : null}
         {commit.ms ? <span class="badge">{`${commit.ms}ms`}</span> : null}
         {commit.lane ? <span class="badge">{commit.lane}</span> : null}
         {commit.event ? <span class="badge">{commit.event}</span> : null}
@@ -270,7 +276,13 @@ function ActionDetail({ rec, action, onCommit }: { rec: RecordingV2; action: Act
               {`${(commit.atMs / 1000).toFixed(2)}s`}
             </button>
             <span class="badge" data-tone="count">{`${commit.renders} renders`}</span>
-            {commit.noDom ? <span class="badge" data-tone="warn" title="Renders after which nothing in the DOM of that component changed">{`${commit.noDom} wasted`}</span> : null}
+            {commit.noDom ? (
+              <span
+                class="badge"
+                data-tone="warn"
+                title="Renders after which nothing in the DOM of that component changed"
+              >{`${commit.noDom} wasted`}</span>
+            ) : null}
             {root && lead ? (
               <ReasonLine
                 who={`${root.name}${lead.hits > 1 ? ` ×${lead.hits}` : ''}`}
@@ -309,7 +321,9 @@ function WindowDetail({ rec, window: shown }: { rec: RecordingV2; window: { from
         <b>{`${(shown.from / 1000).toFixed(2)}–${(shown.to / 1000).toFixed(2)}s`}</b>
         <span class="badge">{`${inside.length} commits`}</span>
         <span class="badge" data-tone="count">{`${renders} renders`}</span>
-        {noDom ? <span class="badge" data-tone="warn" title="Renders after which nothing in the DOM of that component changed">{`${noDom} wasted`}</span> : null}
+        {noDom ? (
+          <span class="badge" data-tone="warn" title="Renders after which nothing in the DOM of that component changed">{`${noDom} wasted`}</span>
+        ) : null}
       </div>
       {byRoot.size ? (
         <div class="tl-row">
@@ -589,7 +603,13 @@ export function Timeline({
           +
         </button>
         <span class="muted">{zoom <= MIN_ZOOM ? 'fit' : `×${zoom < 10 ? zoom.toFixed(1) : Math.round(zoom)}`}</span>
-        <button type="button" data-rpr="tl-reset" hidden={!narrowed} title="Back to the whole recording, with nothing picked (or double-click the overview)" onClick={showAll}>
+        <button
+          type="button"
+          data-rpr="tl-reset"
+          hidden={!narrowed}
+          title="Back to the whole recording, with nothing picked (or double-click the overview)"
+          onClick={showAll}
+        >
           Show all
         </button>
         {/* The count grows to the left of the box, so ticking it never moves the box out from under the pointer. */}

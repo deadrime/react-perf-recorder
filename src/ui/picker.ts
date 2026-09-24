@@ -239,9 +239,7 @@ export class Picker {
       parent = node;
     }
     nodes[nodes.length - 1].open = false;
-    const target = focus
-      ? nodes.find((n) => sameFiber(n.owner.fiber, focus))
-      : [...nodes].reverse().find((n) => !this.engine.hidden(n.owner, shown));
+    const target = focus ? nodes.find((n) => sameFiber(n.owner.fiber, focus)) : [...nodes].reverse().find((n) => !this.engine.hidden(n.owner, shown));
     this.current = target ?? nodes[nodes.length - 1];
     this.frozen = true;
     // The neighbourhood of the picked component, not just the path to it: its siblings and what is inside it.

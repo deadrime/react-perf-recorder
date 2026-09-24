@@ -14,6 +14,7 @@ import {
   type SessionEvent,
   type CommitRecord,
   type ReasonInfo,
+  type ChainLink,
 } from '../shared/schema';
 import { buildSegments, eventName, USER_EVENTS, type SegmentCommit } from '../shared/segments';
 import { safeUrl } from '../shared/url';
@@ -136,7 +137,17 @@ interface ComponentAgg {
   byParent: number;
   memo: boolean;
   reasons: Map<number, number>;
+  /** Chain node id → renders that came down that chain from their root. */
+  chains: Map<number, number>;
   sampled?: boolean;
+}
+
+/** A link of a render chain: who rendered and why, and the link above it; a root's link has none above. */
+interface ChainNode {
+  up: number;
+  name: string;
+  reason: number;
+  root?: RootAgg;
 }
 
 interface CommitState {
@@ -177,7 +188,8 @@ type StackItem = [
   path: PathRef | null,
   rootKey: string | null,
   pending: [string, Fiber, boolean] | null,
-  zone: string | null
+  zone: string | null,
+  chain: number
 ];
 
 const MAX_TIMES = 2000;
@@ -186,6 +198,9 @@ const SAMPLED_PARENTS = 50;
 /** Stacks are read only while a commit window is unexplained; a burst of updates does not pay for all of them. */
 const MAX_UPDATE_NOTES = 10;
 const MAX_CAUSE_KEYS = 300;
+/** Distinct links of render chains; past it, chains are not kept, counts and reasons still are. */
+const MAX_CHAIN_NODES = 50_000;
+const CHAINS_PER_COMPONENT = 3;
 const MAX_SEGMENT_COMMITS = 20_000;
 
 const currentEventType = (): string | undefined => {
@@ -542,9 +557,10 @@ export class Recorder {
     const highlight = Boolean(this.deps.highlight) && this.deps.highlight!.enabled !== false && this.options.highlight !== false;
     if (highlight) this.highlighted = true;
     const base = path ? path.split(' < ') : [];
-    const stack: StackItem[] = [[start, parentRendered, null, rootKey, null, null]];
+    const stack: StackItem[] = [[start, parentRendered, null, rootKey, null, null, -1]];
     while (stack.length) {
-      const [f, parentDid, currentPath, currentKey, pending, zoneTag] = stack.pop()!;
+      const [f, parentDid, currentPath, currentKey, pending, zoneTag, currentChain] = stack.pop()!;
+      let chain = currentChain;
       const prev = this.prevOf(f);
       const rendered = didRender(prev, f);
       const name = nameOf(f);
@@ -584,10 +600,12 @@ export class Recorder {
           prev !== undefined &&
           (prev.props === f.memoizedProps ||
             ((f.tag === Tag.MemoComponent || f.tag === Tag.SimpleMemoComponent) && shallowEqual(prev.props, f.memoizedProps)));
+        let rootAgg: RootAgg | null = null;
         if (!parentDid || ownWork) {
           const hit = this.hitRoot(f, name, pathText(currentPath, base), prev!, c, false);
           key = hit.agg.key;
           reasons = hit.reasons;
+          rootAgg = hit.agg;
         } else if (isComposite(f) && !isProvider(name)) {
           comp.byParent++;
           const sampled = c.sampledParents?.get(comp) ?? 0;
@@ -596,9 +614,17 @@ export class Recorder {
             reasons = parentReason(prev!, f, this.deps.plugins);
           } else comp.sampled = true;
         }
+        let firstId = -1;
         for (const reason of reasons ?? []) {
           const id = this.reasonId(reason);
+          if (firstId < 0) firstId = id;
           comp.reasons.set(id, (comp.reasons.get(id) ?? 0) + 1);
+        }
+        if (rootAgg) chain = this.chainLink(-1, name, firstId, rootAgg);
+        // A link of its own for what the app wrote; a package's internals and bare wrappers pass the chain through.
+        else if (chain >= 0 && isComposite(f) && !isProvider(name) && !comp.library && !comp.wrapper) {
+          chain = this.chainLink(chain, name, firstId);
+          comp.chains.set(chain, (comp.chains.get(chain) ?? 0) + 1);
         }
         const agg = key ? this.rootsByKey.get(key) : undefined;
         if (agg) {
@@ -627,13 +653,51 @@ export class Recorder {
       }
       // A fiber that did not render has the snapshot it had: nothing to write.
       if (rendered || !prev) this.remember(f);
-      if (!(isolate && f === start) && f.sibling) stack.push([f.sibling, parentDid, currentPath, currentKey, pending, zoneTag]);
+      if (!(isolate && f === start) && f.sibling) stack.push([f.sibling, parentDid, currentPath, currentKey, pending, zoneTag, currentChain]);
       const untouched = this.prune && f.alternate !== null && f.child === f.alternate.child;
       if (f.child && !untouched) {
         const childPath = name && !this.structural(name, f) ? { name, up: currentPath } : currentPath;
-        stack.push([f.child, rendered, childPath, rendered ? key : currentKey, nextPending, zone]);
+        stack.push([f.child, rendered, childPath, rendered ? key : currentKey, nextPending, zone, rendered ? chain : -1]);
       }
     }
+  }
+
+  private readonly chainNodes: ChainNode[] = [];
+  /** Interned links: parent id → name → reason id → node id. */
+  private readonly chainIndex = new Map<number, Map<string, Map<number, number>>>();
+  /** A root's links are told apart by the root itself: two roots of one name start two chains. */
+  private readonly rootChains = new Map<RootAgg, Map<number, number>>();
+
+  private chainLink(up: number, name: string, reason: number, root?: RootAgg): number {
+    let byReason: Map<number, number> | undefined;
+    if (root) {
+      byReason = this.rootChains.get(root);
+      if (!byReason) this.rootChains.set(root, (byReason = new Map()));
+    } else {
+      let byName = this.chainIndex.get(up);
+      if (!byName) this.chainIndex.set(up, (byName = new Map()));
+      byReason = byName.get(name);
+      if (!byReason) byName.set(name, (byReason = new Map()));
+    }
+    const known = byReason.get(reason);
+    if (known !== undefined) return known;
+    if (this.chainNodes.length >= MAX_CHAIN_NODES) return -1;
+    const id = this.chainNodes.length;
+    this.chainNodes.push({ up, name, reason, ...(root ? { root } : {}) });
+    byReason.set(reason, id);
+    return id;
+  }
+
+  /** The links of a chain from its root down; a long one keeps its root, the two below it and the last four. */
+  private chainLinks(id: number, rootIndex: (agg: RootAgg) => number | undefined): ChainLink[] {
+    const links: ChainLink[] = [];
+    for (let at = id; at >= 0; at = this.chainNodes[at].up) {
+      const node = this.chainNodes[at];
+      const root = node.root ? rootIndex(node.root) : undefined;
+      links.push({ name: node.name, ...(node.reason >= 0 ? { reason: node.reason } : {}), ...(root !== undefined ? { root } : {}) });
+    }
+    links.reverse();
+    return links.length > 8 ? [...links.slice(0, 3), { name: '…', skipped: links.length - 7 }, ...links.slice(-4)] : links;
   }
 
   private componentOf(name: string, f: Fiber): ComponentAgg {
@@ -648,6 +712,7 @@ export class Recorder {
         byParent: 0,
         memo: f.tag === Tag.MemoComponent || f.tag === Tag.SimpleMemoComponent,
         reasons: new Map(),
+        chains: new Map(),
       };
       this.components.set(name, comp);
     }
@@ -1170,6 +1235,14 @@ export class Recorder {
           byParent: s.byParent,
           ...(s.memo ? { memo: true as const } : {}),
           reasons: topEntries(s.reasons, 4),
+          ...(s.chains.size
+            ? {
+                chains: topEntries(s.chains, CHAINS_PER_COMPONENT).map(([id, n]) => ({
+                  n,
+                  links: this.chainLinks(id, (agg) => remap.get(agg.index)),
+                })),
+              }
+            : {}),
           ...(s.sampled ? { sampled: true as const } : {}),
         })),
       ...(this.watch.size

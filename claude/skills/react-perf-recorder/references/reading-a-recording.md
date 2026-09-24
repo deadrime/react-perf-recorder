@@ -44,6 +44,9 @@ name of a memoized one, `useShallow(<selector>)`, or the text of an inline arrow
 
 - `parent: props price | same: style, onClick` — what broke `memo`, and which props were only new references;
 - `parent: props equal` — `memo` would have skipped this render entirely;
+- `chains` — up to three ways its renders came down, as `way`: the root's leading cause, the root and its reason,
+  then what each parent handed on — `react-query:fetch ["presence"] › Stats · state #0 › Line · online › Badge ·
+  count`. The first link with `props equal` is where a `memo` stops the whole rest of the way;
 - `library` / `wrapper` mark a component of a package and an unnamed one (`Anonymous`, `Memo`, `ForwardRef`). The
   app's own come first; the picker tree and root paths hide package internals and the providers that only hand a
   context down, each behind a checkbox. Which is which is decided by the file of the element a component rendered:
