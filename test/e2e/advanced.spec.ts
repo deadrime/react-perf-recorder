@@ -118,11 +118,17 @@ test("memo cards render through a package's context when its items are a new arr
 test('a selector of the whole list renders every card for a star; a selector of the card, the one starred', async ({ page }) => {
   await open(page, 'redux');
   const before = { broken: await countsOf(page, 'broken'), fixed: await countsOf(page, 'fixed') };
-  // One store for both sides: a star on the right changes the same list the left reads.
-  await page.locator('[data-case="fixed"]').getByTestId('like-Pikachu').click();
-  await page.locator('[data-case="fixed"]').getByTestId('like-Mew').click();
+  // The button stars the same card in both sides' stores: twice, two cards.
+  await page.getByTestId('star-next').click();
+  await page.getByTestId('star-next').click();
   const after = { broken: await countsOf(page, 'broken'), fixed: await countsOf(page, 'fixed') };
   expect(after.broken.map((n, i) => n - before.broken[i])).toEqual(before.broken.map(() => 2));
   const grew = after.fixed.map((n, i) => n - before.fixed[i]);
   expect(grew.filter((n) => n > 0)).toEqual([1, 1]);
+  // A star on one side is that side's alone.
+  const fixedNow = await countsOf(page, 'fixed');
+  await page.locator('[data-case="broken"]').getByTestId('like-Onix').click();
+  expect(await countsOf(page, 'fixed')).toEqual(fixedNow);
+  await expect(page.locator('[data-case="broken"] li.on')).toHaveCount(3);
+  await expect(page.locator('[data-case="fixed"] li.on')).toHaveCount(2);
 });

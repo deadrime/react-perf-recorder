@@ -29,7 +29,7 @@ const Group = memo(({ side, name, value, onChange }: { side: string; name: strin
   const renders = useRenderCount();
   return (
     <li>
-      <span className="label">{name}</span>
+      <span className="label wide">{name}</span>
       {Object.entries(value).map(([field, text]) => (
         <input key={field} data-testid={`${side}-${name}-${field}`} value={text} onChange={(e) => onChange(name, field, e.target.value)} />
       ))}
@@ -42,7 +42,7 @@ const Form = ({ side, copy }: { side: string; copy: (values: Values, group: stri
   const [values, setValues] = useState(INITIAL);
   const onChange = useCallback<OnChange>((group, field, text) => setValues((v) => copy(v, group, field, text)), [copy]);
   return (
-    <ul className="rows">
+    <ul className="rows fields">
       {Object.entries(values).map(([name, value]) => (
         <Group key={name} side={side} name={name} value={value} onChange={onChange} />
       ))}

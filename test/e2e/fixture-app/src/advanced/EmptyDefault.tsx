@@ -72,9 +72,11 @@ export const EmptyDefault = () => (
       </>
     }
   >
-    <button type="button" data-testid="select-next" onClick={() => selected.set((i) => (i + 1) % IDS.length)}>
-      Select the next row
-    </button>
+    <p className="bar">
+      <button type="button" data-testid="select-next" onClick={() => selected.set((i) => (i + 1) % IDS.length)}>
+        Select the next row
+      </button>
+    </p>
     <div className="two">
       <Panel
         kind="broken"
