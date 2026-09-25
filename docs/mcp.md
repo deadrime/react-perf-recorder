@@ -9,26 +9,16 @@ overwrites them). By hand:
 { "mcpServers": { "react-perf-recorder": { "command": "node", "args": ["node_modules/react-perf-recorder/dist/cli.js", "mcp"] } } }
 ```
 
-| Tool                 |                                                                                                                                                                                                                                              |
-| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `list_recordings`    | Newest first, with status, area, commits, renders, the top root                                                                                                                                                                              |
-| `get_recording`      | `id` (`latest`, `latest-1`), `section`: `summary` (default), `actions`, `roots`, `outside`, `causes`, `components` (with ways), `timeline` (with each commit's cascade), `memos`, `frames`, `plugins`, `plugin:<name>`…; `hooks: 'short'`    |
-| `record_page`        | Opens a page in a browser of its own, records it and returns the session id. `ms`, `scope`, `watch`, `script`, `setup`, `replay` (a recording id: do its actions again), `sample`, `fromLoad`, `viewport`, `throttle`, `state`, `cdp`, `via` |
-| `wait_for_recording` | Blocks until the person finishes a recording (`until: 'done'`) or starts one                                                                                                                                                                 |
-| `compare_recordings` | Before/after: totals, roots, causes, the same actions, plugin metrics; warns when the runs differ                                                                                                                                            |
+Tools: `list_recordings`, `get_recording`, `record_page`, `wait_for_recording`, `compare_recordings`. Each describes
+its parameters itself, and an MCP client shows the descriptions; they are not repeated here, so they cannot go
+stale.
 
 The sessions folder comes from `--dir`, then `REACT_PERF_RECORDER_DIR`, then `./.agent-artifacts/perf-recorder`.
 
 `record_page` needs the dev server running and `playwright` installed in the project — it is never a dependency of
 this package. A browser of the machine's own — a CI image, a sandbox with a preinstalled Chromium of another
-version — is picked by `REACT_PERF_RECORDER_BROWSER=/path/to/chromium`. `scope: 'MessageList'` records one component
-by the name it is exported under; an area that is not mounted answers with the names that are.
-
-A `script` runs with the page already open and recording, and the recording stops when it returns: it does the
-actions only — a `goto` or `reload` in it ends the recording. What has to happen before the page opens (storage to
-seed, a sign-in, data built through the UI) goes in `setup`, a module of the same shape that is not recorded. With a
-`url` the page opens again after it, and only what outlives a page load carries over; without `url` the recording
-starts on the page setup left, with what it built in memory. A `replay` runs the setup of the recording it replays.
+version — is picked by `REACT_PERF_RECORDER_BROWSER=/path/to/chromium`, else the newest Chromium under
+`PLAYWRIGHT_BROWSERS_PATH`.
 
 A page behind a sign-in:
 

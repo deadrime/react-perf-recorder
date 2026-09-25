@@ -8,38 +8,19 @@ that annoyed them. `references/panel.md` has what to tell them about the panel.
 
 ## You record: `record_page`
 
-It opens the page in a browser of its own, records and returns the session id. It needs the dev server up and
-`playwright` in the project — not a dependency of this package; its absence is an answer, then ask for a recording
-from the panel.
+Its parameters — `script`, `setup`, `scope`, `watch`, `replay`, `sample` and the rest — are described by the tool
+itself; read that description before writing a script or a setup. It needs the dev server up and `playwright` in the
+project; without it, ask for a recording from the panel. What the description does not cover:
 
-- `ms` — 3–12 seconds of one scenario; `fromLoad` records the page load from its first commit.
-- `script` — a module with `export default async (page) => {…}`: clicks, typing. When it runs the page is already
-  open at `url` and recording, and the recording stops when it returns — so no `goto`, `reload` or `engine.start`
-  in it: a navigation ends the recording. Wait for what shows the result (a list, a spinner gone), not for a time.
-  A failed script answers with the page's url, the start of its text and a screenshot.
-- `setup` — a module like `script`, run before the page is opened for the recording and not recorded: seed
-  `localStorage` (`goto` the dev server, `evaluate`, return), sign in, build the data through the UI. An app that
-  starts empty is set up here, not in the recording. A backend the machine cannot reach is stubbed here with
-  `page.route`: the routes stay on the page for the recording. With a `url`, only what outlives a page load reaches the
-  recording (storage, cookies, routes, the server's data): the page opens again after setup. State built in the
-  page's memory — a file uploaded, a trace opened — needs `setup` without `url`: the recording starts on the page
-  setup left. A replay of the recording runs its setup again.
-- A page that re-renders a lot replaces its elements: look an element up again for each step (`page.locator`,
-  not a handle kept from before). A form inside a frame is reached through `page.frameLocator(...)`; the recording
+- One scenario, 3–12 seconds. Keep a run well under a minute.
+- A page that re-renders a lot replaces its elements: look an element up again for each step (`page.locator`, not
+  a handle kept from before). A form inside a frame is reached through `page.frameLocator(...)`; the recording
   follows a same-origin frame by itself, and a frame whose React runs in the parent page (`react-frame-component`)
   is the page's own tree.
-- Keep a run well under a minute: past the client's limit the call gives up while the page goes on recording.
+- A backend the machine cannot reach is stubbed in `setup` with `page.route`.
 - Another agent may record into the same folder: take the id `record_page` returns, give `wait_for_recording`
   an `afterId`, and filter `list_recordings` by `url` or `label` — never lean on `latest`.
-- `scope` must be on the page when the recording starts; for a component the script's own steps bring up (a
-  trace opened from a list), record the whole page with `watch: ['Name']` instead.
-- `scope: 'MessageList'` — only what renders inside that component; a render from above is kept as an outside root
-  with its reason. Read the component's file and take the name it is exported under. An area not on the page
-  answers with the names that are.
-- `watch: ['MessageList']` — the whole page recorded, that component's renders counted and attributed on top.
-- `sample: true` — about twice as fast on lists of thousands: parent-caused reasons are a sample (`sampled` on a
-  component), counts are exact, no ways or commit cascades are kept.
-- `viewport`, `throttle` (CPU slowdown) — keep them the same across runs that will be compared.
+- Keep `viewport` and `throttle` the same across runs that will be compared.
 
 ## Before and after
 

@@ -334,7 +334,7 @@ export function createServer(dir: string) {
           .union([z.string(), z.object({ names: z.array(z.string()) }), z.object({ selector: z.string(), component: z.string().optional() })])
           .optional()
           .describe(
-            'Record only what renders inside an area: a component\'s name as the page calls it ("MessageList"), the path down to it when the name repeats, or an element. Renders that came from above are kept as outside roots, with their reason.'
+            'Record only what renders inside an area: a component\'s name as the page calls it ("MessageList"), the path down to it when the name repeats, or an element. Renders that came from above are kept as outside roots, with their reason. It must be mounted when the recording starts, and one that is not answers with the names that are; for a component the script brings up, record the whole page with watch.'
           ),
         watch: z
           .array(z.string())
@@ -344,7 +344,7 @@ export function createServer(dir: string) {
           .string()
           .optional()
           .describe(
-            'A module with `export default async (page) => {…}`: the page is already open at url and recording when it runs, and the recording stops when it returns — so it only does the actions. No goto, reload or engine.start/stop in it: a navigation ends the recording. A failure answers with the page url, its text and a screenshot.'
+            'A module with `export default async (page) => {…}`: the page is already open at url and recording when it runs, and the recording stops when it returns — so it only does the actions. No goto, reload or engine.start/stop in it: a navigation ends the recording. Wait for what shows the result (a list, a spinner gone), not for a time. A failure answers with the page url, its text and a screenshot.'
           ),
         setup: z
           .string()
