@@ -176,6 +176,8 @@ export function moduleFile(spec: string): string {
     ? spec
     : /module\.exports\s*=/.test(spec)
     ? spec.replace(/module\.exports\s*=/, 'export default')
+    : /^\s*(async\s+)?(function\b|\([^)]*\)\s*=>|\w+\s*=>)/.test(spec)
+    ? `export default ${spec}\n`
     : `export default async (page) => {\n${spec}\n};\n`;
   const file = path.join(os.tmpdir(), `rpr-module-${createHash('sha1').update(code).digest('hex').slice(0, 12)}.mjs`);
   fs.writeFileSync(file, code);
@@ -332,6 +334,8 @@ export async function recordPage(options: RecordPageOptions, sessionsDir: string
         );
       }
     } else {
+      // The engine is in the page before the app: an app still loading has no React root yet to record.
+      await page.waitForFunction(`${ENGINE}.engine.componentNames(1).length > 0`, undefined, { timeout: Math.min(timeout, 15_000) }).catch(() => {});
       try {
         await page.evaluate(`${ENGINE}.engine.start(${JSON.stringify(start)})`);
       } catch (error) {
@@ -368,7 +372,8 @@ export async function recordPage(options: RecordPageOptions, sessionsDir: string
     const rec = saved.recording;
     // A replay does again what the person did, not what prepared the page: the setup stays with the recording for it.
     const at = saved.id && path.join(sessionsDir, saved.id);
-    if (at && options.setup && fs.existsSync(at)) fs.writeFileSync(path.join(at, SETUP_FILE), JSON.stringify({ setup: path.resolve(moduleFile(options.setup)) }));
+    if (at && options.setup && fs.existsSync(at))
+      fs.writeFileSync(path.join(at, SETUP_FILE), JSON.stringify({ setup: path.resolve(moduleFile(options.setup)) }));
     return {
       id: saved.id,
       url: safeUrl(page.url()),

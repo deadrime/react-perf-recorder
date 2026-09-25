@@ -153,7 +153,8 @@ async function serve(dir) {
     [path.join(repo, 'node_modules/vite/bin/vite.js'), '--config', path.join(repo, 'test/eval-plugin/workspace.vite.config.ts')],
     {
       cwd: repo,
-      env: { ...process.env, RPR_WORKSPACE: dir, RPR_PORT: String(port), RPR_SESSIONS: sessions },
+      // NODE_ENV=production from the eval's environment would serve React's production JSX runtime: no jsxDEV, no app.
+      env: { ...process.env, NODE_ENV: 'development', RPR_WORKSPACE: dir, RPR_PORT: String(port), RPR_SESSIONS: sessions },
       detached: true,
       stdio: ['ignore', log, log],
     }
@@ -199,10 +200,14 @@ async function warm(url) {
   if (!browser) return;
   try {
     const page = await browser.newPage();
+    const errors = [];
+    page.on('pageerror', (error) => errors.push(error.message));
     for (let i = 0; i < 2; i++) {
       await page.goto(url, { waitUntil: 'networkidle' });
       await page.waitForTimeout(1500);
     }
+    const rendered = await page.evaluate(() => (document.getElementById('root')?.childElementCount ?? 0) > 0);
+    if (!rendered) console.error(`the app did not render at ${url}: ${errors.slice(0, 3).join('; ') || 'no page error'}`);
   } finally {
     await browser.close();
   }
