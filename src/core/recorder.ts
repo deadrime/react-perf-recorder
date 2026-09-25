@@ -158,6 +158,8 @@ interface CommitState {
   renderMs: number;
   noDom: number;
   cascade: Map<RootAgg, number>;
+  /** Milliseconds each root took with its subtree in this commit, when the build times renders. */
+  rootMs: Map<RootAgg, number>;
   /** With sampled reasons: how many parent reasons each component has had worked out in this commit. */
   sampledParents: Map<ComponentAgg, number> | null;
   reasons: Map<RootAgg, Set<number>>;
@@ -491,6 +493,7 @@ export class Recorder {
       renderMs: 0,
       noDom: 0,
       cascade: new Map(),
+      rootMs: new Map(),
       sampledParents: this.options.sampleReasons ? new Map() : null,
       reasons: new Map(),
       outside: null,
@@ -844,6 +847,7 @@ export class Recorder {
     if (hasProfileTimings(f)) {
       agg.renderMs += f.actualDuration!;
       c.renderMs += f.actualDuration!;
+      c.rootMs.set(agg, (c.rootMs.get(agg) ?? 0) + f.actualDuration!);
     }
     if (!outside) c.cascade.set(agg, c.cascade.get(agg) ?? 0);
     return { agg, reasons };
@@ -920,7 +924,12 @@ export class Recorder {
       ...(event ? { event } : {}),
       ...(keys.size ? { causeIds: [...keys].map((key) => this.causeStats.get(key)!.i) } : {}),
       ...(ranked.length
-        ? { roots: ranked.slice(0, 10).map(([agg, hits]) => ({ i: agg.index, hits, reasonIds: [...(c.reasons.get(agg) ?? [])] })) }
+        ? {
+            roots: ranked.slice(0, 10).map(([agg, hits]) => {
+              const ms = c.rootMs.get(agg);
+              return { i: agg.index, hits, reasonIds: [...(c.reasons.get(agg) ?? [])], ...(ms !== undefined ? { ms: +ms.toFixed(2) } : {}) };
+            }),
+          }
         : {}),
       ...(c.outside ? { outside: c.outside.index } : {}),
       ...(c.noDom ? { noDom: c.noDom } : {}),

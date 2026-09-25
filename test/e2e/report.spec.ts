@@ -266,4 +266,7 @@ test('a picked commit shows its render time as a flame chart: each link as wide 
   // The rows got props equal to the last ones: the bar says a memo would have saved that time.
   await expect(flame.locator('[data-rpr="flame-bar"][data-name="Item"]')).toHaveAttribute('data-equal', 'true');
   await expect(flame.locator('[data-rpr="flame-bar"][data-name="Item"]')).toContainText('×800');
+  // The root's lane draws that commit as wide as the root took, and says it.
+  const titles = await page.locator('.tl-lane .tl-bar').evaluateAll((els) => els.map((el) => el.getAttribute('title') ?? ''));
+  expect(titles.some((title) => /Search [\d.]+ms of [\d.]+ms/.test(title))).toBe(true);
 });

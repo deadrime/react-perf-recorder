@@ -67,7 +67,7 @@ export function Flame({ tree }: { tree: CascadeNode[] }): JSX.Element | null {
               data-name={bar.node.step.name}
               data-ms={bar.node.ms ?? 0}
               title={title}
-              style={`left:${(bar.x * 100).toFixed(3)}%;width:max(2px, ${(bar.w * 100).toFixed(3)}%);top:${bar.depth * 18}px;--heat:${
+              style={`left:${(bar.x * 100).toFixed(3)}%;width:max(4px, ${(bar.w * 100).toFixed(3)}%);top:${bar.depth * 18}px;--heat:${
                 hottest ? (0.25 + (0.75 * bar.self) / hottest).toFixed(2) : 0.25
               }`}
             >

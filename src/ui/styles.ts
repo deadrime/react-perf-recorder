@@ -148,7 +148,7 @@ header .live { flex: 1; color: var(--muted-soft); white-space: nowrap; overflow:
 .tl-cursor { position: absolute; top: 0; bottom: 12px; width: 1px; z-index: 3; transform: translateX(-50%); background: color-mix(in srgb, var(--text-strong) 55%, transparent); pointer-events: none; }
 .tl-lane { position: relative; box-shadow: inset 0 -1px 0 var(--rule-soft); }
 /* The colour is the content box and is exactly as wide as the commit; the padding around it is the part that catches the pointer. */
-.tl-lane .tl-bar { position: absolute; bottom: 0; box-sizing: content-box; min-width: 2px; margin-left: -4px; padding: 0 4px; border: 0; border-radius: 1px; background-clip: content-box; cursor: pointer; }
+.tl-lane .tl-bar { position: absolute; bottom: 0; box-sizing: content-box; min-width: 3px; margin-left: -4px; padding: 0 4px; border: 0; border-radius: 1px; background-clip: content-box; cursor: pointer; }
 .tl-bar:hover { filter: brightness(1.35); }
 .tl-bar[data-picked="true"] { filter: brightness(1.6); }
 .tl-band { position: absolute; top: 0; bottom: 12px; transform: translateX(-50%); border-radius: 2px; background: color-mix(in srgb, var(--text-strong) 9%, transparent); pointer-events: none; }

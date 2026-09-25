@@ -27,6 +27,8 @@ export const causeColour = colourOf;
 const MIN_PX_PER_MS = 0.06;
 const STRIP_PX = 320;
 const BUCKET_PX = 2;
+/** The narrowest bar drawn: a quick commit still has to be seen, and its padding makes it easy to hit. */
+const MIN_BAR_PX = 3;
 const MIN_ZOOM = 1;
 const MAX_ZOOM = 30;
 /** A tick every ~70px, on a round number of milliseconds. */
@@ -50,6 +52,8 @@ interface Bar {
   /** The one worth opening: of the commits in the bar, the one that rendered most. */
   lead: number;
   title: string;
+  /** For a root's lane: its render time in the lead commit, when the build times renders. */
+  ms?: number;
 }
 
 interface Lane {
@@ -74,26 +78,28 @@ const baseScale = (durationMs: number, fitPx = STRIP_PX) => Math.max(MIN_PX_PER_
 
 /** A bar per column of pixels: several commits in one column become one bar that opens on the busiest of them. */
 function pack(
-  commits: Array<{ commit: CommitRecord; hits: number }>,
+  commits: Array<{ commit: CommitRecord; hits: number; ms?: number }>,
   scale: number,
   colour: (c: CommitRecord) => string,
   height: (hits: number) => number,
-  weight: (hits: number) => number = () => 1
+  weight: (hits: number, ms?: number) => number = () => 1
 ) {
   const byColumn = new Map<number, Bar & { top: number }>();
-  for (const { commit, hits } of commits) {
+  for (const { commit, hits, ms } of commits) {
     // A commit is stamped when it lands, after React rendered it: the render is the time before that moment. Drawn
     // from the stamp on, a long render would cover the commits that came after it.
     const x = Math.round((Math.max(0, commit.atMs - (commit.ms ?? 0)) * scale) / BUCKET_PX) * BUCKET_PX;
-    const w = Math.max(2, Math.round((commit.ms ?? 0) * scale));
+    // As wide as React took, what this lane is about (a root's own render) before the whole commit.
+    const w = Math.max(MIN_BAR_PX, Math.round((ms ?? commit.ms ?? 0) * scale));
     const bar = byColumn.get(x);
     if (!bar) {
       byColumn.set(x, {
         x,
         w,
         h: height(hits),
-        weight: weight(hits),
+        weight: weight(hits, ms),
         top: hits,
+        ms,
         colour: colour(commit),
         ids: [commit.i],
         lead: commit.i,
@@ -108,7 +114,8 @@ function pack(
       bar.lead = commit.i;
       bar.colour = colour(commit);
       bar.h = height(hits);
-      bar.weight = weight(hits);
+      bar.weight = weight(hits, ms);
+      bar.ms = ms;
     }
   }
   return [...byColumn.values()];
@@ -141,13 +148,16 @@ function layout(rec: RecordingV2, causeKeys: Map<number, string>, zoom: number, 
 
   // A lane per cascade root, in the order the report ranks them: where each one rendered, across the same time.
   const roots = rec.roots.slice(0, ROOT_LANES);
-  const byRoot = new Map<number, Array<{ commit: CommitRecord; hits: number }>>();
+  const byRoot = new Map<number, Array<{ commit: CommitRecord; hits: number; ms?: number }>>();
+  // The slowest render of any root: a root's bars are as bright as their time against it, so the slow ones stand out.
+  let slowest = 0;
   for (const commit of shown) {
     for (const entry of commit.roots ?? []) {
       if (entry.i >= roots.length) continue;
       const list = byRoot.get(entry.i) ?? [];
-      list.push({ commit, hits: entry.hits });
+      list.push({ commit, hits: entry.hits, ...(entry.ms !== undefined ? { ms: entry.ms } : {}) });
       byRoot.set(entry.i, list);
+      slowest = Math.max(slowest, entry.ms ?? 0);
     }
   }
   for (const [index, root] of roots.entries()) {
@@ -160,13 +170,13 @@ function layout(rec: RecordingV2, causeKeys: Map<number, string>, zoom: number, 
       note: `×${root.hits}`,
       height: ROOT_LANE_H,
       // A root either rendered in a commit or it did not, so every bar fills its lane and the columns of one moment
-      // line up; how many of its instances rendered is the brightness.
+      // line up. The brightness is its render time against the slowest root's; without times, how many instances.
       bars: pack(
         commits,
         scale,
         causeOf,
         () => ROOT_LANE_H - 1,
-        (hits) => 0.5 + 0.5 * Math.sqrt(hits / most)
+        (hits, ms) => (slowest ? 0.35 + 0.65 * Math.sqrt((ms ?? 0) / slowest) : 0.5 + 0.5 * Math.sqrt(hits / most))
       ),
     });
   }
@@ -174,7 +184,8 @@ function layout(rec: RecordingV2, causeKeys: Map<number, string>, zoom: number, 
   for (const lane of lanes) {
     for (const bar of lane.bars) {
       const commit = rec.commits.list[bar.lead];
-      bar.title = `${(commit.atMs / 1000).toFixed(2)}s · ${commit.renders} renders${bar.ids.length > 1 ? ` · ${bar.ids.length} commits` : ''}`;
+      const own = bar.ms !== undefined ? ` · ${lane.label} ${+bar.ms.toFixed(2)}ms of ${commit.ms ?? '?'}ms` : '';
+      bar.title = `${(commit.atMs / 1000).toFixed(2)}s · ${commit.renders} renders${own}${bar.ids.length > 1 ? ` · ${bar.ids.length} commits` : ''}`;
     }
   }
 

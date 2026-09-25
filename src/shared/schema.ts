@@ -278,7 +278,7 @@ export interface CommitRecord {
   outside?: number;
   mounts?: number;
   /** Cascade roots of this commit: which root, how many of its instances, and why each rendered. */
-  roots?: Array<{ i: number; hits: number; reasonIds: number[] }>;
+  roots?: Array<{ i: number; hits: number; reasonIds: number[]; /** Its render with its subtree, when the build times renders. */ ms?: number }>;
   /**
    * The commit's cascade as a tree: `[link, renders]` into `RecordingV2.chainNodes`, the busiest links and every link
    * above them. Absent in fast recordings.
