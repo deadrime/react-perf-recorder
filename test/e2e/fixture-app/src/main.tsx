@@ -9,7 +9,6 @@ import { app } from './app-router';
 import { BASE } from './base';
 import { Catalogue } from './Demo';
 import { DocsPage } from './Docs';
-import { connectFeed } from './feed';
 
 const client = new QueryClient();
 // `/` is the demo: the cards that lead into the app, each on the page of one seeded bug.
@@ -26,7 +25,6 @@ const router = createBrowserRouter(
 );
 
 app.router = router;
-connectFeed();
 
 createRoot(document.getElementById('root')!).render(
   <QueryClientProvider client={client}>

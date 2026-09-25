@@ -81,7 +81,7 @@ export const EmptyDefault = () => (
       <Panel
         kind="broken"
         title="marks ?? []"
-        says="The recorder says: parent: props new ref, same content: marks — on every row, for a click on one."
+        says="The recorder says: parent: props new ref, same content: marks — on every row without marks of its own, for a click on one."
         code={BROKEN}
       >
         <FreshDefault />
