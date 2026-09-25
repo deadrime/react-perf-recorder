@@ -141,7 +141,10 @@ header .live { flex: 1; color: var(--muted-soft); white-space: nowrap; overflow:
 .tl-label { display: flex; align-items: center; gap: 4px; font-size: 10px; line-height: 1; color: var(--label); overflow: hidden; white-space: nowrap; }
 .tl-label .tl-name { overflow: hidden; text-overflow: ellipsis; }
 .tl-label .muted { margin-left: auto; font-size: 9px; }
-.tl-scroll { flex: 1; overflow-x: auto; overflow-y: hidden; cursor: grab; touch-action: pan-y; }
+/* Moved by dragging, the wheel and the overview's box: a scrollbar of its own would only repeat them, and in the
+   system's colours. */
+.tl-scroll { flex: 1; overflow-x: auto; overflow-y: hidden; cursor: grab; touch-action: pan-y; scrollbar-width: none; }
+.tl-scroll::-webkit-scrollbar { display: none; }
 .tl-scroll:active { cursor: grabbing; }
 .tl-strip { position: relative; min-width: 100%; padding-bottom: 12px; }
 .tl-grid { position: absolute; top: 0; bottom: 12px; width: 1px; background: var(--grid); }
