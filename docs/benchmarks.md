@@ -13,29 +13,45 @@ changing what the page shows, and show with before-and-after numbers that the fi
 
 <!-- results:start -->
 
-8 runs a side over 4 cases, 2026-09-25, Claude Code 2.1.282; the whole run cost $9.35.
+30 runs a side over 15 cases, 2026-09-25, Claude Code 2.1.282; the whole run cost $42.06.
 
-|                                      | With the recorder | Without |                            |
-| ------------------------------------ | ----------------: | ------: | -------------------------- |
-| Fixed at the cause                   |            7 of 8 |  5 of 8 |                            |
-| Proved with a before/after recording |            8 of 8 |       — | no browser to measure with |
-| Cost of a task, mean                 |             $0.36 |   $0.81 | 2.3× cheaper               |
-| Time to the answer, mean             |             138 s |   324 s | 2.3× faster                |
-| Turns, mean                          |                19 |      34 |                            |
+|                                                | With the recorder |  Without |                            |
+| ---------------------------------------------- | ----------------: | -------: | -------------------------- |
+| Fixed at the cause                             |          26 of 30 | 21 of 30 |                            |
+| Every check passed, the answer naming the file |          26 of 30 | 18 of 30 |                            |
+| Proved with a before/after recording           |          30 of 30 |        — | no browser to measure with |
+| Cost of a task, mean                           |             $0.47 |    $0.93 | 2.0× cheaper               |
+| Time to the answer, mean                       |             188 s |    409 s | 2.2× faster                |
+| Turns, mean                                    |                24 |       41 |                            |
 
-| Case               | What the agent gets                  | Fixed, with / without | Cost, with / without | Time, with / without |
-| ------------------ | ------------------------------------ | --------------------- | -------------------- | -------------------- |
-| `form-watch`       | a one-line complaint                 | 1/2 · 0/2             | $0.55 · $0.92        | 210 s · 384 s        |
-| `form-watch-rec`   | the steps and the person’s recording | 2/2 · 1/2             | $0.36 · $0.98        | 170 s · 369 s        |
-| `whole-object`     | a one-line complaint                 | 2/2 · 2/2             | $0.23 · $0.79        | 67 s · 355 s         |
-| `whole-object-rec` | the steps and the person’s recording | 2/2 · 2/2             | $0.30 · $0.55        | 105 s · 190 s        |
+| Case                       | What the agent gets                  | Fixed, with / without | Cost, with / without | Time, with / without |
+| -------------------------- | ------------------------------------ | --------------------- | -------------------- | -------------------- |
+| `effect-derived-state-rec` | the steps and the person’s recording | 2/2 · 2/2             | $0.51 · $0.83        | 191 s · 359 s        |
+| `exact-value-rec`          | the steps and the person’s recording | 2/2 · 1/2             | $0.36 · $1.09        | 170 s · 530 s        |
+| `field-state-rec`          | the steps and the person’s recording | 1/2 · 0/2             | $0.59 · $0.98        | 219 s · 394 s        |
+| `form-watch`               | a one-line complaint                 | 2/2 · 1/2             | $0.48 · $0.95        | 146 s · 403 s        |
+| `form-watch-rec`           | the steps and the person’s recording | 1/2 · 1/2             | $0.43 · $0.78        | 161 s · 329 s        |
+| `hidden-hook-state-rec`    | the steps and the person’s recording | 2/2 · 2/2             | $0.28 · $0.97        | 124 s · 426 s        |
+| `inline-context-rec`       | the steps and the person’s recording | 2/2 · 2/2             | $0.31 · $0.78        | 122 s · 342 s        |
+| `inline-jsx-prop-rec`      | the steps and the person’s recording | 2/2 · 2/2             | $0.36 · $0.78        | 133 s · 325 s        |
+| `live-subscription-rec`    | the steps and the person’s recording | 0/2 · 0/2             | $0.96 · $1.73        | 481 s · 904 s        |
+| `memo-cache-slot-rec`      | the steps and the person’s recording | 2/2 · 0/2             | $0.39 · $1.27        | 112 s · 591 s        |
+| `nested-component-rec`     | the steps and the person’s recording | 2/2 · 2/2             | $0.92 · $0.94        | 408 s · 424 s        |
+| `new-array-selector-rec`   | the steps and the person’s recording | 2/2 · 2/2             | $0.26 · $0.81        | 92 s · 318 s         |
+| `router-in-layout-rec`     | the steps and the person’s recording | 2/2 · 2/2             | $0.45 · $0.75        | 169 s · 273 s        |
+| `whole-object`             | a one-line complaint                 | 2/2 · 2/2             | $0.27 · $0.72        | 87 s · 312 s         |
+| `whole-object-rec`         | the steps and the person’s recording | 2/2 · 2/2             | $0.46 · $0.62        | 211 s · 214 s        |
 
 <!-- results:end -->
 
-**Fixed at the cause** is every check of the case passing: the fix is in the component the bug is in and removes
-what causes it (`memo` over a form that still watches itself does not count), the file is named in the answer, and
-no `console.count` probes are left behind. **Proved** is a `compare_recordings` of the recording before the fix and
-one after it; without the plugin there is no browser to measure with, so that side's numbers are an argument.
+**Fixed at the cause** is the code checks passing: the bug's own code is gone or changed (`memo` over a form that
+still watches itself does not count) and no `console.count` probe is left behind. **Every check passed** also wants
+the answer to name the file. **Proved** is a `compare_recordings` of the recording before the fix and one after it;
+without the plugin there is no browser to measure with, so that side's numbers are an argument.
+
+`live-subscription` was fixed by no run on either side. Its renders change the DOM, so the recording does not show
+them as waste, and a complaint about the idle page does not point at them: the agents found other work the idle
+page does — the store publishing a new object on every tick — and fixed that instead.
 
 ## The cases
 
