@@ -31,8 +31,7 @@
   "files": [
     "dist",
     "claude",
-    "docs/*.md",
-    "!claude/evals"
+    "docs/*.md"
   ],
   "bin": {
     "react-perf-recorder": "dist/cli.js"
