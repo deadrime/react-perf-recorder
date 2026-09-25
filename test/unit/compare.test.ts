@@ -98,6 +98,20 @@ describe('partial recordings and comparison', () => {
     expect(result.comparable).toBe(true);
   });
 
+  it('finds a root again after the fix moved its line, and gives the whole-run totals', () => {
+    const before = aggregateEvents(meta, events(30));
+    // The fix added lines above Row: the same root, at another line.
+    const moved = events(3).map((e) => (e.k === 'root' ? { ...e, key: 'Row|src/Row.tsx:9|Table', source: 'src/Row.tsx:9' } : e));
+    const after = aggregateEvents({ ...meta, id: '20260919-120100-app-panel-beef' }, [...moved.slice(0, -1), { k: 'end', atMs: 1300 }]);
+    const result = compareRecordings(before, after);
+    expect(result.roots).toHaveLength(1);
+    expect(result.roots[0]).toMatchObject({ root: 'Row', status: 'changed', perHit: { before: 30, after: 3 } });
+    expect(result.totals.renders).toMatchObject({ before: 60, after: 6 });
+    // A longer run is a note on the rates, not a reason to call the runs unlike.
+    expect(result.warnings.some((w) => w.startsWith('durations differ ('))).toBe(true);
+    expect(result.comparable).toBe(true);
+  });
+
   it('warns when the runs were taken differently', () => {
     const before = aggregateEvents(meta, events(30));
     const after = aggregateEvents({ ...meta, page: { ...meta.page, viewport: '390×719' }, conditions: { viewport: '390×719' } }, events(30));

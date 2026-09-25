@@ -106,7 +106,7 @@ export const MemoCallback = () => {
         <Panel
           kind="broken"
           title="onPick written in render"
-          says="The recorder says: parent: props same: onPick — the prop changed identity, not content."
+          says="The recorder says: parent: props new ref, same content: onPick — the prop changed identity, not content."
           code={BROKEN}
         >
           <Lists stable={false} />

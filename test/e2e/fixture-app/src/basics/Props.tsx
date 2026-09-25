@@ -172,7 +172,7 @@ export const Props = () => {
         <Panel
           kind="broken"
           title="style={{…}} tags={[…]}"
-          says="The recorder says: parent: props same: style, tags — same content, new references."
+          says="The recorder says: parent: props new ref, same content: style, tags — objects written in render, equal to the last ones."
           code={BROKEN}
         >
           <Fresh>{(key) => <Inline key={key} />}</Fresh>
@@ -190,7 +190,7 @@ export const Props = () => {
         <Panel
           kind="broken"
           title="icon={<Star />}"
-          says="The recorder says: parent: props same: icon — the badge got a new element that draws the same star."
+          says="The recorder says: parent: props new ref, same content: icon — the badge got a new element that draws the same star."
           code={BROKEN_ELEMENT}
         >
           <Fresh>{(key) => <InlineIcon key={key} />}</Fresh>

@@ -79,7 +79,7 @@ export const BUGS: Record<Bug, BugCard> = {
     title: 'watch() in the form root',
     what: 'The composer watches its own values, so every keystroke renders the whole form.',
     scenario: 'type',
-    shows: 'Composer as the root with [react-hook-form] useForm; the fields below say parent: props equal — memo would have skipped them.',
+    shows: 'Composer as the root with [react-hook-form] useForm; the fields below say parent: same props, memo would skip it.',
     file: 'src/components/Composer/index.tsx',
   },
   'memo-cache-slot': {
@@ -100,7 +100,7 @@ export const BUGS: Record<Bug, BugCard> = {
     title: 'A JSX element built in render defeats memo',
     what: 'A prop holds an element created during render, so it is a new object on every render of the parent.',
     scenario: 'type',
-    shows: 'StatRow renders with parent: props same: title — the prop changed identity, not content.',
+    shows: 'StatRow renders with parent: props new ref, same content: title — the prop changed identity, not content.',
     file: 'src/components/Composer/index.tsx',
   },
   'inline-context': {

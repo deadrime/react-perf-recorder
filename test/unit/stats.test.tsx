@@ -79,7 +79,7 @@ describe('a component of the report', () => {
     const parent: ReasonInfo = { i: 1, kind: 'parent', changed: ['active'], sameRef: ['onPick'] };
     const host = draw(<StatCard name="Tab" badges={[]} reasons={[{ id: 1, n: 2, reason: parent }]} openFirst />);
     expect(text(host, '.what')).toBe('active');
-    expect(text(host, '.reason-head .muted')).toBe('same: onPick');
+    expect(text(host, '.reason-head .muted')).toBe('new ref, same content: onPick');
     // Nothing to open: no twisty, no body, and the row does not answer a click.
     expect(text(host, '.tw')).toBe('');
     expect(host.querySelector('.reason-head')?.getAttribute('data-clickable')).toBeNull();

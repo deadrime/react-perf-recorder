@@ -4,6 +4,9 @@ import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import { createServer, type ViteDevServer } from 'vite';
+import { perfRecorder } from '../../src/vite';
+import { zustand } from '../../src/plugins/zustand';
+import { redux } from '../../src/plugins/redux';
 
 const fixture = path.resolve(__dirname, '../e2e/fixture-app');
 let server: ViteDevServer;
@@ -66,6 +69,57 @@ describe('perfRecorder vite plugin', () => {
     expect((await server.pluginContainer.resolveId('zustand', app))?.id).toBe('\0react-perf-recorder:zustand:zustand');
     const fromLib = await server.pluginContainer.resolveId('zustand', path.resolve(__dirname, '../../node_modules/zustand/esm/middleware.mjs'));
     expect(fromLib?.id.startsWith('\0')).toBe(false);
+  });
+
+  it("rewrites zustand/vanilla in the optimizer and when it is served as it is, so a library's stores are followed", async () => {
+    const [, plugin] = perfRecorder({ plugins: [zustand()] }) as Array<{ config: Function; transform: Function }>;
+    const esbuild = plugin.config.call(undefined, {});
+    expect(esbuild.optimizeDeps.include).toContain('zustand/vanilla');
+    expect(esbuild.optimizeDeps.esbuildOptions.plugins).toHaveLength(1);
+    expect(esbuild.optimizeDeps.rolldownOptions).toBeUndefined();
+    // Vite 8 bundles dependencies with Rolldown, and says so in the context of the config hook.
+    const rolldown = plugin.config.call({ meta: { rolldownVersion: '1.0.0' } }, {});
+    expect(rolldown.optimizeDeps.esbuildOptions).toBeUndefined();
+    const [inRolldown] = rolldown.optimizeDeps.rolldownOptions.plugins;
+    const vanilla = 'const createStoreImpl = (createState) => { return {}; };\nexport const createStore = (s) => createStoreImpl(s);';
+    expect(inRolldown.transform(vanilla, '/app/node_modules/.pnpm/zustand@5.0.12/node_modules/zustand/esm/vanilla.mjs')).toContain(
+      '__rprCreateStoreImpl'
+    );
+    expect(inRolldown.transform(vanilla, '/app/node_modules/zustand/esm/middleware.mjs')).toBeNull();
+    // zustand 5's useStore: its own getSnapshot is told to the runtime with the store and the selector.
+    const react = 'const slice = React.useSyncExternalStore(api.subscribe, React.useCallback(() => selector(api.getState()), [api, selector]));';
+    expect(inRolldown.transform(react, '/app/node_modules/zustand/esm/react.mjs')).toContain('__rprSnapshot(React.useCallback(');
+    // A linked package or an excluded dependency comes through the plugin's own transform.
+    expect(plugin.transform(vanilla, '/repo/node_modules/zustand/esm/vanilla.mjs?v=1')?.code).toContain('__REACT_PERF_RECORDER_ZUSTAND__');
+    expect(plugin.transform(vanilla, '/repo/src/vanilla.mjs')).toBeNull();
+  });
+
+  it("names Rolldown's shared chunks chunk-[hash], unless the project named them itself", () => {
+    const [core] = perfRecorder() as Array<{ config: Function }>;
+    const rolldown = { meta: { rolldownVersion: '1.0.0' } };
+    expect(core.config.call(rolldown, {}).optimizeDeps.rolldownOptions.output.chunkFileNames).toBe('chunk-[hash].js');
+    const own = { optimizeDeps: { rolldownOptions: { output: { chunkFileNames: 'dep-[name].js' } } } };
+    expect(core.config.call(rolldown, own).optimizeDeps.rolldownOptions).toBeUndefined();
+    expect(core.config.call(undefined, {}).optimizeDeps.rolldownOptions).toBeUndefined();
+  });
+
+  it("rewrites redux's createStore wherever it is loaded from, redux 5 and 4", async () => {
+    const [, plugin] = perfRecorder({ plugins: [redux()] }) as Array<{ config: Function; transform: Function }>;
+    const [inRolldown] = plugin.config.call({ meta: { rolldownVersion: '1.0.0' } }, {}).optimizeDeps.rolldownOptions.plugins;
+    const create = 'function createStore(reducer, preloadedState, enhancer) {\n  return {};\n}\nexport { createStore };';
+    for (const file of [
+      '/app/node_modules/redux/dist/redux.mjs',
+      '/app/node_modules/redux/dist/redux.browser.mjs',
+      '/app/node_modules/redux/es/redux.js',
+    ])
+      expect(inRolldown.transform(create, file)).toContain('__rprCreateStore');
+    expect(inRolldown.transform(create, '/app/node_modules/@reduxjs/toolkit/dist/redux-toolkit.modern.mjs')).toBeNull();
+    expect(plugin.transform(create, '/app/node_modules/redux/dist/redux.mjs?v=1')?.code).toContain('__REACT_PERF_RECORDER_REDUX__');
+    // react-redux: the app's selector behind useSelector's wrapper, and what a connect reads.
+    const reactRedux = 'let actualChildProps;\nconst selectedState = useSyncExternalStoreWithSelector(';
+    const out = inRolldown.transform(reactRedux, '/app/node_modules/react-redux/dist/react-redux.mjs');
+    expect(out).toContain('__rprHook.selector(wrappedSelector, selector)');
+    expect(out).toContain('__rprHook.snapshot(actualChildPropsSelector, store, mapStateToProps)');
   });
 
   it("points the app's createRoot at the proxy, whatever the resolver would have done with it", async () => {

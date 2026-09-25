@@ -171,7 +171,7 @@ export const Refs = () => (
       <Panel
         kind="broken"
         title="useCallback(…, [text])"
-        says="The recorder says: parent: props same: onSend on the memo button, once per keystroke."
+        says="The recorder says: parent: props new ref, same content: onSend on the memo button, once per keystroke."
         code={BROKEN_LATEST}
       >
         <ComposerWithDeps />

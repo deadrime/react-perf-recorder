@@ -8,6 +8,7 @@ import { ENDPOINT, type JsonValue } from '../shared/schema';
 import { addComponentNames, DEFAULT_WRAPPERS, type ComponentNamesOptions } from './component-names';
 import { ENTRY_ID, entryCode, RESOLVED_ENTRY_ID, runtimeSpecifier } from './entry';
 import type { Statement } from '@babel/types';
+import { optimizeDepsFor, transformServedDep } from './helpers/dep-transform';
 import { createFilter } from './helpers/filter';
 import { memoDepsAt, memoDepsInHook } from './helpers/hook-deps';
 import { parseModule } from './helpers/name-declarations';
@@ -194,9 +195,21 @@ export function perfRecorder(options: PerfRecorderOptions = {}): VitePluginLike[
     apply,
     // The app's import of react-dom/client is rewritten to the proxy, so the optimizer's scan never meets it and
     // would find it on the first page load, then reload the page with two copies of React for a moment.
-    config: (config) => ({
-      optimizeDeps: { exclude: ['react-perf-recorder'], include: resolvable('react-dom/client', config.root) ? ['react-dom/client'] : [] },
-    }),
+    config(this: { meta?: { rolldownVersion?: string } } | void, config) {
+      const output = (config.optimizeDeps as { rolldownOptions?: { output?: { chunkFileNames?: unknown } } } | undefined)?.rolldownOptions?.output;
+      // Rolldown names a shared chunk after a module in it (`react-dom-DVjBvCsW`), which reads as a package in a stack.
+      const chunks =
+        this?.meta?.rolldownVersion && output?.chunkFileNames === undefined
+          ? { rolldownOptions: { output: { chunkFileNames: 'chunk-[hash].js' } } }
+          : {};
+      return {
+        optimizeDeps: {
+          exclude: ['react-perf-recorder'],
+          include: resolvable('react-dom/client', config.root) ? ['react-dom/client'] : [],
+          ...chunks,
+        },
+      };
+    },
     configResolved(config) {
       root = config.root;
       base = config.base;
@@ -242,15 +255,36 @@ export function perfRecorder(options: PerfRecorderOptions = {}): VitePluginLike[
 
   const wrapped: Plugin[] = plugins
     .filter((p) => p.vite)
-    .map((p) => ({
-      name: `react-perf-recorder:${p.name}`,
-      enforce: 'pre' as const,
-      apply,
-      ...(p.vite!.config ? { config: (config) => p.vite!.config!(config) ?? undefined } : {}),
-      ...(p.vite!.resolveId ? { resolveId: (source, importer) => p.vite!.resolveId!(source, importer) ?? null } : {}),
-      ...(p.vite!.load ? { load: (id) => p.vite!.load!(id) ?? null } : {}),
-      ...(p.vite!.transform ? { transform: (code, id) => p.vite!.transform!(code, id) ?? null } : {}),
-    }));
+    .map((p) => {
+      const { config, resolveId, load, transform, transformDep } = p.vite!;
+      const name = `react-perf-recorder:${p.name}`;
+      return {
+        name,
+        enforce: 'pre' as const,
+        apply,
+        ...(config || transformDep
+          ? {
+              config(this: { meta?: { rolldownVersion?: string } } | void, userConfig) {
+                const own = config?.(userConfig) ?? undefined;
+                if (!transformDep) return own;
+                const deps = optimizeDepsFor(name, transformDep, !!this?.meta?.rolldownVersion);
+                return { ...own, optimizeDeps: { ...own?.optimizeDeps, ...deps } };
+              },
+            }
+          : {}),
+        ...(resolveId ? { resolveId: (source, importer) => resolveId(source, importer) ?? null } : {}),
+        ...(load ? { load: (id) => load(id) ?? null } : {}),
+        ...(transform || transformDep
+          ? {
+              transform(code, id) {
+                const depCode = transformDep && transformServedDep(transformDep, code, id);
+                if (depCode != null) return { code: depCode, map: null };
+                return transform?.(code, id) ?? null;
+              },
+            }
+          : {}),
+      } satisfies Plugin;
+    });
 
   return [core, ...wrapped] as unknown as VitePluginLike[];
 }

@@ -1,5 +1,7 @@
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import type { RecordingV2 } from '../shared/schema';
 import type { ReplayPlan } from '../shared/replay';
 import { safeUrl } from '../shared/url';
@@ -20,6 +22,8 @@ export interface RecordPageOptions {
   watch?: string[];
   /** A module whose default export gets the Playwright page; it runs while the recording is on. */
   script?: string;
+  /** A module run before the page is opened for the recording: seeds storage, signs in. Not recorded. */
+  setup?: string;
   /** A recording to do again: its actions, at its pace, from the page load. Instead of `script`. */
   replay?: ReplayPlan & { url?: string };
   /** Record from the first commit of the page load, rather than from a page that has settled. */
@@ -48,6 +52,7 @@ export interface RecordPageResult {
   commits: number;
   renders: number;
   rendersWithoutDom: number;
+  rendersPerCommit: number;
   topRoot: string | null;
   warnings: string[];
 }
@@ -106,10 +111,101 @@ interface PageLike {
   waitForTimeout(ms: number): Promise<void>;
   addInitScript<T>(fn: (arg: T) => void, arg: T): Promise<void>;
   setDefaultTimeout(ms: number): void;
+  on(event: 'domcontentloaded', listener: () => void): void;
+  screenshot(options: { path: string }): Promise<unknown>;
   close(): Promise<void>;
 }
 
 const ENGINE = 'window.__REACT_PERF_RECORDER__';
+/** Beside a recording made by record_page: the `setup` it ran, which a replay of it runs again. */
+export const SETUP_FILE = 'record-page.json';
+
+const messageOf = (error: unknown) => String((error as Error)?.message ?? error);
+
+/**
+ * REACT_PERF_RECORDER_BROWSER is a browser of the machine's own, for CI images and cloud sandboxes; a browser
+ * Playwright cannot find is named in words.
+ */
+const CHROMIUM_BINARIES = [
+  'chrome-linux/chrome',
+  'chrome-linux64/chrome',
+  'chrome-mac/Chromium.app/Contents/MacOS/Chromium',
+  'chrome-win/chrome.exe',
+];
+
+/** Another Chromium Playwright installed on the machine, newest first: a CI image or sandbox often has one of its own. */
+export function installedChromium(root = process.env.PLAYWRIGHT_BROWSERS_PATH || path.join(os.homedir(), '.cache', 'ms-playwright')) {
+  let dirs: string[];
+  try {
+    dirs = fs.readdirSync(root).filter((d) => /^chromium-\d+$/.test(d));
+  } catch {
+    return undefined;
+  }
+  dirs.sort((a, b) => Number(b.slice(9)) - Number(a.slice(9)));
+  for (const dir of dirs)
+    for (const binary of CHROMIUM_BINARIES) if (fs.existsSync(path.join(root, dir, binary))) return path.join(root, dir, binary);
+  return undefined;
+}
+
+async function launch(chromium: Playwright['chromium'], headless: boolean) {
+  const executablePath = process.env.REACT_PERF_RECORDER_BROWSER;
+  try {
+    return await chromium.launch({ headless, ...(executablePath ? { executablePath } : {}) });
+  } catch (error) {
+    const message = messageOf(error);
+    if (!/Executable doesn't exist/.test(message)) throw error;
+    // The build this Playwright expects is missing; another one installed beside it records as well.
+    const other = executablePath ? undefined : installedChromium();
+    if (other) return chromium.launch({ headless, executablePath: other }).catch(() => Promise.reject(error));
+    throw new Error(
+      `${message.split('\n')[0]}\nThe browser this Playwright expects is not installed. Point at one the machine has: ` +
+        'REACT_PERF_RECORDER_BROWSER=/path/to/chromium in the environment of the MCP server (a CI image, a sandbox with its own ' +
+        'Chromium), or run `npx playwright install chromium`.'
+    );
+  }
+}
+
+async function runModule(file: string, page: PageLike) {
+  // The server lives for the whole session and Node keeps a module by its URL: an edited script would run as it was.
+  const resolved = path.resolve(file);
+  const module = (await import(/* @vite-ignore */ `${pathToFileURL(resolved).href}?v=${fs.statSync(resolved).mtimeMs}`)) as {
+    default?: (page: unknown) => Promise<void> | void;
+  };
+  if (typeof module.default !== 'function') throw new Error(`${file} must export default async (page) => { … }`);
+  await module.default(page);
+}
+
+/**
+ * A failed script says what the page was doing, not only what Playwright waited for: where it was, what it showed,
+ * a screenshot beside the recordings — and the two ways a script ends a recording it did not start.
+ */
+async function explainFailure(error: unknown, page: PageLike, navigatedTo: string | null, opened: string, dir: string): Promise<Error> {
+  const message = messageOf(error).split('\n')[0];
+  const hints: string[] = [];
+  const same = (a: string, b: string) => a.split('#')[0] === b.split('#')[0];
+  if (navigatedTo && same(navigatedTo, opened))
+    hints.push(
+      'the page reloaded itself at the url it was opened on, and the recording ended with it: the dev server does that when it ' +
+        'optimizes dependencies found on a first visit — record again'
+    );
+  else if (navigatedTo)
+    hints.push(
+      `the script navigated to ${safeUrl(navigatedTo)}: the recording lives in the page and ended with it. record_page has already ` +
+        'opened the url and is recording — a script only does the actions; storage to seed or a sign-in goes in `setup`, run before the page opens'
+    );
+  else if (/recording is already running|no recording is running/.test(message))
+    hints.push('record_page starts and stops the recording itself: a script must not call engine.start, stop or record');
+  const shot = path.join(dir, `record-page-failure-${Date.now()}.png`);
+  const [saved, text] = await Promise.all([
+    page
+      .screenshot({ path: shot })
+      .then(() => true)
+      .catch(() => false),
+    page.evaluate<string>('(document.body?.innerText ?? "").replace(/\\s+/g, " ").trim().slice(0, 300)').catch(() => ''),
+  ]);
+  const where = [`page ${safeUrl(page.url())}`, text ? `showing: "${text}"` : '', saved ? `screenshot ${shot}` : ''].filter(Boolean);
+  return new Error([message, ...hints, where.join('; ')].join('\n'));
+}
 
 /**
  * Opens the page in its own browser (or in one already running, over CDP), records, and returns what the session
@@ -117,10 +213,13 @@ const ENGINE = 'window.__REACT_PERF_RECORDER__';
  */
 export async function recordPage(options: RecordPageOptions, sessionsDir: string): Promise<RecordPageResult> {
   const { chromium } = await loadPlaywright();
+  // A setup without a url: the recording starts where the setup left the page, with what it built in memory.
+  const stay = Boolean(options.setup) && !options.url && !options.replay;
+  if (stay && options.fromLoad) throw new Error('fromLoad reloads the page: pass the url, or leave out fromLoad to record where setup left it');
   const given = options.url ?? options.replay?.url;
   // A recording keeps its url with the tokens masked: a masked one cannot be opened, the caller has to give it.
-  if (!given || given.includes('***')) throw new Error('url is needed: the recording to replay does not carry a usable one');
-  const url: string = given;
+  if (!stay && (!given || given.includes('***'))) throw new Error('url is needed: the recording to replay does not carry a usable one');
+  let url: string = given ?? '';
   options = { ...options, url, ...(options.replay ? { fromLoad: options.fromLoad ?? true } : {}) };
   const ms = Math.max(200, options.ms ?? 3000);
   const timeout = options.timeoutMs ?? 30_000;
@@ -130,7 +229,7 @@ export async function recordPage(options: RecordPageOptions, sessionsDir: string
   if (options.state && !hasState) throw new Error(`no saved session at ${state}; make one with: react-perf-recorder login <url> --state ${state}`);
 
   const connected = Boolean(options.cdp);
-  const browser = connected ? await chromium.connectOverCDP(options.cdp!) : await chromium.launch({ headless: !options.headed });
+  const browser = connected ? await chromium.connectOverCDP(options.cdp!) : await launch(chromium, !options.headed);
   let page: PageLike | null = null;
   try {
     // A browser of the person's own already carries their session; a fresh one gets whatever `login` saved.
@@ -148,6 +247,16 @@ export async function recordPage(options: RecordPageOptions, sessionsDir: string
     }
     // A link that signs the browser in — `/debug/<jwt>`, a magic link — is opened first and is never recorded.
     if (options.via) await page.goto(options.via, { waitUntil: 'load' });
+    if (options.setup) await runModule(options.setup, page);
+    const leftAt = page.url();
+    if (stay) {
+      if (!/^https?:/.test(leftAt)) throw new Error('setup left no page open: goto the app in it, or pass url');
+      url = leftAt;
+    } else if (options.setup && /^https?:/.test(leftAt) && !samePage(leftAt, url))
+      warnings.push(
+        `setup ended on ${safeUrl(leftAt)} and the recording opened ${safeUrl(url)}: storage and cookies carried over, state built in ` +
+          'the page did not — leave out url to record where setup left the page'
+      );
     // A name is the form an agent has at hand: it read the component's file, so it knows what the component is called.
     const scope = typeof options.scope === 'string' ? { names: [options.scope] } : options.scope;
     const start = {
@@ -172,7 +281,7 @@ export async function recordPage(options: RecordPageOptions, sessionsDir: string
         { key: ON_LOAD_KEY, value: JSON.stringify(start) }
       );
     const requested = options.fromLoad ? withLoadFlag(url) : url;
-    await page.goto(requested, { waitUntil: 'load' });
+    if (!stay) await page.goto(requested, { waitUntil: 'load' });
     try {
       // The client script is injected at the top of <head>, so by `load` it has either booted or never will:
       // a few seconds of grace, not the navigation's whole budget.
@@ -208,7 +317,7 @@ export async function recordPage(options: RecordPageOptions, sessionsDir: string
       try {
         await page.evaluate(`${ENGINE}.engine.start(${JSON.stringify(start)})`);
       } catch (error) {
-        const message = String((error as Error)?.message ?? error);
+        const message = messageOf(error);
         // An area that is not on the page is a dead end unless the answer says what is: the names it could have meant.
         if (!/is not mounted|no element matches|does not own/.test(message)) throw error;
         const names = await page.evaluate<string[]>(`${ENGINE}.engine.componentNames()`).catch(() => []);
@@ -217,22 +326,31 @@ export async function recordPage(options: RecordPageOptions, sessionsDir: string
         throw new Error(`${first}${names.length ? `; the page has ${names.slice(0, 20).join(', ')}` : ''}`);
       }
     }
-    if (options.replay) {
-      await page.evaluate(`${ENGINE}.replay(${JSON.stringify(options.replay)})`);
-      if (options.replay.skipped.length) warnings.push(`not replayed: ${options.replay.skipped.join('; ')}`);
-    } else if (options.script) {
-      const module = (await import(/* @vite-ignore */ path.isAbsolute(options.script) ? options.script : path.resolve(options.script))) as {
-        default?: (page: unknown) => Promise<void> | void;
-      };
-      if (typeof module.default !== 'function') throw new Error(`${options.script} must export default async (page) => { … }`);
-      await module.default(page);
-    } else {
-      await page.waitForTimeout(ms);
+    let navigatedTo: string | null = null;
+    const current = page;
+    // A new document, not framenavigated: pushState of a client-side router keeps the recording alive.
+    current.on('domcontentloaded', () => {
+      navigatedTo = current.url();
+    });
+    type Stopped = { id: string | null; recording: RecordingV2 };
+    let saved: Stopped;
+    try {
+      if (options.replay) {
+        await page.evaluate(`${ENGINE}.replay(${JSON.stringify(options.replay)})`);
+        if (options.replay.skipped.length) warnings.push(`not replayed: ${options.replay.skipped.join('; ')}`);
+      } else if (options.script) {
+        await runModule(options.script, page);
+      } else {
+        await page.waitForTimeout(ms);
+      }
+      saved = await page.evaluate<Stopped>(`${ENGINE}.engine.stop().then((r) => ({ id: r.id ?? null, recording: r }))`);
+    } catch (error) {
+      throw options.script || options.replay ? await explainFailure(error, page, navigatedTo, url, sessionsDir) : error;
     }
-    const saved = await page.evaluate<{ id: string | null; recording: RecordingV2 }>(
-      `${ENGINE}.engine.stop().then((r) => ({ id: r.id ?? null, recording: r }))`
-    );
     const rec = saved.recording;
+    // A replay does again what the person did, not what prepared the page: the setup stays with the recording for it.
+    const at = saved.id && path.join(sessionsDir, saved.id);
+    if (at && options.setup && fs.existsSync(at)) fs.writeFileSync(path.join(at, SETUP_FILE), JSON.stringify({ setup: path.resolve(options.setup) }));
     return {
       id: saved.id,
       url: safeUrl(page.url()),
@@ -241,6 +359,7 @@ export async function recordPage(options: RecordPageOptions, sessionsDir: string
       commits: rec.totals.commitsInScope,
       renders: rec.totals.renders,
       rendersWithoutDom: rec.totals.rendersWithoutDom,
+      rendersPerCommit: rec.totals.rendersPerScopeCommit,
       topRoot: rec.roots[0] ? `${rec.roots[0].name} ×${rec.roots[0].hits}` : null,
       warnings: [...warnings, ...rec.warnings],
     };
@@ -256,7 +375,7 @@ export async function recordPage(options: RecordPageOptions, sessionsDir: string
  */
 export async function saveLogin(url: string, file: string, done: (page: PageLike) => Promise<void>, headless = false): Promise<string> {
   const { chromium } = await loadPlaywright();
-  const browser = await chromium.launch({ headless });
+  const browser = await launch(chromium, headless);
   try {
     const context = await browser.newContext();
     const page = (await context.newPage()) as unknown as PageLike;

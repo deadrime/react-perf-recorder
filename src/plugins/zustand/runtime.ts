@@ -1,4 +1,5 @@
 import { definePlugin, type PluginContext } from '../../runtime';
+import { changedKeys, receiveStores, StoreNames, storeOrigin, ZUSTAND_GLOBAL } from '../store-shared';
 import { installDevtoolsShim } from './devtools-shim';
 
 interface StoreApi {
@@ -8,10 +9,10 @@ interface StoreApi {
 
 const stores = new Set<WeakRef<StoreApi>>();
 const apiByGetState = new WeakMap<Function, StoreApi>();
-const names = new WeakMap<StoreApi, string>();
+// By `getState`: `create` hands out a hook and zustand/vanilla the api it wraps, two objects for one store.
+const names = new StoreNames(['zustand']);
 const shallowInner = new WeakMap<Function, Function>();
 const eventByState = new WeakMap<object, { type: string }>();
-let anonymous = 0;
 /** Set while a recording runs: a store made from now on — a lazy module, one per component — is followed at once. */
 let follow: ((api: StoreApi) => void) | null = null;
 
@@ -29,6 +30,22 @@ function register(result: unknown) {
   }
   return result;
 }
+
+/** The package that made a store, from the stack of `createStoreImpl`. */
+export const packageOfStack = (stack: string | undefined) => storeOrigin(stack, ['zustand']);
+
+// Filled by zustand/vanilla itself (`registerStores` in ./index.ts): the stores of the app and of its libraries.
+const hook = receiveStores(ZUSTAND_GLOBAL, (result, made) => {
+  const api = apiOf(result);
+  if (api) names.madeAt(api.getState, made);
+  register(result);
+});
+
+// zustand 5's own getSnapshot of each `useStore` (`followSnapshots` in ./index.ts): its store and selector.
+const snapshots = new WeakMap<Function, { api: StoreApi; selector: Function }>();
+hook.snapshot = (fn: Function, api: StoreApi, selector: Function) => {
+  if (!snapshots.has(fn)) snapshots.set(fn, { api, selector });
+};
 
 /** `create(fn)` and the curried `create<T>()(fn)` of zustand, `createStore` of zustand/vanilla. */
 export function wrapCreate<F extends (...args: any[]) => any>(factory: F): F {
@@ -54,25 +71,10 @@ export function wrapUseShallow<F extends (...args: any[]) => any>(useShallow: F)
 
 export function nameStore(store: unknown, name: string) {
   const api = apiOf(store);
-  if (api) names.set(api, name);
+  if (api) names.set(api.getState, name);
 }
 
-const storeName = (api: StoreApi) => {
-  let name = names.get(api);
-  if (!name) names.set(api, (name = `store${++anonymous}`));
-  return name;
-};
-
-const MAX_KEYS = 40;
-
-function changedKeys(prev: unknown, next: unknown) {
-  if (!prev || !next || typeof prev !== 'object' || typeof next !== 'object') return [{ key: '(state)', prev, next }];
-  const a = prev as Record<string, unknown>;
-  const b = next as Record<string, unknown>;
-  const out: Array<{ key: string; prev: unknown; next: unknown }> = [];
-  for (const key of Object.keys(b)) if (a[key] !== b[key] && out.length < MAX_KEYS) out.push({ key, prev: a[key], next: b[key] });
-  return out;
-}
+const storeName = (api: StoreApi) => names.get(api.getState);
 
 export default definePlugin((options: { devtools?: boolean } | null) => {
   const unsubscribes: Array<() => void> = [];
@@ -100,7 +102,10 @@ export default definePlugin((options: { devtools?: boolean } | null) => {
         const inner = shallowInner.get(fn);
         return inner ? `useShallow(${next(inner)})` : null;
       }
-      const api = apiByGetState.get(fn);
+      const snapshot = snapshots.get(fn);
+      // `useStore(api)` without a selector reads the whole state through zustand's own `identity`.
+      if (kind === 'snapshot') return snapshot ? (snapshot.selector.name === 'identity' ? 'whole state' : next(snapshot.selector)) : null;
+      const api = apiByGetState.get(fn) ?? snapshot?.api;
       return api ? storeName(api) : null;
     },
     start(session) {
@@ -127,8 +132,7 @@ export default definePlugin((options: { devtools?: boolean } | null) => {
       follow = null;
       unsubscribes.splice(0).forEach((unsubscribe) => unsubscribe());
       const list = [...counts].sort((a, b) => b[1] - a[1]);
-      let active = false;
-      for (const ref of stores) if (ref.deref()) active = true;
+      const active = [...stores].some((ref) => ref.deref());
       return {
         version: 1,
         active,

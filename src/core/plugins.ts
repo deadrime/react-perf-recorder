@@ -173,6 +173,10 @@ export class PluginHost implements Describer {
     return this.describe(getSnapshot, 'store', 0);
   }
 
+  snapshot(getSnapshot: Function): string | null {
+    return this.describe(getSnapshot, 'snapshot', 0);
+  }
+
   private describe(fn: Function, kind: DescribeKind, depth: number): string | null {
     for (const entry of this.loaded) {
       if (entry.error || !entry.plugin.describe) continue;

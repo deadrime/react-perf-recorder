@@ -166,7 +166,7 @@ export interface CauseStat {
   keys?: Record<string, { changed: number; sameContent: number; unknown: number }>;
 }
 
-export type ActionKind = 'click' | 'typing' | 'change' | 'key' | 'submit' | 'scroll' | 'navigation';
+export type ActionKind = 'click' | 'typing' | 'change' | 'key' | 'submit' | 'scroll' | 'drag' | 'navigation';
 
 export interface ActionTarget {
   testId?: string;
@@ -208,7 +208,10 @@ export interface ActionRecord {
   length?: number;
   value?: string;
   secret?: boolean;
-  scroll?: { from: number; to: number; pixels: number };
+  /** `from`/`to` are scrollTop; `left` is scrollLeft when the element moved sideways; `pixels` counts both. */
+  scroll?: { from: number; to: number; pixels: number; left?: { from: number; to: number } };
+  /** A press, a move of the pointer with the button held, a release: dnd-kit, a slider, a canvas. */
+  drag?: { dx: number; dy: number; pixels: number };
   url?: string;
   /** The commits that followed it, by id; empty when the action changed nothing. */
   commitIds?: number[];

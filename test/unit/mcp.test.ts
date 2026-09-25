@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
+import { installedChromium } from '../../src/mcp/record';
 import { createServer, section } from '../../src/mcp/server';
 import type { RecordingV2, SessionEvent, SessionMeta } from '../../src/shared/schema';
 
@@ -121,12 +122,48 @@ describe('MCP server', () => {
     expect(await call('wait_for_recording', { timeoutMs: 1000 })).toMatchObject({ status: 'timeout' });
   });
 
+  it('keeps apart the recordings of apps that share a folder, by url and label', async () => {
+    // Another agent records another app into the same folder while this one waits for its own.
+    const waiting = call('wait_for_recording', { timeoutMs: 5000, url: 'localhost:5406' });
+    const other = { ...meta('20260919-130000-app-record-dddd', 'done'), page: { ...meta('x', 'done').page, url: 'http://localhost:5401/users' } };
+    const mine = {
+      ...meta('20260919-130100-app-record-eeee', 'done'),
+      label: 'before',
+      page: { ...meta('x', 'done').page, url: 'http://localhost:5406/' },
+    };
+    setTimeout(() => write(other, events(4)), 200);
+    setTimeout(() => write(mine, events(4)), 700);
+    expect(await waiting).toMatchObject({ status: 'done', id: mine.id });
+
+    const ids = async (args: Record<string, unknown>) => (await call('list_recordings', args)).recordings.map((r: { id: string }) => r.id.slice(-4));
+    expect(await ids({ url: 'localhost:5406' })).toEqual(['eeee']);
+    expect(await ids({ label: 'before' })).toEqual(['eeee']);
+    expect(await ids({ scope: 'whole app' })).toEqual([]);
+    // `latest` is the other app's now or mine, whoever came last: the answer says others recorded alongside.
+    const latest = await call('get_recording', { id: 'latest' });
+    expect(latest.warning).toMatch(/"latest" is .*recorded in the same ten minutes .*pass the id record_page returned/);
+    expect((await call('get_recording', { id: mine.id })).warning).toBeUndefined();
+  });
+
   it('compares two sessions', async () => {
     const result = await call('compare_recordings', {
       before: '20260919-100000-OrderForm-panel-aaaa',
       after: '20260919-110000-OrderForm-panel-bbbb',
     });
-    expect(result.roots[0]).toMatchObject({ root: 'Amount', perHit: { before: 80, after: 8 } });
-    expect(result.actions[0]).toMatchObject({ per: 'char', renders: { before: 80, after: 8 } });
+    expect(result.roots[0]).toMatchObject({ root: 'Amount', perHit: '80 → 8 (-90%)' });
+    expect(result.actions[0]).toMatchObject({ per: 'char', renders: '80 → 8 (-90%)' });
+  });
+});
+
+describe('installedChromium', () => {
+  it('finds the newest Chromium Playwright installed, whatever revision this Playwright expects', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'rpr-browsers-'));
+    for (const dir of ['chromium-1179', 'chromium-1194', 'chromium_headless_shell-1200', 'ffmpeg-1011']) {
+      fs.mkdirSync(path.join(root, dir, 'chrome-linux'), { recursive: true });
+      fs.writeFileSync(path.join(root, dir, 'chrome-linux', 'chrome'), '');
+    }
+    expect(installedChromium(root)).toBe(path.join(root, 'chromium-1194', 'chrome-linux', 'chrome'));
+    expect(installedChromium(path.join(root, 'none'))).toBeUndefined();
+    fs.rmSync(root, { recursive: true, force: true });
   });
 });

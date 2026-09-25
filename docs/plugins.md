@@ -1,8 +1,8 @@
 # Plugins
 
-Three come with the package: `zustand()` names stores and their actions, `proxyMemoize()` counts memoized selectors'
-calls and recomputes, `reactQuery()` turns query cache events into causes. A plugin whose library is not on the page
-is left out of the report.
+Four come with the package: `zustand()` names stores and their actions, `redux()` does the same for Redux and Redux
+Toolkit, `proxyMemoize()` counts memoized selectors' calls and recomputes, `reactQuery()` turns query cache events into
+causes. A plugin whose library is not on the page is left out of the report.
 
 A plugin has two optional halves: build hooks for the dev server and a runtime module for the page.
 
@@ -21,6 +21,11 @@ export const myStore = () =>
   });
 ```
 
+`transform` sees the app's modules. A library's own file — to reach what the libraries on the page do with it —
+goes to `transformDep: { filter, transform(code, id) }`: it runs in the dependency optimizer (esbuild before Vite 8,
+Rolldown from 8) and on files served from `node_modules` or a linked package. Changing it needs `vite --force` once:
+the optimizer keeps its bundle until the lockfile or the config changes.
+
 ```ts
 // src/dev/myStorePlugin.ts
 import { definePlugin } from 'react-perf-recorder/runtime';
@@ -29,7 +34,9 @@ export default definePlugin((options: { verbose: boolean }) => ({
   name: 'my-store',
   setup(ctx) {}, // at page boot, before the app
   describe(fn, kind, next) {
-    return null; // a label for a store selector or a store
+    // a label for a selector, a store (by its getSnapshot), or the selector behind a getSnapshot the library
+    // hands useSyncExternalStore itself (`snapshot`: zustand 5's useStore, react-redux's connect)
+    return null;
   },
   start(session) {}, // session.emitCause({ type, changes }) queues a cause for the next commit
   commit(session) {}, // after each commit of a recording: find what mounted late; keep it cheap

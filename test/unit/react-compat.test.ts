@@ -34,6 +34,25 @@ describe('component sites across React versions', () => {
     expect(siteKeyOf(fiber)).toBe('src/components/Row.tsx:81:35');
   });
 
+  it("shows an element a package wrote at the app's line that handed it over, and keeps it a package's", () => {
+    // flexRender of a table creates the app's cell component: the owner stack's second frame is the package's.
+    const error = new Error('react-stack-top-frame');
+    Object.defineProperty(error, 'stack', {
+      value: [
+        'Error: react-stack-top-frame',
+        '    at exports.jsxDEV (http://localhost:5173/node_modules/.vite/deps/react_jsx-dev-runtime.js?v=abc:246:31)',
+        '    at flexRender (http://localhost:5173/node_modules/.vite/deps/@tanstack_react-table.js?v=abc:12:9)',
+        '    at DataTable (http://localhost:5173/src/components/data-table.tsx:88:14)',
+        '    at react_stack_bottom_frame (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=abc:17:20)',
+      ].join('\n'),
+    });
+    const fiber = { tag: 0, type: function RowActions() {}, _debugStack: error } as unknown as Fiber;
+    expect(sourceOf(fiber)).toBe('src/components/data-table.tsx');
+    expect(generatedSourceOf(fiber)).toEqual({ url: 'http://localhost:5173/src/components/data-table.tsx', line: 88, column: 14 });
+    // Whether a component is a package's still reads the element's own site.
+    expect(isLibraryFiber({ tag: 0, type: function Theirs2() {}, child: fiber } as unknown as Fiber)).toBe(true);
+  });
+
   it('tells a package apart from the app by the file of what a component rendered, on either version', () => {
     const appChild = withOwnerStack('http://localhost:5173/src/components/Row.tsx', 12, 4);
     const packageChild = withOwnerStack('http://localhost:5173/node_modules/.vite/deps/react-router-dom.js?v=abc', 4233, 20);

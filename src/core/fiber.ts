@@ -1,4 +1,4 @@
-import { contextOf, isConsumerTag, isProviderTag, siteOf } from './react-compat';
+import { contextOf, isConsumerTag, isProviderTag, shownSiteOf, siteOf } from './react-compat';
 import { mappedSite } from './sites';
 import { libraryOf } from './stack';
 
@@ -139,7 +139,7 @@ function definedInPackage(f: Fiber): boolean {
  * the line is left off rather than guessed.
  */
 export function sourceOf(f: Fiber, root = ''): string {
-  const site = siteOf(f);
+  const site = shownSiteOf(f);
   if (!site) return '';
   const file = relativeFile(site.url, root);
   if (site.exact) return `${file}:${site.line}`;
@@ -149,7 +149,7 @@ export function sourceOf(f: Fiber, root = ''): string {
 
 /** The built position to map through the dev server, when the fiber's own is not the file's. */
 export function generatedSourceOf(f: Fiber): { url: string; line: number; column: number } | undefined {
-  const site = siteOf(f);
+  const site = shownSiteOf(f);
   return site && !site.exact ? { url: site.url, line: site.line, column: site.column } : undefined;
 }
 

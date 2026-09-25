@@ -36,7 +36,12 @@ async function waitFor(step: ReplayStep, timeoutMs: number, cancelled: () => boo
 
 /** React keeps its own copy of a field's value: it is set through the prototype's setter so React sees the change. */
 function setValue(el: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement, value: string) {
-  const proto = el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : el instanceof HTMLSelectElement ? HTMLSelectElement.prototype : HTMLInputElement.prototype;
+  const proto =
+    el instanceof HTMLTextAreaElement
+      ? HTMLTextAreaElement.prototype
+      : el instanceof HTMLSelectElement
+      ? HTMLSelectElement.prototype
+      : HTMLInputElement.prototype;
   Object.getOwnPropertyDescriptor(proto, 'value')?.set?.call(el, value);
 }
 
@@ -117,6 +122,7 @@ async function perform(step: ReplayStep, el: Element, cancelled: () => boolean) 
     case 'scroll': {
       const target = step.selector ? el : document.scrollingElement;
       if (target && step.scrollTo !== undefined) target.scrollTop = step.scrollTo;
+      if (target && step.scrollLeft !== undefined) target.scrollLeft = step.scrollLeft;
       return;
     }
   }

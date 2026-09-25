@@ -37,8 +37,11 @@ describe('render reasons', () => {
     const row = rec.components.find((c) => c.name === 'Row')!;
     expect(row.memo).toBe(true);
     expect(row.byParent).toBe(2);
-    expect(reasonsOf(rec, row).sort()).toEqual(['parent: props price | same: style, onClick', 'parent: props same: style, onClick']);
-    expect(reasonPairs(rec, rec.components.find((c) => c.name === 'Plain')!)).toEqual([['parent: props equal', 2]]);
+    expect(reasonsOf(rec, row).sort()).toEqual([
+      'parent: props new ref, same content: style, onClick',
+      'parent: props price | new ref, same content: style, onClick',
+    ]);
+    expect(reasonPairs(rec, rec.components.find((c) => c.name === 'Plain')!)).toEqual([['parent: same props, memo would skip it', 2]]);
   });
 
   it('shows a context change that reaches a memo component past its parent', () => {
@@ -64,6 +67,29 @@ describe('render reasons', () => {
     const rec = recorder.stop();
     const badge = rec.components.find((c) => c.name === 'Badge')!;
     expect(reasonsOf(rec, badge).sort()).toEqual(['context Theme', 'context Theme SAME-CONTENT']);
+  });
+
+  it("names a package's context without a displayName by the component that provides it", () => {
+    // A package's context, like dnd-kit's: no displayName, provided inside the package's own component.
+    const Internal = createContext({ over: 0 });
+    const Card = memo(() => <i>{useContext(Internal).over}</i>);
+    Card.displayName = 'Card';
+    let move!: Setter;
+    const DndContext = ({ children }: { children: React.ReactNode }) => {
+      const [over, setOver] = useState(0);
+      move = setOver;
+      return <Internal.Provider value={{ over }}>{children}</Internal.Provider>;
+    };
+    mount(
+      <DndContext>
+        <Card />
+      </DndContext>
+    );
+    const { recorder } = makeRecorder();
+    recorder.start();
+    flush(() => move(1));
+    const rec = recorder.stop();
+    expect(reasonsOf(rec, rec.components.find((c) => c.name === 'Card')!)).toEqual(['context (unnamed, provided by DndContext)']);
   });
 
   it('calls a render that set a state to its current value a bailout', () => {

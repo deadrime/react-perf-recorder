@@ -13,7 +13,7 @@ const MAX_ROWS = 5;
 const toneOf = (d: Delta) => (d.pct === null || Math.abs(d.pct) < 10 || Math.abs(d.delta ?? 0) < 1 ? undefined : d.pct < 0 ? 'good' : 'bad');
 const num = (n: number | null) => (n === null ? '–' : String(n));
 const change = (d: Delta) => (toneOf(d) ? `${d.pct! > 0 ? '+' : '−'}${Math.abs(d.pct!)}%` : 'same');
-const VERB: Record<string, string> = { typing: 'type', click: 'click', key: 'key', change: 'change', submit: 'submit', scroll: 'scroll' };
+const verbOf = (kind: string) => (kind === 'typing' ? 'type' : kind);
 const unitOf = (c: ActionChange) => (c.per === 'char' ? 'per char' : c.kind === 'click' ? 'per click' : 'per time');
 const timeOf = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
@@ -30,7 +30,7 @@ const ActionRow = ({ a }: { a: ActionChange }) => (
     title={`${a.action}\nDone ${a.times.before}× before and ${a.times.after}× now — the numbers are renders ${unitOf(a)}, so that does not matter`}
   >
     <span class="cmp-what">
-      <span class="cmp-verb">{VERB[a.kind] ?? a.kind}</span>
+      <span class="cmp-verb">{verbOf(a.kind)}</span>
       <span class="cmp-target">{a.target}</span>
       {a.component ? <span class="cmp-in">{`in ${a.component}`}</span> : null}
     </span>

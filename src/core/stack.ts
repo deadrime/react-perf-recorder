@@ -38,6 +38,10 @@ const packageOf = (path: string) => {
   return parts[0]?.startsWith('@') ? parts.slice(0, 2).join('/') : parts[0] ?? '';
 };
 
+// A shared chunk has no package: `chunk-XYZ` from esbuild and, set by our plugin, Rolldown. A project's own Rolldown
+// names are `[name]-[hash]`: npm names are lower case, so an upper-case letter in the last eight marks a hash.
+const SHARED_CHUNK = /^chunk-|-(?=[\w$-]{0,7}[A-Z])[\w$-]{8}$/;
+
 /**
  * The npm package a frame runs in, or null for app code. Pre-bundled deps are `<cacheDir>/deps/<id>.js?v=…` with `/`
  * in the id flattened to `_` (`@tanstack_react-query`); shared chunks (`chunk-XYZ.js`) have no name and give `''`.
@@ -46,7 +50,7 @@ export function libraryOf(url: string): string | null {
   const path = url.split(/[?#]/)[0];
   if (OWN.some((prefix) => path.startsWith(prefix))) return 'react-perf-recorder';
   const deps = /\/deps\/([^/]+)\.js$/.exec(path);
-  if (deps && (url.includes('?v=') || path.includes('/.vite'))) return deps[1].startsWith('chunk-') ? '' : packageOf(deps[1].replace(/_/g, '/'));
+  if (deps && (url.includes('?v=') || path.includes('/.vite'))) return SHARED_CHUNK.test(deps[1]) ? '' : packageOf(deps[1].replace(/_/g, '/'));
   const at = path.lastIndexOf('/node_modules/');
   if (at >= 0) return packageOf(path.slice(at + '/node_modules/'.length));
   return null;

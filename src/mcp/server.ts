@@ -1,3 +1,5 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
@@ -21,8 +23,8 @@ import {
 import type { RecordingV2 } from '../shared/schema';
 import { listingOf } from '../shared/listing';
 import { planReplay } from '../shared/replay';
-import { recordPage } from './record';
-import { findSession, listSessions, readRecording, waitForSession } from './store';
+import { recordPage, SETUP_FILE } from './record';
+import { findSession, latestWarning, listSessions, readRecording, waitForSession } from './store';
 
 declare const __VERSION__: string;
 const VERSION = typeof __VERSION__ === 'string' ? __VERSION__ : 'dev';
@@ -46,7 +48,32 @@ const SECTIONS = [
   'plugins',
 ] as const;
 
-const json = (value: unknown) => ({ content: [{ type: 'text' as const, text: JSON.stringify(value, null, 1) }] });
+// No indentation: an agent reads compact JSON as well, and indented answers cost it a fifth more.
+const json = (value: unknown) => ({ content: [{ type: 'text' as const, text: JSON.stringify(value) }] });
+
+/** The setup record_page ran before a recording: its replay needs the same mocks, storage or sign-in. */
+const setupOf = (sessionDir: string): string | undefined => {
+  try {
+    return JSON.parse(fs.readFileSync(path.join(sessionDir, SETUP_FILE), 'utf8')).setup;
+  } catch {
+    return undefined;
+  }
+};
+
+type DeltaLike = { before: number | null; after: number | null; pct: number | null };
+const isDelta = (v: unknown): v is DeltaLike & { key?: string } => !!v && typeof v === 'object' && 'before' in v && 'after' in v && 'pct' in v;
+/** `80 → 8 (-90%)`: a before/after in a third of the object's size. */
+const deltaText = (d: DeltaLike) => `${d.before ?? '–'} → ${d.after ?? '–'}${d.pct === null ? '' : ` (${d.pct > 0 ? '+' : ''}${d.pct}%)`}`;
+const compactDeltas = (v: unknown): unknown =>
+  Array.isArray(v)
+    ? v.map(compactDeltas)
+    : isDelta(v)
+    ? v.key !== undefined
+      ? `${v.key}: ${deltaText(v)}`
+      : deltaText(v)
+    : v && typeof v === 'object'
+    ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, compactDeltas(x)]))
+    : v;
 
 export function section(rec: RecordingV2 & { id?: string; status?: string }, name: string, top: number, offset: number, hooks: HookMode = 'full') {
   const page = <T>(list: T[]) => ({ total: list.length, offset, items: list.slice(offset, offset + top) });
@@ -186,18 +213,28 @@ export function createServer(dir: string) {
     'list_recordings',
     {
       description:
-        'Sessions recorded with the panel, record_page or scripts, newest first: id, status (recording — still running, done, interrupted — the page reloaded or closed), source, label, url, area, duration, actions, commits, renders and the top cascade root.',
+        "Use to find a recording you have no id for — the person's, an earlier run — or yours among others when several agents record into the same folder (filter by url or label). Sessions recorded with the panel, record_page or scripts, newest first: id, status (recording — still running, done, interrupted — the page reloaded or closed), source, label, url, area, duration, actions, commits, renders and the top cascade root.",
       inputSchema: {
         limit: z.number().int().min(1).max(200).optional().describe('20 by default.'),
         status: z.enum(['recording', 'done', 'interrupted']).optional(),
-        scope: z.string().optional().describe('Only sessions whose area name contains this.'),
+        scope: z.string().optional().describe('Only sessions whose area name contains this; "whole app" for those with no area.'),
         source: z.string().optional().describe('Only sessions whose source contains this: panel, record, script:<name>.'),
+        url: z
+          .string()
+          .optional()
+          .describe('Only sessions whose page url contains this, e.g. "localhost:5406" — another agent may record another app into the same folder.'),
+        label: z.string().optional().describe('Only sessions whose label contains this.'),
       },
     },
-    async ({ limit = 20, status, scope, source }) => {
+    async ({ limit = 20, status, scope, source, url, label }) => {
+      const has = (value: string, part?: string) => !part || value.includes(part);
       const sessions = listSessions(dir).filter(
         (s) =>
-          (!status || s.status === status) && (!scope || (s.meta.scope?.name ?? '').includes(scope)) && (!source || s.meta.source.includes(source))
+          (!status || s.status === status) &&
+          has(s.meta.scope?.name ?? 'whole app', scope) &&
+          has(s.meta.source, source) &&
+          has(s.meta.page.url, url) &&
+          has(s.meta.label ?? '', label)
       );
       return json({
         dir,
@@ -230,8 +267,9 @@ export function createServer(dir: string) {
     'get_recording',
     {
       description:
+        'Use to read a recording, after every record_page or wait_for_recording: the default summary — cascade roots with their reason, hook chain and file:line, what scheduled the commits, the costliest actions, memos that keep recomputing, plugin highlights — usually holds the answer; ask for another section only for what it leaves open. ' +
         'One session, in words: reasons, hook chains and causes resolved from the ids recording.json keeps them as — read sections, not the file. ' +
-        'id: an id from list_recordings, "latest" or "latest-1". A running or interrupted session is rebuilt from its events (partial: ' +
+        'id: an id from list_recordings, "latest" or "latest-1" — when others may record into the same folder, the id record_page returned, not latest. A running or interrupted session is rebuilt from its events (partial: ' +
         'no hook names, components, ways or plugin sections). The answer carries the session folder for grep.',
       inputSchema: {
         id: z.string().default('latest'),
@@ -258,9 +296,12 @@ export function createServer(dir: string) {
       },
     },
     async ({ id, section: name = 'summary', top = 10, offset = 0, hooks = 'full' }) => {
-      const entry = findSession(dir, id);
+      const sessions = listSessions(dir);
+      const entry = findSession(dir, id, sessions);
       const rec = readRecording(entry);
+      const warning = latestWarning(sessions, id, entry);
       return json({
+        ...(warning ? { warning } : {}),
         id: entry.id,
         status: entry.status,
         dir: entry.dir,
@@ -274,33 +315,52 @@ export function createServer(dir: string) {
     'record_page',
     {
       description:
-        "Records a page in a browser of its own and returns the session id, so a fix can be measured: record, change the code, record again with the same arguments, then compare_recordings. Needs the dev server running with the Vite plugin and playwright installed in the project. A scenario of clicks and typing goes in a script module, or replay does again what a recording did — the person's own clicks and typing, at their pace, from the page load; replay does not wait for data, so a scenario whose actions wait on requests needs a script. Without either it records ms of the page as it is, and fromLoad records the page load itself. Behind a sign-in: via (a link that signs in), then a session saved once by `react-perf-recorder login <url>`, then cdp; a page that redirects to a login says so. Outlines are off in these runs.",
+        'Use when you drive the page yourself: nobody can reproduce it in their browser, a scenario has to run the same way twice, or a fix has to be measured. When the person can reproduce it, their own recording (wait_for_recording) is worth more. ' +
+        "Records a page in a browser of its own and returns the session id, so a fix can be measured: record, change the code, record again with the same arguments, then compare_recordings. Needs the dev server running with the Vite plugin and playwright installed in the project. A scenario of clicks and typing goes in a script module, or replay does again what a recording did — the person's own clicks and typing, at their pace, from the page load; replay does not wait for data, so a scenario whose actions wait on requests needs a script. Without either it records ms of the page as it is, and fromLoad records the page load itself. Behind a sign-in: via (a link that signs in), then a session saved once by `react-perf-recorder login <url>`, then cdp; a page that redirects to a login says so. Outlines are off in these runs. A run that outlasts the client's time limit (about a minute) keeps recording in the page: list_recordings shows it as recording until it ends — keep a script well under a minute.",
       inputSchema: {
-        url: z.string().optional().describe("The page to open, on the dev server. With replay, the recording's page when left out."),
+        url: z
+          .string()
+          .optional()
+          .describe(
+            "The page to open, on the dev server. With replay, the recording's page when left out. With setup, left out: the recording starts where setup left the page, with what it built in memory (an upload, a click-through)."
+          ),
         ms: z
           .number()
           .int()
           .min(200)
           .max(60_000)
           .optional()
-          .describe('How long to record the page as it is, 3000 by default. With a script or replay the recording lasts as long as they run.'),
+          .describe(
+            'How long to record the page as it is, 3000 by default; 3–12 seconds of one scenario. With a script or replay the recording lasts as long as they run.'
+          ),
         label: z.string().optional().describe('What this run is, e.g. "before" and "after".'),
         scope: z
           .union([z.string(), z.object({ names: z.array(z.string()) }), z.object({ selector: z.string(), component: z.string().optional() })])
           .optional()
           .describe(
-            'Record only what renders inside an area: a component\'s name as the page calls it ("MessageList"), the path down to it when the name repeats, or an element. Renders that came from above are kept as outside roots, with their reason.'
+            'Record only what renders inside an area: a component\'s name as the page calls it ("MessageList"), the path down to it when the name repeats, or an element. Renders that came from above are kept as outside roots, with their reason. It must be mounted when the recording starts, and one that is not answers with the names that are; for a component the script brings up, record the whole page with watch.'
           ),
         watch: z
           .array(z.string())
           .optional()
           .describe('Components to follow by name through the whole page: how often each rendered and which root pulled it.'),
-        script: z.string().optional().describe('A module with `export default async (page) => {…}`, run while recording.'),
+        script: z
+          .string()
+          .optional()
+          .describe(
+            'A module with `export default async (page) => {…}`: the page is already open at url and recording when it runs, and the recording stops when it returns — so it only does the actions. No goto, reload or engine.start/stop in it: a navigation ends the recording. Wait for what shows the result (a list, a spinner gone), not for a time; look an element up again for each step (page.locator), since a page that re-renders replaces its elements; a form in a same-origin frame is reached through page.frameLocator, and the recording follows the frame itself. A failure answers with the page url, its text and a screenshot.'
+          ),
+        setup: z
+          .string()
+          .optional()
+          .describe(
+            'A module like script, run before the recording and not recorded: seed localStorage or IndexedDB (goto the dev server, evaluate, return), sign in, build data through the UI, stub a backend the machine cannot reach with page.route. With url, the page is opened again after it and only storage, cookies and routes carry over; without url, the recording starts on the page setup left.'
+          ),
         replay: z
           .string()
           .optional()
           .describe(
-            'A recording id (or "latest") whose actions to do again, from the page load, on its page and in its area unless url and scope say otherwise: record it after the fix, then compare_recordings with the original.'
+            'A recording id (or "latest") whose actions to do again, from the page load, on its page and in its area unless url and scope say otherwise, after the setup it ran: record it after the fix, then compare_recordings with the original.'
           ),
         fromLoad: z.boolean().optional().describe('Record from the first commit of the page load.'),
         viewport: z.string().optional().describe('1280x800; keep it the same across runs that will be compared.'),
@@ -310,7 +370,12 @@ export function createServer(dir: string) {
           .describe(
             'Faster on lists of thousands: reasons of renders a parent caused are a sample, counts stay exact, and no ways or commit cascades are kept.'
           ),
-        throttle: z.number().min(1).max(20).optional().describe('CPU slowdown, 4 = four times slower.'),
+        throttle: z
+          .number()
+          .min(1)
+          .max(20)
+          .optional()
+          .describe('CPU slowdown, 4 = four times slower; keep it the same across runs that will be compared.'),
         state: z.string().optional().describe('A session saved by `login`; the default beside the recordings is used when it is there.'),
         cdp: z.string().optional().describe('http://localhost:9222 of a browser already running and signed in.'),
         via: z
@@ -321,11 +386,15 @@ export function createServer(dir: string) {
     },
     async ({ replay, ...args }) => {
       if (!replay) return json(await recordPage(args, dir));
-      const rec = readRecording(findSession(dir, replay));
+      const entry = findSession(dir, replay);
+      const rec = readRecording(entry);
       const plan = planReplay({ ...rec, id: rec.id ?? replay });
       if (!plan.steps.length) throw new Error(`${replay} has no actions to replay${plan.skipped.length ? `: ${plan.skipped.join('; ')}` : ''}`);
       const scope = args.scope ?? rec.scope?.name;
-      return json(await recordPage({ ...args, ...(scope ? { scope } : {}), replay: { ...plan, url: rec.page.url } }, dir));
+      const setup = args.setup ?? setupOf(entry.dir);
+      return json(
+        await recordPage({ ...args, ...(scope ? { scope } : {}), ...(setup ? { setup } : {}), replay: { ...plan, url: rec.page.url } }, dir)
+      );
     }
   );
 
@@ -333,17 +402,24 @@ export function createServer(dir: string) {
     'wait_for_recording',
     {
       description:
-        'Blocks until the person starts (until: "started") or finishes (until: "done", default) a recording in the browser, then returns its id and summary. Use when you asked them to record a scenario with the panel. Returns status "timeout" after timeoutMs; call again to keep waiting.',
+        'Use when the person can reproduce the problem in their own browser — the best recording, since it is the thing that annoyed them: ask them to press Rec in the panel (or Alt+Shift+R), do it and press Stop, and call this meanwhile. Blocks until the person starts (until: "started") or finishes (until: "done", default) a recording, then returns its id and summary. Returns status "timeout" after timeoutMs; call again to keep waiting.',
       inputSchema: {
         timeoutMs: z.number().int().min(1000).max(600_000).optional().describe('120000 (two minutes) by default.'),
-        afterId: z.string().optional().describe('Only a session newer than this id: pass the latest one to skip what was there before you asked.'),
+        afterId: z
+          .string()
+          .optional()
+          .describe(
+            'Only a session newer than this id: pass the latest one to skip what was there before you asked — always, when others record into the same folder.'
+          ),
+        url: z.string().optional().describe("Only a session whose page url contains this: the person's app, not another agent's."),
         until: z.enum(['started', 'done']).optional(),
       },
     },
-    async ({ timeoutMs = 120_000, afterId, until = 'done' }, extra) => {
+    async ({ timeoutMs = 120_000, afterId, url, until = 'done' }, extra) => {
       const progressToken = extra._meta?.progressToken;
       const entry = await waitForSession(dir, {
         afterId,
+        url,
         until,
         timeoutMs,
         signal: extra.signal,
@@ -363,7 +439,7 @@ export function createServer(dir: string) {
     'compare_recordings',
     {
       description:
-        'Before/after of two sessions: totals per second and per commit, cascade roots (new, gone, changed by cascade per second), causes, the same user actions — the median of each time it was done, per character for typing, so the runs need not match click for click — and plugin metrics. Warns when viewport, page, area, conditions or durations differ, when outlines were on in only one run, and when a side is partial.',
+        'Use to prove a fix, or to see what a change did: two recordings of one scenario, before and after — record_page with replay: <id> after the change when the actions happen in the page, the same script on both sides when they wait on requests. Before/after of two sessions: totals per second and per commit, cascade roots (new, gone, changed by cascade per second), causes, the same user actions — the median of each time it was done, per character for typing, so the runs need not match click for click — and plugin metrics. Warns when viewport, page, area, conditions or durations differ, when outlines were on in only one run, and when a side is partial.',
       inputSchema: {
         before: z.string().describe('A session id, or "latest-1".'),
         after: z.string().default('latest'),
@@ -377,9 +453,12 @@ export function createServer(dir: string) {
       },
     },
     async ({ before, after, top, match }) => {
-      const a = readRecording(findSession(dir, before));
-      const b = readRecording(findSession(dir, after));
-      return json(compareRecordings(a, b, { top, match }));
+      const sessions = listSessions(dir);
+      const [beforeEntry, afterEntry] = [findSession(dir, before, sessions), findSession(dir, after, sessions)];
+      const latestWarnings = [latestWarning(sessions, before, beforeEntry), latestWarning(sessions, after, afterEntry)].filter(Boolean);
+      const full = compareRecordings(readRecording(beforeEntry), readRecording(afterEntry), { top, match });
+      const result = compactDeltas(full) as typeof full;
+      return json(latestWarnings.length ? { ...result, warnings: [...latestWarnings, ...result.warnings], comparable: false } : result);
     }
   );
 

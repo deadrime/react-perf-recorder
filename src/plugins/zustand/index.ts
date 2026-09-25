@@ -1,7 +1,8 @@
 import { createFilter } from '../../vite/helpers/filter';
-import { appendLines, findDeclarations, ifDeclared } from '../../vite/helpers/name-declarations';
+import { nameStoresTransform } from '../../vite/helpers/name-declarations';
 import { combineProxies, proxyModule } from '../../vite/helpers/proxy-module';
 import type { BuildContext, PerfRecorderPlugin } from '../../vite/plugin-api';
+import { handOverCode, ZUSTAND_GLOBAL } from '../store-shared';
 
 export interface ZustandOptions {
   include?: string[];
@@ -13,6 +14,40 @@ export interface ZustandOptions {
 }
 
 const RUNTIME = 'react-perf-recorder/plugins/zustand/runtime';
+const IMPL = 'const createStoreImpl = ';
+
+/**
+ * `create`, `createWithEqualityFn` and `createStore` all end in `createStoreImpl` of zustand/vanilla (v4 and v5), so
+ * a store made inside a library — xyflow's, one per component — is followed too, not only those the app imports.
+ */
+export function registerStores(code: string): string | null {
+  if (!code.includes(IMPL) || code.includes('__rprCreateStoreImpl')) return null;
+  const { declare, handOver } = handOverCode(ZUSTAND_GLOBAL);
+  return [
+    code.replace(IMPL, 'const __rprCreateStoreImpl = '),
+    declare,
+    'const createStoreImpl = (createState) => {',
+    '  const api = __rprCreateStoreImpl(createState);',
+    `  ${handOver('api')}`,
+    '  return api;',
+    '};',
+  ].join('\n');
+}
+
+const SNAPSHOT = 'React.useCallback(() => selector(api.getState()), [api, selector])';
+
+/**
+ * zustand 5's `useStore` hands useSyncExternalStore a getSnapshot of its own: each one is told to the runtime with its
+ * store and selector, so a reason names them. v4 goes through use-sync-external-store/with-selector, read as it is.
+ */
+export function followSnapshots(code: string): string | null {
+  if (!code.includes(SNAPSHOT) || code.includes('__rprSnapshot')) return null;
+  return [
+    code.replace(SNAPSHOT, `__rprSnapshot(${SNAPSHOT}, api, selector)`),
+    handOverCode(ZUSTAND_GLOBAL).declare,
+    'function __rprSnapshot(fn, api, selector) { if (__rprHook.snapshot) __rprHook.snapshot(fn, api, selector); return fn; }',
+  ].join('\n');
+}
 
 /**
  * Store causes for commits: which action wrote to which store and which top-level keys it changed (with the same
@@ -52,17 +87,13 @@ export function zustand(options: ZustandOptions = {}): PerfRecorderPlugin {
     init: (ctx) => void (context = ctx),
     vite: {
       config: () => ({ optimizeDeps: { include: ['zustand', 'zustand/vanilla', 'zustand/react/shallow'] } }),
+      transformDep: {
+        filter: /[\\/]zustand[\\/]esm[\\/](?:vanilla|react)\.mjs$/,
+        transform: (code) => registerStores(code) ?? followSnapshots(code),
+      },
       resolveId: (id, importer) => proxies.resolveId(id, importer),
       load: (id) => proxies.load(id),
-      transform(code, id) {
-        if (!filter(id) || !functions.some((fn) => code.includes(fn))) return null;
-        const names = findDeclarations(code, functions, { file: id });
-        const out = appendLines(code, [
-          `import { nameStore as __rprNameStore } from ${JSON.stringify(RUNTIME)};`,
-          ...names.map((name) => ifDeclared(name, `__rprNameStore(${name}, ${JSON.stringify(name)});`)),
-        ]);
-        return names.length && out ? { code: out, map: null } : null;
-      },
+      transform: nameStoresTransform(filter, functions, RUNTIME, '__rprNameStore'),
     },
     runtime: { module: RUNTIME, options: { devtools: options.devtools ?? true } },
   };

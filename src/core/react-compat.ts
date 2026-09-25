@@ -1,4 +1,4 @@
-import { parseStack } from './stack';
+import { libraryOf, parseStack, type Frame } from './stack';
 import type { Fiber } from './fiber';
 
 /**
@@ -18,7 +18,8 @@ export interface Site {
 /** React's own marker for the frame under which nothing is the app's code any more. */
 const BOTTOM_FRAME = /react_stack_bottom_frame/;
 
-const ownerStackSites = new WeakMap<Error, Site | null>();
+// The element's own site, and the one shown for it: an element a package wrote is shown where the app handed it over.
+const ownerStackSites = new WeakMap<Error, { own: Site | null; shown: Site | null }>();
 let sawSite = false;
 let sawFiberWithoutSite = false;
 
@@ -31,7 +32,7 @@ export function siteOf(f: Fiber): Site | null {
   }
   const stack = f._debugStack;
   if (stack instanceof Error) {
-    const site = ownerStackSite(stack);
+    const site = sitesOf(stack).own;
     if (site) sawSite = true;
     else sawFiberWithoutSite = true;
     return site;
@@ -40,27 +41,49 @@ export function siteOf(f: Fiber): Site | null {
   return null;
 }
 
-/** `prepareStackTrace` is turned off so no other tool reformats the stack; the first read costs, so it is kept. */
-function ownerStackSite(error: Error): Site | null {
-  const known = ownerStackSites.get(error);
-  if (known !== undefined) return known;
+/**
+ * The site to show for a fiber: an element a package wrote — `flexRender` of a table, a Radix trigger — is shown at
+ * the app's line that handed it over. Whether a component is a package's still reads the element's own site.
+ */
+export function shownSiteOf(f: Fiber): Site | null {
+  const site = siteOf(f);
+  return site && !site.exact ? sitesOf(f._debugStack as Error).shown : site;
+}
+
+/** `prepareStackTrace` is turned off so no other tool reformats the stack. */
+function stackText(error: Error): string {
   const holder = Error as ErrorConstructor & { prepareStackTrace?: unknown };
   const previous = holder.prepareStackTrace;
-  let text = '';
   try {
     holder.prepareStackTrace = undefined;
-    text = error.stack ?? '';
+    return error.stack ?? '';
   } catch {
-    text = '';
+    return '';
   } finally {
     holder.prepareStackTrace = previous;
   }
-  const frames = parseStack(text);
+}
+
+/** Read once per element: the first read of a stack is what costs. */
+function sitesOf(error: Error) {
+  const known = ownerStackSites.get(error);
+  if (known) return known;
+  const frames = parseStack(stackText(error));
+  const siteAt = (frame: Frame): Site => ({ url: frame.url, line: frame.line, column: frame.column, exact: false });
   // frames[0] is `jsxDEV` or `createElement` itself: the element was written one frame below it.
-  const frame = frames[1];
-  const site = frame && !BOTTOM_FRAME.test(frame.fn) ? { url: frame.url, line: frame.line, column: frame.column, exact: false } : null;
-  ownerStackSites.set(error, site);
-  return site;
+  const own = frames[1] && !BOTTOM_FRAME.test(frames[1].fn) ? siteAt(frames[1]) : null;
+  let shown = own;
+  if (own && libraryOf(own.url) !== null)
+    for (const frame of frames.slice(2)) {
+      if (BOTTOM_FRAME.test(frame.fn)) break;
+      if (libraryOf(frame.url) === null) {
+        shown = siteAt(frame);
+        break;
+      }
+    }
+  const sites = { own, shown };
+  ownerStackSites.set(error, sites);
+  return sites;
 }
 
 /**

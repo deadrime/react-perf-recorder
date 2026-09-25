@@ -1,4 +1,5 @@
-import { act, type ReactNode } from 'react';
+import path from 'node:path';
+import { act, version, type ReactNode } from 'react';
 import { reasonTexts } from '../../src/shared/summary';
 import { createRoot, type Root } from 'react-dom/client';
 import { PluginHost, type PluginEntry } from '../../src/core/plugins';
@@ -51,3 +52,6 @@ export const reasonsOf = (rec: { reasons: Parameters<typeof reasonTexts>[0]['rea
 
 export const reasonPairs = (rec: { reasons: Parameters<typeof reasonTexts>[0]['reasons'] }, stat: { reasons: Array<[number, number]> }) =>
   reasonTexts(rec, stat);
+
+/** The node_modules of the React under test: a module written there imports that React, as a package's file does. */
+export const nodeModules = () => path.resolve(__dirname, version.startsWith('19') ? '../react19/node_modules' : '../../node_modules');

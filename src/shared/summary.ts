@@ -114,12 +114,12 @@ export function hookOf(root: RootStat, reason: ReasonInfo | undefined) {
 const names = (list: string[] | undefined, max = 5) => (list ?? []).slice(0, max).join(', ');
 
 /**
- * The sentence behind a reason — `state #2 SAME-CONTENT`, `parent: props price | same: style` — built in one place
+ * The sentence behind a reason — `state #2 SAME-CONTENT`, `parent: props price | new ref, same content: style` — built in one place
  * so the panel, the MCP server and an agent all read the same words.
  */
 export function reasonText(reason: Omit<ReasonInfo, 'i' | 'text'>): string {
   const mark = reason.sameContent ? ' SAME-CONTENT' : '';
-  const props = [names(reason.changed), reason.sameRef?.length ? `same: ${names(reason.sameRef)}` : ''].filter(Boolean).join(' | ');
+  const props = [names(reason.changed), reason.sameRef?.length ? `new ref, same content: ${names(reason.sameRef)}` : ''].filter(Boolean).join(' | ');
   switch (reason.kind) {
     case 'state':
       return reason.hook === undefined ? `class state${mark}` : `state #${reason.hook}${mark}`;
@@ -130,7 +130,7 @@ export function reasonText(reason: Omit<ReasonInfo, 'i' | 'text'>): string {
     case 'props':
       return `props: ${props || '(new object)'}`;
     case 'parent':
-      if (reason.equal) return 'parent: props equal';
+      if (reason.equal) return 'parent: same props, memo would skip it';
       if (!props) return 'parent: children';
       return `parent: props ${props}${reason.children ? ' +children' : ''}`;
     case 'bailout':
@@ -152,7 +152,7 @@ export interface WayStep {
   what?: string;
   /** Props the parent changed, and props that were only new references to the same content. */
   props?: string[];
-  same?: string[];
+  newRefSameContent?: string[];
   children?: true;
   /** Props equal: the render a memo would have saved. */
   equal?: true;
@@ -186,7 +186,7 @@ function stepOf(name: string, reason: ReasonInfo | undefined, root?: RootStat): 
   return {
     name,
     ...(reason.changed?.length ? { props: reason.changed.slice(0, 5) } : {}),
-    ...(reason.sameRef?.length ? { same: reason.sameRef.slice(0, 5) } : {}),
+    ...(reason.sameRef?.length ? { newRefSameContent: reason.sameRef.slice(0, 5) } : {}),
     ...(reason.children || (!reason.changed?.length && !reason.sameRef?.length) ? { children: true as const } : {}),
   };
 }
@@ -199,7 +199,7 @@ export function stepParts(step: WayStep): Array<{ label?: string; text: string; 
   const parts: Array<{ label?: string; text: string; tone?: 'warn' }> = [];
   if (step.props?.length) parts.push({ label: step.props.length > 1 ? 'props' : 'prop', text: step.props.join(', ') });
   // A new reference with the same content: the prop a useMemo or a constant would have kept.
-  if (step.same?.length) parts.push({ label: 'same content', text: step.same.join(', '), tone: 'warn' });
+  if (step.newRefSameContent?.length) parts.push({ label: 'new ref, same content', text: step.newRefSameContent.join(', '), tone: 'warn' });
   if (step.children && !parts.length) parts.push({ text: 'children' });
   return parts;
 }
@@ -238,11 +238,11 @@ function mergeStep(a: WayStep, b: WayStep): WayStep {
   if (a.skipped || a.why !== undefined) return a;
   if (a.equal && b.equal) return a;
   const props = union(a.props, b.props);
-  const same = union(a.same, b.same);
+  const newRefSameContent = union(a.newRefSameContent, b.newRefSameContent);
   return {
     name: a.name,
     ...(props ? { props } : {}),
-    ...(same ? { same } : {}),
+    ...(newRefSameContent ? { newRefSameContent } : {}),
     ...(a.children || b.children ? { children: true as const } : {}),
   };
 }
@@ -343,6 +343,24 @@ export function reasonLine(root: RootStat, reason: ReasonInfo | undefined, n: nu
   return `${n}× ${textOf(reason)}${hook ? ` · ${hook}` : ''}`;
 }
 
+/** A reason and its same-content twin as one line: `289× external store #15 (287 of them same content) · …`. */
+export function mergeSameContent(lines: Array<[string, number]>): Array<[string, number]> {
+  const groups = new Map<string, { n: number; same: number; sameText: string }>();
+  for (const [text, n] of lines) {
+    const key = text.replace(' SAME-CONTENT', '');
+    const group = groups.get(key) ?? { n: 0, same: 0, sameText: '' };
+    group.n += n;
+    if (key !== text) [group.same, group.sameText] = [group.same + n, text];
+    groups.set(key, group);
+  }
+  return [...groups]
+    .map(([key, g]): [string, number] => [
+      !g.same ? key : g.same === g.n ? g.sameText : g.sameText.replace(' SAME-CONTENT', ` (${g.same} of them same content)`),
+      g.n,
+    ])
+    .sort((a, b) => b[1] - a[1]);
+}
+
 export function rootLine(root: RootStat, durationMs: number, reasons: Map<number, ReasonInfo>, mode: HookMode = 'full'): RootLine {
   return {
     root: root.name,
@@ -355,7 +373,9 @@ export function rootLine(root: RootStat, durationMs: number, reasons: Map<number
     noDomChange: root.noDomChange,
     ...(root.mounts ? { mounts: root.mounts } : {}),
     ...(root.renderMs ? { renderMsPerHit: +(root.renderMs / Math.max(1, root.hits)).toFixed(2) } : {}),
-    reasons: root.reasons.slice(0, 3).map(([id, n]) => reasonLine(root, reasons.get(id), n, mode)),
+    reasons: mergeSameContent(root.reasons.map(([id, n]) => [reasonLine(root, reasons.get(id), n, mode).replace(/^\d+× /, ''), n]))
+      .slice(0, 3)
+      .map(([text, n]) => `${n}× ${text}`),
     causes: root.causes.slice(0, 3).map(([k, n]) => `${n}× ${k}`),
     ...(root.lanes.length ? { lanes: root.lanes.map(([l, n]) => `${l}:${n}`).join(' ') } : {}),
   };
@@ -394,6 +414,8 @@ export function actionText(action: ActionRecord): string {
       return `${action.key} on «${field}»${where}`;
     case 'scroll':
       return `scroll «${field}» ${action.scroll?.pixels ?? 0}px`;
+    case 'drag':
+      return `drag «${field}»${where} ${action.drag?.pixels ?? 0}px`;
     case 'navigation':
       return `back/forward to ${action.url}`;
     default:

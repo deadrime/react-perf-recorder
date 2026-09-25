@@ -9,7 +9,7 @@ type Loose = Record<string, any>;
 
 /**
  * A Vite plugin described structurally: the public types never import `vite`, so a linked or hoisted copy of the
- * package with its own Vite and Rollup versions still type-checks against the project's Vite 5–7.
+ * package with its own Vite and Rollup versions still type-checks against the project's Vite 5–8.
  */
 export interface VitePluginLike {
   name: string;
@@ -35,6 +35,8 @@ export interface PerfRecorderPlugin {
     resolveId?: (source: string, importer: string | undefined) => string | null | undefined;
     load?: (id: string) => string | null | undefined;
     transform?: (code: string, id: string) => { code: string; map: null } | string | null | undefined;
+    /** A dependency's own file, in the optimizer or served as it is: reaches what the page's libraries import too. */
+    transformDep?: { filter: RegExp; transform: (code: string, id: string) => string | null | undefined };
   };
   runtime?: { module: string; options?: JsonValue };
   /** Receives the core's context once the config is resolved. */

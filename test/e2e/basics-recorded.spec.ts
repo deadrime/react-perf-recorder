@@ -5,7 +5,7 @@ import { hookOf, hookText, reasonsById, textOf, waysOf, wayText } from '../../sr
 
 /**
  * Every panel of a textbook case says what the recorder will say about it. These record the scenario and check the
- * words: a page that promises `parent: props same: icon` and gets something else is teaching the wrong thing.
+ * words: a page that promises `parent: props new ref, same content: icon` and gets something else is teaching the wrong thing.
  */
 const record = async (page: Page, url: string, act: () => Promise<void>) => {
   await page.goto(url);
@@ -28,11 +28,11 @@ const said = (rec: RecordingV2, name: string) => {
   });
 };
 
-test('an element written in render: parent: props same: icon', async ({ page }) => {
+test('an element written in render: parent: props new ref, same content: icon', async ({ page }) => {
   const rec = await record(page, '/basics/props', async () => {
     for (let i = 0; i < 3; i++) await page.getByTestId('render').click();
   });
-  expect(said(rec, 'Badge')).toContain('parent: props same: icon');
+  expect(said(rec, 'Badge')).toContain('parent: props new ref, same content: icon');
 });
 
 test('a value object built in the provider: context SAME-CONTENT on the readers', async ({ page }) => {
@@ -53,7 +53,11 @@ test('a clock hidden in a hook: the hook chain names it', async ({ page }) => {
 test('a render that came down from a clock keeps its way: the timer, the card, the item that got equal props', async ({ page }) => {
   const rec = await record(page, '/basics/state', () => page.waitForTimeout(2500));
   const ways = waysOf(rec, rec.components.find((c) => c.name === 'RenderCount')?.chains).map(wayText);
-  expect(ways).toContainEqual(expect.stringMatching(/^core:timer setInterval @ src\/basics\/StateDown\.tsx › CardWithClock · state useSecond › Item · props equal › RenderCount · prop renders$/));
+  expect(ways).toContainEqual(
+    expect.stringMatching(
+      /^core:timer setInterval @ src\/basics\/StateDown\.tsx › CardWithClock · state useSecond › Item · props equal › RenderCount · prop renders$/
+    )
+  );
 
   // The panel draws the same way, with the link where a memo would stop it marked.
   await page.goto('/basics/state?rpr=panel');
@@ -109,7 +113,31 @@ test('a value only a handler reads, kept in state: state #0 for every move', asy
   expect(rec.roots.map((r) => r.name)).not.toContain('PadWithRef');
 });
 
-test('a handler with the text in its deps: parent: props same: onSend', async ({ page }) => {
+test('a handler with the text in its deps: parent: props new ref, same content: onSend', async ({ page }) => {
   const rec = await record(page, '/basics/ref', () => page.getByTestId('text-deps').pressSequentially('hello', { delay: 30 }));
-  expect(said(rec, 'SendButton')).toContain('parent: props same: onSend');
+  expect(said(rec, 'SendButton')).toContain('parent: props new ref, same content: onSend');
+});
+
+test('an empty default: parent: props new ref, same content: marks, on rows nobody selected', async ({ page }) => {
+  const rec = await record(page, '/advanced/empty', () => page.getByTestId('select-next').click());
+  expect(said(rec, 'Row')).toContain('parent: props new ref, same content: marks');
+  expect(said(rec, 'Row')).toContain('parent: props selected');
+});
+
+test('a whole copy of the form: parent: props new ref, same content: value, on the groups not typed into', async ({ page }) => {
+  const rec = await record(page, '/advanced/copy', () => page.getByTestId('broken-contact-name').pressSequentially('bc', { delay: 30 }));
+  expect(said(rec, 'Group').sort()).toEqual(['parent: props new ref, same content: value', 'parent: props value']);
+});
+
+test("a package's context: named by the component that provides it", async ({ page }) => {
+  const rec = await record(page, '/advanced/context', () => page.getByTestId('note-broken').pressSequentially('ab', { delay: 30 }));
+  // A root here: the hook chain follows, down to the package's hook the card calls.
+  expect(said(rec, 'Card')).toEqual([expect.stringMatching(/^context \(unnamed, provided by SortableList\) SAME-CONTENT · useSortable/)]);
+});
+
+test('a Redux store: named after its declaration, with the action that changed it', async ({ page }) => {
+  const rec = await record(page, '/advanced/redux', () => page.locator('[data-case="fixed"]').getByTestId('like-Pikachu').click());
+  expect(said(rec, 'WholeList')[0]).toMatch(/^external store #\d+ \[pokedexStore\]/);
+  expect(rec.causes.map((c) => c.key)).toContain('redux:favorites/toggle');
+  expect(rec.plugins.redux).toMatchObject({ active: true, highlights: ['pokedexStore: 1 change, most by favorites/toggle ×1'] });
 });

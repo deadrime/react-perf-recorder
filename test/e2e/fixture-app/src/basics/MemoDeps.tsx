@@ -111,7 +111,7 @@ export const MemoDeps = () => (
       <Panel
         kind="broken"
         title="useMemo(…, [{ status }])"
-        says="The recorder says: parent: props same: rows — a new array with the same rows in it."
+        says="The recorder says: parent: props new ref, same content: rows — a new array with the same rows in it."
         code={BROKEN}
       >
         <InlineReport />

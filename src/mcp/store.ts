@@ -44,12 +44,40 @@ export function listSessions(dir: string): SessionEntry[] {
   return out.sort((a, b) => (a.id < b.id ? 1 : -1));
 }
 
-export function findSession(dir: string, ref: string): SessionEntry {
-  const sessions = listSessions(dir);
+export function findSession(dir: string, ref: string, sessions = listSessions(dir)): SessionEntry {
   const latest = /^latest(?:-(\d+))?$/.exec(ref);
   const entry = latest ? sessions[Number(latest[1] ?? 0)] : sessions.find((s) => s.id === ref) ?? sessions.find((s) => s.id.includes(ref));
   if (!entry) throw new Error(sessions.length ? `no session ${ref}; latest is ${sessions[0].id}` : `no sessions in ${dir} yet`);
   return entry;
+}
+
+// Another route of the same app is the same person's run: only another dev server is someone else's.
+const appOf = (url: string) => {
+  try {
+    return new URL(url).host;
+  } catch {
+    return url;
+  }
+};
+
+/**
+ * `latest` is whoever recorded last into the folder. When other pages were recorded around the same time — another
+ * agent on another app — the answer says so, rather than hand over someone else's recording as yours.
+ */
+export function latestWarning(sessions: SessionEntry[], ref: string, entry: SessionEntry): string | undefined {
+  if (!ref.startsWith('latest')) return undefined;
+  const at = Date.parse(entry.meta.createdAt);
+  const page = appOf(entry.meta.page.url);
+  const others = new Set(
+    sessions
+      .filter((s) => Math.abs(Date.parse(s.meta.createdAt) - at) < 10 * 60_000)
+      .map((s) => appOf(s.meta.page.url))
+      .filter((app) => app !== page)
+  );
+  if (!others.size) return undefined;
+  return `"${ref}" is ${entry.id} on ${page}; ${[...others].slice(0, 3).join(', ')} ${
+    others.size > 1 ? 'were' : 'was'
+  } recorded in the same ten minutes — someone else may record into this folder: pass the id record_page returned`;
 }
 
 export function readEvents(entry: SessionEntry): SessionEvent[] {
@@ -76,6 +104,8 @@ export function readRecording(entry: SessionEntry): RecordingV2 & { status: Sess
 
 export interface WaitOptions {
   afterId?: string;
+  /** Only a session whose page url contains this: another agent may be recording another app into the same folder. */
+  url?: string;
   until: 'started' | 'done';
   timeoutMs: number;
   signal?: AbortSignal;
@@ -91,6 +121,7 @@ export async function waitForSession(dir: string, options: WaitOptions): Promise
     if (options.signal?.aborted) return null;
     for (const s of listSessions(dir)) {
       if (options.afterId && s.id <= options.afterId) continue;
+      if (options.url && !s.meta.page.url.includes(options.url)) continue;
       const before = known.get(s.id);
       if (options.until === 'started' && before === undefined) return s;
       if (options.until === 'done' && s.status !== 'recording' && before !== s.status && (before === undefined || before === 'recording')) return s;

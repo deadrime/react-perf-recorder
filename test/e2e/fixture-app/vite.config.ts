@@ -4,6 +4,7 @@ import { defineConfig } from 'vite';
 import { perfRecorder } from '../../../src/vite';
 import { proxyMemoize } from '../../../src/plugins/proxy-memoize';
 import { reactQuery } from '../../../src/plugins/react-query';
+import { redux } from '../../../src/plugins/redux';
 import { zustand } from '../../../src/plugins/zustand';
 import { react19Aliases, reactVersionUnderTest } from '../../react-19';
 
@@ -28,7 +29,7 @@ export default defineConfig({
     perfRecorder({
       enabled: true,
       outDir: process.env.FIXTURE_OUT_DIR ?? path.resolve(__dirname, '../../../.agent-artifacts/fixture-sessions'),
-      plugins: [zustand(), proxyMemoize({ functions: ['memoize', 'memoizeWithArgs'] }), reactQuery()],
+      plugins: [zustand(), proxyMemoize({ functions: ['memoize', 'memoizeWithArgs'] }), reactQuery(), redux()],
     }),
   ],
 });

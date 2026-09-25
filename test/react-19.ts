@@ -13,7 +13,7 @@ const tree = path.resolve(__dirname, 'react19/node_modules');
 
 const inTree = (name: string) => ({ find: new RegExp(`^${name}(/.*)?$`), replacement: `${tree}/${name}$1` });
 
-const RENDER_WITH_REACT = ['react', 'react-dom', 'zustand', 'react-hook-form', 'react-router-dom', '@tanstack/react-query'];
+const RENDER_WITH_REACT = ['react', 'react-dom', 'zustand', 'react-redux', 'react-hook-form', 'react-router-dom', '@tanstack/react-query'];
 
 /**
  * For the dev server, React alone: everything else keeps resolving from the repo's own install, and the optimizer

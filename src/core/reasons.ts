@@ -1,7 +1,7 @@
 import { sameContent } from '../shared/same-content';
 import type { ReasonKind } from '../shared/schema';
-import { hasHooks, Tag, type ContextDependency, type Fiber, type Hook } from './fiber';
-import { hookCells } from './react-compat';
+import { hasHooks, isComposite, nameOf, Tag, type ContextDependency, type Fiber, type Hook } from './fiber';
+import { contextOf, hookCells, isProviderTag } from './react-compat';
 
 export interface Snapshot {
   props: unknown;
@@ -37,6 +37,7 @@ const MAX_PROPS = 10;
 export interface Describer {
   selector(fn: Function): string;
   store(getSnapshot: Function): string | null;
+  snapshot(getSnapshot: Function): string | null;
 }
 
 const same = (a: unknown, b: unknown) => sameContent(a, b, 20_000) === true;
@@ -74,6 +75,29 @@ function propsReason(before: unknown, after: unknown): Reason {
   };
 }
 
+const unnamedContexts = new WeakMap<object, string>();
+
+const above = (f: Fiber, test: (p: Fiber) => boolean) => {
+  let p = f.return;
+  while (p && !test(p)) p = p.return;
+  return p;
+};
+
+/**
+ * A context without a displayName — most packages' — is named by the component that provides it, the nearest one
+ * above its provider: `(unnamed, provided by DndContext)` says whose it is where `(unnamed)` said nothing.
+ */
+function contextLabel(context: { displayName?: string }, f: Fiber): string {
+  if (context.displayName) return context.displayName;
+  let label = unnamedContexts.get(context);
+  if (label !== undefined) return label;
+  const provider = above(f, (p) => isProviderTag(p.tag) && contextOf(p) === context);
+  const owner = provider && above(provider, isComposite);
+  label = owner ? `(unnamed, provided by ${nameOf(owner)})` : '(unnamed)';
+  unnamedContexts.set(context, label);
+  return label;
+}
+
 /** Why a rendered fiber rendered, compared with its snapshot from the previous commit it was seen in. */
 export function reasonsOf(prev: Snapshot, f: Fiber, describe: Describer): Reason[] {
   if (prev.props !== f.memoizedProps) return [propsReason(prev.props, f.memoizedProps)];
@@ -89,8 +113,11 @@ export function reasonsOf(prev: Snapshot, f: Fiber, describe: Describer): Reason
           // use-sync-external-store/with-selector (zustand v4, react-redux) keeps [getSnapshot, getServerSnapshot, selector, isEqual]
           // in the deps of the useMemo right before the store hook.
           const deps = Array.isArray(before?.memoizedState) ? (before!.memoizedState as unknown[])[1] : null;
-          const selector = Array.isArray(deps) && typeof deps[2] === 'function' ? describe.selector(deps[2] as Function) : '';
-          const store = Array.isArray(deps) && typeof deps[0] === 'function' ? describe.store(deps[0] as Function) : null;
+          const withSelector = Array.isArray(deps) && typeof deps[0] === 'function' && typeof deps[2] === 'function';
+          // Otherwise the library passed a getSnapshot of its own, which its plugin may know (zustand 5, `connect`).
+          const getSnapshot = b.queue.getSnapshot as Function;
+          const selector = withSelector ? describe.selector(deps[2] as Function) : describe.snapshot(getSnapshot) ?? '';
+          const store = describe.store(withSelector ? (deps[0] as Function) : getSnapshot);
           out.push({ kind: 'store', hook: i, ...(store ? { store } : {}), ...(selector ? { selector } : {}), ...mark });
         } else if (b.queue.lastRenderedReducer) {
           out.push({ kind: 'state', hook: i, ...mark });
@@ -111,7 +138,7 @@ export function reasonsOf(prev: Snapshot, f: Fiber, describe: Describer): Reason
       if (!old.has(d.context) || old.get(d.context) === d.memoizedValue) continue;
       out.push({
         kind: 'context',
-        context: d.context.displayName || '(unnamed)',
+        context: contextLabel(d.context, f),
         contextObject: d.context,
         ...(same(old.get(d.context), d.memoizedValue) ? { sameContent: true } : {}),
       });
