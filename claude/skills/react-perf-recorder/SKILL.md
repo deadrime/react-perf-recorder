@@ -12,28 +12,11 @@ A dev-only Vite plugin that records React re-renders from the page. Recordings l
 **Never write measured numbers into a file of the repository.** They are true for one machine and one moment;
 numbers belong in the answer.
 
-## Getting a recording
+## Recording and reading
 
-| The situation                                        | What to do                                                                                              |
-| ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| The person reproduces the problem in their browser   | Ask them to press **Rec**, do it, press **Stop**; meanwhile `wait_for_recording`, then `get_recording`. |
-| You drive the page                                   | `record_page` — one call, one recording; clicks and typing go in a `script` module.                     |
-| The problem is the page load                         | `record_page` with `fromLoad`, or the panel's `↺ Page load`.                                            |
-| Before and after a fix, nothing waits on the network | `record_page` with `replay: <id>` after the change → `compare_recordings`.                              |
-| Before and after a fix, actions wait on requests     | Two `record_page` runs with the same `script` → `compare_recordings`.                                   |
-
-About one component: pass the name it is exported under as `scope`. Details, sign-in and the traps of each route:
-`references/getting-a-recording.md`.
-
-Work through the `react-perf-recorder` MCP tools. Their own descriptions are the reference for every parameter and
-what it does; read `record_page`'s before writing a `script` or a `setup`.
-
-## Reading it
-
-**One call usually holds the answer.** The default `summary` of `get_recording` has the totals, the cascade roots
-with their reason, hook chain and `file:line`, what scheduled the commits, the costliest actions, the memos that
-keep recomputing and the plugins' highlights. Read the file it points at; open another section only for what the
-summary leaves open — `components` for the way a render came down, `timeline` for one commit's cascade.
+Work through the `react-perf-recorder` MCP tools: each one says in its description when to use it and what it takes.
+Read `record_page`'s before writing a `script` or a `setup`. After a recording, read the file `get_recording` points
+at: the recording names the line, the code there shows the mechanism.
 
 No `react-perf-recorder` tools in this session? The server starts with the session; from a terminal the same data
 is `node node_modules/react-perf-recorder/dist/cli.js list`, `show latest --section roots`, and `pull` to wait for
@@ -41,7 +24,6 @@ the next finished recording.
 
 ## References
 
-- `references/getting-a-recording.md` — whose recording, which tool, sign-in.
 - `references/measuring-a-fix.md` — before and after: replay or script, a worktree for the change, reading the result.
 - `references/reading-a-recording.md` — roots, reasons, hook chains, components and their ways, memos.
 - `references/causes-and-actions.md` — what scheduled each commit, the person's actions, plugin sections, traps.

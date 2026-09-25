@@ -213,7 +213,7 @@ export function createServer(dir: string) {
     'list_recordings',
     {
       description:
-        'Sessions recorded with the panel, record_page or scripts, newest first: id, status (recording — still running, done, interrupted — the page reloaded or closed), source, label, url, area, duration, actions, commits, renders and the top cascade root.',
+        "Use to find a recording you have no id for — the person's, an earlier run — or yours among others when several agents record into the same folder (filter by url or label). Sessions recorded with the panel, record_page or scripts, newest first: id, status (recording — still running, done, interrupted — the page reloaded or closed), source, label, url, area, duration, actions, commits, renders and the top cascade root.",
       inputSchema: {
         limit: z.number().int().min(1).max(200).optional().describe('20 by default.'),
         status: z.enum(['recording', 'done', 'interrupted']).optional(),
@@ -267,6 +267,7 @@ export function createServer(dir: string) {
     'get_recording',
     {
       description:
+        'Use to read a recording, after every record_page or wait_for_recording: the default summary — cascade roots with their reason, hook chain and file:line, what scheduled the commits, the costliest actions, memos that keep recomputing, plugin highlights — usually holds the answer; ask for another section only for what it leaves open. ' +
         'One session, in words: reasons, hook chains and causes resolved from the ids recording.json keeps them as — read sections, not the file. ' +
         'id: an id from list_recordings, "latest" or "latest-1" — when others may record into the same folder, the id record_page returned, not latest. A running or interrupted session is rebuilt from its events (partial: ' +
         'no hook names, components, ways or plugin sections). The answer carries the session folder for grep.',
@@ -314,6 +315,7 @@ export function createServer(dir: string) {
     'record_page',
     {
       description:
+        'Use when you drive the page yourself: nobody can reproduce it in their browser, a scenario has to run the same way twice, or a fix has to be measured. When the person can reproduce it, their own recording (wait_for_recording) is worth more. ' +
         "Records a page in a browser of its own and returns the session id, so a fix can be measured: record, change the code, record again with the same arguments, then compare_recordings. Needs the dev server running with the Vite plugin and playwright installed in the project. A scenario of clicks and typing goes in a script module, or replay does again what a recording did — the person's own clicks and typing, at their pace, from the page load; replay does not wait for data, so a scenario whose actions wait on requests needs a script. Without either it records ms of the page as it is, and fromLoad records the page load itself. Behind a sign-in: via (a link that signs in), then a session saved once by `react-perf-recorder login <url>`, then cdp; a page that redirects to a login says so. Outlines are off in these runs. A run that outlasts the client's time limit (about a minute) keeps recording in the page: list_recordings shows it as recording until it ends — keep a script well under a minute.",
       inputSchema: {
         url: z
@@ -400,7 +402,7 @@ export function createServer(dir: string) {
     'wait_for_recording',
     {
       description:
-        'Blocks until the person starts (until: "started") or finishes (until: "done", default) a recording in the browser, then returns its id and summary. Use when you asked them to record a scenario with the panel. Returns status "timeout" after timeoutMs; call again to keep waiting.',
+        'Use when the person can reproduce the problem in their own browser — the best recording, since it is the thing that annoyed them: ask them to press Rec in the panel (or Alt+Shift+R), do it and press Stop, and call this meanwhile. Blocks until the person starts (until: "started") or finishes (until: "done", default) a recording, then returns its id and summary. Returns status "timeout" after timeoutMs; call again to keep waiting.',
       inputSchema: {
         timeoutMs: z.number().int().min(1000).max(600_000).optional().describe('120000 (two minutes) by default.'),
         afterId: z
@@ -437,7 +439,7 @@ export function createServer(dir: string) {
     'compare_recordings',
     {
       description:
-        'Before/after of two sessions: totals per second and per commit, cascade roots (new, gone, changed by cascade per second), causes, the same user actions — the median of each time it was done, per character for typing, so the runs need not match click for click — and plugin metrics. Warns when viewport, page, area, conditions or durations differ, when outlines were on in only one run, and when a side is partial.',
+        'Use to prove a fix, or to see what a change did: two recordings of one scenario, before and after — record_page with replay: <id> after the change when the actions happen in the page, the same script on both sides when they wait on requests. Before/after of two sessions: totals per second and per commit, cascade roots (new, gone, changed by cascade per second), causes, the same user actions — the median of each time it was done, per character for typing, so the runs need not match click for click — and plugin metrics. Warns when viewport, page, area, conditions or durations differ, when outlines were on in only one run, and when a side is partial.',
       inputSchema: {
         before: z.string().describe('A session id, or "latest-1".'),
         after: z.string().default('latest'),

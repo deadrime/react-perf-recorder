@@ -7,10 +7,7 @@ is a guess or numbers were asked for; a recording that names the root, reason an
 
 1. The recording with the problem — the person's, or `record_page`. Keep its id.
 2. The change, in a git worktree when there is git (below); otherwise in place, and put back afterwards.
-3. The same scenario on the change:
-   - actions that happen in the page — `record_page` with `replay: <id>`;
-   - actions that wait on requests — a `script` that waits for the data (the list, the spinner gone), run on both
-     sides; a replay does not wait for data.
+3. The same scenario on the change — `compare_recordings`' description says how to record it.
 4. `compare_recordings` with `before: <id>`, `after: <new id>`.
 5. A change that is not kept leaves nothing behind: `git worktree remove`, or the file as it was.
 

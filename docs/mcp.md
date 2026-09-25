@@ -9,13 +9,8 @@ overwrites them). By hand:
 { "mcpServers": { "react-perf-recorder": { "command": "node", "args": ["node_modules/react-perf-recorder/dist/cli.js", "mcp"] } } }
 ```
 
-Which tool when — what each takes, it describes itself, and an MCP client shows it:
-
-- `wait_for_recording` — the person records in the panel; it returns when they stop.
-- `record_page` — the agent records a page in a browser of its own: a scenario, the page load, a replay after a fix.
-- `get_recording` — read a recording, section by section.
-- `compare_recordings` — before and after a fix.
-- `list_recordings` — find a recording among others.
+Tools: `wait_for_recording`, `record_page`, `get_recording`, `compare_recordings`, `list_recordings`. Each says in
+its own description when to use it and what it takes; an MCP client shows it.
 
 The sessions folder comes from `--dir`, then `REACT_PERF_RECORDER_DIR`, then `./.agent-artifacts/perf-recorder`.
 

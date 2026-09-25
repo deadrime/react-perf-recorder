@@ -4,9 +4,8 @@ The page carries the engine at `window.__REACT_PERF_RECORDER__.engine`, so a Pla
 without touching the panel. `docs/mcp.md` in the repository has the full API; this is what a measuring run
 needs.
 
-**This is for a script of your own, outside `record_page`.** A `script` given to `record_page` is not this: the
-page is already open and recording when it runs, so it only does the actions — `goto` and `engine.start`/`stop`
-in it end or break the recording (`references/getting-a-recording.md`).
+**This is for a script of your own, outside `record_page`.** A `script` given to `record_page` is not this: that
+tool's description says what goes in one.
 
 ```js
 // Playwright: an `async (page) => {}` script
