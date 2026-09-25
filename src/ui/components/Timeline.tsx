@@ -752,9 +752,7 @@ export function Timeline({
                       class="tl-bar"
                       data-picked={picked !== null && bar.ids.includes(picked) ? 'true' : undefined}
                       data-lit={lighting && bar.ids.some((i) => lit.has(i)) ? 'true' : undefined}
-                      // `background-color`, not the `background` shorthand: the shorthand would reset the clip that
-                      // keeps the colour off the padding, and the padding is the part that catches the pointer.
-                      style={`left:${bar.x}px;width:${bar.w}px;height:${bar.h}px;background-color:${bar.colour};opacity:${bar.weight}`}
+                      style={`left:${bar.x}px;width:${bar.w}px;height:${bar.h}px;--bar:${bar.colour};opacity:${bar.weight}`}
                       title={bar.title}
                       onClick={() => !panned.current && pickCommit(bar.lead)}
                     />

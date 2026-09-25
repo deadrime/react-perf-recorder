@@ -150,15 +150,20 @@ header .live { flex: 1; color: var(--muted-soft); white-space: nowrap; overflow:
 .tl-grid { position: absolute; top: 0; bottom: 12px; width: 1px; background: var(--grid); }
 .tl-cursor { position: absolute; top: 0; bottom: 12px; width: 1px; z-index: 3; transform: translateX(-50%); background: color-mix(in srgb, var(--text-strong) 55%, transparent); pointer-events: none; }
 .tl-lane { position: relative; box-shadow: inset 0 -1px 0 var(--rule-soft); }
-/* The colour is the content box and is exactly as wide as the commit; the padding around it is the part that catches the pointer. */
-.tl-lane .tl-bar { position: absolute; bottom: 0; box-sizing: content-box; min-width: 3px; margin-left: -4px; padding: 0 4px; border: 0; border-radius: 1px; background-clip: content-box; cursor: pointer; }
-.tl-bar:hover { filter: brightness(1.35); }
-.tl-bar[data-picked="true"] { filter: brightness(1.6); }
+/* A bar is exactly as wide as the commit: a solid top edge and a fill under it, so a long commit zoomed in is a
+   tinted block rather than a slab of colour. The part that catches the pointer is wider, around it. */
+.tl-lane .tl-bar { position: absolute; bottom: 0; box-sizing: border-box; min-width: 3px; padding: 0; border: 0; border-top: 2px solid var(--bar);
+  border-radius: 1px; background: color-mix(in srgb, var(--bar) 35%, transparent); cursor: pointer; }
+.tl-lane .tl-bar::before { content: ''; position: absolute; inset: -2px -4px 0; }
+.tl-bar:hover { background: color-mix(in srgb, var(--bar) 50%, transparent); }
+.tl-bar[data-picked="true"] { background: color-mix(in srgb, var(--bar) 50%, transparent); outline: 1px solid var(--text-strong); }
 .tl-band { position: absolute; top: 0; bottom: 12px; transform: translateX(-50%); border-radius: 2px; background: color-mix(in srgb, var(--text-strong) 9%, transparent); pointer-events: none; }
 .tl-strip[data-lit="true"] .tl-bar:not([data-lit="true"]) { opacity: .25 !important; }
 .tl-actions { box-shadow: inset 0 -1px 0 var(--rule); }
 .tl-mark { position: absolute; top: 3px; height: 7px; min-width: 3px; padding: 0; border: 0; border-radius: 2px; background: var(--mark); cursor: pointer; }
-.tl-mark:hover, .tl-mark[data-picked="true"] { background: var(--text-strong); }
+/* An action runs for seconds and its bar can be the width of the tracks: picked, it takes the accent, not white. */
+.tl-mark:hover { background: color-mix(in srgb, var(--mark) 70%, var(--text-strong)); }
+.tl-mark[data-picked="true"] { background: color-mix(in srgb, var(--accent) 70%, transparent); }
 .tl-axis { position: relative; height: 12px; }
 .tl-tick { position: absolute; top: 1px; color: var(--faint); font-size: 9px; transform: translateX(-50%); white-space: nowrap; }
 .tl-tick[data-first="true"] { transform: none; }
