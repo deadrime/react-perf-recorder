@@ -177,5 +177,7 @@ describe('moduleFile', () => {
     expect(read("export default async (page) => {\n  await page.click('#send');\n};")).toContain("page.click('#send')");
     expect(read("module.exports = async (page) => {\n  await page.click('#a');\n};")).toMatch(/^export default async/);
     expect(read("await page.click('#b');")).toBe("export default async (page) => {\nawait page.click('#b');\n};\n");
+    // The function itself, as an agent writes it inline: the module exports it rather than wrapping it unrun.
+    expect(read("async (page) => { await page.click('#c'); }")).toBe("export default async (page) => { await page.click('#c'); }\n");
   });
 });
