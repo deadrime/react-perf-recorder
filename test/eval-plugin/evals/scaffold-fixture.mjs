@@ -40,6 +40,8 @@ const blank = (text) => text.replace(/[^\n]/g, ' ');
 function rewrite(code, file) {
   const source = ts.createSourceFile(file, code, ts.ScriptTarget.Latest, true, file.endsWith('x') ? ts.ScriptKind.TSX : ts.ScriptKind.TS);
   const edits = [];
+  // What the page runs: the hooks and components a switch picked, whose own comments talk about the choice.
+  const picked = new Set();
   const isSwitch = (node) =>
     ts.isCallExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === 'bug' && ts.isStringLiteral(node.arguments[0] ?? {});
   const statementOf = (node) => {
@@ -62,7 +64,12 @@ function rewrite(code, file) {
     }
     if (ts.isConditionalExpression(node) && isSwitch(node.condition)) {
       const on = node.condition.arguments[0].text === active;
-      const kept = (on ? node.whenTrue : node.whenFalse).getText(source);
+      const branch = on ? node.whenTrue : node.whenFalse;
+      const kept = branch.getText(source);
+      (function names(n) {
+        if (ts.isIdentifier(n)) picked.add(n.text);
+        ts.forEachChild(n, names);
+      })(branch);
       edits.push(commentAbove(node));
       edits.push({ start: node.getStart(source), end: node.getEnd(), text: kept });
       return;
@@ -74,7 +81,21 @@ function rewrite(code, file) {
     }
     ts.forEachChild(node, visit);
   })(source);
-  return apply(code, edits);
+  (function declared(node) {
+    const names =
+      ts.isFunctionDeclaration(node) && node.name
+        ? [node.name.text]
+        : ts.isVariableStatement(node)
+        ? node.declarationList.declarations.map((d) => d.name.getText(source))
+        : [];
+    if (names.some((n) => picked.has(n))) edits.push(commentAbove(node));
+    ts.forEachChild(node, declared);
+  })(source);
+  const seen = new Set();
+  return apply(
+    code,
+    edits.filter(({ start, end, text }) => !seen.has(`${start}:${end}:${text}`) && seen.add(`${start}:${end}:${text}`))
+  );
 }
 
 /** Replaced text keeps the lines it covered; a comment range is only blanked. */
@@ -89,7 +110,10 @@ function apply(code, edits) {
   return code;
 }
 
-/** Top-level declarations nothing uses any more — the other branch's hooks and components — blanked, until none is left. */
+/**
+ * What nothing uses any more — the other branch's hooks and components, a component declared in a render for it, the
+ * imports only it needed — blanked, until none is left.
+ */
 function dropUnused(code, file) {
   for (;;) {
     const source = ts.createSourceFile(file, code, ts.ScriptTarget.Latest, true, file.endsWith('x') ? ts.ScriptKind.TSX : ts.ScriptKind.TS);
@@ -98,18 +122,48 @@ function dropUnused(code, file) {
       if (ts.isIdentifier(node)) uses.set(node.text, (uses.get(node.text) ?? 0) + 1);
       ts.forEachChild(node, count);
     })(source);
+    const once = (name) => uses.get(name) === 1;
     const exported = (s) => s.modifiers?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword);
-    const unused = source.statements.filter((s) => {
-      if (exported(s)) return false;
-      if (ts.isFunctionDeclaration(s) && s.name) return uses.get(s.name.text) === 1;
-      if (ts.isVariableStatement(s)) return s.declarationList.declarations.every((d) => ts.isIdentifier(d.name) && uses.get(d.name.text) === 1);
-      return false;
-    });
-    if (!unused.length) return code;
-    code = apply(
-      code,
-      unused.map((s) => ({ start: s.getFullStart(), end: s.getEnd() }))
-    );
+    // Inside a function only what has no effect goes: a declared function, a useMemo or useCallback nobody reads.
+    const isFunction = (d) =>
+      d.initializer &&
+      (ts.isArrowFunction(d.initializer) ||
+        ts.isFunctionExpression(d.initializer) ||
+        (ts.isCallExpression(d.initializer) && /^use(Memo|Callback)$/.test(d.initializer.expression.getText(source))));
+    const edits = [];
+    (function visit(node, top) {
+      for (const s of ts.isSourceFile(node) || ts.isBlock(node) ? node.statements : []) {
+        if (exported(s)) continue;
+        const unused =
+          (ts.isFunctionDeclaration(s) && s.name && once(s.name.text)) ||
+          (ts.isVariableStatement(s) &&
+            s.declarationList.declarations.every((d) => ts.isIdentifier(d.name) && once(d.name.text) && (top || isFunction(d))));
+        if (unused) edits.push({ start: s.getFullStart(), end: s.getEnd() });
+      }
+      ts.forEachChild(node, (child) => visit(child, false));
+    })(source, true);
+    for (const s of source.statements) {
+      const clause = ts.isImportDeclaration(s) ? s.importClause : undefined;
+      if (!clause) continue;
+      const named = clause.namedBindings && ts.isNamedImports(clause.namedBindings) ? clause.namedBindings.elements : [];
+      if (clause.namedBindings && !named.length) continue;
+      const used = named.filter((e) => !once(e.name.text));
+      const keepDefault = clause.name && !once(clause.name.text);
+      if (used.length === named.length && (!clause.name || keepDefault)) continue;
+      if (!used.length && !keepDefault) edits.push({ start: s.getFullStart(), end: s.getEnd() });
+      else {
+        const parts = [keepDefault ? clause.name.text : '', used.length ? `{ ${used.map((e) => e.getText(source)).join(', ')} }` : ''].filter(
+          Boolean
+        );
+        edits.push({
+          start: s.getStart(source),
+          end: s.getEnd(),
+          text: `import ${clause.isTypeOnly ? 'type ' : ''}${parts.join(', ')} from ${s.moduleSpecifier.getText(source)};`,
+        });
+      }
+    }
+    if (!edits.length) return code;
+    code = apply(code, edits);
   }
 }
 
@@ -227,7 +281,7 @@ async function warm(url, dir) {
 
 // The person's steps, as the e2e tests of the fixture run them.
 const SCENARIOS = {
-  wait: (page) => page.waitForTimeout(3000),
+  wait: (page) => page.waitForTimeout(5000),
   type: (page) => page.getByTestId('message').pressSequentially('see you at five', { delay: 90 }),
   tabs: async (page) => {
     for (let i = 0; i < 3; i++) {
