@@ -39,14 +39,29 @@ one after it; without the plugin there is no browser to measure with, so that si
 
 ## The cases
 
-| Case           | The bug                                                                                |
-| -------------- | -------------------------------------------------------------------------------------- |
-| `whole-object` | `Header` subscribes to the whole workspace object in a store to show one number of it  |
-| `form-watch`   | `Composer` calls `watch()` in the form root, so every keystroke renders the whole form |
+Each is one of the demo's seeded bugs, a pattern any React app can have. What the person does to see it is waiting
+on the page, typing a message, or switching tabs.
 
-A case comes in two forms. The plain one gives a one-line complaint ("typing into the message box lags"), and the
-agent works out the scenario itself. The `-rec` one is what a person with the panel sends: the steps to reproduce
-it and the id of a recording they made, taken with the panel before the agent starts.
+| Case                   | The bug                                                                                  | Shows when |
+| ---------------------- | ---------------------------------------------------------------------------------------- | ---------- |
+| `whole-object`         | `Header` subscribes to the whole workspace object in a store to show one number of it    | waiting    |
+| `live-subscription`    | The message box subscribes to the presence store though it reads it only while rendering | waiting    |
+| `field-state`          | `useController`'s `fieldState` subscribes each small field to the whole form's errors    | typing     |
+| `form-watch`           | `Composer` calls `watch()` in the form root, so every keystroke renders the whole form   | typing     |
+| `memo-cache-slot`      | The rows share one `memoizeWithArgs` with its single default slot, evicting each other   | waiting    |
+| `new-array-selector`   | A selector builds a new array with `Object.keys()` on every call                         | waiting    |
+| `inline-jsx-prop`      | A JSX element made in render is passed to a `memo` component                             | typing     |
+| `inline-context`       | A provider that renders on every tick passes a fresh object as its value                 | waiting    |
+| `router-in-layout`     | A hook the whole layout calls reads the URL, so a tab switch renders the page            | tabs       |
+| `exact-value`          | The time under a message subscribes to the clock itself, to print "4 minutes ago"        | waiting    |
+| `nested-component`     | A component declared inside another one's render is remounted every time                 | waiting    |
+| `hidden-hook-state`    | A custom hook keeps a ticking clock in state to derive a boolean that stays `false`      | waiting    |
+| `effect-derived-state` | An effect copies the active tab into state: a second commit after every switch           | tabs       |
+
+A case comes in two forms. The `-rec` one is what a person with the panel sends: the steps to reproduce it and the
+id of a recording they made, taken with the panel before the agent starts. The plain one gives only a one-line
+complaint ("typing into the message box lags"), and the agent works out the scenario itself; `whole-object` and
+`form-watch` run in both forms.
 
 ## How a case is built
 
@@ -61,17 +76,18 @@ it and the id of a recording they made, taken with the panel before the agent st
 
 ## Reading the numbers
 
-- The sample is small: two runs a side per case, and two of the fixture's thirteen bugs so far. A single run moves
-  a case's score by a half.
-- Both bugs can be found by reading the code, and the agent without the plugin often does. The difference is in
-  what it costs, and in whether the fix goes where the renders come from.
+- Two runs a side per case: a single run moves a case's row by a half. The totals are the ones to read.
+- Every bug can be found by reading the code, and the agent without the plugin often does: the app is small. The
+  difference is in what it costs, and in whether the fix goes where the renders come from.
+- The checks look for the bug's own code being gone or changed, not for one right fix: `memo-cache-slot` and
+  `inline-context` can be fixed in either of two files, and either counts.
 - Cost is the agent's own, from Claude Code; the checks cost nothing.
 
 ## Running it
 
 ```sh
 npm run build
-bash test/eval-plugin/run.sh --runs 2 -j 4 --output-dir .agent-artifacts/evals
+bash test/eval-plugin/run.sh --runs 2 -j 6 --output-dir .agent-artifacts/evals
 node test/eval-plugin/summarize.mjs .agent-artifacts/evals/aggregate-result.json
 ```
 
