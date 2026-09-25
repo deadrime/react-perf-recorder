@@ -258,6 +258,7 @@ test('a picked commit shows its render time as a flame chart: each link as wide 
     await bars.nth(i).evaluate((bar) => (bar as HTMLElement).click());
     if (await flame.locator('[data-rpr="flame-bar"][data-name="Item"]').count()) break;
   }
+  await expect(flame.locator('[data-rpr="flame-bar"][data-name="Item"]')).toBeVisible();
   const time = async (name: string) => Number(await flame.locator(`[data-rpr="flame-bar"][data-name="${name}"]`).first().getAttribute('data-ms'));
   const [search, results, item] = [await time('Search'), await time('Results'), await time('Item')];
   expect(item).toBeGreaterThan(0);

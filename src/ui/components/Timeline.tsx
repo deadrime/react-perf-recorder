@@ -27,7 +27,7 @@ export const causeColour = colourOf;
 const MIN_PX_PER_MS = 0.06;
 const STRIP_PX = 320;
 const BUCKET_PX = 2;
-/** The narrowest bar drawn: a quick commit still has to be seen, and its padding makes it easy to hit. */
+/** The narrowest bar drawn: a quick commit still has to be seen; the area around it that takes the click is wider. */
 const MIN_BAR_PX = 3;
 const MIN_ZOOM = 1;
 const MAX_ZOOM = 30;
@@ -98,7 +98,8 @@ function pack(
         w,
         h: height(hits),
         weight: weight(hits, ms),
-        top: hits,
+        // The commit a column opens on: the slowest where there are times, else the one that rendered most.
+        top: ms ?? hits,
         ms,
         colour: colour(commit),
         ids: [commit.i],
@@ -109,8 +110,8 @@ function pack(
     }
     bar.ids.push(commit.i);
     bar.w = Math.max(bar.w, w);
-    if (hits > bar.top) {
-      bar.top = hits;
+    if ((ms ?? hits) > bar.top) {
+      bar.top = ms ?? hits;
       bar.lead = commit.i;
       bar.colour = colour(commit);
       bar.h = height(hits);
@@ -184,7 +185,8 @@ function layout(rec: RecordingV2, causeKeys: Map<number, string>, zoom: number, 
   for (const lane of lanes) {
     for (const bar of lane.bars) {
       const commit = rec.commits.list[bar.lead];
-      const own = bar.ms !== undefined ? ` · ${lane.label} ${+bar.ms.toFixed(2)}ms of ${commit.ms ?? '?'}ms` : '';
+      const of = commit.ms !== undefined ? ` of ${commit.ms}ms` : '';
+      const own = bar.ms !== undefined ? ` · ${lane.label} ${+bar.ms.toFixed(2)}ms${of}` : '';
       bar.title = `${(commit.atMs / 1000).toFixed(2)}s · ${commit.renders} renders${own}${bar.ids.length > 1 ? ` · ${bar.ids.length} commits` : ''}`;
     }
   }

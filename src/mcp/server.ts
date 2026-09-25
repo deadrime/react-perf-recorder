@@ -151,6 +151,7 @@ export function section(rec: RecordingV2 & { id?: string; status?: string }, nam
             roots: (commit.roots ?? []).slice(0, 5).map((entry) => ({
               root: roots[entry.i]?.name ?? '?',
               hits: entry.hits,
+              ...(entry.ms !== undefined ? { ms: entry.ms } : {}),
               reasons: entry.reasonIds.map((id) => {
                 const reason = reasons.get(id);
                 return reason ? textOf(reason) : '?';

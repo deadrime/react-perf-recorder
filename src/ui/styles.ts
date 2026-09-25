@@ -156,7 +156,8 @@ header .live { flex: 1; color: var(--muted-soft); white-space: nowrap; overflow:
   border-radius: 1px; background: color-mix(in srgb, var(--bar) 35%, transparent); cursor: pointer; }
 .tl-lane .tl-bar::before { content: ''; position: absolute; inset: -2px -4px 0; }
 .tl-bar:hover { background: color-mix(in srgb, var(--bar) 50%, transparent); }
-.tl-bar[data-picked="true"] { background: color-mix(in srgb, var(--bar) 50%, transparent); outline: 1px solid var(--text-strong); }
+/* Picked is more than hovered: a denser fill, and full opacity, so a faint bar's ring shows too. */
+.tl-bar[data-picked="true"] { background: color-mix(in srgb, var(--bar) 70%, transparent); outline: 1px solid var(--text-strong); opacity: 1 !important; }
 .tl-band { position: absolute; top: 0; bottom: 12px; transform: translateX(-50%); border-radius: 2px; background: color-mix(in srgb, var(--text-strong) 9%, transparent); pointer-events: none; }
 .tl-strip[data-lit="true"] .tl-bar:not([data-lit="true"]) { opacity: .25 !important; }
 .tl-actions { box-shadow: inset 0 -1px 0 var(--rule); }
@@ -181,6 +182,7 @@ header .live { flex: 1; color: var(--muted-soft); white-space: nowrap; overflow:
 .flame-bar { position: absolute; height: 17px; overflow: hidden; border-radius: 3px; box-sizing: border-box; border: 1px solid var(--card);
   background: color-mix(in srgb, var(--accent) calc(var(--heat) * 100%), var(--sunken)); cursor: default; }
 .flame-bar[data-equal="true"] { background: color-mix(in srgb, var(--warn) calc(var(--heat) * 100%), var(--sunken)); }
+.flame-bar[data-hot="true"] .flame-label { color: #15151a; }
 .flame-label { display: block; padding: 0 4px; font-size: 10px; line-height: 15px; color: var(--text-strong); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cascade-tree { margin: 0; padding: 0; list-style: none; min-width: 0; }
 .cascade-row { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px; padding: 1px 0; }

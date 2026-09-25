@@ -168,10 +168,13 @@ interface CommitState {
   withoutDom: Set<Fiber>;
   mounted: Set<Fiber>;
   touched: Set<Fiber>;
-  /** Renders by chain link in this commit, its cascade as a tree; null when recording fast. */
-  ways: Map<number, number> | null;
-  /** Milliseconds each link took, its subtree included (`actualDuration`), when the build has profile timings. */
-  wayMs: Map<number, number> | null;
+  /**
+   * Renders by chain link in this commit, its cascade as a tree, and the milliseconds each link took with its
+   * subtree (`actualDuration`) when the build times renders; null when recording fast.
+   */
+  ways: Map<number, { n: number; ms?: number }> | null;
+  /** The build times this commit's renders: its time is recorded, a 0 included. */
+  timed: boolean;
 }
 
 /** The app's components above a fiber, nearest first, shared by every fiber below: text only when a root needs it. */
@@ -197,7 +200,9 @@ type StackItem = [
   rootKey: string | null,
   pending: [string, Fiber, boolean] | null,
   zone: string | null,
-  chain: number
+  chain: number,
+  /** The nearest link above that rendered in this commit, whatever did not render in between: where a nested root hangs. */
+  linkAbove: number
 ];
 
 const MAX_TIMES = 2000;
@@ -501,7 +506,7 @@ export class Recorder {
       withoutDom: new Set(),
       mounted: new Set(),
       ways: this.options.sampleReasons ? null : new Map(),
-      wayMs: this.options.sampleReasons ? null : new Map(),
+      timed: false,
       touched: this.dom.takeForCommit(),
     };
     if (this.scope) {
@@ -567,9 +572,10 @@ export class Recorder {
     const highlight = Boolean(this.deps.highlight) && this.deps.highlight!.enabled !== false && this.options.highlight !== false;
     if (highlight) this.highlighted = true;
     const base = path ? path.split(' < ') : [];
-    const stack: StackItem[] = [[start, parentRendered, null, rootKey, null, null, -1]];
+    const stack: StackItem[] = [[start, parentRendered, null, rootKey, null, null, -1, -1]];
     while (stack.length) {
-      const [f, parentDid, currentPath, currentKey, pending, zoneTag, currentChain] = stack.pop()!;
+      const [f, parentDid, currentPath, currentKey, pending, zoneTag, currentChain, linkAbove] = stack.pop()!;
+      let link = -1;
       let chain = currentChain;
       const prev = this.prevOf(f);
       const rendered = didRender(prev, f);
@@ -611,8 +617,10 @@ export class Recorder {
           (prev.props === f.memoizedProps ||
             ((f.tag === Tag.MemoComponent || f.tag === Tag.SimpleMemoComponent) && shallowEqual(prev.props, f.memoizedProps)));
         let rootAgg: RootAgg | null = null;
+        // A root inside another root's cascade: its time is already in that root's, and its link hangs under it.
+        const nested = currentKey !== null;
         if (!parentDid || ownWork) {
-          const hit = this.hitRoot(f, name, pathText(currentPath, base), prev!, c, false);
+          const hit = this.hitRoot(f, name, pathText(currentPath, base), prev!, c, false, nested);
           key = hit.agg.key;
           reasons = hit.reasons;
           rootAgg = hit.agg;
@@ -632,14 +640,14 @@ export class Recorder {
         }
         // Fast recordings keep no chains: they are there to cost less, and a chain is a sample of nothing.
         if (rootAgg) {
-          chain = this.options.sampleReasons ? -1 : this.chainLink(-1, name, firstId, rootAgg);
-          if (chain >= 0) this.countWay(c, chain, f);
+          chain = this.options.sampleReasons ? -1 : this.chainLink(nested ? linkAbove : -1, name, firstId, rootAgg);
+          if (chain >= 0) this.countWay(c, (link = chain), f);
         }
         // A link of its own for what the app wrote; a package's internals and bare wrappers pass the chain through.
         else if (chain >= 0 && isComposite(f) && !isProvider(name) && !comp.library && !comp.wrapper) {
           chain = this.chainLink(chain, name, firstId);
           comp.chains.set(chain, (comp.chains.get(chain) ?? 0) + 1);
-          this.countWay(c, chain, f);
+          this.countWay(c, (link = chain), f);
         }
         const agg = key ? this.rootsByKey.get(key) : undefined;
         if (agg) {
@@ -668,32 +676,38 @@ export class Recorder {
       }
       // A fiber that did not render has the snapshot it had: nothing to write.
       if (rendered || !prev) this.remember(f);
-      if (!(isolate && f === start) && f.sibling) stack.push([f.sibling, parentDid, currentPath, currentKey, pending, zoneTag, currentChain]);
+      if (!(isolate && f === start) && f.sibling)
+        stack.push([f.sibling, parentDid, currentPath, currentKey, pending, zoneTag, currentChain, linkAbove]);
       const untouched = this.prune && f.alternate !== null && f.child === f.alternate.child;
       if (f.child && !untouched) {
         const childPath = name && !this.structural(name, f) ? { name, up: currentPath } : currentPath;
-        stack.push([f.child, rendered, childPath, rendered ? key : currentKey, nextPending, zone, rendered ? chain : -1]);
+        stack.push([
+          f.child,
+          rendered,
+          childPath,
+          rendered ? key : currentKey,
+          nextPending,
+          zone,
+          rendered ? chain : -1,
+          link >= 0 ? link : linkAbove,
+        ]);
       }
     }
   }
 
   private readonly chainNodes: ChainNode[] = [];
-  /** Interned links: parent id → name → reason id → node id. */
+  /**
+   * Interned links: parent id → name → reason id → node id. A root's link is keyed by the root itself, so two roots of
+   * one name start two chains; a nested root's link has a parent too.
+   */
   private readonly chainIndex = new Map<number, Map<string, Map<number, number>>>();
-  /** A root's links are told apart by the root itself: two roots of one name start two chains. */
-  private readonly rootChains = new Map<RootAgg, Map<number, number>>();
 
   private chainLink(up: number, name: string, reason: number, root?: RootAgg): number {
-    let byReason: Map<number, number> | undefined;
-    if (root) {
-      byReason = this.rootChains.get(root);
-      if (!byReason) this.rootChains.set(root, (byReason = new Map()));
-    } else {
-      let byName = this.chainIndex.get(up);
-      if (!byName) this.chainIndex.set(up, (byName = new Map()));
-      byReason = byName.get(name);
-      if (!byReason) byName.set(name, (byReason = new Map()));
-    }
+    let byName = this.chainIndex.get(up);
+    if (!byName) this.chainIndex.set(up, (byName = new Map()));
+    const key = root ? `\0${root.key}` : name;
+    let byReason = byName.get(key);
+    if (!byReason) byName.set(key, (byReason = new Map()));
     const known = byReason.get(reason);
     if (known !== undefined) return known;
     if (this.chainNodes.length >= MAX_CHAIN_NODES) return -1;
@@ -719,23 +733,32 @@ export class Recorder {
 
   private countWay(c: CommitState, chain: number, f: Fiber) {
     if (!c.ways) return;
-    c.ways.set(chain, (c.ways.get(chain) ?? 0) + 1);
-    if (c.wayMs && hasProfileTimings(f)) c.wayMs.set(chain, (c.wayMs.get(chain) ?? 0) + f.actualDuration!);
+    let way = c.ways.get(chain);
+    if (!way) c.ways.set(chain, (way = { n: 0 }));
+    way.n++;
+    if (hasProfileTimings(f)) way.ms = (way.ms ?? 0) + f.actualDuration!;
   }
 
   /**
-   * A commit's busiest links and its slowest, and every link above them, so the tree they make has no holes:
-   * `[link, renders]`, and the milliseconds when the build times renders.
+   * A commit's links for its tree: every root's, the busiest, and the slowest by their own time, with every link above
+   * them so the tree has no holes. `[link, renders]`, and with timings the milliseconds with the subtree and alone.
    */
-  private commitWays(ways: Map<number, number>, wayMs: Map<number, number> | null): Array<[number, number] | [number, number, number]> {
-    const ids = new Set([
-      ...topEntries(ways, WAYS_PER_COMMIT).map(([id]) => id),
-      ...(wayMs?.size ? topEntries(wayMs, WAYS_PER_COMMIT / 2).map(([id]) => id) : []),
-    ]);
+  private commitWays(ways: Map<number, { n: number; ms?: number }>): CommitWay[] {
+    // Own time is a link's time less its children's, all of them, before any is cut.
+    const self = new Map<number, number>();
+    for (const [id, way] of ways) if (way.ms !== undefined) self.set(id, (self.get(id) ?? 0) + way.ms);
+    for (const [id, way] of ways) {
+      const up = this.chainNodes[id].up;
+      if (way.ms !== undefined && self.has(up)) self.set(up, self.get(up)! - way.ms);
+    }
+    const ids = new Set<number>();
+    for (const id of ways.keys()) if (this.chainNodes[id].root) ids.add(id);
+    for (const [id] of topEntries(new Map([...ways].map(([id, way]) => [id, way.n])), WAYS_PER_COMMIT)) ids.add(id);
+    for (const [id] of topEntries(self, WAYS_PER_COMMIT / 2)) ids.add(id);
     for (const id of [...ids]) for (let up = this.chainNodes[id].up; up >= 0 && !ids.has(up); up = this.chainNodes[up].up) ids.add(up);
     return [...ids].map((id) => {
-      const ms = wayMs?.get(id);
-      return ms !== undefined ? [id, ways.get(id) ?? 0, +ms.toFixed(2)] : [id, ways.get(id) ?? 0];
+      const way = ways.get(id) ?? { n: 0 };
+      return way.ms !== undefined ? [id, way.n, +way.ms.toFixed(2), +Math.max(0, self.get(id) ?? 0).toFixed(2)] : [id, way.n];
     });
   }
 
@@ -777,7 +800,16 @@ export class Recorder {
     return comp;
   }
 
-  private hitRoot(f: Fiber, name: string, path: string, prev: Snapshot, c: CommitState, outside: boolean): { agg: RootAgg; reasons: Reason[] } {
+  /** `nested`: inside another root's cascade in this commit, whose time already holds this one's. */
+  private hitRoot(
+    f: Fiber,
+    name: string,
+    path: string,
+    prev: Snapshot,
+    c: CommitState,
+    outside: boolean,
+    nested = false
+  ): { agg: RootAgg; reasons: Reason[] } {
     const source = sourceOf(f, this.config.projectRoot);
     const generated = generatedSourceOf(f);
     // Two roots of the same name in one file are told apart by the call site, which the source alone carries only
@@ -846,7 +878,8 @@ export class Recorder {
     if (!outside && !touchedHas(c.touched, f)) agg.noDomChange++;
     if (hasProfileTimings(f)) {
       agg.renderMs += f.actualDuration!;
-      c.renderMs += f.actualDuration!;
+      if (!nested) c.renderMs += f.actualDuration!;
+      c.timed = true;
       c.rootMs.set(agg, (c.rootMs.get(agg) ?? 0) + f.actualDuration!);
     }
     if (!outside) c.cascade.set(agg, c.cascade.get(agg) ?? 0);
@@ -919,7 +952,7 @@ export class Recorder {
       atMs: c.t,
       ...(previous ? { sinceMs: +(c.t - previous.atMs).toFixed(1) } : {}),
       renders: c.renders,
-      ...(c.renderMs ? { ms: +c.renderMs.toFixed(2) } : {}),
+      ...(c.timed ? { ms: +c.renderMs.toFixed(2) } : {}),
       ...(lane ? { lane } : {}),
       ...(event ? { event } : {}),
       ...(keys.size ? { causeIds: [...keys].map((key) => this.causeStats.get(key)!.i) } : {}),
@@ -933,7 +966,7 @@ export class Recorder {
         : {}),
       ...(c.outside ? { outside: c.outside.index } : {}),
       ...(c.noDom ? { noDom: c.noDom } : {}),
-      ...(c.ways?.size ? { ways: this.commitWays(c.ways, c.wayMs) } : {}),
+      ...(c.ways?.size ? { ways: this.commitWays(c.ways) } : {}),
     };
     const limit = this.options.timeline ?? this.config.timelineLimit;
     if (this.commitList.length < limit) this.commitList.push(record);

@@ -204,20 +204,22 @@ export function stepParts(step: WayStep): Array<{ label?: string; text: string; 
   return parts;
 }
 
-const stepText = (step: WayStep) =>
+export const stepText = (step: WayStep) =>
   stepParts(step)
     .map((p) => (p.label ? `${p.label} ${p.text}` : p.text))
     .join(' · ');
 
 export function wayOf(rec: Pick<RecordingV2, 'roots' | 'outsideRoots' | 'reasons'>, links: ChainLink[]): { cause?: string; steps: WayStep[] } {
   const reasons = reasonsById(rec.reasons);
-  const root = links[0]?.root !== undefined ? [...rec.roots, ...rec.outsideRoots][links[0].root] : undefined;
+  const all = [...rec.roots, ...rec.outsideRoots];
+  const root = links[0]?.root !== undefined ? all[links[0].root] : undefined;
   const cause = root?.causes.find(([key]) => key !== 'core:none')?.[0];
+  // A root nested in another's cascade sits mid-way: every root's link names its state by its own hooks.
   const steps = links.map(
-    (link, i): WayStep =>
+    (link): WayStep =>
       link.skipped
         ? { name: '…', skipped: link.skipped }
-        : stepOf(link.name, link.reason !== undefined ? reasons.get(link.reason) : undefined, i === 0 ? root : undefined)
+        : stepOf(link.name, link.reason !== undefined ? reasons.get(link.reason) : undefined, link.root !== undefined ? all[link.root] : undefined)
   );
   return { ...(cause ? { cause } : {}), steps };
 }
@@ -272,6 +274,8 @@ export interface CascadeNode {
   n: number;
   /** Milliseconds its renders took with their subtrees, when the build times renders. */
   ms?: number;
+  /** Of those, its own: less every child link's, those left out of the record too. */
+  self?: number;
   children: CascadeNode[];
 }
 
@@ -285,12 +289,12 @@ export function cascadeOf(
   const reasons = reasonsById(rec.reasons);
   const roots = [...rec.roots, ...rec.outsideRoots];
   const byId = new Map<number, CascadeNode>();
-  for (const [id, n, ms] of commit.ways) {
+  for (const [id, n, ms, self] of commit.ways) {
     const node = nodes[id];
     if (!node) continue;
     const reason = node.reason !== undefined ? reasons.get(node.reason) : undefined;
     const step = stepOf(node.name, reason, node.root !== undefined ? roots[node.root] : undefined);
-    byId.set(id, { step, n, ...(ms !== undefined ? { ms } : {}), children: [] });
+    byId.set(id, { step, n, ...(ms !== undefined ? { ms } : {}), ...(self !== undefined ? { self } : {}), children: [] });
   }
   const top: CascadeNode[] = [];
   for (const [id, entry] of byId) {

@@ -1,6 +1,6 @@
 /** @jsxImportSource preact */
 import type { JSX } from 'preact';
-import { stepParts, type CascadeNode } from '../../shared/summary';
+import { stepText, type CascadeNode } from '../../shared/summary';
 
 interface Bar {
   node: CascadeNode;
@@ -27,7 +27,8 @@ function layout(tree: CascadeNode[]): { bars: Bar[]; total: number; depth: numbe
     for (const node of [...list].sort((a, b) => (b.ms ?? 0) - (a.ms ?? 0))) {
       const time = node.ms ?? 0;
       const w = total ? time / total : 0;
-      const self = Math.max(0, time - node.children.reduce((sum, child) => sum + (child.ms ?? 0), 0));
+      // Recorded before any child was left out; worked out from the kept ones only for an older recording.
+      const self = node.self ?? Math.max(0, time - node.children.reduce((sum, child) => sum + (child.ms ?? 0), 0));
       bars.push({ node, depth: level, x: at, w, self });
       depth = Math.max(depth, level + 1);
       place(node.children, at, level + 1);
@@ -45,6 +46,7 @@ export function Flame({ tree }: { tree: CascadeNode[] }): JSX.Element | null {
   if (!total) return null;
   // How hot a bar is goes by its own time, not its subtree's: that is the part the component itself can change.
   const hottest = Math.max(...bars.map((bar) => bar.self));
+  const heat = (bar: Bar) => (hottest ? 0.25 + (0.75 * bar.self) / hottest : 0.25);
   return (
     <div class="tl-row flame">
       <span class="tl-row-label" title="Render time of this commit's components, each with its subtree; the width is the share of the commit">
@@ -52,9 +54,7 @@ export function Flame({ tree }: { tree: CascadeNode[] }): JSX.Element | null {
       </span>
       <div class="flame-chart" data-rpr="flame" style={`height:${depth * 18}px`}>
         {bars.map((bar, i) => {
-          const why = stepParts(bar.node.step)
-            .map((part) => (part.label ? `${part.label} ${part.text}` : part.text))
-            .join(' · ');
+          const why = stepText(bar.node.step);
           const title = `${bar.node.step.name}${why ? ` · ${why}` : ''}\n${ms(bar.node.ms ?? 0)} with its subtree, ${ms(bar.self)} its own${
             bar.node.n > 1 ? `\n${bar.node.n} renders` : ''
           }`;
@@ -67,9 +67,11 @@ export function Flame({ tree }: { tree: CascadeNode[] }): JSX.Element | null {
               data-name={bar.node.step.name}
               data-ms={bar.node.ms ?? 0}
               title={title}
-              style={`left:${(bar.x * 100).toFixed(3)}%;width:max(4px, ${(bar.w * 100).toFixed(3)}%);top:${bar.depth * 18}px;--heat:${
-                hottest ? (0.25 + (0.75 * bar.self) / hottest).toFixed(2) : 0.25
-              }`}
+              // Past half the heat the fill is light, and a dark label reads on it.
+              data-hot={heat(bar) > 0.6 ? 'true' : undefined}
+              style={`left:${(bar.x * 100).toFixed(3)}%;width:max(4px, ${(bar.w * 100).toFixed(3)}%);top:${bar.depth * 18}px;--heat:${heat(
+                bar
+              ).toFixed(2)}`}
             >
               <span class="flame-label">{`${bar.node.step.name}${bar.node.n > 1 ? ` ×${bar.node.n}` : ''} ${ms(bar.node.ms ?? 0)}`}</span>
             </div>

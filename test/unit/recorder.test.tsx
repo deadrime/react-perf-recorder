@@ -269,6 +269,43 @@ describe('Recorder', () => {
     expect(line.ms).toBeGreaterThanOrEqual(line.children[0].ms!);
   });
 
+  it('hangs a root that renders inside another root under it, and counts its time once', () => {
+    let set!: Setter;
+    const Ctx = createContext(0);
+    const Leaf = ({ v }: { v: number }) => <i>{v}</i>;
+    const Consumer = () => {
+      const v = useContext(Ctx);
+      return <Leaf v={v} />;
+    };
+    const Owner = ({ children }: { children: ReactNode }) => {
+      const [v, setV] = useState(0);
+      set = setV;
+      return <Ctx.Provider value={v}>{children}</Ctx.Provider>;
+    };
+    mount(
+      <Owner>
+        <Consumer />
+      </Owner>
+    );
+    const { recorder } = makeRecorder();
+    recorder.start();
+    flush(() => set(1));
+    const rec = recorder.stop();
+    const commit = rec.commits.list[0];
+    const [owner, ...others] = cascadeOf(rec, commit);
+    // One tree: Consumer is a root of its own, through the context, and it hangs under the root that rendered it.
+    expect(others).toEqual([]);
+    expect(owner.step.name).toBe('Owner');
+    expect(owner.children.map((node) => node.step.name)).toEqual(['Consumer']);
+    expect(owner.children[0].children.map((node) => node.step.name)).toEqual(['Leaf']);
+    expect(rec.roots.map((root) => root.name).sort()).toEqual(['Consumer', 'Owner']);
+    // The commit took what Owner took: Consumer's time is inside it, not added to it.
+    const ownerMs = commit.roots!.find((entry) => rec.roots[entry.i].name === 'Owner')!.ms!;
+    expect(commit.ms).toBeCloseTo(ownerMs, 2);
+    expect(owner.self!).toBeLessThanOrEqual(owner.ms!);
+    expect(owner.children[0].ms!).toBeLessThanOrEqual(owner.ms!);
+  });
+
   it('keeps a way of twenty links whole, folds a longer one, and keeps none when recording fast', () => {
     let set!: Setter;
     let lastRec!: ReturnType<ReturnType<typeof makeRecorder>['recorder']['stop']>;
