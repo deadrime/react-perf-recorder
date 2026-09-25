@@ -1,4 +1,5 @@
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import { app } from '../app-router';
 import { Case, Panel, RenderCount, useRenderCount } from './Case';
 
 const CARD_BROKEN = `
@@ -35,7 +36,12 @@ const GoToSent = () => {
 };`;
 
 const GO_FIXED = `
-const GoToSent = () => <a href="?folder=sent">go to sent</a>;   // ← no hook, no subscription`;
+// router.ts: the router RouterProvider is given
+export const router = createBrowserRouter(routes);
+
+const GoToSent = () => (
+  <button onClick={() => router.navigate({ search: '?folder=sent' })}>go to sent</button>   // ← no hook, no subscription
+);`;
 
 const FOLDERS = ['inbox', 'sent', 'spam'];
 const LETTERS = ['Invoice for March', 'Re: the picker tree', 'Your weekly digest'];
@@ -124,11 +130,12 @@ const Toolbar = () => {
   );
 };
 
-const PlainLink = () => (
+/** The same navigation through the router object: nothing read from React, so nothing to render for. */
+const RouterButton = () => (
   <li>
-    <a className="link" data-testid="go-link" href="?folder=sent">
+    <button type="button" data-testid="go-router" onClick={() => void app.router?.navigate({ search: '?folder=sent' })}>
       go to sent
-    </a>
+    </button>
     <RenderCount renders={useRenderCount()} />
   </li>
 );
@@ -139,9 +146,8 @@ export const Router = () => {
       title="who needs to know the URL"
       what={
         <>
-          Both cards show the same three letters and the folder from the query string. On the left the card itself
-          reads the URL, so every switch renders it and everything it holds; on the right only the line that prints
-          the folder does.
+          Both cards show the same three letters and the folder from the query string. On the left the card itself reads the URL, so every switch
+          renders it and everything it holds; on the right only the line that prints the folder does.
         </>
       }
     >
@@ -169,7 +175,7 @@ export const Router = () => {
         <Panel
           kind="broken"
           title="useNavigate()"
-          says="A component that never shows the URL still renders on every navigation."
+          says="In React Router 6 a component with useNavigate renders on every navigation, though it shows nothing from the URL. One button is cheap; a big component that only navigates is not."
           code={GO_BROKEN}
         >
           <ul className="rows">
@@ -178,12 +184,12 @@ export const Router = () => {
         </Panel>
         <Panel
           kind="fixed"
-          title="a plain link"
-          says="The same navigation, written as the browser understands it: no subscription at all."
+          title="router.navigate()"
+          says="The same navigation, still inside the app, through the router it created: no hook, so nothing to render for."
           code={GO_FIXED}
         >
           <ul className="rows">
-            <PlainLink />
+            <RouterButton />
           </ul>
         </Panel>
       </div>

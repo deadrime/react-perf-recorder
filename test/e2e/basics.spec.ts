@@ -290,9 +290,16 @@ test('only what shows the URL renders when the URL changes', async ({ page }) =>
   expect(broken.slice(0, 4)).toEqual([3, 3, 3, 3]);
   // Right: the line that prints the folder rendered; the letters did not.
   expect(fixed.slice(0, 4)).toEqual([3, 1, 1, 1]);
-  // A component with nothing but useNavigate still renders on every navigation; a link does not.
+  // A component with nothing but useNavigate still renders on every navigation; one that navigates through the
+  // router object does not.
   expect(broken[4]).toBe(3);
   expect(fixed[4]).toBe(1);
+  // And it navigates inside the app: the URL changes, the page is the same one.
+  await page.evaluate(() => ((window as unknown as { __marker: number }).__marker = 1));
+  await page.getByTestId('go-router').click();
+  await expect(page).toHaveURL(/\?folder=sent$/);
+  expect(await page.evaluate(() => (window as unknown as { __marker?: number }).__marker)).toBe(1);
+  expect((await countsOf(page, 'fixed'))[4]).toBe(1);
 });
 
 test('a form left to the DOM does not render while you type', async ({ page }) => {

@@ -5,6 +5,7 @@ import './app.css';
 import { Layout } from './components/ChatView';
 import { AdvancedPage } from './advanced';
 import { BasicsPage } from './basics';
+import { app } from './app-router';
 import { BASE } from './base';
 import { Catalogue } from './Demo';
 import { DocsPage } from './Docs';
@@ -24,6 +25,7 @@ const router = createBrowserRouter(
   { basename: BASE.replace(/\/$/, '') || '/' }
 );
 
+app.router = router;
 connectFeed();
 
 createRoot(document.getElementById('root')!).render(
