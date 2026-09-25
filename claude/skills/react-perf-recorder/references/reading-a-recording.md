@@ -47,7 +47,9 @@ In an `external store` reason, `[useStore]` names the store and what follows is 
   with `props equal` is where a `memo` stops the rest of the way. Up to 20 links; none in fast recordings.
 
 `section: timeline` gives a commit whose roots rendered anyone a `cascade`: that commit's tree as indented lines,
-busiest branch first — who rendered whom, through which props.
+busiest branch first — who rendered whom, through which props, and how many milliseconds each link took with its
+subtree (`Item ×800 42.2ms`), when the build times renders. Dev builds render slower than production: read the
+times as shares of the commit, not as what users wait.
 
 `library` / `wrapper` mark a package's component and an unnamed one (`Anonymous`, `Memo`); the app's own come first.
 

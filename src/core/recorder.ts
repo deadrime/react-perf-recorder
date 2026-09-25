@@ -16,6 +16,7 @@ import {
   type ReasonInfo,
   type ChainLink,
   type ChainNodeInfo,
+  type CommitWay,
 } from '../shared/schema';
 import { buildSegments, eventName, USER_EVENTS, type SegmentCommit } from '../shared/segments';
 import { safeUrl } from '../shared/url';
@@ -167,6 +168,8 @@ interface CommitState {
   touched: Set<Fiber>;
   /** Renders by chain link in this commit, its cascade as a tree; null when recording fast. */
   ways: Map<number, number> | null;
+  /** Milliseconds each link took, its subtree included (`actualDuration`), when the build has profile timings. */
+  wayMs: Map<number, number> | null;
 }
 
 /** The app's components above a fiber, nearest first, shared by every fiber below: text only when a root needs it. */
@@ -495,6 +498,7 @@ export class Recorder {
       withoutDom: new Set(),
       mounted: new Set(),
       ways: this.options.sampleReasons ? null : new Map(),
+      wayMs: this.options.sampleReasons ? null : new Map(),
       touched: this.dom.takeForCommit(),
     };
     if (this.scope) {
@@ -626,13 +630,13 @@ export class Recorder {
         // Fast recordings keep no chains: they are there to cost less, and a chain is a sample of nothing.
         if (rootAgg) {
           chain = this.options.sampleReasons ? -1 : this.chainLink(-1, name, firstId, rootAgg);
-          if (chain >= 0) c.ways?.set(chain, (c.ways.get(chain) ?? 0) + 1);
+          if (chain >= 0) this.countWay(c, chain, f);
         }
         // A link of its own for what the app wrote; a package's internals and bare wrappers pass the chain through.
         else if (chain >= 0 && isComposite(f) && !isProvider(name) && !comp.library && !comp.wrapper) {
           chain = this.chainLink(chain, name, firstId);
           comp.chains.set(chain, (comp.chains.get(chain) ?? 0) + 1);
-          c.ways?.set(chain, (c.ways.get(chain) ?? 0) + 1);
+          this.countWay(c, chain, f);
         }
         const agg = key ? this.rootsByKey.get(key) : undefined;
         if (agg) {
@@ -710,12 +714,26 @@ export class Recorder {
       : links;
   }
 
-  /** A commit's busiest links and every link above them, so the tree they make has no holes. */
-  private commitWays(ways: Map<number, number>): Array<[number, number]> {
-    const kept = new Map(topEntries(ways, WAYS_PER_COMMIT));
-    for (const id of [...kept.keys()])
-      for (let up = this.chainNodes[id].up; up >= 0 && !kept.has(up); up = this.chainNodes[up].up) kept.set(up, ways.get(up) ?? 0);
-    return [...kept];
+  private countWay(c: CommitState, chain: number, f: Fiber) {
+    if (!c.ways) return;
+    c.ways.set(chain, (c.ways.get(chain) ?? 0) + 1);
+    if (c.wayMs && hasProfileTimings(f)) c.wayMs.set(chain, (c.wayMs.get(chain) ?? 0) + f.actualDuration!);
+  }
+
+  /**
+   * A commit's busiest links and its slowest, and every link above them, so the tree they make has no holes:
+   * `[link, renders]`, and the milliseconds when the build times renders.
+   */
+  private commitWays(ways: Map<number, number>, wayMs: Map<number, number> | null): Array<[number, number] | [number, number, number]> {
+    const ids = new Set([
+      ...topEntries(ways, WAYS_PER_COMMIT).map(([id]) => id),
+      ...(wayMs?.size ? topEntries(wayMs, WAYS_PER_COMMIT / 2).map(([id]) => id) : []),
+    ]);
+    for (const id of [...ids]) for (let up = this.chainNodes[id].up; up >= 0 && !ids.has(up); up = this.chainNodes[up].up) ids.add(up);
+    return [...ids].map((id) => {
+      const ms = wayMs?.get(id);
+      return ms !== undefined ? [id, ways.get(id) ?? 0, +ms.toFixed(2)] : [id, ways.get(id) ?? 0];
+    });
   }
 
   /** The links the commits point at, numbered afresh from 0, and each commit's links in those numbers. */
@@ -906,7 +924,7 @@ export class Recorder {
         : {}),
       ...(c.outside ? { outside: c.outside.index } : {}),
       ...(c.noDom ? { noDom: c.noDom } : {}),
-      ...(c.ways?.size ? { ways: this.commitWays(c.ways) } : {}),
+      ...(c.ways?.size ? { ways: this.commitWays(c.ways, c.wayMs) } : {}),
     };
     const limit = this.options.timeline ?? this.config.timelineLimit;
     if (this.commitList.length < limit) this.commitList.push(record);
@@ -1312,7 +1330,7 @@ export class Recorder {
       commits: {
         list: this.commitList.map((commit) => ({
           ...commit,
-          ...(commit.ways ? { ways: commit.ways.map(([id, n]) => [ways.renumber.get(id)!, n] as [number, number]) } : {}),
+          ...(commit.ways ? { ways: commit.ways.map(([id, ...rest]) => [ways.renumber.get(id)!, ...rest] as CommitWay) } : {}),
           ...(commit.roots ? { roots: commit.roots.map((r) => ({ ...r, i: remap.get(r.i)! })) } : {}),
           ...(commit.outside !== undefined ? { outside: remap.get(commit.outside) } : {}),
           ...(actionOfCommit.get(commit.i) !== undefined ? { actionId: actionOfCommit.get(commit.i) } : {}),

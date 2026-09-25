@@ -28,6 +28,9 @@ export interface PluginSection<Data = unknown> {
  * One render on the way down: the root first (`root` indexes the recording's roots, inside then outside), the
  * component itself last. `reason` indexes `RecordingV2.reasons`; `skipped` stands for links left out of a long chain.
  */
+/** `[link, renders]`, and the milliseconds the link took with its subtree when the build times renders. */
+export type CommitWay = [number, number] | [number, number, number];
+
 /** A link of the commits' cascade trees: the link above it (-1 for a root), who rendered, and why. */
 export interface ChainNodeInfo {
   up: number;
@@ -280,7 +283,7 @@ export interface CommitRecord {
    * The commit's cascade as a tree: `[link, renders]` into `RecordingV2.chainNodes`, the busiest links and every link
    * above them. Absent in fast recordings.
    */
-  ways?: Array<[number, number]>;
+  ways?: CommitWay[];
 }
 
 export interface Navigation {

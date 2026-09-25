@@ -3,6 +3,7 @@ import type { JSX } from 'preact';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { ActionRecord, CommitRecord, RecordingV2 } from '../../shared/schema';
 import { actionText, cascadeOf, hookOf, reasonsById, type CascadeNode } from '../../shared/summary';
+import { Flame } from './Flame';
 import { ReasonLine, StepView } from './Stats';
 
 /**
@@ -255,6 +256,7 @@ function Cascade({ rec, commit }: { rec: RecordingV2; commit: CommitRecord }): J
   const tree = useMemo(() => cascadeOf(rec, commit), [rec, commit]);
   // Roots alone are the rows above already.
   if (!tree.some((node) => node.children.length)) return null;
+  const flame = <Flame tree={tree} />;
   const rows: JSX.Element[] = [];
   const walk = (list: CascadeNode[], depth: number) => {
     for (const node of list) {
@@ -277,12 +279,15 @@ function Cascade({ rec, commit }: { rec: RecordingV2; commit: CommitRecord }): J
   };
   walk(tree, 0);
   return (
-    <div class="tl-row cascade">
-      <span class="tl-row-label">cascade</span>
-      <ol class="cascade-tree" data-rpr="cascade">
-        {rows}
-      </ol>
-    </div>
+    <>
+      {flame}
+      <div class="tl-row cascade">
+        <span class="tl-row-label">cascade</span>
+        <ol class="cascade-tree" data-rpr="cascade">
+          {rows}
+        </ol>
+      </div>
+    </>
   );
 }
 

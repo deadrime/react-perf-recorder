@@ -260,7 +260,13 @@ describe('Recorder', () => {
     // The root itself has no chain: nothing above it.
     expect(rec.components.find((c) => c.name === 'Stats')!.chains).toBeUndefined();
     // Each commit keeps its cascade as a tree.
-    expect(cascadeLines(cascadeOf(rec, rec.commits.list[1]))).toEqual(['Stats · state #0', '  Line · prop online', '    Badge · prop count']);
+    const lines = cascadeLines(cascadeOf(rec, rec.commits.list[1])).map((line) => line.replace(/ [\d.]+ms$/, ''));
+    expect(lines).toEqual(['Stats · state #0', '  Line · prop online', '    Badge · prop count']);
+    // Each link's time holds its subtree's: a parent took at least as long as the child it rendered.
+    const [stats] = cascadeOf(rec, rec.commits.list[1]);
+    const line = stats.children[0];
+    expect(stats.ms).toBeGreaterThanOrEqual(line.ms!);
+    expect(line.ms).toBeGreaterThanOrEqual(line.children[0].ms!);
   });
 
   it('keeps a way of twenty links whole, folds a longer one, and keeps none when recording fast', () => {

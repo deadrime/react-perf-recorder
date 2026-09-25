@@ -270,6 +270,8 @@ export function waysOf(rec: Pick<RecordingV2, 'roots' | 'outsideRoots' | 'reason
 export interface CascadeNode {
   step: WayStep;
   n: number;
+  /** Milliseconds its renders took with their subtrees, when the build times renders. */
+  ms?: number;
   children: CascadeNode[];
 }
 
@@ -283,11 +285,12 @@ export function cascadeOf(
   const reasons = reasonsById(rec.reasons);
   const roots = [...rec.roots, ...rec.outsideRoots];
   const byId = new Map<number, CascadeNode>();
-  for (const [id, n] of commit.ways) {
+  for (const [id, n, ms] of commit.ways) {
     const node = nodes[id];
     if (!node) continue;
     const reason = node.reason !== undefined ? reasons.get(node.reason) : undefined;
-    byId.set(id, { step: stepOf(node.name, reason, node.root !== undefined ? roots[node.root] : undefined), n, children: [] });
+    const step = stepOf(node.name, reason, node.root !== undefined ? roots[node.root] : undefined);
+    byId.set(id, { step, n, ...(ms !== undefined ? { ms } : {}), children: [] });
   }
   const top: CascadeNode[] = [];
   for (const [id, entry] of byId) {
@@ -309,7 +312,8 @@ export function cascadeLines(tree: CascadeNode[], max = 15): string[] {
     for (const entry of list) {
       if (lines.length >= max) return;
       const why = stepText(entry.step);
-      lines.push(`${'  '.repeat(depth)}${entry.step.name}${why ? ` · ${why}` : ''}${entry.n > 1 ? ` ×${entry.n}` : ''}`);
+      const ms = entry.ms !== undefined ? ` ${entry.ms}ms` : '';
+      lines.push(`${'  '.repeat(depth)}${entry.step.name}${why ? ` · ${why}` : ''}${entry.n > 1 ? ` ×${entry.n}` : ''}${ms}`);
       walk(entry.children, depth + 1);
     }
   };

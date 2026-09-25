@@ -167,6 +167,13 @@ header .live { flex: 1; color: var(--muted-soft); white-space: nowrap; overflow:
 .tl-causes { margin: 3px 0; }
 .tl-row { display: grid; grid-template-columns: 52px 1fr; align-items: baseline; gap: 6px; margin: 4px 0; }
 .tl-row-label { color: var(--muted); font-size: 11px; }
+/* The commit's render time as React DevTools draws it: a row a level, a bar as wide as it took. */
+.tl-row.flame { align-items: start; }
+.flame-chart { position: relative; min-width: 0; margin: 2px 0 4px; }
+.flame-bar { position: absolute; height: 17px; overflow: hidden; border-radius: 3px; box-sizing: border-box; border: 1px solid var(--card);
+  background: color-mix(in srgb, var(--accent) calc(var(--heat) * 100%), var(--sunken)); cursor: default; }
+.flame-bar[data-equal="true"] { background: color-mix(in srgb, var(--warn) calc(var(--heat) * 100%), var(--sunken)); }
+.flame-label { display: block; padding: 0 4px; font-size: 10px; line-height: 15px; color: var(--text-strong); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cascade-tree { margin: 0; padding: 0; list-style: none; min-width: 0; }
 .cascade-row { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px; padding: 1px 0; }
 .cascade-arrow { color: var(--faint); }

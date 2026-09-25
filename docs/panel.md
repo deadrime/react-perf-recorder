@@ -33,7 +33,8 @@ hook chain and line. Then warnings, actions, the other roots, and:
 - **Timeline** — tracks over one axis: actions, commits, and a lane per root. A bar is a commit, as wide as React
   took and as tall as it rendered, coloured by its cause; the causes above are the legend and light up their
   commits. Drag across the overview to zoom, drag the tracks to move, the wheel zooms at the pointer. A picked
-  commit shows its causes, its roots with their reasons, and its **cascade** as a tree — who rendered whom, through
+  commit shows its causes, its roots with their reasons, its render time as a **flame chart** — a row a level, each
+  component as wide as it took with its subtree, yellow where its props were equal — and its **cascade** as a tree — who rendered whom, through
   which props, the busiest branch first — and outlines its components on the page; the live outlines step aside until
   **Show all**. A picked action lights up every commit it caused and says what it cost.
 - **Components** — every component's renders, and the **ways** its renders came down from their roots: the cause,

@@ -244,3 +244,26 @@ test('a useMemo that recomputes on every render is named, with the dependency th
   // The report with the constant filter remembers: it is not listed.
   await expect(fold.locator('[data-rpr="memo"]', { hasText: 'ConstantReport' })).toHaveCount(0);
 });
+
+test('a picked commit shows its render time as a flame chart: each link as wide as it took, children under it', async ({ page }) => {
+  await page.goto('/advanced/deferred?rpr=panel');
+  await page.locator('[data-rpr="record"]').click();
+  await page.locator('[data-case="broken"] input').pressSequentially('ab', { delay: 150 });
+  await page.locator('[data-rpr="stop"]').click();
+  await expect(page.locator('[data-rpr="result"]')).toContainText('saved');
+  // The commit of a keystroke on the left: the search, the results, and the 800 rows under them.
+  const bars = page.locator('.tl-bar');
+  const flame = page.locator('[data-rpr="flame"]');
+  for (let i = 0; i < (await bars.count()); i++) {
+    await bars.nth(i).evaluate((bar) => (bar as HTMLElement).click());
+    if (await flame.locator('[data-rpr="flame-bar"][data-name="Item"]').count()) break;
+  }
+  const time = async (name: string) => Number(await flame.locator(`[data-rpr="flame-bar"][data-name="${name}"]`).first().getAttribute('data-ms'));
+  const [search, results, item] = [await time('Search'), await time('Results'), await time('Item')];
+  expect(item).toBeGreaterThan(0);
+  expect(search).toBeGreaterThanOrEqual(results);
+  expect(results).toBeGreaterThanOrEqual(item);
+  // The rows got props equal to the last ones: the bar says a memo would have saved that time.
+  await expect(flame.locator('[data-rpr="flame-bar"][data-name="Item"]')).toHaveAttribute('data-equal', 'true');
+  await expect(flame.locator('[data-rpr="flame-bar"][data-name="Item"]')).toContainText('×800');
+});
