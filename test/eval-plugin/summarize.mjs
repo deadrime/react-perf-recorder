@@ -12,12 +12,6 @@ const [input] = process.argv.slice(2);
 if (!input) throw new Error('usage: summarize.mjs <aggregate-result.json>');
 const run = JSON.parse(fs.readFileSync(input, 'utf8'));
 
-// The bug each case seeds, in the words of the fixture's bug list; `-rec` cases come with the person's recording.
-const BUGS = {
-  'whole-object': { component: 'Header', what: 'subscribes to a whole store object to show one number of it' },
-  'form-watch': { component: 'Composer', what: 'calls watch() in the form root, so every keystroke renders the form' },
-};
-
 const mean = (xs) => xs.reduce((s, x) => s + x, 0) / xs.length;
 const round = (x, digits = 2) => Number(x.toFixed(digits));
 const arm = (runs) => ({
@@ -35,7 +29,6 @@ const cases = run.cases.map((c) => {
   return {
     name: c.name,
     bug,
-    ...BUGS[bug],
     input: c.name.endsWith('-rec') ? 'recording' : 'complaint',
     with: arm(c.arms.with),
     without: arm(c.arms.without),
