@@ -1,6 +1,6 @@
 ---
 type: regex
 target: trace
-pattern: 'get_recording'
+pattern: 'compare_recordings'
 arm: with-only
 ---
