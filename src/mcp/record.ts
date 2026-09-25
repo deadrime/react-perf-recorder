@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -165,7 +166,24 @@ async function launch(chromium: Playwright['chromium'], headless: boolean) {
   }
 }
 
-async function runModule(file: string, page: PageLike) {
+/**
+ * A path, or the module itself: agents pass the code inline as often as a file — the whole module, a CommonJS
+ * `module.exports =` one, or only the body of `async (page) => {…}`.
+ */
+export function moduleFile(spec: string): string {
+  if (!/\n|=>|\bpage\./.test(spec) || fs.existsSync(path.resolve(spec))) return spec;
+  const code = /export\s+default/.test(spec)
+    ? spec
+    : /module\.exports\s*=/.test(spec)
+    ? spec.replace(/module\.exports\s*=/, 'export default')
+    : `export default async (page) => {\n${spec}\n};\n`;
+  const file = path.join(os.tmpdir(), `rpr-module-${createHash('sha1').update(code).digest('hex').slice(0, 12)}.mjs`);
+  fs.writeFileSync(file, code);
+  return file;
+}
+
+async function runModule(spec: string, page: PageLike) {
+  const file = moduleFile(spec);
   // The server lives for the whole session and Node keeps a module by its URL: an edited script would run as it was.
   const resolved = path.resolve(file);
   const module = (await import(/* @vite-ignore */ `${pathToFileURL(resolved).href}?v=${fs.statSync(resolved).mtimeMs}`)) as {
@@ -350,7 +368,7 @@ export async function recordPage(options: RecordPageOptions, sessionsDir: string
     const rec = saved.recording;
     // A replay does again what the person did, not what prepared the page: the setup stays with the recording for it.
     const at = saved.id && path.join(sessionsDir, saved.id);
-    if (at && options.setup && fs.existsSync(at)) fs.writeFileSync(path.join(at, SETUP_FILE), JSON.stringify({ setup: path.resolve(options.setup) }));
+    if (at && options.setup && fs.existsSync(at)) fs.writeFileSync(path.join(at, SETUP_FILE), JSON.stringify({ setup: path.resolve(moduleFile(options.setup)) }));
     return {
       id: saved.id,
       url: safeUrl(page.url()),

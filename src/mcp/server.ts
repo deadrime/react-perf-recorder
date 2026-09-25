@@ -349,13 +349,13 @@ export function createServer(dir: string) {
           .string()
           .optional()
           .describe(
-            'A module with `export default async (page) => {…}`: the page is already open at url and recording when it runs, and the recording stops when it returns — so it only does the actions. No goto, reload or engine.start/stop in it: a navigation ends the recording. Wait for what shows the result (a list, a spinner gone), not for a time; look an element up again for each step (page.locator), since a page that re-renders replaces its elements; a form in a same-origin frame is reached through page.frameLocator, and the recording follows the frame itself. A failure answers with the page url, its text and a screenshot.'
+            'A module file with `export default async (page) => {…}`, or that code itself, or only the body of the function: the page is already open at url and recording when it runs, and the recording stops when it returns — so it only does the actions. No goto, reload or engine.start/stop in it: a navigation ends the recording. Wait for what shows the result (a list, a spinner gone), not for a time; look an element up again for each step (page.locator), since a page that re-renders replaces its elements; a form in a same-origin frame is reached through page.frameLocator, and the recording follows the frame itself. A failure answers with the page url, its text and a screenshot.'
           ),
         setup: z
           .string()
           .optional()
           .describe(
-            'A module like script, run before the recording and not recorded: seed localStorage or IndexedDB (goto the dev server, evaluate, return), sign in, build data through the UI, stub a backend the machine cannot reach with page.route. With url, the page is opened again after it and only storage, cookies and routes carry over; without url, the recording starts on the page setup left.'
+            'A module like script (a file, or the code), run before the recording and not recorded: seed localStorage or IndexedDB (goto the dev server, evaluate, return), sign in, build data through the UI, stub a backend the machine cannot reach with page.route. With url, the page is opened again after it and only storage, cookies and routes carry over; without url, the recording starts on the page setup left.'
           ),
         replay: z
           .string()

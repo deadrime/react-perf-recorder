@@ -172,7 +172,36 @@ async function serve(dir) {
       break;
     await new Promise((r) => setTimeout(r, 500));
   }
+  await warm(url);
   fs.writeFileSync(path.join(dir, 'dev-url.txt'), `${url}?tick=150\n`);
+}
+
+/**
+ * The page opened once before the agent does: Vite pre-bundles what a first visit finds and reloads the page, which
+ * would otherwise land in the agent's first recording and end it ("dev root not found").
+ */
+async function warm(url) {
+  const browsers = process.env.PLAYWRIGHT_BROWSERS_PATH ?? process.env.EVAL_PLAYWRIGHT_BROWSERS_PATH;
+  const build =
+    browsers && fs.existsSync(browsers)
+      ? fs
+          .readdirSync(browsers)
+          .filter((d) => /^chromium-\d+$/.test(d))
+          .sort()
+          .pop()
+      : undefined;
+  const executablePath = build && path.join(browsers, build, 'chrome-linux/chrome');
+  const { chromium } = createRequire(path.join(repo, 'package.json'))('playwright');
+  const browser = await chromium.launch({ headless: true, ...(executablePath && fs.existsSync(executablePath) ? { executablePath } : {}) });
+  try {
+    const page = await browser.newPage();
+    for (let i = 0; i < 2; i++) {
+      await page.goto(url, { waitUntil: 'networkidle' });
+      await page.waitForTimeout(1500);
+    }
+  } finally {
+    await browser.close();
+  }
 }
 
 const dir = path.resolve(target);
