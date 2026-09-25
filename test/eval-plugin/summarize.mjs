@@ -16,7 +16,9 @@ const mean = (xs) => xs.reduce((s, x) => s + x, 0) / xs.length;
 const round = (x, digits = 2) => Number(x.toFixed(digits));
 const arm = (runs) => ({
   runs: runs.length,
-  solved: runs.filter((r) => r.passed).length,
+  // The code checks alone: the bug's code is gone and no probe is left; `named` is about the answer, not the fix.
+  solved: runs.filter((r) => r.graders.every((g) => g.name === 'named' || g.name === 'measured' || g.passed)).length,
+  passed: runs.filter((r) => r.passed).length,
   score: round(mean(runs.map((r) => r.score))),
   cost: round(mean(runs.map((r) => r.costUsd)), 3),
   seconds: Math.round(mean(runs.map((r) => r.durationSeconds))),
@@ -58,6 +60,7 @@ const table = [
   '|                                   | With the recorder | Without | |',
   '| --------------------------------- | ----------------: | ------: | - |',
   `| Fixed at the cause                | ${w.solved} of ${w.runs} | ${wo.solved} of ${wo.runs} | |`,
+  `| Every check passed, the answer naming the file | ${w.passed} of ${w.runs} | ${wo.passed} of ${wo.runs} | |`,
   `| Proved with a before/after recording | ${w.measured} of ${w.runs} | — | no browser to measure with |`,
   `| Cost of a task, mean              | ${usd(w.cost)} | ${usd(wo.cost)} | ${times(wo.cost, w.cost)} cheaper |`,
   `| Time to the answer, mean          | ${w.seconds} s | ${wo.seconds} s | ${times(wo.seconds, w.seconds)} faster |`,
