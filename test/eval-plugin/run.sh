@@ -9,6 +9,9 @@ sessions="$(mktemp -d)"
 # An eval run moves HOME and passes only EVAL_* variables on: the MCP server gets these through the plugin's manifest.
 export EVAL_RPR_DIR="$sessions"
 export EVAL_PLAYWRIGHT_BROWSERS_PATH="${PLAYWRIGHT_BROWSERS_PATH:-$HOME/.cache/ms-playwright}"
+# A case's scaffold gets neither: it reads them from here, so its dev server records where the MCP server reads.
+mkdir -p "$repo/.agent-artifacts"
+printf '{"sessions":"%s","browsers":"%s"}\n' "$sessions" "$EVAL_PLAYWRIGHT_BROWSERS_PATH" >"$repo/.agent-artifacts/eval-run.json"
 
 stop_servers() {
   for pid in $(ls "$sessions/servers" 2>/dev/null); do kill -- "-$pid" 2>/dev/null || kill "$pid" 2>/dev/null || true; done

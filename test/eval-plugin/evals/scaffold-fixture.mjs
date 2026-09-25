@@ -17,6 +17,14 @@ const [active, target = '.'] = process.argv.slice(2).filter((a) => !a.startsWith
 if (!active) throw new Error('usage: scaffold-fixture.mjs <bug id> [target dir]');
 
 const from = path.join(repo, 'test/e2e/fixture-app/src');
+// Written by run.sh: a scaffold runs without its EVAL_* variables.
+const run = (() => {
+  try {
+    return JSON.parse(fs.readFileSync(path.join(repo, '.agent-artifacts/eval-run.json'), 'utf8'));
+  } catch {
+    return {};
+  }
+})();
 // The bug list, the demo pages and the docs name the bugs and show both versions.
 const LEFT_OUT = new Set(['bugs.ts', 'Demo.tsx', 'Docs.tsx', 'basics', 'advanced', 'main.tsx']);
 // A comment that talks about the switch or the other version is a hint no real app would carry.
@@ -145,7 +153,7 @@ const freePort = () =>
 
 /** A dev server of this workspace, left running for the run; run.sh stops every one it finds in servers/. */
 async function serve(dir) {
-  const sessions = process.env.EVAL_RPR_DIR ?? fs.mkdtempSync(path.join(fs.realpathSync('/tmp'), 'rpr-eval-'));
+  const sessions = process.env.EVAL_RPR_DIR || run.sessions || fs.mkdtempSync(path.join(fs.realpathSync('/tmp'), 'rpr-eval-'));
   const port = await freePort();
   const log = fs.openSync(path.join(sessions, `dev-${port}.log`), 'a');
   const child = spawn(
@@ -183,7 +191,7 @@ async function serve(dir) {
  */
 async function warm(url) {
   // A scaffold runs with HOME moved, like the agent: the browsers' folder comes from run.sh.
-  const browsers = process.env.EVAL_PLAYWRIGHT_BROWSERS_PATH || process.env.PLAYWRIGHT_BROWSERS_PATH;
+  const browsers = process.env.EVAL_PLAYWRIGHT_BROWSERS_PATH || run.browsers || process.env.PLAYWRIGHT_BROWSERS_PATH;
   const build =
     browsers && fs.existsSync(browsers)
       ? fs
