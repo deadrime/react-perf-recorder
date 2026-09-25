@@ -2,12 +2,13 @@ import { marked, type Tokens } from 'marked';
 import { useEffect, useMemo } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { href, useNoPanel } from './base';
+import { BENCH_STYLES, BenchmarkCharts } from './Benchmarks';
 import { DEMO_STYLES, REPO } from './Demo';
 
 // The pages are the repository's own markdown, read at build time: the docs are written once, in docs/.
 const files = import.meta.glob<string>(['../../../../docs/*.md', '../../../../README.md'], { query: '?raw', import: 'default', eager: true });
 
-const ORDER = ['readme', 'panel', 'recording', 'measuring-a-fix', 'options', 'mcp', 'plugins', 'how-it-works', 'contributing'];
+const ORDER = ['readme', 'panel', 'recording', 'measuring-a-fix', 'benchmarks', 'options', 'mcp', 'plugins', 'how-it-works', 'contributing'];
 
 const pages = new Map(
   Object.entries(files).map(([file, text]) => {
@@ -38,6 +39,9 @@ function render(slug: string, text: string): string {
   });
 }
 
+// Where a page's charts go: marked keeps the comment, GitHub shows nothing for it.
+const CHARTS = '<!-- benchmark-charts -->';
+
 const DOCS_STYLES = `
 .docs { display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 32px; max-width: 1100px; margin: 0 auto;
   padding: 24px 20px 64px; color: #e8e8ea; font: 15px/1.6 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; }
@@ -58,6 +62,7 @@ const DOCS_STYLES = `
 .docs table { display: block; overflow-x: auto; border-collapse: collapse; font-size: 14px; }
 .docs th, .docs td { padding: 6px 10px; border: 1px solid #3a3a44; text-align: left; vertical-align: top; }
 .docs th { color: #fff; background: #1b1b21; }
+.docs table + table { margin-top: 16px; }
 @media (max-width: 760px) {
   .docs { grid-template-columns: 1fr; gap: 12px; }
   .docs nav { position: static; flex-direction: row; flex-wrap: wrap; }
@@ -78,6 +83,7 @@ export const DocsPage = () => {
     <>
       <style>{DEMO_STYLES}</style>
       <style>{DOCS_STYLES}</style>
+      <style>{BENCH_STYLES}</style>
       <div className="docs" data-testid="docs">
         <nav>
           <a className="home" href={href()}>
@@ -94,7 +100,15 @@ export const DocsPage = () => {
           ))}
           <a href={REPO}>GitHub</a>
         </nav>
-        <article dangerouslySetInnerHTML={{ __html: html }} />
+        {html.includes(CHARTS) ? (
+          <article>
+            <div dangerouslySetInnerHTML={{ __html: html.slice(0, html.indexOf(CHARTS)) }} />
+            <BenchmarkCharts />
+            <div dangerouslySetInnerHTML={{ __html: html.slice(html.indexOf(CHARTS) + CHARTS.length) }} />
+          </article>
+        ) : (
+          <article dangerouslySetInnerHTML={{ __html: html }} />
+        )}
       </div>
     </>
   );
