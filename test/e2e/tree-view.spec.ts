@@ -192,3 +192,33 @@ test('× clears the area even while the picker waits for a click, with no tree o
   await page.locator('[data-rpr="clear-scope"]').click();
   await expect(page.locator('[data-rpr="scope"]')).toBeHidden();
 });
+
+test('Pick with the tree open keeps the area and waits for a click; with the tree open the page still previews', async ({ page }) => {
+  await page.goto('/advanced/deferred?rpr=panel');
+  await page.locator('[data-rpr="pick"]').click();
+  await page.locator('[data-case="broken"] input').click();
+  await expect(page.locator('[data-rpr="scope"]')).toHaveText('Search');
+  const picker = () =>
+    page.evaluate(() => {
+      const panel = (window as unknown as { __REACT_PERF_RECORDER__: { panel: { picker: { waiting: boolean; active: boolean } } } })
+        .__REACT_PERF_RECORDER__.panel;
+      return { waiting: panel.picker.waiting, active: panel.picker.active };
+    });
+  // One press: the tree closes on Search, and the next click on the page picks anew.
+  await page.locator('[data-rpr="pick"]').click();
+  expect(await picker()).toEqual({ waiting: true, active: true });
+  await expect(page.locator('[data-rpr="scope"]')).toHaveText('Search');
+  await page.keyboard.press('Escape');
+
+  // The area's name opens the tree on it; moving over the page outlines what a click there would take.
+  await page.locator('[data-rpr="scope"]').click();
+  const tag = page.locator(`${SHADOW} .box .tag`);
+  await expect(tag).toHaveText(/Search/);
+  const other = (await page.locator('[data-case="fixed"] h2').boundingBox())!;
+  await page.mouse.move(other.x + 20, other.y + 5);
+  await expect(tag).not.toHaveText(/Search/);
+  // Back over the panel, the box is the tree's again.
+  const panel = (await page.locator('[data-rpr="tree"]').boundingBox())!;
+  await page.mouse.move(panel.x + 20, panel.y + 20);
+  await expect(tag).toHaveText(/Search/);
+});

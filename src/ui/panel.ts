@@ -397,10 +397,13 @@ export class Panel {
   }
 
   private togglePicker() {
-    if (this.picker.active) {
+    // Pressed again while it waits for a click: that is a change of mind. With the tree open, it is a new pick.
+    if (this.picker.waiting) {
       this.picker.cancel();
       return;
     }
+    // The area the tree was on stays: pressing Pick is a new pick, not Esc.
+    if (this.picker.active) this.picker.keep();
     this.setCollapsed(false);
     this.rememberScope();
     // With no area yet, the whole app's tree opens at its top; the whole app stays the area until a row is chosen.

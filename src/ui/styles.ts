@@ -192,6 +192,8 @@ button.scope:disabled { cursor: default; }
 header .highlight-toggle, header .fast-toggle { flex: none; cursor: pointer; }
 header .fast-toggle[hidden] { display: none; }
 button.icon { padding: 3px 7px; }
+/* An icon button is as wide whatever it shows: ⧉ turning into ✓ must not move the buttons after it. */
+.area-pill > button.icon { width: 28px; padding: 3px 0; }
 /* The area is one pill: Pick, or the area's name with copy and back-to-the-whole-app beside it. */
 .area-pill { display: inline-flex; align-items: stretch; min-width: 0; border: 1px solid var(--edge-strong); border-radius: 6px; background: var(--button); overflow: hidden; }
 .area-pill > button { display: inline-flex; align-items: center; justify-content: center; gap: 5px; border: 0; border-radius: 0; background: none; }
@@ -218,8 +220,7 @@ button.icon { padding: 3px 7px; }
 .memo-why { margin: 2px 0 2px; color: var(--text-2); }
 .memo-why code { color: var(--text-strong); }
 .memo .chain { color: var(--muted); font-size: 11px; }
-.memo .site { width: 100%; color: var(--accent); }
-.memo .site .copy-text { flex: 1; }
+.memo .site { max-width: 100%; color: var(--accent); }
 .memo .code { margin: 3px 0 1px; padding: 2px 8px; border-radius: 4px; background: var(--sunken); color: var(--label); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cmp { border: 1px solid var(--rule); border-radius: 8px; background: var(--raised); padding: 6px 10px 8px; }
 .cmp-head { display: flex; justify-content: space-between; padding: 0 0 4px; font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
@@ -337,15 +338,15 @@ button.reason-head { width: 100%; padding: 0; border: 0; background: none; font:
 .reason-body .sel { color: var(--text-2); word-break: break-all; }
 .reason-body .chain { color: var(--accent-soft); word-break: break-word; }
 /* A line that copies what it says: the text, and at its right an icon that shows on hover and ticks when it worked. */
-.copy-line { display: flex; align-items: baseline; gap: 6px; min-width: 0; padding: 0; border: 0; background: none; text-align: left; }
+.copy-line { display: inline-flex; align-items: baseline; gap: 6px; min-width: 0; padding: 0; border: 0; background: none; text-align: left; }
 .copy-line:hover { background: none; }
 .copy-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .copy-line:hover .copy-text { text-decoration: underline; }
-.copy-mark { flex: none; visibility: hidden; color: var(--muted); font-size: 11px; }
+/* The mark keeps its width when ⧉ turns into ✓, so nothing next to it moves. */
+.copy-mark { flex: none; display: inline-block; width: 1.1em; text-align: center; visibility: hidden; color: var(--muted); font-size: 11px; }
 .copy-line:hover .copy-mark, .copy-line:focus-visible .copy-mark, .copy-line[data-copied="true"] .copy-mark { visibility: visible; }
 .copy-line[data-copied="true"] .copy-mark { color: var(--good); }
-.reason-body .site { width: 100%; color: var(--accent); }
-.reason-body .site .copy-text { flex: 1; }
+.reason-body .site { max-width: 100%; color: var(--accent); }
 .reason-body .code { margin: 3px 0 1px 8px; padding: 2px 8px; border-radius: 4px; background: var(--sunken); color: var(--label); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* A warning of the recording: it colours every number above it, so it is drawn to be read first. */
@@ -378,14 +379,12 @@ button.reason-head { width: 100%; padding: 0; border: 0; background: none; font:
 .picker li .toggle:hover { color: var(--text-strong); }
 .picker li .name { flex: none; white-space: nowrap; }
 .picker li .src { flex: none; color: var(--muted); margin-left: auto; padding-left: 8px; white-space: nowrap; }
-/* The row's own buttons show on hover and on the active row, so the list stays quiet. */
-.picker li .copy, .picker li .watch-toggle { flex: none; margin-left: 8px; padding: 1px 4px; border-radius: 4px; font-size: 14px; line-height: 16px; color: var(--muted); visibility: hidden; }
-.picker li .watch-toggle { padding-right: 2px; }
-.picker li .copy { margin-left: -4px; padding-left: 2px; }
+/* The row's own buttons show on hover and on the active row; each one a fixed square, so ✓ takes the place of ⧉. */
+.picker li .copy, .picker li .watch-toggle { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; margin-left: 4px; padding: 0; border-radius: 4px; font-size: 13px; line-height: 1; color: var(--muted); visibility: hidden; }
 .picker li .watch-toggle[data-on="true"] { visibility: visible; color: var(--number); }
 .picker li:hover .copy, .picker li[data-active="true"] .copy,
 .picker li:hover .watch-toggle, .picker li[data-active="true"] .watch-toggle { visibility: visible; }
-.picker li .copy:hover, .picker li .watch-toggle:hover { color: var(--text-strong); background: var(--button-hover); }
+.picker li .copy:hover, .picker li .watch-toggle:hover { color: var(--text-strong); }
 .picker li .copy[data-copied="true"] { visibility: visible; color: var(--good); }
 button[data-copied="true"] { color: var(--good); }
 

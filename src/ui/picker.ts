@@ -75,6 +75,11 @@ export class Picker {
     this.shadow.appendChild(this.box);
   }
 
+  /** Waiting for a click on the page, with no tree open yet. */
+  get waiting() {
+    return this.active && !this.frozen;
+  }
+
   get activeOwner(): Owner | null {
     return this.current?.owner ?? null;
   }
@@ -112,6 +117,12 @@ export class Picker {
 
   cancel() {
     this.finish(null);
+  }
+
+  /** Closes the tree on what it shows, as Enter would; a tree opened on the whole app without a choice changes nothing. */
+  keep() {
+    if (this.browsing) this.finish('whole-app');
+    else this.finish(this.current && !this.quietOpen ? this.current.owner : null);
   }
 
   /**
@@ -172,7 +183,13 @@ export class Picker {
   }
 
   private onMove(event: PointerEvent) {
-    if ((this.frozen && !this.browsing) || this.isOwn(event)) return;
+    // Over the panel, the box goes back to the area the tree is on: the preview is of the page only.
+    if (this.isOwn(event)) {
+      if (this.frozen && !this.browsing && this.current && this.shown?.fiber !== this.current.owner.fiber)
+        this.outline(this.current.owner.fiber, this.current.owner.name);
+      return;
+    }
+    // With the tree open a click on the page still picks there, so the page still shows what it would pick.
     const el = this.elementAt(event.clientX, event.clientY);
     if (!el) return;
     const owner = this.engine.owners(el).find((o) => !this.engine.hidden(o, this.filters()));
@@ -189,7 +206,10 @@ export class Picker {
     if (event.type !== 'click') return;
     const el = this.elementAt(event.clientX, event.clientY);
     const owners = el ? this.engine.owners(el) : [];
-    if (owners.length) this.build(owners, null);
+    if (!owners.length) return;
+    // A click on the page is a choice, whatever tree was open before it.
+    this.quietOpen = false;
+    this.build(owners, null);
   }
 
   private onKey(event: KeyboardEvent) {

@@ -81,7 +81,9 @@ function pack(
 ) {
   const byColumn = new Map<number, Bar & { top: number }>();
   for (const { commit, hits } of commits) {
-    const x = Math.round((commit.atMs * scale) / BUCKET_PX) * BUCKET_PX;
+    // A commit is stamped when it lands, after React rendered it: the render is the time before that moment. Drawn
+    // from the stamp on, a long render would cover the commits that came after it.
+    const x = Math.round((Math.max(0, commit.atMs - (commit.ms ?? 0)) * scale) / BUCKET_PX) * BUCKET_PX;
     const w = Math.max(2, Math.round((commit.ms ?? 0) * scale));
     const bar = byColumn.get(x);
     if (!bar) {
@@ -726,6 +728,8 @@ export function Timeline({
               <div class="tl-lane" key={lane.key} style={`height:${lane.height}px`}>
                 {lane.bars
                   .filter((bar) => onView(bar.x, bar.w))
+                  // The wide ones first, so the short commits inside a long one's span sit on top of it and take clicks.
+                  .sort((a, b) => b.w - a.w)
                   .map((bar) => (
                     <button
                       key={bar.x}
