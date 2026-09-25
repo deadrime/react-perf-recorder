@@ -25,6 +25,10 @@ Work by the `react-perf-recorder` skill; open its references when you get to the
    built in render. A claim about one component — it re-renders, `memo` holds, the fix helped — stands on that
    component's own counts in `components` or `watch`, not on totals or on how a reason is worded. Numbers that did
    not move after your change put the change in doubt before the recorder.
+   A fix goes where the recording puts the waste. A root that renders for nothing — subscribed to more than it
+   shows, fed a value that changes for nothing — is fixed at that cause, and its own count has to fall; `memo` on
+   its children leaves it rendering. A root whose render is needed is fixed below it, and its renders per hit have to
+   fall.
 6. **Answer at the confidence the recording and the code give.** When the reason, the code and the counts agree, that
    is the answer — stop. Measure a fix only when the cause is a guess or numbers were asked for, by
    `references/measuring-a-fix.md` — in a git worktree, so the person's working tree stays as it was.

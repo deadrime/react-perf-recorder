@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
-import { installedChromium } from '../../src/mcp/record';
+import { installedChromium, moduleFile } from '../../src/mcp/record';
 import { createServer, section } from '../../src/mcp/server';
 import type { RecordingV2, SessionEvent, SessionMeta } from '../../src/shared/schema';
 
@@ -165,5 +165,17 @@ describe('installedChromium', () => {
     expect(installedChromium(root)).toBe(path.join(root, 'chromium-1194', 'chrome-linux', 'chrome'));
     expect(installedChromium(path.join(root, 'none'))).toBeUndefined();
     fs.rmSync(root, { recursive: true, force: true });
+  });
+});
+
+describe('moduleFile', () => {
+  it('takes a path as it is, and code — a module, a CommonJS one, or a body — as a module of its own', async () => {
+    const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'rpr-module-test-')), 'scenario.mjs');
+    fs.writeFileSync(file, 'export default async () => {};');
+    expect(moduleFile(file)).toBe(file);
+    const read = (spec: string) => fs.readFileSync(moduleFile(spec), 'utf8');
+    expect(read("export default async (page) => {\n  await page.click('#send');\n};")).toContain("page.click('#send')");
+    expect(read("module.exports = async (page) => {\n  await page.click('#a');\n};")).toMatch(/^export default async/);
+    expect(read("await page.click('#b');")).toBe("export default async (page) => {\nawait page.click('#b');\n};\n");
   });
 });
