@@ -1,21 +1,24 @@
 #!/usr/bin/env node
 // The fixture's source for one case's workspace, as a real app with that bug would read: each bug('…') switch
 // becomes the branch the page runs, and code only the other branch used is blanked out, its switch's comment too.
-// Blanked code keeps its lines, so the file:line a recording gives is the same line here.
-//   node scaffold-fixture.mjs <bug id> <target dir>
+// Blanked code keeps its lines. The copy is an app of its own: a dev server of the run serves it, so the agent's
+// fix reloads in the page it records, and its url is left in dev-url.txt.
+//   node scaffold-fixture.mjs <bug id> [target dir] [--no-serve]
+import { spawn } from 'node:child_process';
 import fs from 'node:fs';
+import net from 'node:net';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const ts = createRequire(path.join(repo, 'package.json'))('typescript');
-const [active, target = '.'] = process.argv.slice(2);
+const [active, target = '.'] = process.argv.slice(2).filter((a) => !a.startsWith('--'));
 if (!active) throw new Error('usage: scaffold-fixture.mjs <bug id> [target dir]');
 
 const from = path.join(repo, 'test/e2e/fixture-app/src');
 // The bug list, the demo pages and the docs name the bugs and show both versions.
-const LEFT_OUT = new Set(['bugs.ts', 'Demo.tsx', 'Docs.tsx', 'basics', 'advanced', 'app.css']);
+const LEFT_OUT = new Set(['bugs.ts', 'Demo.tsx', 'Docs.tsx', 'basics', 'advanced', 'main.tsx']);
 // A comment that talks about the switch or the other version is a hint no real app would carry.
 const TELLING = /\b(bugs?|flags?|clean|broken|fix(ed)?|seeded)\b/i;
 const quiet = (code) => code.replace(/\/\*[\s\S]*?\*\/|\/\/[^\n]*/g, (c) => (TELLING.test(c) ? blank(c) : c));
@@ -38,7 +41,11 @@ function rewrite(code, file) {
     return { start, end: statement.getStart(source) };
   };
   (function visit(node) {
-    if (ts.isImportDeclaration(node) && /\/bugs['"]$/.test(node.moduleSpecifier.getText(source))) {
+    if (ts.isJsxSelfClosingElement(node) && node.tagName.getText(source) === 'BugStrip') {
+      edits.push({ start: node.getStart(source), end: node.getEnd(), text: '' });
+      return;
+    }
+    if (ts.isImportDeclaration(node) && /\/(bugs|Demo)['"]$/.test(node.moduleSpecifier.getText(source))) {
       edits.push({ start: node.getStart(source), end: node.getEnd(), text: '' });
       return;
     }
@@ -104,9 +111,73 @@ function copy(dir, to) {
     if (entry.isDirectory()) copy(src, dst);
     else if (/\.tsx?$/.test(entry.name)) {
       const code = fs.readFileSync(src, 'utf8');
-      fs.writeFileSync(dst, quiet(code.includes('bugs') ? dropUnused(rewrite(code, src), src) : code));
-    } else fs.copyFileSync(src, dst);
+      fs.writeFileSync(dst, quiet(/bugs|Demo/.test(code) ? dropUnused(rewrite(code, src), src) : code));
+    } else if (entry.name.endsWith('.css')) fs.writeFileSync(dst, quiet(fs.readFileSync(src, 'utf8')));
+    else fs.copyFileSync(src, dst);
   }
 }
 
-copy(from, path.join(target, 'src'));
+const MAIN = `import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { createRoot } from 'react-dom/client';
+import { createBrowserRouter, RouterProvider } from 'react-router-dom';
+import './app.css';
+import { app } from './app-router';
+import { Layout } from './components/ChatView';
+
+const client = new QueryClient();
+const router = createBrowserRouter([{ path: '*', element: <Layout /> }]);
+app.router = router;
+
+createRoot(document.getElementById('root')!).render(
+  <QueryClientProvider client={client}>
+    <RouterProvider router={router} />
+  </QueryClientProvider>
+);
+`;
+
+const freePort = () =>
+  new Promise((resolve) => {
+    const server = net.createServer().listen(0, () => {
+      const { port } = server.address();
+      server.close(() => resolve(port));
+    });
+  });
+
+/** A dev server of this workspace, left running for the run; run.sh stops every one it finds in servers/. */
+async function serve(dir) {
+  const sessions = process.env.EVAL_RPR_DIR ?? fs.mkdtempSync(path.join(fs.realpathSync('/tmp'), 'rpr-eval-'));
+  const port = await freePort();
+  const log = fs.openSync(path.join(sessions, `dev-${port}.log`), 'a');
+  const child = spawn(
+    process.execPath,
+    [path.join(repo, 'node_modules/vite/bin/vite.js'), '--config', path.join(repo, 'test/eval-plugin/workspace.vite.config.ts')],
+    {
+      cwd: repo,
+      env: { ...process.env, RPR_WORKSPACE: dir, RPR_PORT: String(port), RPR_SESSIONS: sessions },
+      detached: true,
+      stdio: ['ignore', log, log],
+    }
+  );
+  child.unref();
+  fs.mkdirSync(path.join(sessions, 'servers'), { recursive: true });
+  fs.writeFileSync(path.join(sessions, 'servers', String(child.pid)), dir);
+  const url = `http://localhost:${port}/`;
+  for (let i = 0; i < 120; i++) {
+    if (
+      await fetch(url).then(
+        (r) => r.ok,
+        () => false
+      )
+    )
+      break;
+    await new Promise((r) => setTimeout(r, 500));
+  }
+  fs.writeFileSync(path.join(dir, 'dev-url.txt'), `${url}?tick=150\n`);
+}
+
+const dir = path.resolve(target);
+copy(from, path.join(dir, 'src'));
+fs.writeFileSync(path.join(dir, 'src/main.tsx'), MAIN);
+fs.copyFileSync(path.join(repo, 'test/e2e/fixture-app/index.html'), path.join(dir, 'index.html'));
+if (!fs.existsSync(path.join(dir, 'node_modules'))) fs.symlinkSync(path.join(repo, 'node_modules'), path.join(dir, 'node_modules'), 'dir');
+if (!process.argv.includes('--no-serve')) await serve(dir);
