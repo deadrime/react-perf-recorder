@@ -3,7 +3,9 @@
 // becomes the branch the page runs, and code only the other branch used is blanked out, its switch's comment too.
 // Blanked code keeps its lines. The copy is an app of its own: a dev server of the run serves it, so the agent's
 // fix reloads in the page it records, and its url is left in dev-url.txt.
-//   node scaffold-fixture.mjs <bug id> [target dir] [--no-serve]
+// With --recorded=<wait|type|tabs> it also records that scenario as a person would from the panel, and leaves the
+// recording's id in recording.txt.
+//   node scaffold-fixture.mjs <bug id> [target dir] [--no-serve] [--recorded=<scenario>]
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import net from 'node:net';
@@ -14,6 +16,7 @@ import { fileURLToPath } from 'node:url';
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const ts = createRequire(path.join(repo, 'package.json'))('typescript');
 const [active, target = '.'] = process.argv.slice(2).filter((a) => !a.startsWith('--'));
+const recorded = process.argv.find((a) => a.startsWith('--recorded='))?.slice('--recorded='.length);
 if (!active) throw new Error('usage: scaffold-fixture.mjs <bug id> [target dir]');
 
 const from = path.join(repo, 'test/e2e/fixture-app/src');
@@ -181,7 +184,7 @@ async function serve(dir) {
       break;
     await new Promise((r) => setTimeout(r, 500));
   }
-  await warm(url);
+  await warm(url, dir);
   fs.writeFileSync(path.join(dir, 'dev-url.txt'), `${url}?tick=150\n`);
 }
 
@@ -189,7 +192,7 @@ async function serve(dir) {
  * The page opened once before the agent does: Vite pre-bundles what a first visit finds and reloads the page, which
  * would otherwise land in the agent's first recording and end it ("dev root not found").
  */
-async function warm(url) {
+async function warm(url, dir) {
   // A scaffold runs with HOME moved, like the agent: the browsers' folder comes from run.sh.
   const browsers = process.env.EVAL_PLAYWRIGHT_BROWSERS_PATH || run.browsers || process.env.PLAYWRIGHT_BROWSERS_PATH;
   const build =
@@ -216,9 +219,35 @@ async function warm(url) {
     }
     const rendered = await page.evaluate(() => (document.getElementById('root')?.childElementCount ?? 0) > 0);
     if (!rendered) console.error(`the app did not render at ${url}: ${errors.slice(0, 3).join('; ') || 'no page error'}`);
+    if (recorded) await record(page, `${url}?tick=150`, dir);
   } finally {
     await browser.close();
   }
+}
+
+// The person's steps, as the e2e tests of the fixture run them.
+const SCENARIOS = {
+  wait: (page) => page.waitForTimeout(3000),
+  type: (page) => page.getByTestId('message').pressSequentially('see you at five', { delay: 90 }),
+  tabs: async (page) => {
+    for (let i = 0; i < 3; i++) {
+      await page.getByTestId('tab-people').click();
+      await page.getByTestId('tab-chat').click();
+    }
+  },
+};
+
+/** Rec, the steps, Stop — as from the panel; the dev server saves it in the run's sessions folder. */
+async function record(page, url, dir) {
+  if (!SCENARIOS[recorded]) throw new Error(`no scenario ${recorded}`);
+  await page.goto(url, { waitUntil: 'networkidle' });
+  await page.getByTestId('unread').waitFor();
+  await page.waitForTimeout(500);
+  await page.evaluate(() => window.__REACT_PERF_RECORDER__.engine.start({ source: 'panel', highlight: false }));
+  await SCENARIOS[recorded](page);
+  const { id } = await page.evaluate(() => window.__REACT_PERF_RECORDER__.engine.stop());
+  if (!id) throw new Error('the recording has no id: the dev server did not save it');
+  fs.writeFileSync(path.join(dir, 'recording.txt'), `${id}\n`);
 }
 
 const dir = path.resolve(target);
