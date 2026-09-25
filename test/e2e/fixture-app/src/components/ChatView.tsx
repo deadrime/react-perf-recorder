@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { bug } from '../bugs';
+import { useFeed } from '../feed';
 import { BugStrip } from '../Demo';
 import { useChatStore } from '../store/chat';
 import { ChannelStats } from './ChannelStats';
@@ -56,13 +57,16 @@ const useDenseSetting = bug('inline-context') ? useDenseByTick : useDense;
 /** With the bug on this renders on every tick; the page below comes as children and skips, the settings do not. */
 const SettingsBySync = ({ children }: { children: ReactNode }) => <SettingsProvider dense={useDenseSetting()}>{children}</SettingsProvider>;
 
-export const Layout = () => (
-  <SettingsBySync>
-    <BugStrip />
-    <div className="app">
-      <Header />
-      <TypingLine />
-      <ChatView />
-    </div>
-  </SettingsBySync>
-);
+export const Layout = () => {
+  useFeed();
+  return (
+    <SettingsBySync>
+      <BugStrip />
+      <div className="app">
+        <Header />
+        <TypingLine />
+        <ChatView />
+      </div>
+    </SettingsBySync>
+  );
+};

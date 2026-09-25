@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { ARRIVAL_EVERY, TYPING_LEAD, presenceStore, senderAt, useChatStore, type Person } from './store/chat';
 
 const everyMs = Number(new URLSearchParams(location.search).get('tick') ?? 200);
@@ -14,7 +15,15 @@ function typingAt(step: number): Person[] {
   return IDLE[Math.floor(step / 4) % IDLE.length];
 }
 
-export function connectFeed() {
+/** The chat's socket while the chat is on the page: a case elsewhere would record its ticks as causes of nothing. */
+export function useFeed() {
+  useEffect(() => {
+    const socket = connectFeed();
+    return () => socket.terminate();
+  }, []);
+}
+
+function connectFeed() {
   const socket = new Worker(URL.createObjectURL(new Blob([source], { type: 'text/javascript' })));
   socket.addEventListener('message', (event: MessageEvent<{ step: number }>) => {
     const { step } = event.data;

@@ -52,7 +52,11 @@ const ControlledForm = () => {
   return (
     <ul className="rows">
       <Field label="title">
-        <input data-testid="c-title" value={values.title} onInput={(e) => setValues((v) => ({ ...v, title: (e.target as HTMLInputElement).value }))} />
+        <input
+          data-testid="c-title"
+          value={values.title}
+          onInput={(e) => setValues((v) => ({ ...v, title: (e.target as HTMLInputElement).value }))}
+        />
       </Field>
       <Field label="note">
         <input data-testid="c-note" value={values.note} onInput={(e) => setValues((v) => ({ ...v, note: (e.target as HTMLInputElement).value }))} />
@@ -97,12 +101,14 @@ const UncontrolledForm = () => {
 
 export const Forms = () => (
   <Case
-    title="a form that does not render while you type"
+    title="a form's values: useState or react-hook-form"
     what={
       <>
-        Two forms with the same two fields and a preview of the title. On the left every keystroke is state in the
-        form, so the form and both fields render on each letter. On the right the fields are left to the DOM —{' '}
-        <code>register</code> — and only the preview subscribes, to the one field it prints.
+        Not a bug but a choice of where a form keeps its values. Both forms have the same two fields and a preview of the title. On the left the
+        values are <code>useState</code> in the form: each letter is new state at its root, and the form, both fields and the preview render. On the
+        right react-hook-form keeps the values in the DOM (<code>register</code>) and lets the one component that shows a value subscribe to it (
+        <code>useWatch</code>): only the preview renders. The same works without a library — uncontrolled inputs read with <code>FormData</code>, and
+        a small store for what the page shows as you type.
       </>
     }
   >
@@ -110,15 +116,15 @@ export const Forms = () => (
       <Panel
         kind="broken"
         title="useState in the form"
-        says="The recorder says: the form is a cascade root on every keystroke, with parent: same props, memo would skip it — below it."
+        says="The recorder says: ControlledForm is the root on every letter, through its state, and each Field renders with parent: children."
         code={BROKEN}
       >
         <ControlledForm />
       </Panel>
       <Panel
         kind="fixed"
-        title="register + useWatch"
-        says="The recorder says: the preview renders, once per letter of the field it watches. The other field never does."
+        title="react-hook-form: register + useWatch"
+        says="The recorder says: Preview alone, once a letter, through useWatch. The fields do not render as you type."
         code={FIXED}
       >
         <UncontrolledForm />

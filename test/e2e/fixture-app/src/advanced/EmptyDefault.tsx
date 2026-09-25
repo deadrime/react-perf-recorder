@@ -72,14 +72,16 @@ export const EmptyDefault = () => (
       </>
     }
   >
-    <button type="button" data-testid="select-next" onClick={() => selected.set((i) => (i + 1) % IDS.length)}>
-      Select the next row
-    </button>
+    <p className="bar">
+      <button type="button" data-testid="select-next" onClick={() => selected.set((i) => (i + 1) % IDS.length)}>
+        Select the next row
+      </button>
+    </p>
     <div className="two">
       <Panel
         kind="broken"
         title="marks ?? []"
-        says="The recorder says: parent: props new ref, same content: marks — on every row, for a click on one."
+        says="The recorder says: parent: props new ref, same content: marks — on every row without marks of its own, for a click on one."
         code={BROKEN}
       >
         <FreshDefault />

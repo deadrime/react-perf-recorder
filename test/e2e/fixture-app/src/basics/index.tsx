@@ -108,8 +108,8 @@ export const BASICS: Record<string, BasicsCase> = {
     element: Router,
   },
   form: {
-    title: 'a form that does not render while you type',
-    what: 'Every keystroke in a controlled form renders the form; left to the DOM, only what shows the value renders.',
+    title: "a form's values: useState or react-hook-form",
+    what: 'Not a bug, a choice: values in useState render the whole form on every letter; kept in the DOM, only what shows a value renders.',
     element: Forms,
   },
 };

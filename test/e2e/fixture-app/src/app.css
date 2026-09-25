@@ -740,3 +740,10 @@ input {
   background: color-mix(in srgb, var(--accent) 14%, transparent);
   border-radius: 6px;
 }
+
+/* A row of fields: they share what the label and the counter leave, and a long value scrolls inside its field. */
+.rows.fields input {
+  flex: 1 1 0;
+  width: auto;
+  min-width: 0;
+}

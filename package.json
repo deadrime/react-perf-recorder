@@ -1,6 +1,6 @@
 {
   "name": "react-perf-recorder",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Record React re-renders in the browser: cascade roots, hook-level reasons, store causes and user actions, saved as sessions an agent reads over MCP",
   "license": "MIT",
   "author": "Eugene",
@@ -15,6 +15,7 @@
   "keywords": [
     "react",
     "re-render",
+    "renders",
     "performance",
     "profiler",
     "vite",

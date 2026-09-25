@@ -136,8 +136,12 @@ test("a package's context: named by the component that provides it", async ({ pa
 });
 
 test('a Redux store: named after its declaration, with the action that changed it', async ({ page }) => {
-  const rec = await record(page, '/advanced/redux', () => page.locator('[data-case="fixed"]').getByTestId('like-Pikachu').click());
-  expect(said(rec, 'WholeList')[0]).toMatch(/^external store #\d+ \[pokedexStore\]/);
+  const rec = await record(page, '/advanced/redux', () => page.getByTestId('star-next').click());
+  expect(said(rec, 'WholeList')[0]).toMatch(/^external store #\d+ \[wholeListStore\]/);
+  expect(said(rec, 'OwnFlag')[0]).toMatch(/^external store #\d+ \[ownFlagStore\]/);
   expect(rec.causes.map((c) => c.key)).toContain('redux:favorites/toggle');
-  expect(rec.plugins.redux).toMatchObject({ active: true, highlights: ['pokedexStore: 1 change, most by favorites/toggle ×1'] });
+  expect(rec.plugins.redux).toMatchObject({ active: true });
+  expect(rec.plugins.redux.highlights).toEqual(
+    expect.arrayContaining(['wholeListStore: 1 change, most by favorites/toggle ×1', 'ownFlagStore: 1 change, most by favorites/toggle ×1'])
+  );
 });

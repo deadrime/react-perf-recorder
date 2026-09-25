@@ -57,13 +57,13 @@ const PAIRS = [
     title: 'the whole object, or the field',
     broken: {
       title: 's.profile',
-      says: 'A new object every time, the same name inside it.',
+      says: 'The recorder says: external store SAME-CONTENT [shop] (s)=>s.profile — a new object on every change, the same name inside it.',
       el: <WholeObject />,
       code: `const name = useStore(shop, (s) => s.profile).name;   // ← the object, to show one field of it`,
     },
     fixed: {
       title: 's.profile.name',
-      says: 'A string: it wakes the line when the name changes.',
+      says: 'The recorder says nothing until the name itself changes: a string is compared by value.',
       el: <OneField />,
       code: `const name = useStore(shop, (s) => s.profile.name);   // ← a string, compared by value`,
     },
@@ -72,13 +72,13 @@ const PAIRS = [
     title: 'a new array on every call',
     broken: {
       title: 's.tags.filter(…)',
-      says: 'filter() returns a new array, so the check never finds them equal.',
+      says: 'The recorder says: external store SAME-CONTENT [shop] (s)=>s.tags.filter(Boolean) — filter() makes a new array on every call.',
       el: <FreshArray />,
       code: `const tags = useStore(shop, (s) => s.tags.filter(Boolean));   // ← a new array on every call`,
     },
     fixed: {
       title: 's.tags',
-      says: 'The array the store holds, compared by identity as it should be.',
+      says: 'The recorder says nothing until the tags change: the store hands back the array it holds.',
       el: <SameArray />,
       code: `const tags = useStore(shop, (s) => s.tags);   // ← the array the store already has`,
     },
@@ -87,14 +87,14 @@ const PAIRS = [
     title: 'the exact number, or the one on the screen',
     broken: {
       title: 's.progress',
-      says: 'Renders on every nudge and draws the same 40%.',
+      says: 'The recorder says: external store [shop] (s)=>s.progress on every nudge, while the bar draws the same 40%.',
       el: <ExactNumber />,
       code: `const exact = useStore(shop, (s) => s.progress);   // ← the exact number
 const shown = Math.round(exact / 10) * 10;                 // rounded after the subscription`,
     },
     fixed: {
       title: 'rounded in the selector',
-      says: 'Renders when the tens change, which is rarely.',
+      says: 'The recorder says nothing until the tens change, which is rarely.',
       el: <RoundedNumber />,
       code: `const shown = useStore(shop, (s) => Math.round(s.progress / 10) * 10);   // ← rounded inside it`,
     },
@@ -108,8 +108,8 @@ export const Subscriptions = () => {
       title="subscribe to what you show"
       what={
         <>
-          The same store on both sides, pushing an update every 600ms. What a component asks the store for decides how
-          often it renders — and the answer is never "everything".
+          The same store on both sides, pushing an update every 600ms. What a component asks the store for decides how often it renders — and the
+          answer is never "everything".
         </>
       }
     >

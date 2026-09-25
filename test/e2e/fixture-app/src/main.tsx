@@ -5,10 +5,10 @@ import './app.css';
 import { Layout } from './components/ChatView';
 import { AdvancedPage } from './advanced';
 import { BasicsPage } from './basics';
+import { app } from './app-router';
 import { BASE } from './base';
 import { Catalogue } from './Demo';
 import { DocsPage } from './Docs';
-import { connectFeed } from './feed';
 
 const client = new QueryClient();
 // `/` is the demo: the cards that lead into the app, each on the page of one seeded bug.
@@ -24,7 +24,7 @@ const router = createBrowserRouter(
   { basename: BASE.replace(/\/$/, '') || '/' }
 );
 
-connectFeed();
+app.router = router;
 
 createRoot(document.getElementById('root')!).render(
   <QueryClientProvider client={client}>
