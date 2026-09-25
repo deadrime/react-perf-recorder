@@ -1,0 +1,45 @@
+{
+  "date": "2026-09-25",
+  "claudeVersion": "2.1.282",
+  "totalCost": 9.35,
+  "with": { "runs": 8, "solved": 7, "score": 0.96, "cost": 0.359, "seconds": 138, "turns": 19, "measured": 8 },
+  "without": { "runs": 8, "solved": 5, "score": 0.88, "cost": 0.81, "seconds": 324, "turns": 34, "measured": 0 },
+  "cases": [
+    {
+      "name": "form-watch",
+      "bug": "form-watch",
+      "component": "Composer",
+      "what": "calls watch() in the form root, so every keystroke renders the form",
+      "input": "complaint",
+      "with": { "runs": 2, "solved": 1, "score": 0.83, "cost": 0.551, "seconds": 210, "turns": 28, "measured": 2 },
+      "without": { "runs": 2, "solved": 0, "score": 0.67, "cost": 0.918, "seconds": 384, "turns": 56, "measured": 0 }
+    },
+    {
+      "name": "form-watch-rec",
+      "bug": "form-watch",
+      "component": "Composer",
+      "what": "calls watch() in the form root, so every keystroke renders the form",
+      "input": "recording",
+      "with": { "runs": 2, "solved": 2, "score": 1, "cost": 0.358, "seconds": 170, "turns": 16, "measured": 2 },
+      "without": { "runs": 2, "solved": 1, "score": 0.83, "cost": 0.98, "seconds": 369, "turns": 35, "measured": 0 }
+    },
+    {
+      "name": "whole-object",
+      "bug": "whole-object",
+      "component": "Header",
+      "what": "subscribes to a whole store object to show one number of it",
+      "input": "complaint",
+      "with": { "runs": 2, "solved": 2, "score": 1, "cost": 0.226, "seconds": 67, "turns": 17, "measured": 2 },
+      "without": { "runs": 2, "solved": 2, "score": 1, "cost": 0.789, "seconds": 355, "turns": 23, "measured": 0 }
+    },
+    {
+      "name": "whole-object-rec",
+      "bug": "whole-object",
+      "component": "Header",
+      "what": "subscribes to a whole store object to show one number of it",
+      "input": "recording",
+      "with": { "runs": 2, "solved": 2, "score": 1, "cost": 0.301, "seconds": 105, "turns": 14, "measured": 2 },
+      "without": { "runs": 2, "solved": 2, "score": 1, "cost": 0.553, "seconds": 190, "turns": 24, "measured": 0 }
+    }
+  ]
+}
