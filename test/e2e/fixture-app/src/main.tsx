@@ -18,6 +18,7 @@ const router = createBrowserRouter(
     { path: '/docs/:page?', element: <DocsPage /> },
     { path: '/app', element: <Layout /> },
     { path: '/bug/:id', element: <Layout /> },
+    { path: '/case/:n', element: <Layout /> },
     { path: '/basics/:id', element: <BasicsPage /> },
     { path: '/advanced/:id', element: <AdvancedPage /> },
   ],
