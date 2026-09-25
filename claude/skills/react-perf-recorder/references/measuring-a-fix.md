@@ -28,12 +28,12 @@ REACT_PERF_RECORDER_DIR=<abs path of the first checkout>/.agent-artifacts/perf-r
   uses, record "before" in the worktree as well, before editing, so the sides differ by the fix alone.
 - The variable puts both servers' sessions in the folder the MCP server reads; an `outDir` in the project's config
   overrides it — then set the same absolute path there.
-- `record_page` on the second port: `url` with that port, also for a replay (it takes the recording's URL).
+- `record_page` against the second port: pass its `url`, also for a replay.
 - Stop that dev server and remove the worktree when done, even when the run failed.
 
 ## Fair, and read right
 
-- Same viewport, throttling, data, account and area on both sides; `record_page` keeps outlines off.
+- Same viewport, throttling, data, account and area on both sides.
 - Compare renders, not milliseconds — timings move with the machine. ±1 render on an action is noise (a feed tick or
   a poll landing on a keystroke); a result is clear when it moves more, or the same way on a second run.
 - Read `warnings` first: a different page, area or a partial side makes it no comparison.

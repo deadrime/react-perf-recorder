@@ -9,9 +9,13 @@ overwrites them). By hand:
 { "mcpServers": { "react-perf-recorder": { "command": "node", "args": ["node_modules/react-perf-recorder/dist/cli.js", "mcp"] } } }
 ```
 
-Tools: `list_recordings`, `get_recording`, `record_page`, `wait_for_recording`, `compare_recordings`. Each describes
-its parameters itself, and an MCP client shows the descriptions; they are not repeated here, so they cannot go
-stale.
+Which tool when — what each takes, it describes itself, and an MCP client shows it:
+
+- `wait_for_recording` — the person records in the panel; it returns when they stop.
+- `record_page` — the agent records a page in a browser of its own: a scenario, the page load, a replay after a fix.
+- `get_recording` — read a recording, section by section.
+- `compare_recordings` — before and after a fix.
+- `list_recordings` — find a recording among others.
 
 The sessions folder comes from `--dir`, then `REACT_PERF_RECORDER_DIR`, then `./.agent-artifacts/perf-recorder`.
 
@@ -20,15 +24,8 @@ this package. A browser of the machine's own — a CI image, a sandbox with a pr
 version — is picked by `REACT_PERF_RECORDER_BROWSER=/path/to/chromium`, else the newest Chromium under
 `PLAYWRIGHT_BROWSERS_PATH`.
 
-A page behind a sign-in:
-
-- `via` opens a link that signs the browser in first — a debug URL with a token, a magic link — and records the page
-  after it;
-- `react-perf-recorder login <url>` keeps a session for later runs: a real browser to sign in by hand, or
-  `--for <selector>` / `--wait <ms>` when the link signs in by itself;
-- `cdp: 'http://localhost:9222'` records in a browser you already have open and signed in; it is never closed.
-
-A page that redirects to a login says so instead of recording the login form. A token never reaches a recording.
+A page behind a sign-in: `record_page` through a signing link, else a session saved once by
+`react-perf-recorder login <url>`, else a browser you already have open (`cdp`).
 
 ## CLI
 

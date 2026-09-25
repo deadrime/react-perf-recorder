@@ -268,7 +268,7 @@ export function createServer(dir: string) {
     {
       description:
         'One session, in words: reasons, hook chains and causes resolved from the ids recording.json keeps them as — read sections, not the file. ' +
-        'id: an id from list_recordings, "latest" or "latest-1". A running or interrupted session is rebuilt from its events (partial: ' +
+        'id: an id from list_recordings, "latest" or "latest-1" — when others may record into the same folder, the id record_page returned, not latest. A running or interrupted session is rebuilt from its events (partial: ' +
         'no hook names, components, ways or plugin sections). The answer carries the session folder for grep.',
       inputSchema: {
         id: z.string().default('latest'),
@@ -328,7 +328,9 @@ export function createServer(dir: string) {
           .min(200)
           .max(60_000)
           .optional()
-          .describe('How long to record the page as it is, 3000 by default. With a script or replay the recording lasts as long as they run.'),
+          .describe(
+            'How long to record the page as it is, 3000 by default; 3–12 seconds of one scenario. With a script or replay the recording lasts as long as they run.'
+          ),
         label: z.string().optional().describe('What this run is, e.g. "before" and "after".'),
         scope: z
           .union([z.string(), z.object({ names: z.array(z.string()) }), z.object({ selector: z.string(), component: z.string().optional() })])
@@ -344,13 +346,13 @@ export function createServer(dir: string) {
           .string()
           .optional()
           .describe(
-            'A module with `export default async (page) => {…}`: the page is already open at url and recording when it runs, and the recording stops when it returns — so it only does the actions. No goto, reload or engine.start/stop in it: a navigation ends the recording. Wait for what shows the result (a list, a spinner gone), not for a time. A failure answers with the page url, its text and a screenshot.'
+            'A module with `export default async (page) => {…}`: the page is already open at url and recording when it runs, and the recording stops when it returns — so it only does the actions. No goto, reload or engine.start/stop in it: a navigation ends the recording. Wait for what shows the result (a list, a spinner gone), not for a time; look an element up again for each step (page.locator), since a page that re-renders replaces its elements; a form in a same-origin frame is reached through page.frameLocator, and the recording follows the frame itself. A failure answers with the page url, its text and a screenshot.'
           ),
         setup: z
           .string()
           .optional()
           .describe(
-            'A module like script, run before the recording and not recorded: seed localStorage or IndexedDB (goto the dev server, evaluate, return), sign in, build data through the UI. With url, the page is opened again after it and only storage, cookies and routes carry over; without url, the recording starts on the page setup left.'
+            'A module like script, run before the recording and not recorded: seed localStorage or IndexedDB (goto the dev server, evaluate, return), sign in, build data through the UI, stub a backend the machine cannot reach with page.route. With url, the page is opened again after it and only storage, cookies and routes carry over; without url, the recording starts on the page setup left.'
           ),
         replay: z
           .string()
@@ -366,7 +368,12 @@ export function createServer(dir: string) {
           .describe(
             'Faster on lists of thousands: reasons of renders a parent caused are a sample, counts stay exact, and no ways or commit cascades are kept.'
           ),
-        throttle: z.number().min(1).max(20).optional().describe('CPU slowdown, 4 = four times slower.'),
+        throttle: z
+          .number()
+          .min(1)
+          .max(20)
+          .optional()
+          .describe('CPU slowdown, 4 = four times slower; keep it the same across runs that will be compared.'),
         state: z.string().optional().describe('A session saved by `login`; the default beside the recordings is used when it is there.'),
         cdp: z.string().optional().describe('http://localhost:9222 of a browser already running and signed in.'),
         via: z
