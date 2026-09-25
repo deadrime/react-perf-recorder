@@ -181,7 +181,8 @@ async function serve(dir) {
  * would otherwise land in the agent's first recording and end it ("dev root not found").
  */
 async function warm(url) {
-  const browsers = process.env.PLAYWRIGHT_BROWSERS_PATH ?? process.env.EVAL_PLAYWRIGHT_BROWSERS_PATH;
+  // A scaffold runs with HOME moved, like the agent: the browsers' folder comes from run.sh.
+  const browsers = process.env.EVAL_PLAYWRIGHT_BROWSERS_PATH || process.env.PLAYWRIGHT_BROWSERS_PATH;
   const build =
     browsers && fs.existsSync(browsers)
       ? fs
@@ -192,7 +193,10 @@ async function warm(url) {
       : undefined;
   const executablePath = build && path.join(browsers, build, 'chrome-linux/chrome');
   const { chromium } = createRequire(path.join(repo, 'package.json'))('playwright');
-  const browser = await chromium.launch({ headless: true, ...(executablePath && fs.existsSync(executablePath) ? { executablePath } : {}) });
+  const browser = await chromium
+    .launch({ headless: true, ...(executablePath && fs.existsSync(executablePath) ? { executablePath } : {}) })
+    .catch((error) => console.error(`no warm-up, the first recording may meet a reload: ${String(error.message).split('\n')[0]}`));
+  if (!browser) return;
   try {
     const page = await browser.newPage();
     for (let i = 0; i < 2; i++) {
