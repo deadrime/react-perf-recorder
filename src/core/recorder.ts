@@ -122,6 +122,7 @@ interface RootAgg {
   causes: Map<string, number>;
   lanes: Map<string, number>;
   noDomChange: number;
+  ownDomUnchanged: number;
   renderMs: number;
   mounts: number;
   library: boolean;
@@ -168,6 +169,8 @@ interface CommitState {
   withoutDom: Set<Fiber>;
   mounted: Set<Fiber>;
   touched: Set<Fiber>;
+  /** The components whose own elements changed, not something under them. */
+  own: Set<Fiber>;
   /**
    * Renders by chain link in this commit, its cascade as a tree, and the milliseconds each link took with its
    * subtree (`actualDuration`) when the build times renders; null when recording fast.
@@ -508,6 +511,7 @@ export class Recorder {
       ways: this.options.sampleReasons ? null : new Map(),
       timed: false,
       touched: this.dom.takeForCommit(),
+      own: this.dom.own,
     };
     if (this.scope) {
       const prevs: Array<Snapshot | undefined> = [];
@@ -835,6 +839,7 @@ export class Recorder {
         causes: new Map(),
         lanes: new Map(),
         noDomChange: 0,
+        ownDomUnchanged: 0,
         renderMs: 0,
         mounts: 0,
         library: isLibraryFiber(f),
@@ -876,6 +881,7 @@ export class Recorder {
     }
     c.reasons.set(agg, ids);
     if (!outside && !touchedHas(c.touched, f)) agg.noDomChange++;
+    if (!outside && !touchedHas(c.own, f)) agg.ownDomUnchanged++;
     if (hasProfileTimings(f)) {
       agg.renderMs += f.actualDuration!;
       if (!nested) c.renderMs += f.actualDuration!;
@@ -1219,6 +1225,9 @@ export class Recorder {
       causes: topEntries(agg.causes, 8),
       lanes: topEntries(agg.lanes, 5),
       noDomChange: agg.noDomChange,
+      // Worth saying only when the root's own elements stayed as they were more often than its whole subtree did.
+      // A package's provider draws next to nothing of its own: the count would say nothing about it.
+      ...(!agg.library && agg.ownDomUnchanged > agg.noDomChange ? { ownDomUnchanged: agg.ownDomUnchanged } : {}),
       ...(agg.renderMs ? { renderMs: +agg.renderMs.toFixed(1) } : {}),
       ...(agg.mounts ? { mounts: agg.mounts } : {}),
       ...(agg.library ? { library: true as const } : {}),

@@ -36,8 +36,12 @@ export class DomWatcher {
     });
   }
 
+  /** The components whose own elements changed in the last `takeForCommit`: the nearest one above each change. */
+  own = new Set<Fiber>();
+
   takeForCommit(): Set<Fiber> {
     const touched = new Set<Fiber>();
+    this.own = new Set<Fiber>();
     if (this.observer) this.consume(this.observer.takeRecords(), touched);
     return touched;
   }
@@ -77,8 +81,13 @@ export class DomWatcher {
 
   /** One half of each fiber pair is enough, as readers check both; host fibers are skipped, nobody asks about them. */
   private mark(node: Node, touched: Set<Fiber>) {
+    let nearest = true;
     for (let f = fiberFromNode(node); f; f = f.return) {
       if (isHost(f) || f.tag === Tag.HostText) continue;
+      if (nearest) {
+        nearest = false;
+        this.own.add(f);
+      }
       if (touchedHas(touched, f)) return;
       touched.add(f);
     }

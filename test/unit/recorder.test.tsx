@@ -83,6 +83,36 @@ describe('Recorder', () => {
     expect(rec.roots[0].noDomChange).toBe(1);
   });
 
+  it("tells a root whose own elements stayed from one whose child's did not", () => {
+    const store = createStore(() => ({ text: 'a' }));
+    const Line = ({ text }: { text: string }) => <span>{text}</span>;
+    // The form draws a frame that never changes: what moves is the line under it.
+    const Form = () => (
+      <div className="frame">
+        <Line text={useStore(store, (s) => s.text)} />
+      </div>
+    );
+    const Label = () => <b>{useStore(store, (s) => s.text)}</b>;
+    mount(
+      <>
+        <Form />
+        <Label />
+      </>
+    );
+    const { recorder } = makeRecorder();
+    recorder.start();
+    flush(() => store.setState({ text: 'b' }));
+    flush(() => store.setState({ text: 'c' }));
+    const rec = recorder.stop();
+
+    const form = rec.roots.find((r) => r.name === 'Form')!;
+    const label = rec.roots.find((r) => r.name === 'Label')!;
+    expect(form.noDomChange).toBe(0);
+    expect(form.ownDomUnchanged).toBe(2);
+    expect(label.noDomChange).toBe(0);
+    expect(label.ownDomUnchanged).toBeUndefined();
+  });
+
   it('a component that adds or removes rows under an element of its parent changed the DOM', () => {
     const store = createStore(() => ({ rows: ['a'] }));
     // The rows sit straight in the parent's <tbody>: the only DOM of Rows is the rows themselves.

@@ -130,6 +130,11 @@ export interface RootStat {
   lanes: Array<[string, number]>;
   /** Hits in which nothing in the root's DOM changed: the render was wasted. */
   noDomChange: number;
+  /**
+   * Hits in which none of the elements the root renders itself changed, when more than `noDomChange`: what changed
+   * was under it, in children that would have rendered anyway, so the root's own render may have been for nothing.
+   */
+  ownDomUnchanged?: number;
   renderMs?: number;
   /** Components mounted under the root in its hits: a component declared in render or an unstable key remounts. */
   mounts?: number;
