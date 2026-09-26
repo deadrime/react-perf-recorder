@@ -32,7 +32,8 @@ const arm = (pairs) => {
   const checked = count(runs, (r) => r.graders.every((g) => g.name === 'named' || g.name === 'measured' || g.passed));
   return {
     runs: runs.length,
-    solved: verified ? count(pairs, ([, v]) => v?.fixed) : checked,
+    // The case without a bug also wants the code untouched: a page that still works is not enough.
+    solved: verified ? count(pairs, ([r, v]) => v?.fixed && r.graders.every((g) => g.name !== 'untouched' || g.passed)) : checked,
     checked,
     passed: count(runs, (r) => r.passed),
     score: round(mean(runs.map((r) => r.score))),
