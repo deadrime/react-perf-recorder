@@ -109,7 +109,8 @@ for (const c of run.cases) {
   if (!CASES[c.name]) continue;
   const { bug, clean } = baseline(c.name);
   out.cases[c.name] = { baseline: { bug, clean } };
-  for (const side of ['with', 'without']) {
+  // A run without the baseline arm (--ablation none) has only `with`.
+  for (const side of ['with', 'without'].filter((side) => c.arms[side])) {
     out.cases[c.name][side] = c.arms[side].map((r) => {
       // The run's sandbox: out/trace.jsonl, and the workspace the agent worked in at home/cwd.
       const workspace = r.tracePath && path.join(path.dirname(path.dirname(r.tracePath)), 'home/cwd');
