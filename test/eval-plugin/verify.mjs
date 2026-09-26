@@ -6,7 +6,8 @@
 // One dev server serves every workspace, each under a path of its own, so the dependencies are bundled once; one
 // Chromium records them, VERIFY_JOBS pages at a time (4 by default).
 //   node test/eval-plugin/verify.mjs <aggregate-result.json>
-//   node test/eval-plugin/verify.mjs --self-test     the bug left as it is must fail, the clean app must pass
+//   node test/eval-plugin/verify.mjs --self-test     the bug left as it is must fail and show its root among the
+//                                                    first three, the clean app must pass
 import { execFile, execFileSync, spawn } from 'node:child_process';
 import fs from 'node:fs';
 import net from 'node:net';
@@ -121,8 +122,10 @@ async function recordOnce(name, dir) {
       maxBuffer: 64 * 1024 * 1024,
     });
     const typed = TYPED[scenario];
+    const show = JSON.parse(stdout);
     return {
-      waste: CASES[name].waste(JSON.parse(stdout)),
+      waste: CASES[name].waste(show),
+      roots: show.topRoots.slice(0, 3).map((r) => r.root),
       works: result.missing.length === 0 && (typed === undefined || result.typed === typed),
       missing: result.missing,
       typed: result.typed,
@@ -182,10 +185,15 @@ async function selfTest() {
       // A failed baseline is a failed self-test, not a pass: judge says nothing without one.
       const clean = (await judge(name, records.clean)) === true;
       const left = scaffoldOf(name).bugs === 'none' ? clean : (await judge(name, records.bug)) === false;
+      // What the person's recording shows the agent: the bug's root among the first roots.
+      const { root } = CASES[name];
+      const found = root === null || (records.bug.roots ?? []).includes(root);
       console.log(
-        `${clean && left ? '✓' : '✗'} ${name}: the clean app ${clean ? 'passes' : 'FAILS'}, the bug left as it is ${left ? 'fails' : 'PASSES'}`
+        `${clean && left && found ? '✓' : '✗'} ${name}: the clean app ${clean ? 'passes' : 'FAILS'}, the bug left as it is ${
+          left ? 'fails' : 'PASSES'
+        }${found ? '' : `, ${root} is not among the first roots (${(records.bug.roots ?? []).join(', ')})`}`
       );
-      return clean && left;
+      return clean && left && found;
     })
   );
   return results.every(Boolean);

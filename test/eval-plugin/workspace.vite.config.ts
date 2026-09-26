@@ -55,6 +55,8 @@ export default defineConfig({
     perfRecorder({
       enabled: true,
       outDir: process.env.RPR_SESSIONS!,
+      // Shared, the root holds the workspaces: `memo(() => …)` in w<n>/src would go unnamed, as it does not for the agent.
+      ...(process.env.RPR_SHARED ? { components: { include: ['*/src/**/*.{tsx,jsx}'] } } : {}),
       plugins: [zustand(), proxyMemoize({ functions: ['memoize', 'memoizeWithArgs'] }), reactQuery(), redux()],
     }),
   ],
