@@ -1,0 +1,20 @@
+--- a/src/components/Composer/index.tsx
++++ b/src/components/Composer/index.tsx
+@@ -80,14 +80,16 @@
+ };
+ 
+ export const Composer = () => {
+-  const { control, handleSubmit, trigger, reset } = useForm<ComposerValues>({
++  const { control, handleSubmit, trigger, watch, reset } = useForm<ComposerValues>({
+     mode: 'onChange',
+     defaultValues: { text: '', replyTo: '', remindIn: '' },
+   });
++  const filled = Object.values(watch()).filter(Boolean).length;
+   return (
+     <form
+       className="composer"
+       data-testid="composer"
++      data-filled={filled}
+       onSubmit={handleSubmit((values) => {
+         useChatStore.getState().send(values.text);
+         reset();

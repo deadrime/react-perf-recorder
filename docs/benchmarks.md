@@ -81,14 +81,16 @@ complaint ("typing into the message box lags"), and the agent works out the scen
 
 ## How a case is built
 
-- **The source is a copy with the bug in it and no trace of the other version.** The fixture switches each bug with
-  `bug('…')`; the copy keeps the branch the page runs, blanks the code only the other branch used and every comment
-  that talks about either, and leaves out the bug list and the demo pages. Lines stay where they were.
+- **The source is a small chat app with one bug patched in.** The app lives in `test/eval-plugin/app` without any
+  of the bugs, and each bug is a patch of a few lines in `test/eval-plugin/bugs`, written the way the mistake reads
+  in a real codebase. Nothing in the copy names the bug or holds the other version.
 - **The app runs.** Each run has a dev server of its own serving that copy with the Vite plugin, so the agent's
   edit reloads in the page it records.
 - **Both sides have the same tools** to read and edit the code (`Read`, `Grep`, `Glob`, `Edit`, `Write`); only the
   plugin's side has the recorder.
-- The checks read the fixed files and the run's trace, not the agent's word.
+- The checks read the fixed files and the run's trace, not the agent's word. A unit test keeps them honest: every
+  file check fails on its patched app and passes on the clean one, and `check.mjs` records every case live to see the
+  bug's component among the first roots.
 
 ## Reading the numbers
 

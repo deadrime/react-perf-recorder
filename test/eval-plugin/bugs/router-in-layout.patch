@@ -1,0 +1,18 @@
+--- a/src/components/ChatView.tsx
++++ b/src/components/ChatView.tsx
+@@ -1,4 +1,5 @@
+ import type { ReactNode } from 'react';
++import { useSearchParams } from 'react-router-dom';
+ import { useFeed } from '../feed';
+ import { ChannelStats } from './ChannelStats';
+ import { ChatPanel } from './ChatPanel';
+@@ -9,7 +10,8 @@
+ import { WebhookForm } from './WebhookForm';
+ 
+ function useChatLayout() {
+-  return { wide: true };
++  const [params] = useSearchParams();
++  return { wide: true, debug: params.has('debug') };
+ }
+ 
+ export const ChatView = () => {

@@ -1,0 +1,20 @@
+--- a/src/components/Header.tsx
++++ b/src/components/Header.tsx
+@@ -1,14 +1,14 @@
+ import { useChatStore } from '../store/chat';
+-import { selectUnread } from '../store/selectors';
++import { selectWorkspace } from '../store/selectors';
+ import { TimezoneBadge } from './Settings';
+ import { TypingBadge } from './TypingBadge';
+ import Workspace from './Workspace';
+ 
+ const Unread = () => {
+-  const unread = useChatStore(selectUnread);
++  const workspace = useChatStore(selectWorkspace);
+   return (
+     <span className="badge" data-testid="unread">
+-      {unread} unread
++      {workspace.unread} unread
+     </span>
+   );
+ };

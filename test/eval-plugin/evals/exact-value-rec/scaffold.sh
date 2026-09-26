@@ -1,2 +1,2 @@
 #!/usr/bin/env bash
-exec node "$(dirname "${BASH_SOURCE[0]}")/../scaffold-fixture.mjs" exact-value . --recorded=wait
+exec node "$(dirname "${BASH_SOURCE[0]}")/../scaffold.mjs" exact-value . --recorded=wait

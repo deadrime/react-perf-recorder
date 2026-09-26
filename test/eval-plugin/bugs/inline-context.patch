@@ -1,0 +1,36 @@
+--- a/src/components/ChatView.tsx
++++ b/src/components/ChatView.tsx
+@@ -1,5 +1,6 @@
+ import type { ReactNode } from 'react';
+ import { useFeed } from '../feed';
++import { useChatStore } from '../store/chat';
+ import { ChannelStats } from './ChannelStats';
+ import { ChatPanel } from './ChatPanel';
+ import { Composer } from './Composer';
+@@ -31,7 +32,7 @@
+ };
+ 
+ function useDenseSetting() {
+-  return false;
++  return useChatStore((s) => s.workspace.lastEventAt) < 0;
+ }
+ 
+ const SettingsBySync = ({ children }: { children: ReactNode }) => <SettingsProvider dense={useDenseSetting()}>{children}</SettingsProvider>;
+--- a/src/components/Settings.tsx
++++ b/src/components/Settings.tsx
+@@ -1,4 +1,4 @@
+-import { createContext, useContext, useMemo, type ReactNode } from 'react';
++import { createContext, useContext, type ReactNode } from 'react';
+ 
+ interface Settings {
+   dense: boolean;
+@@ -10,8 +10,7 @@
+ export const useSettings = () => useContext(SettingsContext);
+ 
+ export const SettingsProvider = ({ dense, children }: { dense: boolean; children: ReactNode }) => {
+-  const value = useMemo(() => ({ dense, timezone: 'UTC' }), [dense]);
+-  return <SettingsContext.Provider value={value}>{children}</SettingsContext.Provider>;
++  return <SettingsContext.Provider value={{ dense, timezone: 'UTC' }}>{children}</SettingsContext.Provider>;
+ };
+ 
+ export const TimezoneBadge = () => {
