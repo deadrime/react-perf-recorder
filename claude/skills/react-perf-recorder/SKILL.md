@@ -27,13 +27,16 @@ numbers belong in the answer.
    children leaves it rendering. A root whose render is needed is fixed below it, and its renders per hit have to
    fall. Whether it is needed is in `ownDomUnchanged`, not in `noDomChange`, which counts what changed anywhere under
    it: a root whose own elements stayed as they were in most of its hits — a form root whose only change is the
-   letter in its child's input — renders for nothing, and the fix is in it.
+   letter in its child's input — renders for nothing, and the fix is in it. When its reason is a package's own state
+   (`[package] useX › State`), the root reads more of what that hook returned than it shows — a getter, a proxied
+   field, a function that subscribes as it reads, in an initializer too: move that read into the child that shows it.
 5. **Prove it** when numbers were asked for or the cause is a guess: `references/measuring-a-fix.md`. Counts that did
    not move put the fix in doubt before the recorder.
 6. **Read what is left.** The recording after the fix is the next look at the page: a root still rendering with no
    DOM change is the next cause, and a complaint can have more than one. Stop when what remains changes what the
    page shows — and when the first recording shows nothing wasted, say so and change nothing: a render that
-   changes the page is not a bug.
+   changes the page is not a bug. A root whose own count did not fall is not fixed: something in its render still
+   subscribes it; find it rather than adding `memo` below.
 
 Work through the `react-perf-recorder` MCP tools: each one says in its description when to use it and what it takes.
 
@@ -43,5 +46,6 @@ Work through the `react-perf-recorder` MCP tools: each one says in its descripti
 - `references/measuring-a-fix.md` — before and after: replay or script, a worktree for the change, reading the result.
 - `references/reading-a-recording.md` — roots, reasons, hook chains, components and their ways, memos.
 - `references/causes-and-actions.md` — what scheduled each commit, the person's actions, plugin sections, traps.
+- `references/libraries.md` — what a library in a root's reason usually means: react-hook-form.
 - `references/panel.md` — the panel, for guiding a person who records it themselves.
 - `references/from-scripts.md` — the page API for a script of your own, and the CLI when the MCP tools are missing.
