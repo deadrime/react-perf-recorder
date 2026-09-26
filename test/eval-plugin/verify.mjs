@@ -168,6 +168,8 @@ function baseline(name) {
 /** Fixed: the page works and the waste is down to the clean app's, give or take a quarter of what the bug added. */
 async function judge(name, after) {
   const { bug, clean } = await baseline(name);
+  // No baseline, no verdict: a null taken for 0 would fail every run of the case, or pass half a fix.
+  if (bug === null || clean === null) return null;
   if (!after.works || after.waste === null) return false;
   const allowed = name === 'no-bug-rec' ? clean + Math.max(3, clean * 0.25) : clean + (1 - GONE) * (bug - clean);
   return after.waste <= allowed;
@@ -177,8 +179,9 @@ async function selfTest() {
   const results = await Promise.all(
     Object.keys(CASES).map(async (name) => {
       const { records } = await baseline(name);
-      const clean = await judge(name, records.clean);
-      const left = scaffoldOf(name).bugs === 'none' ? true : !(await judge(name, records.bug));
+      // A failed baseline is a failed self-test, not a pass: judge says nothing without one.
+      const clean = (await judge(name, records.clean)) === true;
+      const left = scaffoldOf(name).bugs === 'none' ? clean : (await judge(name, records.bug)) === false;
       console.log(
         `${clean && left ? '✓' : '✗'} ${name}: the clean app ${clean ? 'passes' : 'FAILS'}, the bug left as it is ${left ? 'fails' : 'PASSES'}`
       );
@@ -204,6 +207,10 @@ async function verify(input) {
             if (!from || !fs.existsSync(path.join(from, 'src'))) return { fixed: null, error: 'no workspace kept' };
             const after = await record(c.name, { from });
             const fixed = await judge(c.name, after);
+            if (fixed === null) {
+              console.log(`? ${c.name} [${side}] not judged: a baseline recording failed`);
+              return { fixed: null, ...after, error: 'no baseline to judge by' };
+            }
             const broken = after.works ? '' : ` — broken: ${after.error ?? JSON.stringify({ missing: after.missing, typed: after.typed })}`;
             console.log(`${fixed ? '✓' : '✗'} ${c.name} [${side}] waste ${after.waste}${broken}`);
             return { fixed, ...after };
