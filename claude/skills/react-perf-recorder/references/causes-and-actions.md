@@ -35,6 +35,15 @@ their length.
 - `plugin:zustand` — the stores it saw and the updates they made.
 - `plugin:react-query` — query events by kind and key.
 
+## Libraries in a root's reason
+
+- `[react-hook-form] useForm` on a form's root while typing: the root reads values in its render — `watch()`,
+  `getValues()` in JSX, `formState.isDirty` and the like — and so renders with every field under it on each key.
+  Move the read into a small component of its own with `useWatch({ name })` or `useFormState({ control })`; `memo` on
+  the fields leaves the root rendering.
+- `[react-hook-form] useController › useFormState` on a field: `fieldState`, or a `trigger()` of the whole form,
+  subscribes it to every field's errors; read the one error it shows instead.
+
 A plugin whose library is not on the page has `active: false` and is left out of the summary.
 
 ## Traps

@@ -40,7 +40,8 @@ In an `external store` reason, `[useStore]` names the store and what follows is 
 - `parent: props price | new ref, same content: style, onClick` — the component did render: `price` changed, `style`
   and `onClick` were new references to equal values, which is what breaks `memo`. A render that `memo` skipped is
   never counted or listed;
-- `parent: props equal` — a `memo` would have skipped this render;
+- `parent: props equal` — a `memo` would have skipped this render. Ask first whether the parent had to render: when
+  it did not, the fix is there, and a `memo` here only hides it;
 - `chains` — up to three ways its renders came down, as `way`: the root's leading cause, the root and its reason,
   then the props each parent handed on:
   `react-query:fetch ["presence"] › Stats · state online › Line · prop online › Badge · prop count`. The first link
