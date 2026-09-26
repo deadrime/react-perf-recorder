@@ -1,7 +1,7 @@
 ---
 name: perf-recorder
 description: Finds why a React page re-renders and proves a fix with numbers. Reads the person's recording of it, or records the scenario itself, with react-perf-recorder, and answers with the cascade root, the hook or store behind it, and the file and line to change. Use when a page feels slow, flashes on its own, or a change has to be shown to have helped.
-tools: mcp__react-perf-recorder, mcp__playwright, Read, Edit, Write, Grep, Glob, Bash
+tools: mcp__react-perf-recorder, mcp__plugin_react-perf-recorder_react-perf-recorder, mcp__playwright, Read, Edit, Write, Grep, Glob, Bash
 skills:
   - react-perf-recorder
 model: sonnet
