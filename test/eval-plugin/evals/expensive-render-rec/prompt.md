@@ -9,6 +9,6 @@ reloads as the source changes.
 The complaint: the page stutters about twice a second even when nobody touches it — scrolling the messages jerks.
 To reproduce: open the page, wait for the messages to load, then leave it alone for a few seconds.
 I recorded it with the recorder's panel in the page; the recording's id is in ./recording.txt.
-Find out whether a component re-renders for nothing, and why. If one does, fix it in ./src without changing what
+Find out whether anything on the page re-renders for nothing, and why. Fix what does in ./src without changing what
 the page shows, and show with before-and-after numbers that the fix worked. If nothing does, say so and change
 nothing.

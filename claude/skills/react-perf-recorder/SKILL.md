@@ -28,6 +28,10 @@ numbers belong in the answer.
    fall.
 5. **Prove it** when numbers were asked for or the cause is a guess: `references/measuring-a-fix.md`. Counts that did
    not move put the fix in doubt before the recorder.
+6. **Read what is left.** The recording after the fix is the next look at the page: a root still rendering with no
+   DOM change is the next cause, and a complaint can have more than one. Stop when what remains changes what the
+   page shows — and when the first recording shows nothing wasted, say so and change nothing: a render that
+   changes the page is not a bug.
 
 Work through the `react-perf-recorder` MCP tools: each one says in its description when to use it and what it takes.
 
