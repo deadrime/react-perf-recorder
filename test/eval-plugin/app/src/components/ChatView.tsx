@@ -31,22 +31,22 @@ export const ChatView = () => {
   );
 };
 
-const SyncBar = ({ at }: { at: number }) => (
-  <span className="sync" title="Live">
-    <span className="sync-fill" style={{ width: `${(at % 20) * 5}%` }} />
-  </span>
-);
-
-/** The live bar moves with every event from the socket; the page itself comes in as children. */
-const SettingsBySync = ({ children }: { children: ReactNode }) => {
-  const lastEventAt = useChatStore((s) => s.workspace.lastEventAt);
+const SyncBar = () => {
+  const at = useChatStore((s) => s.workspace.lastEventAt);
   return (
-    <SettingsProvider dense={false}>
-      <SyncBar at={lastEventAt} />
-      {children}
-    </SettingsProvider>
+    <span className="sync" title="Live">
+      <span className="sync-fill" style={{ width: `${(at % 20) * 5}%` }} />
+    </span>
   );
 };
+
+/** The live bar moves with every event from the socket; the page itself comes in as children. */
+const SettingsBySync = ({ children }: { children: ReactNode }) => (
+  <SettingsProvider dense={false}>
+    <SyncBar />
+    {children}
+  </SettingsProvider>
+);
 
 export const Layout = () => {
   useFeed();
