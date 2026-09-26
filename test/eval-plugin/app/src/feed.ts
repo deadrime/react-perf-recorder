@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { addActivity, beat, store } from './store/activity';
 import { ARRIVAL_EVERY, TYPING_LEAD, presenceStore, senderAt, useChatStore, type Person } from './store/chat';
 
 const everyMs = Number(new URLSearchParams(location.search).get('tick') ?? 200);
@@ -27,6 +28,8 @@ function connectFeed() {
   socket.addEventListener('message', (event: MessageEvent<{ step: number }>) => {
     const { step } = event.data;
     useChatStore.getState().tick(step);
+    store.dispatch(beat(step));
+    if (step % ARRIVAL_EVERY === 0) store.dispatch(addActivity({ text: `${senderAt(step)} posted`, muted: false }));
     const typing = typingAt(step);
     if (typing.join() !== presenceStore.getState().typing.join()) presenceStore.setState({ typing });
   });

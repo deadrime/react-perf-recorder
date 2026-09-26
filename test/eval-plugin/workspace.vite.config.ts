@@ -37,6 +37,8 @@ export default defineConfig({
             '@tanstack/react-query',
             'react-router-dom',
             'proxy-memoize',
+            '@reduxjs/toolkit',
+            'react-redux',
           ],
         },
       }

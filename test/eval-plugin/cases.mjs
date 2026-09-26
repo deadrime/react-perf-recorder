@@ -22,6 +22,11 @@ export const CASES = {
   // The waste is time: the member list sorting on every poll.
   'expensive-render-rec': { root: 'ChannelStats', waste: (show) => root(show, 'ChannelStats')?.renderMsPerHit ?? 0 },
   'draft-context-rec': { root: 'Layout', waste: hitsOf('Layout') },
+  // connect() wraps the component, and its wrapper is the root.
+  'connect-filter-rec': { root: 'Connect(ActivityLog)', waste: hitsOf('Connect(ActivityLog)') },
+  'query-rest-rec': { root: 'ChannelTopic', waste: hitsOf('ChannelTopic') },
+  // The cause is two files from the root: the component reads a hook that reads a helper.
+  'hook-reads-all-rec': { root: 'MessageCount', waste: hitsOf('MessageCount') },
   'two-bugs-rec': { root: 'Unread', waste: wasted },
   'no-bug-rec': { root: null, waste: wasted },
 };

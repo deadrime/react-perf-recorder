@@ -1,0 +1,15 @@
+--- a/src/components/ChannelTopic.tsx
++++ b/src/components/ChannelTopic.tsx
+@@ -4,10 +4,10 @@
+ 
+ /** The topic can be changed from elsewhere, so it is polled. */
+ export const ChannelTopic = () => {
+-  const { data, isError } = useQuery({ queryKey: ['topic'], queryFn: fetchTopic, refetchInterval: 400 });
++  const { data, ...query } = useQuery({ queryKey: ['topic'], queryFn: fetchTopic, refetchInterval: 400 });
+   return (
+     <span className="topic" data-testid="topic">
+-      {isError ? 'topic unavailable' : data?.topic ?? '…'}
++      {query.isError ? 'topic unavailable' : data?.topic ?? '…'}
+     </span>
+   );
+ };

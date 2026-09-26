@@ -5,9 +5,9 @@
 +import { useState, type ReactNode } from 'react';
 +import { DraftContext } from '../draft';
  import { useFeed } from '../feed';
+ import ActivityLog from './ActivityLog';
  import { useChatStore } from '../store/chat';
- import { ChannelStats } from './ChannelStats';
-@@ -50,13 +51,16 @@
+@@ -55,13 +56,16 @@
  
  export const Layout = () => {
    useFeed();
@@ -84,9 +84,9 @@
 -import { draftStore } from '../store/draft';
 +import { useDraft } from '../draft';
  import { selectUnread } from '../store/selectors';
+ import { ChannelTopic } from './ChannelTopic';
  import { TimezoneBadge } from './Settings';
- import { TypingBadge } from './TypingBadge';
-@@ -16,8 +15,8 @@
+@@ -17,8 +16,8 @@
  };
  
  const DraftBadge = () => {

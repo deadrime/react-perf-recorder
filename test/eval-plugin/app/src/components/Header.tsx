@@ -2,6 +2,7 @@ import { useStore } from 'zustand';
 import { useChatStore } from '../store/chat';
 import { draftStore } from '../store/draft';
 import { selectUnread } from '../store/selectors';
+import { ChannelTopic } from './ChannelTopic';
 import { TimezoneBadge } from './Settings';
 import { TypingBadge } from './TypingBadge';
 import Workspace from './Workspace';
@@ -27,6 +28,7 @@ const DraftBadge = () => {
 export const Header = () => (
   <header className="head" data-testid="header">
     <Workspace />
+    <ChannelTopic />
     <Unread />
     <TimezoneBadge />
     <TypingBadge />

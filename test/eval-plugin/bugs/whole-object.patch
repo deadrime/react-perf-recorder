@@ -1,11 +1,12 @@
 --- a/src/components/Header.tsx
 +++ b/src/components/Header.tsx
-@@ -1,16 +1,16 @@
+@@ -1,17 +1,17 @@
  import { useStore } from 'zustand';
  import { useChatStore } from '../store/chat';
  import { draftStore } from '../store/draft';
 -import { selectUnread } from '../store/selectors';
 +import { selectWorkspace } from '../store/selectors';
+ import { ChannelTopic } from './ChannelTopic';
  import { TimezoneBadge } from './Settings';
  import { TypingBadge } from './TypingBadge';
  import Workspace from './Workspace';

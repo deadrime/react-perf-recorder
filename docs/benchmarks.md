@@ -77,8 +77,13 @@ message, or switching tabs.
 | `nested-component`     | A component declared inside the message box's render: the box loses focus after a letter  | typing     |
 | `expensive-render`     | A list sorts 1500 names in its render, on every poll of the channel's stats               | waiting    |
 | `draft-context`        | The draft sits in state at the root, so every keystroke renders the whole page            | typing     |
+| `connect-filter`       | `connect()`'s `mapStateToProps` filters a Redux list anew on every dispatch               | waiting    |
+| `query-rest`           | `...rest` of `useQuery` reads every field, so each poll renders it with the same data     | waiting    |
+| `hook-reads-all`       | A helper two files from the component reads the whole store and applies the selector      | waiting    |
 | `two-bugs`             | `whole-object` and `exact-value` at once                                                  | waiting    |
 | `no-bug`               | None: the idle page's renders all change what it shows, and the right answer is no change | waiting    |
+
+`connect-filter`, `query-rest` and `hook-reads-all` were added after the run above and are not in its numbers yet.
 
 A case comes in two forms. The `-rec` one is what a person with the panel sends: the steps to reproduce it and the
 id of a recording they made, taken with the panel before the agent starts. The plain one gives only a one-line

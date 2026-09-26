@@ -1,6 +1,6 @@
 --- a/src/components/ChatView.tsx
 +++ b/src/components/ChatView.tsx
-@@ -31,23 +31,23 @@
+@@ -36,23 +36,23 @@
    );
  };
  
