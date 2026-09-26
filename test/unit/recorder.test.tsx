@@ -113,6 +113,39 @@ describe('Recorder', () => {
     expect(label.ownDomUnchanged).toBeUndefined();
   });
 
+  it('credits a root with the elements its own render made, under a wrapper or a provider too', () => {
+    const store = createStore(() => ({ text: 'a' }));
+    const Ctx = createContext(0);
+    const Card = ({ children }: { children: ReactNode }) => <section className="card">{children}</section>;
+    // Both write the element that changes; a Card and a provider only hold it where it is mounted.
+    const InCard = () => (
+      <Card>
+        <span>{useStore(store, (s) => s.text)}</span>
+      </Card>
+    );
+    const InProvider = () => (
+      <Ctx.Provider value={1}>
+        <h1>{useStore(store, (s) => s.text)}</h1>
+      </Ctx.Provider>
+    );
+    mount(
+      <>
+        <InCard />
+        <InProvider />
+      </>
+    );
+    const { recorder } = makeRecorder();
+    recorder.start();
+    flush(() => store.setState({ text: 'b' }));
+    flush(() => store.setState({ text: 'c' }));
+    const rec = recorder.stop();
+
+    for (const name of ['InCard', 'InProvider']) {
+      const root = rec.roots.find((r) => r.name === name)!;
+      expect({ name, hits: root.hits, ownDomUnchanged: root.ownDomUnchanged }).toEqual({ name, hits: 2, ownDomUnchanged: undefined });
+    }
+  });
+
   it('a component that adds or removes rows under an element of its parent changed the DOM', () => {
     const store = createStore(() => ({ rows: ['a'] }));
     // The rows sit straight in the parent's <tbody>: the only DOM of Rows is the rows themselves.
