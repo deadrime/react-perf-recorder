@@ -85,13 +85,17 @@ describe('Recorder', () => {
 
   it("tells a root whose own elements stayed from one whose child's did not", () => {
     const store = createStore(() => ({ text: 'a' }));
-    const Line = ({ text }: { text: string }) => <span>{text}</span>;
-    // The form draws a frame that never changes: what moves is the line under it.
-    const Form = () => (
-      <div className="frame">
-        <Line text={useStore(store, (s) => s.text)} />
-      </div>
-    );
+    const Line = ({ onEdit }: { onEdit: () => void }) => <span onClick={onEdit}>{useStore(store, (s) => s.text)}</span>;
+    // The form reads the text and draws a frame that never changes; the line under it reads the text itself, and a
+    // new function in its props is not a value the form had to render for.
+    const Form = () => {
+      useStore(store, (s) => s.text);
+      return (
+        <div className="frame">
+          <Line onEdit={() => {}} />
+        </div>
+      );
+    };
     const Label = () => <b>{useStore(store, (s) => s.text)}</b>;
     mount(
       <>
@@ -111,6 +115,32 @@ describe('Recorder', () => {
     expect(form.ownDomUnchanged).toBe(2);
     expect(label.noDomChange).toBe(0);
     expect(label.ownDomUnchanged).toBeUndefined();
+  });
+
+  it('credits a root with what a child drew from a value it passed', () => {
+    const store = createStore(() => ({ text: 'a' }));
+    const Title = () => <i>limit</i>;
+    const title = <Title />;
+    const Stat = memo(({ label, value }: { label: ReactNode; value: string }) => (
+      <span>
+        {label} <b>{value}</b>
+      </span>
+    ));
+    // The hints read the text for the stat under them: their own frame stays, their render is what moved the stat.
+    const Hints = () => (
+      <div className="hints">
+        <Stat label={title} value={useStore(store, (s) => s.text)} />
+      </div>
+    );
+    mount(<Hints />);
+    const { recorder } = makeRecorder();
+    recorder.start();
+    flush(() => store.setState({ text: 'b' }));
+    flush(() => store.setState({ text: 'c' }));
+    const rec = recorder.stop();
+
+    const hints = rec.roots.find((r) => r.name === 'Hints')!;
+    expect({ hits: hints.hits, ownDomUnchanged: hints.ownDomUnchanged }).toEqual({ hits: 2, ownDomUnchanged: undefined });
   });
 
   it('credits a root with the elements its own render made, under a wrapper or a provider too', () => {
