@@ -1,0 +1,17 @@
+--- a/src/components/Composer/index.tsx
++++ b/src/components/Composer/index.tsx
+@@ -58,13 +58,12 @@
+ ));
+ 
+ const LimitTitle = () => <span>limit</span>;
+-const limitTitle = <LimitTitle />;
+ 
+ export const ComposerHints = ({ control }: { control: FormControl }) => {
+   const text = useWatch({ control, name: 'text' });
+   return (
+     <div className="hints" data-testid="hints">
+-      <StatRow title={limitTitle} value="4000" />
++      <StatRow title={<LimitTitle />} value="4000" />
+       <StatRow title="typed" value={String(text?.length ?? 0)} />
+     </div>
+   );

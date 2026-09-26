@@ -1,0 +1,11 @@
+--- a/src/components/TimeAgo.tsx
++++ b/src/components/TimeAgo.tsx
+@@ -2,6 +2,6 @@
+ import { clockStore, timeAgo } from '../store/clock';
+ 
+ export const TimeAgo = ({ sentAt }: { sentAt: number }) => {
+-  const label = useStore(clockStore, (s) => timeAgo(s.now, sentAt));
+-  return <small data-testid="time-ago">{label}</small>;
++  const now = useStore(clockStore, (s) => s.now);
++  return <small data-testid="time-ago">{timeAgo(now, sentAt)}</small>;
+ };

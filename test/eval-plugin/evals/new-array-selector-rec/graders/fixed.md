@@ -1,6 +1,6 @@
 ---
 type: regex
 target: { source: file, path: src/components/Messages.tsx }
-pattern: 'selectFreshIds = \(s: Chat\) => Object\.keys\(s\.messageById\);[\s\S]*useChatStore\(selectFreshIds\)'
+pattern: 'useChatStore\(\(s\) => Object\.keys\(s\.messageById\)\)'
 match: not_contains
 ---

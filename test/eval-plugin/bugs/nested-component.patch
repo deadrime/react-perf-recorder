@@ -1,0 +1,14 @@
+--- a/src/components/Messages.tsx
++++ b/src/components/Messages.tsx
+@@ -13,9 +13,10 @@
+ const Status = memo(({ id }: { id: string }) => {
+   const info = useMessageInfo(id);
+   const seen = useChatStore(selectSeen);
++  const Reactions = () => <b>{info.reactions}</b>;
+   return (
+     <span className="status" title={seen ? 'read by everyone' : 'sent'}>
+-      ♥ <b>{info.reactions}</b> {seen ? '✓✓' : '✓'}
++      ♥ <Reactions /> {seen ? '✓✓' : '✓'}
+     </span>
+   );
+ });
