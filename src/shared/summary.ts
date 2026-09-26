@@ -391,6 +391,12 @@ export function rootLine(root: RootStat, durationMs: number, reasons: Map<number
 
 /** Why a memo hook remembers nothing, in words: which dependency moves, and whether only its reference does. */
 export function memoWhy(m: MemoHookStat): string {
+  // A package's own memo, e.g. zustand's around an inline selector: a recompute, not a render, and the app's to
+  // change only when what it passes does heavy work.
+  if (m.info?.library)
+    return `inside ${m.info.library}${
+      m.info.libraryAt !== undefined && m.info.path?.[m.info.libraryAt] ? `'s ${m.info.path[m.info.libraryAt]}` : ''
+    }: what the call passes is new on every render, which costs the library a recompute, not a render — it matters only if that argument does heavy work`;
   if (m.noDeps) return 'no dependency array: it runs on every render';
   const dep = m.deps[0];
   if (!dep) return 'its dependencies changed';

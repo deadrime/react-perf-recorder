@@ -128,6 +128,8 @@ export class MemoHits {
       const info = named.get(fiber)?.get(stat.hook);
       if (info) stat.info = info;
     }
+    // The app's own memos first: a package's, kept busy by an inline argument, is rarely the one to change.
+    top.sort((a, b) => Number(Boolean(a.info?.library)) - Number(Boolean(b.info?.library)));
     return top;
   }
 }
