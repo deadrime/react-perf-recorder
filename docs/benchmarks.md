@@ -44,40 +44,44 @@ changing what the page shows, and show with before-and-after numbers that the fi
 
 <!-- results:end -->
 
-**Fixed at the cause** is the code checks passing: the bug's own code is gone or changed (`memo` over a form that
-still watches itself does not count) and no `console.count` probe is left behind. **Every check passed** also wants
-the answer to name the file. **Proved** is a `compare_recordings` of the recording before the fix and one after it;
-without the plugin there is no browser to measure with, so that side's numbers are an argument.
+**Fixed** is judged by the result, not the diff: after the run, the source the agent left is served and recorded
+with the case's scenario again, and the fix counts when at least three quarters of the waste the bug added is gone
+— renders that changed nothing, or remounts, or render time, whichever the bug costs — while every part of the page
+is still there and what the scenario typed is in the box. So a fix written differently from anything expected
+counts, and one that removes the bug's code but not its cost does not. On the case without a bug, fixed means the
+page is left as it was.
 
-`live-subscription` was fixed by no run on either side. Its renders change the DOM, so the recording does not show
-them as waste, and a complaint about the idle page does not point at them: the agents found other work the idle
-page does — the store publishing a new object on every tick — and fixed that instead.
+**The code checks** are what the run itself can tell: the bug's own code is gone, no `console.count` probe is left,
+and no file outside the bug's was edited. **Every check passed** also wants the answer to name the file. **Proved**
+is a `compare_recordings` of the recording before the fix and one after it; without the plugin there is no browser
+to measure with, so that side's numbers are an argument.
 
 ## The cases
 
-Each is one of the demo's seeded bugs, a pattern any React app can have. What the person does to see it is waiting
-on the page, typing a message, or switching tabs.
+Each bug is a pattern any React app can have. What the person does to see it is waiting on the page, typing a
+message, or switching tabs.
 
-| Case                   | The bug                                                                                  | Shows when |
-| ---------------------- | ---------------------------------------------------------------------------------------- | ---------- |
-| `whole-object`         | `Header` subscribes to the whole workspace object in a store to show one number of it    | waiting    |
-| `live-subscription`    | The message box subscribes to the presence store though it reads it only while rendering | waiting    |
-| `field-state`          | `useController`'s `fieldState` subscribes each small field to the whole form's errors    | typing     |
-| `form-watch`           | `Composer` calls `watch()` in the form root, so every keystroke renders the whole form   | typing     |
-| `memo-cache-slot`      | The rows share one `memoizeWithArgs` with its single default slot, evicting each other   | waiting    |
-| `new-array-selector`   | A selector builds a new array with `Object.keys()` on every call                         | waiting    |
-| `inline-jsx-prop`      | A JSX element made in render is passed to a `memo` component                             | typing     |
-| `inline-context`       | A provider that renders on every tick passes a fresh object as its value                 | waiting    |
-| `router-in-layout`     | A hook the whole layout calls reads the URL, so a tab switch renders the page            | tabs       |
-| `exact-value`          | The time under a message subscribes to the clock itself, to print "4 minutes ago"        | waiting    |
-| `nested-component`     | A component declared inside another one's render is remounted every time                 | waiting    |
-| `hidden-hook-state`    | A custom hook keeps a ticking clock in state to derive a boolean that stays `false`      | waiting    |
-| `effect-derived-state` | An effect copies the active tab into state: a second commit after every switch           | tabs       |
+| Case                   | The bug                                                                                   | Shows when |
+| ---------------------- | ----------------------------------------------------------------------------------------- | ---------- |
+| `whole-object`         | `Header` subscribes to the whole workspace object in a store to show one number of it     | waiting    |
+| `field-state`          | `useController`'s `fieldState` subscribes each small field to the whole form's errors     | typing     |
+| `form-watch`           | `Composer` calls `watch()` in the form root, so every keystroke renders the whole form    | typing     |
+| `memo-cache-slot`      | The rows share one `memoizeWithArgs` with its single default slot, evicting each other    | waiting    |
+| `new-array-selector`   | A selector builds a new array with `Object.keys()` on every call                          | waiting    |
+| `inline-context`       | A provider that renders on every tick passes a fresh object as its value                  | waiting    |
+| `router-in-layout`     | A hook the whole layout calls reads the URL, so a tab switch renders the page             | tabs       |
+| `exact-value`          | The time under a message subscribes to the clock itself, to print "4 minutes ago"         | waiting    |
+| `effect-derived-state` | An effect copies the active tab into state: a second commit after every switch            | tabs       |
+| `nested-component`     | A component declared inside the message box's render: the box loses focus after a letter  | typing     |
+| `expensive-render`     | A list sorts 1500 names in its render, on every poll of the channel's stats               | waiting    |
+| `draft-context`        | The draft sits in state at the root, so every keystroke renders the whole page            | typing     |
+| `two-bugs`             | `whole-object` and `exact-value` at once                                                  | waiting    |
+| `no-bug`               | None: the idle page's renders all change what it shows, and the right answer is no change | waiting    |
 
 A case comes in two forms. The `-rec` one is what a person with the panel sends: the steps to reproduce it and the
 id of a recording they made, taken with the panel before the agent starts. The plain one gives only a one-line
-complaint ("typing into the message box lags"), and the agent works out the scenario itself; `whole-object` and
-`form-watch` run in both forms.
+complaint ("typing into the message box lags"), and the agent works out the scenario itself; `form-watch` runs in
+both forms. Every prompt asks whether something renders for nothing and says to change nothing if not.
 
 ## How a case is built
 
@@ -88,26 +92,26 @@ complaint ("typing into the message box lags"), and the agent works out the scen
   edit reloads in the page it records.
 - **Both sides have the same tools** to read and edit the code (`Read`, `Grep`, `Glob`, `Edit`, `Write`); only the
   plugin's side has the recorder.
-- The checks read the fixed files and the run's trace, not the agent's word. A unit test keeps them honest: every
-  file check fails on its patched app and passes on the clean one, and `check.mjs` records every case live to see the
-  bug's component among the first roots.
+- Nothing takes the agent's word. `verify.mjs` records the result again, and its self-test makes sure the bug left
+  as it is fails and the clean app passes; a unit test makes sure every code check fails on its patched app and
+  passes on the clean one; `check.mjs` records every case live to see the bug's component among the first roots.
 
 ## Reading the numbers
 
 - Two runs a side per case: a single run moves a case's row by a half. The totals are the ones to read.
 - Every bug can be found by reading the code, and the agent without the plugin often does: the app is small. The
   difference is in what it costs, and in whether the fix goes where the renders come from.
-- The checks look for the bug's own code being gone or changed, not for one right fix: `memo-cache-slot` and
-  `inline-context` can be fixed in either of two files, and either counts.
 - Cost is the agent's own, from Claude Code; the checks cost nothing.
 
 ## Running it
 
 ```sh
 npm run build
-bash test/eval-plugin/run.sh --runs 2 -j 6 --output-dir .agent-artifacts/evals
+bash test/eval-plugin/run.sh --runs 2 -j 6 --keep-temp --output-dir .agent-artifacts/evals
+node test/eval-plugin/verify.mjs .agent-artifacts/evals/aggregate-result.json
 node test/eval-plugin/summarize.mjs .agent-artifacts/evals/aggregate-result.json
 ```
 
-`run.sh` runs `claude plugin eval` on the cases in `test/eval-plugin/evals`; `summarize.mjs` writes the tables above
-and the numbers the site draws them from, `docs/benchmarks.json`.
+`run.sh` runs `claude plugin eval` on the cases in `test/eval-plugin/evals`, keeping each run's sandbox;
+`verify.mjs` records what each agent left; `summarize.mjs` writes the tables above and the numbers the site draws
+them from, `docs/benchmarks.json`.
