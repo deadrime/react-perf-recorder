@@ -45,6 +45,17 @@ const arm = (pairs) => {
   };
 };
 const pairs = (c, side) => c.arms[side].map((r, i) => [r, verified?.[c.name]?.[side]?.[i] ?? null]);
+// A run verify.mjs could not judge (a baseline failed, a workspace was not kept) is no verdict: say so, loudly.
+const unjudged = verified
+  ? run.cases.flatMap((c) =>
+      ['with', 'without'].flatMap((side) =>
+        pairs(c, side)
+          .filter(([, v]) => v?.fixed == null)
+          .map(() => `${c.name} [${side}]`)
+      )
+    )
+  : [];
+if (unjudged.length) console.warn(`not judged, counted as not fixed: ${unjudged.join(', ')}`);
 
 const cases = run.cases.map((c) => ({
   name: c.name,
