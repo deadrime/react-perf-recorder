@@ -37,3 +37,7 @@ and say in the answer what the conditions were.
 **A click under CPU throttling can hang** a Playwright call: it waits for the element to stop moving, and a page
 that re-renders constantly never does. Click from inside the page (`element.click()` in `evaluate`) or turn the
 throttling off for the click.
+
+**No `react-perf-recorder` tools in the session?** The MCP server starts with the session. From a terminal the same
+data is `node node_modules/react-perf-recorder/dist/cli.js list`, `show latest --section roots`, and `pull` to wait
+for the next finished recording.

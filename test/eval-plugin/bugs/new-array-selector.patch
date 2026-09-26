@@ -1,0 +1,33 @@
+--- a/src/components/Messages.tsx
++++ b/src/components/Messages.tsx
+@@ -1,6 +1,6 @@
+ import { memo, useMemo } from 'react';
+ import { memoize } from 'proxy-memoize';
+-import { messageInfo, selectMessageIds, selectSeen } from '../store/selectors';
++import { messageInfo, selectSeen } from '../store/selectors';
+ import { useChatStore, type Chat } from '../store/chat';
+ import { useSettings } from './Settings';
+ import { TimeAgo } from './TimeAgo';
+@@ -42,7 +42,7 @@
+ });
+ 
+ export const MessageList = () => {
+-  const ids = useChatStore(selectMessageIds);
++  const ids = useChatStore((s) => Object.keys(s.messageById));
+   return (
+     <ul className="messages" data-testid="messages">
+       {ids.map((id) => (
+--- a/src/store/selectors.ts
++++ b/src/store/selectors.ts
+@@ -1,11 +1,8 @@
+-import { memoize } from 'proxy-memoize';
+ import type { Chat } from './chat';
+ 
+ export const selectWorkspace = (s: Chat) => s.workspace;
+ export const selectUnread = (s: Chat) => s.workspace.unread;
+ 
+-export const selectMessageIds = memoize((s: Chat) => Object.keys(s.messageById));
+-
+ export const messageInfo = (s: Chat, id: string) => ({ ...s.messageById[id], reactions: s.reactionsById[id] ?? 0 });
+ 
+ export const selectSeen = (s: Chat) => s.workspace.unread < 13;

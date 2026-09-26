@@ -1,0 +1,115 @@
+--- a/src/components/ChatView.tsx
++++ b/src/components/ChatView.tsx
+@@ -1,4 +1,5 @@
+-import type { ReactNode } from 'react';
++import { useState, type ReactNode } from 'react';
++import { DraftContext } from '../draft';
+ import { useFeed } from '../feed';
+ import { useChatStore } from '../store/chat';
+ import { ChannelStats } from './ChannelStats';
+@@ -50,13 +51,16 @@
+ 
+ export const Layout = () => {
+   useFeed();
++  const [draft, setDraft] = useState('');
+   return (
+-    <SettingsBySync>
+-      <div className="app">
+-        <Header />
+-        <TypingLine />
+-        <ChatView />
+-      </div>
+-    </SettingsBySync>
++    <DraftContext.Provider value={{ draft, setDraft }}>
++      <SettingsBySync>
++        <div className="app">
++          <Header />
++          <TypingLine />
++          <ChatView />
++        </div>
++      </SettingsBySync>
++    </DraftContext.Provider>
+   );
+ };
+--- a/src/components/Composer/index.tsx
++++ b/src/components/Composer/index.tsx
+@@ -1,7 +1,7 @@
+ import { memo, type ReactNode } from 'react';
+ import { useController, useForm, useFormState, useWatch, type Control } from 'react-hook-form';
+ import { presenceStore, useChatStore } from '../../store/chat';
+-import { draftStore } from '../../store/draft';
++import { useDraft } from '../../draft';
+ import { useFieldError } from './useFieldError';
+ 
+ export interface ComposerValues {
+@@ -14,6 +14,7 @@
+ 
+ export const MessageInput = ({ control, trigger }: { control: FormControl; trigger: () => Promise<boolean> }) => {
+   const { field } = useController({ control, name: 'text', rules: { validate: (v) => v.trim().length > 0 || 'say something' } });
++  const { setDraft } = useDraft();
+   return (
+     <label className="field grow">
+       <input
+@@ -22,7 +23,7 @@
+         placeholder="Write a message"
+         onChange={(e) => {
+           field.onChange(e);
+-          draftStore.setState({ hasDraft: e.target.value.length > 0 });
++          setDraft(e.target.value);
+           // The other fields are validated against the text.
+           void trigger();
+         }}
+@@ -82,6 +83,7 @@
+ };
+ 
+ export const Composer = () => {
++  const { setDraft } = useDraft();
+   const { control, handleSubmit, trigger, reset } = useForm<ComposerValues>({
+     mode: 'onChange',
+     defaultValues: { text: '', replyTo: '', remindIn: '' },
+@@ -92,7 +94,7 @@
+       data-testid="composer"
+       onSubmit={handleSubmit((values) => {
+         useChatStore.getState().send(values.text);
+-        draftStore.setState({ hasDraft: false });
++        setDraft('');
+         reset();
+       })}
+     >
+--- a/src/components/Header.tsx
++++ b/src/components/Header.tsx
+@@ -1,6 +1,5 @@
+-import { useStore } from 'zustand';
+ import { useChatStore } from '../store/chat';
+-import { draftStore } from '../store/draft';
++import { useDraft } from '../draft';
+ import { selectUnread } from '../store/selectors';
+ import { TimezoneBadge } from './Settings';
+ import { TypingBadge } from './TypingBadge';
+@@ -16,8 +15,8 @@
+ };
+ 
+ const DraftBadge = () => {
+-  const hasDraft = useStore(draftStore, (s) => s.hasDraft);
+-  return hasDraft ? (
++  const { draft } = useDraft();
++  return draft ? (
+     <span className="badge muted" data-testid="draft">
+       draft
+     </span>
+--- a/src/draft.ts
++++ b/src/draft.ts
+@@ -0,0 +1,6 @@
++import { createContext, useContext } from 'react';
++
++/** The unsent text of the message box, for whoever needs to know there is some. */
++export const DraftContext = createContext({ draft: '', setDraft: (_draft: string) => {} });
++
++export const useDraft = () => useContext(DraftContext);
+--- a/src/store/draft.ts
++++ b/src/store/draft.ts
+@@ -1,4 +0,0 @@
+-import { createStore } from 'zustand/vanilla';
+-
+-/** Whether the message box holds unsent text. */
+-export const draftStore = createStore(() => ({ hasDraft: false }));

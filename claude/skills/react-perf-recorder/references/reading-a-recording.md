@@ -10,7 +10,9 @@ many commits it started, `cascade` the renders it pulled, `perHit` the renders p
 copies fired at once. `outsideRoots` are roots above the recorded area that reached into it.
 
 `noDomChange` (per root) and `rendersWithoutDom` (in totals) count renders after which the DOM did not change —
-waste with no argument attached. `mounts` other than zero on a page that only changes text means remounting: a
+waste with no argument attached. `ownDomUnchanged`, when a root has it, counts its hits that changed none of the elements it
+renders itself: what changed was in children that render on their own anyway, so the root's own render was spent
+handing them what they had. `mounts` other than zero on a page that only changes text means remounting: a
 component declared inside a render, or an unstable `key`.
 
 ## Reasons
@@ -40,7 +42,8 @@ In an `external store` reason, `[useStore]` names the store and what follows is 
 - `parent: props price | new ref, same content: style, onClick` — the component did render: `price` changed, `style`
   and `onClick` were new references to equal values, which is what breaks `memo`. A render that `memo` skipped is
   never counted or listed;
-- `parent: props equal` — a `memo` would have skipped this render;
+- `parent: props equal` — a `memo` would have skipped this render. Ask first whether the parent had to render: when
+  it did not, the fix is there, and a `memo` here only hides it;
 - `chains` — up to three ways its renders came down, as `way`: the root's leading cause, the root and its reason,
   then the props each parent handed on:
   `react-query:fetch ["presence"] › Stats · state online › Line · prop online › Badge · prop count`. The first link
@@ -58,4 +61,5 @@ times as shares of the commit, not as what users wait.
 `memos` names a `useMemo` or `useCallback` that recomputed on at least half of its renders: which dependency moved
 (by its name in the code when it can be read), whether into the same content, and the line. "A new object with the
 same content every time" is a dependency written in render: make it once — a constant, or its own `useMemo` — rather
-than adding another memo.
+than adding another memo. A memo `inside` a package — zustand's around an inline selector, say — is the library's own: what the
+call passes is new each render, which costs a recompute, not a render. Leave it unless that argument does heavy work.

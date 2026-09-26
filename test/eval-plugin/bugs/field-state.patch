@@ -1,0 +1,52 @@
+--- a/src/components/Composer/index.tsx
++++ b/src/components/Composer/index.tsx
+@@ -2,7 +2,6 @@
+ import { useController, useForm, useFormState, useWatch, type Control } from 'react-hook-form';
+ import { presenceStore, useChatStore } from '../../store/chat';
+ import { draftStore } from '../../store/draft';
+-import { useFieldError } from './useFieldError';
+ 
+ export interface ComposerValues {
+   text: string;
+@@ -36,8 +35,8 @@
+ };
+ 
+ function useMetaField(control: FormControl, name: 'replyTo' | 'remindIn') {
+-  const { field } = useController({ control, name, rules: { validate: (v) => !v || Number(v) > 0 || 'must be positive' } });
+-  return { field, error: useFieldError(control, name).message };
++  const { field, fieldState } = useController({ control, name, rules: { validate: (v) => !v || Number(v) > 0 || 'must be positive' } });
++  return { field, error: fieldState.error?.message };
+ }
+ 
+ const LABELS = { replyTo: 'reply to #', remindIn: 'remind in, min' } as const;
+--- a/src/components/Composer/useFieldError.ts
++++ b/src/components/Composer/useFieldError.ts
+@@ -1,28 +0,0 @@
+-import { useLayoutEffect, useState } from 'react';
+-import { get, type Control, type FieldPath, type FieldValues } from 'react-hook-form';
+-
+-type FieldError = { invalid: boolean; message?: string };
+-
+-const read = (errors: object, name: string): FieldError => {
+-  const error = get(errors, name);
+-  return { invalid: Boolean(error), message: error?.message };
+-};
+-
+-/** The error of one field, updated when that field's error changes. */
+-export function useFieldError<T extends FieldValues>(control: Control<T>, name: FieldPath<T>) {
+-  const [state, setState] = useState(() => read(control._formState.errors, name));
+-  useLayoutEffect(
+-    () =>
+-      control._subscribe({
+-        name,
+-        exact: true,
+-        formState: { errors: true },
+-        callback: ({ errors }) => {
+-          const next = read(errors ?? {}, name);
+-          setState((prev) => (prev.invalid === next.invalid && prev.message === next.message ? prev : next));
+-        },
+-      }),
+-    [control, name]
+-  );
+-  return state;
+-}

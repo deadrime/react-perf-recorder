@@ -1,0 +1,19 @@
+--- a/src/components/ChatPanel.tsx
++++ b/src/components/ChatPanel.tsx
+@@ -1,4 +1,4 @@
+-import { memo, useCallback } from 'react';
++import { memo, useCallback, useEffect, useState } from 'react';
+ import { useSearchParams } from 'react-router-dom';
+ import { MessageList, PeopleList } from './Messages';
+ 
+@@ -16,7 +16,9 @@
+ ));
+ 
+ export const ChatPanel = () => {
+-  const [tab, setTab] = useActiveTab();
++  const [active, setTab] = useActiveTab();
++  const [tab, setShown] = useState(active);
++  useEffect(() => setShown(active), [active]);
+   return (
+     <section className="panel" data-testid="chat-panel">
+       <div className="tabs" role="tablist">
