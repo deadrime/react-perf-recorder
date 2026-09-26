@@ -58,4 +58,5 @@ times as shares of the commit, not as what users wait.
 `memos` names a `useMemo` or `useCallback` that recomputed on at least half of its renders: which dependency moved
 (by its name in the code when it can be read), whether into the same content, and the line. "A new object with the
 same content every time" is a dependency written in render: make it once — a constant, or its own `useMemo` — rather
-than adding another memo.
+than adding another memo. A memo `inside` a package — zustand's around an inline selector, say — is the library's own: what the
+call passes is new each render, which costs a recompute, not a render. Leave it unless that argument does heavy work.
