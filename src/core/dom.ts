@@ -1,7 +1,21 @@
-import { fiberFromNode, isHost, Tag, type Fiber } from './fiber';
+import { fiberFromNode, isComposite, isHost, Tag, type Fiber } from './fiber';
 
 /** Whether a component changed something on the screen: the set holds one half of each fiber pair. */
 export const touchedHas = (touched: Set<Fiber>, f: Fiber) => touched.has(f) || (f.alternate !== null && touched.has(f.alternate));
+
+/**
+ * The component whose render made a node's element — its owner in a development build, whatever wraps the element
+ * where it is mounted (a provider, a Card) — else the nearest component above it. A text node goes by its element.
+ */
+function ownerOf(node: Node): Fiber | null {
+  let f = fiberFromNode(node);
+  while (f && f.tag === Tag.HostText) f = f.return;
+  // React 19 can put a server component's info here instead of a fiber.
+  const owner = f && isHost(f) ? f._debugOwner : null;
+  if (owner && typeof owner.tag === 'number') return owner;
+  for (; f; f = f.return) if (isComposite(f)) return f;
+  return null;
+}
 
 export interface DomCounts {
   text: number;
@@ -81,13 +95,10 @@ export class DomWatcher {
 
   /** One half of each fiber pair is enough, as readers check both; host fibers are skipped, nobody asks about them. */
   private mark(node: Node, touched: Set<Fiber>) {
-    let nearest = true;
+    const owner = ownerOf(node);
+    if (owner) this.own.add(owner);
     for (let f = fiberFromNode(node); f; f = f.return) {
       if (isHost(f) || f.tag === Tag.HostText) continue;
-      if (nearest) {
-        nearest = false;
-        this.own.add(f);
-      }
       if (touchedHas(touched, f)) return;
       touched.add(f);
     }
