@@ -1,6 +1,6 @@
 --- a/src/components/Composer/index.tsx
 +++ b/src/components/Composer/index.tsx
-@@ -80,14 +80,16 @@
+@@ -82,14 +82,16 @@
  };
  
  export const Composer = () => {
@@ -17,4 +17,4 @@
 +      data-filled={filled}
        onSubmit={handleSubmit((values) => {
          useChatStore.getState().send(values.text);
-         reset();
+         draftStore.setState({ hasDraft: false });

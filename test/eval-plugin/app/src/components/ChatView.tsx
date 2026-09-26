@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { useFeed } from '../feed';
+import { useChatStore } from '../store/chat';
 import { ChannelStats } from './ChannelStats';
 import { ChatPanel } from './ChatPanel';
 import { Composer } from './Composer';
@@ -30,11 +31,22 @@ export const ChatView = () => {
   );
 };
 
-function useDenseSetting() {
-  return false;
-}
+const SyncBar = ({ at }: { at: number }) => (
+  <span className="sync" title="Live">
+    <span className="sync-fill" style={{ width: `${(at % 20) * 5}%` }} />
+  </span>
+);
 
-const SettingsBySync = ({ children }: { children: ReactNode }) => <SettingsProvider dense={useDenseSetting()}>{children}</SettingsProvider>;
+/** The live bar moves with every event from the socket; the page itself comes in as children. */
+const SettingsBySync = ({ children }: { children: ReactNode }) => {
+  const lastEventAt = useChatStore((s) => s.workspace.lastEventAt);
+  return (
+    <SettingsProvider dense={false}>
+      <SyncBar at={lastEventAt} />
+      {children}
+    </SettingsProvider>
+  );
+};
 
 export const Layout = () => {
   useFeed();

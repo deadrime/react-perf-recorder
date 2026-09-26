@@ -1,6 +1,6 @@
 ---
-# selectors.ts or Messages.tsx, whichever the fix is in: an edit in the trace (a subagent's too).
+# selectors.ts or Messages.tsx, whichever the fix is in: an edit in the trace, a subagent's included.
 type: regex
 target: trace
-pattern: '"file_path":"[^"]*selectors\.ts"(?:,"old_string":"(?:[^"\\]|\\.)*")?,"(?:new_string|content)":"(?:[^"\\]|\\.)*?memoizeWithArgs\(messageInfo,|"file_path":"[^"]*Messages\.tsx"(?:,"old_string":"(?:[^"\\]|\\.)*")?,"(?:new_string|content)":"(?:[^"\\]|\\.)*?memoize\('
+pattern: '"file_path":"[^"]*selectors\.ts"(?:,"(?:old_string|old_text)":"(?:[^"\\]|\\.)*")?,"(?:new_string|new_text|content|contents)":"(?:[^"\\]|\\.)*?memoizeWithArgs\(messageInfo,|"file_path":"[^"]*Messages\.tsx"(?:,"(?:old_string|old_text)":"(?:[^"\\]|\\.)*")?,"(?:new_string|new_text|content|contents)":"(?:[^"\\]|\\.)*?memoize\('
 ---

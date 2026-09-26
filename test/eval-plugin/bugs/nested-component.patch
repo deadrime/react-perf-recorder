@@ -1,14 +1,44 @@
---- a/src/components/Messages.tsx
-+++ b/src/components/Messages.tsx
-@@ -13,9 +13,10 @@
- const Status = memo(({ id }: { id: string }) => {
-   const info = useMessageInfo(id);
-   const seen = useChatStore(selectSeen);
-+  const Reactions = () => <b>{info.reactions}</b>;
+--- a/src/components/Composer/index.tsx
++++ b/src/components/Composer/index.tsx
+@@ -14,23 +14,26 @@
+ 
+ export const MessageInput = ({ control, trigger }: { control: FormControl; trigger: () => Promise<boolean> }) => {
+   const { field } = useController({ control, name: 'text', rules: { validate: (v) => v.trim().length > 0 || 'say something' } });
++  const Field = () => (
++    <input
++      {...field}
++      data-testid="message"
++      placeholder="Write a message"
++      onChange={(e) => {
++        field.onChange(e);
++        draftStore.setState({ hasDraft: e.target.value.length > 0 });
++        // The other fields are validated against the text.
++        void trigger();
++      }}
++      onKeyDown={(e) => {
++        // Enter waits while someone is typing a reply, so the two messages do not cross.
++        if (e.key === 'Enter' && presenceStore.getState().typing.length > 0) e.preventDefault();
++      }}
++    />
++  );
    return (
-     <span className="status" title={seen ? 'read by everyone' : 'sent'}>
--      ♥ <b>{info.reactions}</b> {seen ? '✓✓' : '✓'}
-+      ♥ <Reactions /> {seen ? '✓✓' : '✓'}
-     </span>
+     <label className="field grow">
+-      <input
+-        {...field}
+-        data-testid="message"
+-        placeholder="Write a message"
+-        onChange={(e) => {
+-          field.onChange(e);
+-          draftStore.setState({ hasDraft: e.target.value.length > 0 });
+-          // The other fields are validated against the text.
+-          void trigger();
+-        }}
+-        onKeyDown={(e) => {
+-          // Enter waits while someone is typing a reply, so the two messages do not cross.
+-          if (e.key === 'Enter' && presenceStore.getState().typing.length > 0) e.preventDefault();
+-        }}
+-      />
++      <Field />
+     </label>
    );
- });
+ };

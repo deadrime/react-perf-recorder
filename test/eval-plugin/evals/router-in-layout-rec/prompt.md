@@ -9,5 +9,6 @@ reloads as the source changes.
 The complaint: switching between the chat and people tabs feels sluggish.
 To reproduce: open the page, then switch to the people tab and back to chat, three times.
 I recorded it with the recorder's panel in the page; the recording's id is in ./recording.txt.
-Find which component re-renders for nothing and why, fix it in ./src without changing what the page shows, and show
-with before-and-after numbers that the fix worked.
+Find out whether a component re-renders for nothing, and why. If one does, fix it in ./src without changing what
+the page shows, and show with before-and-after numbers that the fix worked. If nothing does, say so and change
+nothing.
