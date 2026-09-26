@@ -1,5 +1,0 @@
-schema_version: '1.1'
-name: inline-jsx-prop-rec
-tags: [fixture]
-context:
-  scaffold_script: scaffold.sh

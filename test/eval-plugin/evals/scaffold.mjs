@@ -3,7 +3,7 @@
 // the run so the agent's fix reloads in the page it records; its url is left in dev-url.txt. With
 // --recorded=<wait|type|tabs> it also records that scenario as a person would from the panel, and leaves the
 // recording's id in recording.txt.
-//   node scaffold.mjs <bug id | none> [target dir] [--no-serve] [--recorded=<scenario>]
+//   node scaffold.mjs <bug id[,bug id…] | none> [target dir] [--no-serve] [--recorded=<scenario>]
 import { execFileSync, spawn } from 'node:child_process';
 import fs from 'node:fs';
 import net from 'node:net';
@@ -15,7 +15,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const repo = path.resolve(here, '../../..');
 const [bug, target = '.'] = process.argv.slice(2).filter((a) => !a.startsWith('--'));
 const recorded = process.argv.find((a) => a.startsWith('--recorded='))?.slice('--recorded='.length);
-if (!bug) throw new Error('usage: scaffold.mjs <bug id | none> [target dir]');
+if (!bug) throw new Error('usage: scaffold.mjs <bug id[,bug id…] | none> [target dir]');
 
 // Written by run.sh: a scaffold runs without its EVAL_* variables.
 const run = (() => {
@@ -109,6 +109,14 @@ async function warm(url, dir) {
 const SCENARIOS = {
   wait: (page) => page.waitForTimeout(5000),
   type: (page) => page.getByTestId('message').pressSequentially('see you at five', { delay: 90 }),
+  // A box that loses focus after every letter: the person clicks it again before each one.
+  retype: async (page) => {
+    for (const key of 'see you') {
+      await page.getByTestId('message').click();
+      await page.keyboard.press(key === ' ' ? 'Space' : key);
+      await page.waitForTimeout(90);
+    }
+  },
   tabs: async (page) => {
     for (let i = 0; i < 3; i++) {
       await page.getByTestId('tab-people').click();
@@ -133,8 +141,9 @@ async function record(page, url, dir) {
 const dir = path.resolve(target);
 fs.cpSync(path.join(here, '../app'), dir, { recursive: true });
 // patch, not git apply: inside a repository git reads the patch's paths from its root.
-if (bug !== 'none')
-  execFileSync('patch', ['-p1', '--forward', '--batch', '--quiet', '-d', dir, '-i', path.join(here, '../bugs', `${bug}.patch`)], {
+// Several bugs at once as a comma list; `none` is the app as it is.
+for (const one of bug === 'none' ? [] : bug.split(','))
+  execFileSync('patch', ['-p1', '--forward', '--batch', '--quiet', '-d', dir, '-i', path.join(here, '../bugs', `${one}.patch`)], {
     stdio: 'inherit',
   });
 if (!fs.existsSync(path.join(dir, 'node_modules'))) fs.symlinkSync(path.join(repo, 'node_modules'), path.join(dir, 'node_modules'), 'dir');

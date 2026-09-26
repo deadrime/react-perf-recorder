@@ -1,5 +1,0 @@
-schema_version: '1.1'
-name: hidden-hook-state-rec
-tags: [fixture]
-context:
-  scaffold_script: scaffold.sh

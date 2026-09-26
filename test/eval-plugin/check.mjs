@@ -11,21 +11,22 @@ import { fileURLToPath } from 'node:url';
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repo = path.resolve(here, '../..');
 
-// Where each bug's wasted renders start.
+// Where each case's wasted renders start; the case without a bug has none to find.
 const ROOTS = {
-  'whole-object': 'Unread',
-  'live-subscription': 'MessageInput',
-  'field-state': 'MetaInput',
-  'form-watch': 'Composer',
-  'memo-cache-slot': 'Status',
-  'new-array-selector': 'MessageList',
-  'inline-jsx-prop': 'ComposerHints',
-  'inline-context': 'SettingsBySync',
-  'router-in-layout': 'ChatView',
-  'exact-value': 'TimeAgo',
-  'nested-component': 'Status',
-  'hidden-hook-state': 'TypingBadge',
-  'effect-derived-state': 'ChatPanel',
+  'whole-object-rec': 'Unread',
+  'form-watch-rec': 'Composer',
+  'field-state-rec': 'MetaInput',
+  'memo-cache-slot-rec': 'Status',
+  'new-array-selector-rec': 'MessageList',
+  'router-in-layout-rec': 'ChatView',
+  'exact-value-rec': 'TimeAgo',
+  'effect-derived-state-rec': 'ChatPanel',
+  'inline-context-rec': 'SettingsBySync',
+  'nested-component-rec': 'MessageInput',
+  'expensive-render-rec': 'ChannelStats',
+  'draft-context-rec': 'Layout',
+  'two-bugs-rec': 'Unread',
+  'no-bug-rec': null,
 };
 
 const only = process.argv.slice(2);
@@ -34,7 +35,7 @@ const cases = fs
   .filter((c) => c.endsWith('-rec') && (!only.length || only.includes(c)))
   .map((c) => {
     const script = fs.readFileSync(path.join(here, 'evals', c, 'scaffold.sh'), 'utf8');
-    return { name: c, bug: /scaffold\.mjs" ([\w-]+)/.exec(script)[1], scenario: /--recorded=(\w+)/.exec(script)?.[1] };
+    return { name: c, bug: /scaffold\.mjs" ([\w,-]+)/.exec(script)[1], scenario: /--recorded=(\w+)/.exec(script)?.[1] };
   });
 
 const sessions = fs.mkdtempSync(path.join(os.tmpdir(), 'rpr-check-'));
@@ -58,9 +59,14 @@ for (const c of cases) {
     const id = fs.readFileSync(path.join(dir, 'recording.txt'), 'utf8').trim();
     const show = JSON.parse(execFileSync(process.execPath, [path.join(repo, 'dist/cli.js'), 'show', id, '--dir', sessions], { encoding: 'utf8' }));
     const roots = show.topRoots.slice(0, 3).map((r) => r.root);
-    const ok = roots.includes(ROOTS[c.bug]);
+    const ok = ROOTS[c.name] === null || roots.includes(ROOTS[c.name]);
     if (!ok) failed++;
-    console.log(`${ok ? '✓' : '✗'} ${c.name.padEnd(24)} ${c.scenario.padEnd(5)} ${roots.map((r, i) => `${r} ×${show.topRoots[i].hits}`).join(', ')}`);
+    const top = show.topRoots.slice(0, 3).map((r) => `${r.root} ×${r.hits}${r.renderMsPerHit >= 5 ? ` ${r.renderMsPerHit} ms` : ''}`);
+    console.log(
+      `${ok ? '✓' : '✗'} ${c.name.padEnd(24)} ${c.scenario.padEnd(5)} ${show.totals.renders} renders, ${
+        show.totals.rendersWithoutDom
+      } without DOM | ${top.join(', ')}`
+    );
   } catch (error) {
     failed++;
     console.log(`✗ ${c.name}: ${String(error.message).split('\n')[0]}`);

@@ -1,6 +1,6 @@
 ---
 type: regex
-target: { source: file, path: src/components/Messages.tsx }
-pattern: '\n[ \t]+const Reactions = \(\) =>'
+target: { source: file, path: src/components/Composer/index.tsx }
+pattern: '\n[ \t]+const Field = \(\) =>'
 match: not_contains
 ---

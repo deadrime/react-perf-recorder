@@ -4,9 +4,9 @@
  import type { ReactNode } from 'react';
 +import { useSearchParams } from 'react-router-dom';
  import { useFeed } from '../feed';
+ import { useChatStore } from '../store/chat';
  import { ChannelStats } from './ChannelStats';
- import { ChatPanel } from './ChatPanel';
-@@ -9,7 +10,8 @@
+@@ -10,7 +11,8 @@
  import { WebhookForm } from './WebhookForm';
  
  function useChatLayout() {

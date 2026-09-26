@@ -1,6 +1,7 @@
 import { memo, type ReactNode } from 'react';
 import { useController, useForm, useFormState, useWatch, type Control } from 'react-hook-form';
 import { presenceStore, useChatStore } from '../../store/chat';
+import { draftStore } from '../../store/draft';
 import { useFieldError } from './useFieldError';
 
 export interface ComposerValues {
@@ -21,6 +22,7 @@ export const MessageInput = ({ control, trigger }: { control: FormControl; trigg
         placeholder="Write a message"
         onChange={(e) => {
           field.onChange(e);
+          draftStore.setState({ hasDraft: e.target.value.length > 0 });
           // The other fields are validated against the text.
           void trigger();
         }}
@@ -90,6 +92,7 @@ export const Composer = () => {
       data-testid="composer"
       onSubmit={handleSubmit((values) => {
         useChatStore.getState().send(values.text);
+        draftStore.setState({ hasDraft: false });
         reset();
       })}
     >
