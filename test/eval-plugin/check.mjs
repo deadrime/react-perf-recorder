@@ -7,27 +7,10 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { CASES } from './cases.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repo = path.resolve(here, '../..');
-
-// Where each case's wasted renders start; the case without a bug has none to find.
-const ROOTS = {
-  'whole-object-rec': 'Unread',
-  'form-watch-rec': 'Composer',
-  'field-state-rec': 'MetaInput',
-  'memo-cache-slot-rec': 'Status',
-  'new-array-selector-rec': 'MessageList',
-  'router-in-layout-rec': 'ChatView',
-  'exact-value-rec': 'TimeAgo',
-  'effect-derived-state-rec': 'ChatPanel',
-  'inline-context-rec': 'SettingsBySync',
-  'nested-component-rec': 'MessageInput',
-  'expensive-render-rec': 'ChannelStats',
-  'draft-context-rec': 'Layout',
-  'two-bugs-rec': 'Unread',
-  'no-bug-rec': null,
-};
 
 const only = process.argv.slice(2);
 const cases = fs
@@ -59,7 +42,7 @@ for (const c of cases) {
     const id = fs.readFileSync(path.join(dir, 'recording.txt'), 'utf8').trim();
     const show = JSON.parse(execFileSync(process.execPath, [path.join(repo, 'dist/cli.js'), 'show', id, '--dir', sessions], { encoding: 'utf8' }));
     const roots = show.topRoots.slice(0, 3).map((r) => r.root);
-    const ok = ROOTS[c.name] === null || roots.includes(ROOTS[c.name]);
+    const ok = CASES[c.name].root === null || roots.includes(CASES[c.name].root);
     if (!ok) failed++;
     const top = show.topRoots.slice(0, 3).map((r) => `${r.root} ×${r.hits}${r.renderMsPerHit >= 5 ? ` ${r.renderMsPerHit} ms` : ''}`);
     console.log(

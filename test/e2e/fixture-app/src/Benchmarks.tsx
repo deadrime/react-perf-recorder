@@ -98,7 +98,7 @@ const Cases = () => {
         <div className="line" key={c.name}>
           <span>
             <code>{c.name}</code>
-            <em>{c.input === 'recording' ? 'the steps and a recording' : 'a one-line complaint'}</em>
+            <em>{{ recording: 'the steps and a recording', complaint: 'a one-line complaint', control: 'no bug: nothing to fix' }[c.input]}</em>
           </span>
           <Runs arms={c} />
           <Bars arms={c} value={(arm) => arm.cost} max={cost} format={usd} />
@@ -117,7 +117,7 @@ export const BenchmarkCharts = () => {
         <Stat value={`${w.solved}/${w.runs}`} text={`runs fixed at the cause; ${wo.solved}/${wo.runs} without the recorder`} />
         <Stat value={times(wo.cost, w.cost)} unit="cheaper" text={`${usd(w.cost)} a task against ${usd(wo.cost)}`} />
         <Stat value={times(wo.seconds, w.seconds)} unit="faster" text={`${w.seconds} s to the answer against ${wo.seconds} s`} />
-        <Stat value={`${w.measured}/${w.runs}`} text="fixes proved with a before/after recording; without the recorder, none can be" />
+        <Stat value={`${w.measured}/${w.proving}`} text="fixes proved with a before/after recording; without the recorder, none can be" />
       </div>
       <div className="legend">
         <span>

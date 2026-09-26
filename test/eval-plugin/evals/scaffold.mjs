@@ -3,7 +3,7 @@
 // the run so the agent's fix reloads in the page it records; its url is left in dev-url.txt. With
 // --recorded=<wait|type|tabs> it also records that scenario as a person would from the panel, and leaves the
 // recording's id in recording.txt.
-//   node scaffold.mjs <bug id[,bug id…] | none> [target dir] [--no-serve] [--recorded=<scenario>]
+//   node scaffold.mjs <bug id[,bug id…] | none> [target dir] [--no-serve] [--recorded=<scenario>] [--from=<workspace>]
 import { execFileSync, spawn } from 'node:child_process';
 import fs from 'node:fs';
 import net from 'node:net';
@@ -136,15 +136,32 @@ async function record(page, url, dir) {
   const { id } = await page.evaluate(() => window.__REACT_PERF_RECORDER__.engine.stop());
   if (!id) throw new Error('the recording has no id: the dev server did not save it');
   fs.writeFileSync(path.join(dir, 'recording.txt'), `${id}\n`);
+  // What the page shows after the steps, for verify.mjs to tell a fix from a page that stopped working.
+  const health = await page.evaluate(
+    (ids) => {
+      const input = document.querySelector('[data-testid="message"]');
+      return { missing: ids.filter((id) => !document.querySelector(`[data-testid="${id}"]`)), typed: input?.value ?? null };
+    },
+    ['header', 'unread', 'timezone', 'messages', 'message', 'send', 'stats', 'members', 'typing']
+  );
+  fs.writeFileSync(path.join(dir, 'recording.json'), JSON.stringify({ id, scenario: recorded, ...health }, null, 2));
 }
 
 const dir = path.resolve(target);
-fs.cpSync(path.join(here, '../app'), dir, { recursive: true });
-// patch, not git apply: inside a repository git reads the patch's paths from its root.
-// Several bugs at once as a comma list; `none` is the app as it is.
-for (const one of bug === 'none' ? [] : bug.split(','))
-  execFileSync('patch', ['-p1', '--forward', '--batch', '--quiet', '-d', dir, '-i', path.join(here, '../bugs', `${one}.patch`)], {
-    stdio: 'inherit',
-  });
+// --from=<workspace>: the source an agent left, served and recorded as the bug was, for verify.mjs.
+const from = process.argv.find((a) => a.startsWith('--from='))?.slice('--from='.length);
+if (from) {
+  fs.cpSync(path.join(here, '../app'), dir, { recursive: true });
+  fs.rmSync(path.join(dir, 'src'), { recursive: true });
+  fs.cpSync(path.join(from, 'src'), path.join(dir, 'src'), { recursive: true });
+} else {
+  fs.cpSync(path.join(here, '../app'), dir, { recursive: true });
+  // patch, not git apply: inside a repository git reads the patch's paths from its root.
+  // Several bugs at once as a comma list; `none` is the app as it is.
+  for (const one of bug === 'none' ? [] : bug.split(','))
+    execFileSync('patch', ['-p1', '--forward', '--batch', '--quiet', '-d', dir, '-i', path.join(here, '../bugs', `${one}.patch`)], {
+      stdio: 'inherit',
+    });
+}
 if (!fs.existsSync(path.join(dir, 'node_modules'))) fs.symlinkSync(path.join(repo, 'node_modules'), path.join(dir, 'node_modules'), 'dir');
 if (!process.argv.includes('--no-serve')) await serve(dir);
