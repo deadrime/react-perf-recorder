@@ -149,7 +149,7 @@ export function Result({
           id="memos"
           title="Memos that miss"
           note={`${rec.memos.filter((m) => m.recomputed === m.renders).length} every render · ${rec.memos.length}`}
-          open={rec.memos.some((m) => m.recomputed === m.renders)}
+          open={rec.memos.some((m) => m.recomputed === m.renders && !m.info?.library)}
         >
           <Memos memos={rec.memos} />
         </Fold>

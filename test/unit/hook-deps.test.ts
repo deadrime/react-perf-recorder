@@ -45,4 +45,10 @@ describe('memo dependencies by name', () => {
     expect(memoWhy({ ...stat, info: { deps: ['rows', 'filter'] } })).toBe('`filter` is a new object with the same content every time');
     expect(memoWhy(stat)).toBe('dependency 2 is a new object with the same content every time');
   });
+
+  it("does not send the app after a package's own memo", () => {
+    const stat = { component: 'A', hook: 1, kind: 'useMemo' as const, renders: 3, recomputed: 3, deps: [{ index: 2, changed: 3, sameContent: 3 }] };
+    const info = { library: 'zustand', libraryAt: 0, path: ['useStore', 'useSyncExternalStoreWithSelector', 'Memo'] };
+    expect(memoWhy({ ...stat, info })).toMatch(/^inside zustand's useStore: .* costs the library a recompute, not a render/);
+  });
 });
