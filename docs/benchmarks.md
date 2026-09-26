@@ -95,8 +95,9 @@ both forms. Every prompt asks whether something renders for nothing and says to 
 - **Both sides have the same tools** to read and edit the code (`Read`, `Grep`, `Glob`, `Edit`, `Write`); only the
   plugin's side has the recorder.
 - Nothing takes the agent's word. `verify.mjs` records the result again, and its self-test makes sure the bug left
-  as it is fails and the clean app passes; a unit test makes sure every code check fails on its patched app and
-  passes on the clean one; `check.mjs` records every case live to see the bug's component among the first roots.
+  as it is fails and shows its component among the first roots, and the clean app passes; CI runs it on every change
+  to the recorder or the suite. A unit test makes sure every code check fails on its patched app and passes on the
+  clean one; `check.mjs` records every case through the scaffold a run starts from.
 
 ## Reading the numbers
 
