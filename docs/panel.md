@@ -28,7 +28,9 @@ Drag the panel by its header, or the dot it collapses to; it sticks to the neare
 
 After Stop the report leads with the answer: commits, renders, wasted renders (after which the DOM did not change),
 the slowest action, and the root to fix — the one whose renders changed nothing most often — opened on its reason,
-hook chain and line. Then warnings, actions, the other roots, and:
+hook chain and line. A root whose own elements stayed while children under it changed, and none of them drew what
+it passed, is counted the same way and carries a **for nothing** badge: a form root on `watch()` renders on every
+letter while only the input under it changes. Then warnings, actions, the other roots, and:
 
 - **Timeline** — tracks over one axis: actions, commits, and a lane per root. A bar is a commit, as wide as React
   took and as tall as it rendered, coloured by its cause; the causes above are the legend and light up their

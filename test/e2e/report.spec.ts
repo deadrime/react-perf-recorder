@@ -22,6 +22,15 @@ test('the report leads with the answer: the numbers, then the root that wasted r
   await expect(verdict.locator('.reason-body')).toBeVisible();
 });
 
+test('a root that renders for nothing leads the report, though its children change the DOM', async ({ page }) => {
+  // watch() renders the form on every letter; the letter changes the input under it, nothing of the form's own.
+  await recordFromPanel(page, '/bug/form-watch?rpr=panel&tick=150', () => page.getByTestId('message').pressSequentially('hello', { delay: 60 }));
+  const verdict = page.locator('[data-rpr="verdict"]');
+  await expect(verdict.locator('.verdict-title')).toContainText('Main cause');
+  await expect(verdict.locator('.stat-name')).toHaveText('Composer');
+  await expect(verdict.locator('.stat .badge[data-tone="warn"]')).toContainText(/\d+ for nothing/);
+});
+
 test('a report with nothing wasted does not call anything a cause', async ({ page }) => {
   await recordFromPanel(page, '/app?rpr=panel&tick=150', async () => {
     await page.getByTestId('tab-people').click();
