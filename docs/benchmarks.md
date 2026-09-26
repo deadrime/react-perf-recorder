@@ -13,34 +13,35 @@ changing what the page shows, and show with before-and-after numbers that the fi
 
 <!-- results:start -->
 
-30 runs a side over 15 cases, 2026-09-25, Claude Code 2.1.282; the whole run cost $42.06.
+30 runs a side over 15 cases, 2026-09-26, Claude Code 2.1.283; the whole run cost $37.27.
 
-|                                                | With the recorder |  Without |                            |
-| ---------------------------------------------- | ----------------: | -------: | -------------------------- |
-| Fixed at the cause                             |          26 of 30 | 21 of 30 |                            |
-| Every check passed, the answer naming the file |          26 of 30 | 18 of 30 |                            |
-| Proved with a before/after recording           |          30 of 30 |        — | no browser to measure with |
-| Cost of a task, mean                           |             $0.47 |    $0.93 | 2.0× cheaper               |
-| Time to the answer, mean                       |             188 s |    409 s | 2.2× faster                |
-| Turns, mean                                    |                24 |       41 |                            |
+|                                                              | With the recorder |  Without |                            |
+| ------------------------------------------------------------ | ----------------: | -------: | -------------------------- |
+| Fixed: the waste gone from a new recording, the page working |          25 of 30 | 24 of 30 |                            |
+| The code checks passed                                       |          23 of 30 | 15 of 30 |                            |
+| Every check passed, the answer naming the file               |          23 of 30 | 15 of 30 |                            |
+| Proved with a before/after recording                         |          28 of 28 |        — | no browser to measure with |
+| Cost of a task, mean                                         |             $0.39 |    $0.86 | 2.2× cheaper               |
+| Time to the answer, mean                                     |             163 s |    428 s | 2.6× faster                |
+| Turns, mean                                                  |                17 |       47 |                            |
 
 | Case                       | What the agent gets                  | Fixed, with / without | Cost, with / without | Time, with / without |
 | -------------------------- | ------------------------------------ | --------------------- | -------------------- | -------------------- |
-| `effect-derived-state-rec` | the steps and the person’s recording | 2/2 · 2/2             | $0.51 · $0.83        | 191 s · 359 s        |
-| `exact-value-rec`          | the steps and the person’s recording | 2/2 · 1/2             | $0.36 · $1.09        | 170 s · 530 s        |
-| `field-state-rec`          | the steps and the person’s recording | 1/2 · 0/2             | $0.59 · $0.98        | 219 s · 394 s        |
-| `form-watch`               | a one-line complaint                 | 2/2 · 1/2             | $0.48 · $0.95        | 146 s · 403 s        |
-| `form-watch-rec`           | the steps and the person’s recording | 1/2 · 1/2             | $0.43 · $0.78        | 161 s · 329 s        |
-| `hidden-hook-state-rec`    | the steps and the person’s recording | 2/2 · 2/2             | $0.28 · $0.97        | 124 s · 426 s        |
-| `inline-context-rec`       | the steps and the person’s recording | 2/2 · 2/2             | $0.31 · $0.78        | 122 s · 342 s        |
-| `inline-jsx-prop-rec`      | the steps and the person’s recording | 2/2 · 2/2             | $0.36 · $0.78        | 133 s · 325 s        |
-| `live-subscription-rec`    | the steps and the person’s recording | 0/2 · 0/2             | $0.96 · $1.73        | 481 s · 904 s        |
-| `memo-cache-slot-rec`      | the steps and the person’s recording | 2/2 · 0/2             | $0.39 · $1.27        | 112 s · 591 s        |
-| `nested-component-rec`     | the steps and the person’s recording | 2/2 · 2/2             | $0.92 · $0.94        | 408 s · 424 s        |
-| `new-array-selector-rec`   | the steps and the person’s recording | 2/2 · 2/2             | $0.26 · $0.81        | 92 s · 318 s         |
-| `router-in-layout-rec`     | the steps and the person’s recording | 2/2 · 2/2             | $0.45 · $0.75        | 169 s · 273 s        |
-| `whole-object`             | a one-line complaint                 | 2/2 · 2/2             | $0.27 · $0.72        | 87 s · 312 s         |
-| `whole-object-rec`         | the steps and the person’s recording | 2/2 · 2/2             | $0.46 · $0.62        | 211 s · 214 s        |
+| `draft-context-rec`        | the steps and the person’s recording | 1/2 · 2/2             | $0.42 · $1.04        | 179 s · 456 s        |
+| `effect-derived-state-rec` | the steps and the person’s recording | 2/2 · 2/2             | $0.29 · $0.81        | 107 s · 373 s        |
+| `exact-value-rec`          | the steps and the person’s recording | 2/2 · 2/2             | $0.27 · $0.97        | 141 s · 538 s        |
+| `expensive-render-rec`     | the steps and the person’s recording | 2/2 · 2/2             | $0.27 · $0.54        | 135 s · 223 s        |
+| `field-state-rec`          | the steps and the person’s recording | 2/2 · 2/2             | $0.68 · $0.95        | 278 s · 459 s        |
+| `form-watch`               | a one-line complaint                 | 0/2 · 0/2             | $0.49 · $0.89        | 180 s · 487 s        |
+| `form-watch-rec`           | the steps and the person’s recording | 1/2 · 1/2             | $0.46 · $0.81        | 201 s · 400 s        |
+| `inline-context-rec`       | the steps and the person’s recording | 2/2 · 2/2             | $0.28 · $0.66        | 119 s · 302 s        |
+| `memo-cache-slot-rec`      | the steps and the person’s recording | 2/2 · 2/2             | $0.44 · $1.06        | 187 s · 595 s        |
+| `nested-component-rec`     | the steps and the person’s recording | 2/2 · 2/2             | $0.20 · $0.71        | 67 s · 338 s         |
+| `new-array-selector-rec`   | the steps and the person’s recording | 2/2 · 2/2             | $0.33 · $0.82        | 119 s · 387 s        |
+| `no-bug-rec`               | the steps and a recording, no bug    | 2/2 · 1/2             | $0.40 · $1.63        | 232 s · 886 s        |
+| `router-in-layout-rec`     | the steps and the person’s recording | 2/2 · 1/2             | $0.61 · $0.57        | 237 s · 260 s        |
+| `two-bugs-rec`             | the steps and the person’s recording | 1/2 · 1/2             | $0.35 · $0.69        | 154 s · 353 s        |
+| `whole-object-rec`         | the steps and the person’s recording | 2/2 · 2/2             | $0.28 · $0.72        | 110 s · 361 s        |
 
 <!-- results:end -->
 
@@ -99,8 +100,15 @@ both forms. Every prompt asks whether something renders for nothing and says to 
 ## Reading the numbers
 
 - Two runs a side per case: a single run moves a case's row by a half. The totals are the ones to read.
-- Every bug can be found by reading the code, and the agent without the plugin often does: the app is small. The
-  difference is in what it costs, and in whether the fix goes where the renders come from.
+- Every bug can be found by reading the code, and in an app this small the agent without the plugin usually does:
+  the two sides fix about as many. The difference is what it takes — the recording names the component and the line,
+  so the agent with it reads a few files instead of all of them — and that the fix comes with numbers.
+- The code checks pass less often than the fixes work, and the new recording is the one counted. In `field-state`
+  the agents kept `fieldState` and stopped validating the whole form on every key instead — the renders were gone, the
+  code check still saw the bug's line.
+- `form-watch` is fixed by neither side most of the time: both put `memo` on the fields under the form and leave
+  `watch()` in its root, which takes the renders without a DOM change from 89 to 59 but leaves the form rendering on
+  every key. The recording says the fields' renders are ones a `memo` would skip, and the agents take that as the fix.
 - Cost is the agent's own, from Claude Code; the checks cost nothing.
 
 ## Running it
