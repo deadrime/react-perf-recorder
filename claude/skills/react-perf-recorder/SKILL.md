@@ -47,6 +47,5 @@ Work through the `react-perf-recorder` MCP tools: each one says in its descripti
 - `references/measuring-a-fix.md` — before and after: replay or script, a worktree for the change, reading the result.
 - `references/reading-a-recording.md` — roots, reasons, hook chains, components and their ways, memos.
 - `references/causes-and-actions.md` — what scheduled each commit, the person's actions, plugin sections, traps.
-- `references/libraries.md` — what a library in a root's reason usually means: react-hook-form.
 - `references/panel.md` — the panel, for guiding a person who records it themselves.
 - `references/from-scripts.md` — the page API for a script of your own, and the CLI when the MCP tools are missing.
