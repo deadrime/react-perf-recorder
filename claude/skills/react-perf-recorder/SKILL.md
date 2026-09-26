@@ -29,7 +29,8 @@ numbers belong in the answer.
    it: a root whose own elements stayed as they were in most of its hits — a form root whose only change is the
    letter in its child's input — renders for nothing, and the fix is in it. When its reason is a package's own state
    (`[package] useX › State`), the root reads more of what that hook returned than it shows — a getter, a proxied
-   field, a function that subscribes as it reads, in an initializer too: move that read into the child that shows it.
+   field, a function that subscribes as it reads wherever it is called, an effect too: move that read into the
+   child that shows it.
 5. **Prove it** when numbers were asked for or the cause is a guess: `references/measuring-a-fix.md`. Counts that did
    not move put the fix in doubt before the recorder.
 6. **Read what is left.** The recording after the fix is the next look at the page: a root still rendering with no
