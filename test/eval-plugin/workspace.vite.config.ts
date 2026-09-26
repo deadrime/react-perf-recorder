@@ -19,7 +19,36 @@ export default defineConfig({
   // One pre-bundle per workspace: runs side by side never share one.
   cacheDir: path.join(os.tmpdir(), 'rpr-eval-vite', createHash('sha1').update(workspace).digest('hex').slice(0, 12)),
   resolve: { alias: aliases },
-  server: { port: Number(process.env.RPR_PORT), strictPort: true, fs: { allow: [workspace, repo] } },
+  // A server shared by many workspaces bundles their dependencies up front: one found later would reload every page.
+  ...(process.env.RPR_SHARED
+    ? {
+        optimizeDeps: {
+          include: [
+            'react',
+            'react-dom',
+            'react-dom/client',
+            'react/jsx-dev-runtime',
+            'zustand',
+            'zustand/vanilla',
+            'zustand/middleware',
+            'zustand/shallow',
+            'zustand/react/shallow',
+            'react-hook-form',
+            '@tanstack/react-query',
+            'react-router-dom',
+            'proxy-memoize',
+          ],
+        },
+      }
+    : {}),
+  server: {
+    port: Number(process.env.RPR_PORT),
+    strictPort: true,
+    fs: { allow: [workspace, repo] },
+    // Shared by many workspaces, the server must not reload every page when the next one is copied in: nothing in a
+    // workspace changes while it is recorded.
+    ...(process.env.RPR_SHARED ? { hmr: false, watch: null } : {}),
+  },
   logLevel: 'warn',
   plugins: [
     react(),

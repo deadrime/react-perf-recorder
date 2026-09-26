@@ -25,6 +25,3 @@ export const CASES = {
   'two-bugs-rec': { root: 'Unread', waste: wasted },
   'no-bug-rec': { root: null, waste: wasted },
 };
-
-/** What the scenario types into the message box, which must be there when it ends. */
-export const TYPED = { type: 'see you at five', retype: 'see you' };

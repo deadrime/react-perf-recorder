@@ -3,13 +3,13 @@
 // the run so the agent's fix reloads in the page it records; its url is left in dev-url.txt. With
 // --recorded=<wait|type|tabs> it also records that scenario as a person would from the panel, and leaves the
 // recording's id in recording.txt.
-//   node scaffold.mjs <bug id[,bug id…] | none> [target dir] [--no-serve] [--recorded=<scenario>] [--from=<workspace>]
+//   node scaffold.mjs <bug id[,bug id…] | none> [target dir] [--no-serve] [--recorded=<scenario>]
 import { execFileSync, spawn } from 'node:child_process';
 import fs from 'node:fs';
 import net from 'node:net';
 import path from 'node:path';
-import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
+import { launchChromium, recordScenario } from '../scenarios.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repo = path.resolve(here, '../../..');
@@ -75,19 +75,9 @@ async function serve(dir) {
 async function warm(url, dir) {
   // A scaffold runs with HOME moved, like the agent: the browsers' folder comes from run.sh.
   const browsers = process.env.EVAL_PLAYWRIGHT_BROWSERS_PATH || run.browsers || process.env.PLAYWRIGHT_BROWSERS_PATH;
-  const build =
-    browsers && fs.existsSync(browsers)
-      ? fs
-          .readdirSync(browsers)
-          .filter((d) => /^chromium-\d+$/.test(d))
-          .sort()
-          .pop()
-      : undefined;
-  const executablePath = build && path.join(browsers, build, 'chrome-linux/chrome');
-  const { chromium } = createRequire(path.join(repo, 'package.json'))('playwright');
-  const browser = await chromium
-    .launch({ headless: true, ...(executablePath && fs.existsSync(executablePath) ? { executablePath } : {}) })
-    .catch((error) => console.error(`no warm-up, the first recording may meet a reload: ${String(error.message).split('\n')[0]}`));
+  const browser = await launchChromium(repo, browsers).catch((error) =>
+    console.error(`no warm-up, the first recording may meet a reload: ${String(error.message).split('\n')[0]}`)
+  );
   if (!browser) return;
   try {
     const page = await browser.newPage();
@@ -99,69 +89,24 @@ async function warm(url, dir) {
     }
     const rendered = await page.evaluate(() => (document.getElementById('root')?.childElementCount ?? 0) > 0);
     if (!rendered) console.error(`the app did not render at ${url}: ${errors.slice(0, 3).join('; ') || 'no page error'}`);
-    if (recorded) await record(page, `${url}?tick=150`, dir);
+    if (recorded) {
+      // The person's recording, made as from the panel before the agent starts.
+      const result = await recordScenario(page, `${url}?tick=150`, recorded);
+      fs.writeFileSync(path.join(dir, 'recording.txt'), `${result.id}\n`);
+      fs.writeFileSync(path.join(dir, 'recording.json'), JSON.stringify(result, null, 2));
+    }
   } finally {
     await browser.close();
   }
 }
 
-// The person's steps, as the e2e tests of the fixture run them.
-const SCENARIOS = {
-  wait: (page) => page.waitForTimeout(5000),
-  type: (page) => page.getByTestId('message').pressSequentially('see you at five', { delay: 90 }),
-  // A box that loses focus after every letter: the person clicks it again before each one.
-  retype: async (page) => {
-    for (const key of 'see you') {
-      await page.getByTestId('message').click();
-      await page.keyboard.press(key === ' ' ? 'Space' : key);
-      await page.waitForTimeout(90);
-    }
-  },
-  tabs: async (page) => {
-    for (let i = 0; i < 3; i++) {
-      await page.getByTestId('tab-people').click();
-      await page.getByTestId('tab-chat').click();
-    }
-  },
-};
-
-/** Rec, the steps, Stop — as from the panel; the dev server saves it in the run's sessions folder. */
-async function record(page, url, dir) {
-  if (!SCENARIOS[recorded]) throw new Error(`no scenario ${recorded}`);
-  await page.goto(url, { waitUntil: 'networkidle' });
-  await page.getByTestId('unread').waitFor();
-  await page.waitForTimeout(500);
-  await page.evaluate(() => window.__REACT_PERF_RECORDER__.engine.start({ source: 'panel', highlight: false }));
-  await SCENARIOS[recorded](page);
-  const { id } = await page.evaluate(() => window.__REACT_PERF_RECORDER__.engine.stop());
-  if (!id) throw new Error('the recording has no id: the dev server did not save it');
-  fs.writeFileSync(path.join(dir, 'recording.txt'), `${id}\n`);
-  // What the page shows after the steps, for verify.mjs to tell a fix from a page that stopped working.
-  const health = await page.evaluate(
-    (ids) => {
-      const input = document.querySelector('[data-testid="message"]');
-      return { missing: ids.filter((id) => !document.querySelector(`[data-testid="${id}"]`)), typed: input?.value ?? null };
-    },
-    ['header', 'unread', 'timezone', 'messages', 'message', 'send', 'stats', 'members', 'typing']
-  );
-  fs.writeFileSync(path.join(dir, 'recording.json'), JSON.stringify({ id, scenario: recorded, ...health }, null, 2));
-}
-
 const dir = path.resolve(target);
-// --from=<workspace>: the source an agent left, served and recorded as the bug was, for verify.mjs.
-const from = process.argv.find((a) => a.startsWith('--from='))?.slice('--from='.length);
-if (from) {
-  fs.cpSync(path.join(here, '../app'), dir, { recursive: true });
-  fs.rmSync(path.join(dir, 'src'), { recursive: true });
-  fs.cpSync(path.join(from, 'src'), path.join(dir, 'src'), { recursive: true });
-} else {
-  fs.cpSync(path.join(here, '../app'), dir, { recursive: true });
-  // patch, not git apply: inside a repository git reads the patch's paths from its root.
-  // Several bugs at once as a comma list; `none` is the app as it is.
-  for (const one of bug === 'none' ? [] : bug.split(','))
-    execFileSync('patch', ['-p1', '--forward', '--batch', '--quiet', '-d', dir, '-i', path.join(here, '../bugs', `${one}.patch`)], {
-      stdio: 'inherit',
-    });
-}
+fs.cpSync(path.join(here, '../app'), dir, { recursive: true });
+// patch, not git apply: inside a repository git reads the patch's paths from its root.
+// Several bugs at once as a comma list; `none` is the app as it is.
+for (const one of bug === 'none' ? [] : bug.split(','))
+  execFileSync('patch', ['-p1', '--forward', '--batch', '--quiet', '-d', dir, '-i', path.join(here, '../bugs', `${one}.patch`)], {
+    stdio: 'inherit',
+  });
 if (!fs.existsSync(path.join(dir, 'node_modules'))) fs.symlinkSync(path.join(repo, 'node_modules'), path.join(dir, 'node_modules'), 'dir');
 if (!process.argv.includes('--no-serve')) await serve(dir);
