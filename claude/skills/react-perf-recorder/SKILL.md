@@ -25,7 +25,9 @@ numbers belong in the answer.
 4. **Fix where the recording puts the waste.** A root that renders for nothing — subscribed to more than it shows,
    fed a value that changes for nothing — is fixed at that cause, and its own count has to fall; `memo` on its
    children leaves it rendering. A root whose render is needed is fixed below it, and its renders per hit have to
-   fall.
+   fall. Whether it is needed is in its code, not in `noDomChange`, which counts what changed anywhere under it: a
+   form root whose only change is the letter its input shows renders for nothing if what it draws itself does not
+   depend on what it read.
 5. **Prove it** when numbers were asked for or the cause is a guess: `references/measuring-a-fix.md`. Counts that did
    not move put the fix in doubt before the recorder.
 6. **Read what is left.** The recording after the fix is the next look at the page: a root still rendering with no
