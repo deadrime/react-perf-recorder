@@ -9,6 +9,8 @@ export interface RootLine {
   instances: number;
   perHit: number;
   noDomChange: number;
+  /** Hits that changed none of the root's own elements, when more than `noDomChange`: the change was below it. */
+  ownDomUnchanged?: number;
   /** Components mounted under the root: remounts on every hit point at a component declared in render or a new key. */
   mounts?: number;
   renderMsPerHit?: number;
@@ -379,6 +381,7 @@ export function rootLine(root: RootStat, durationMs: number, reasons: Map<number
     instances: root.instances,
     perHit: root.perHit,
     noDomChange: root.noDomChange,
+    ...(root.ownDomUnchanged ? { ownDomUnchanged: root.ownDomUnchanged } : {}),
     ...(root.mounts ? { mounts: root.mounts } : {}),
     ...(root.renderMs ? { renderMsPerHit: +(root.renderMs / Math.max(1, root.hits)).toFixed(2) } : {}),
     reasons: mergeSameContent(root.reasons.map(([id, n]) => [reasonLine(root, reasons.get(id), n, mode).replace(/^\d+× /, ''), n]))

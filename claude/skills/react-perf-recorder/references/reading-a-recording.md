@@ -10,7 +10,9 @@ many commits it started, `cascade` the renders it pulled, `perHit` the renders p
 copies fired at once. `outsideRoots` are roots above the recorded area that reached into it.
 
 `noDomChange` (per root) and `rendersWithoutDom` (in totals) count renders after which the DOM did not change —
-waste with no argument attached. `mounts` other than zero on a page that only changes text means remounting: a
+waste with no argument attached. `ownDomUnchanged`, when a root has it, counts its hits that changed none of the elements it
+renders itself: what changed was in children that render on their own anyway, so the root's own render was spent
+handing them what they had. `mounts` other than zero on a page that only changes text means remounting: a
 component declared inside a render, or an unstable `key`.
 
 ## Reasons
