@@ -408,4 +408,45 @@ button[data-copied="true"] { color: var(--good); }
 /* The outline the picker draws over the page. */
 .box { position: fixed; pointer-events: none; border: 2px solid var(--pick); background: color-mix(in srgb, var(--pick) 8%, transparent); z-index: 2147483646; border-radius: 3px; }
 .box .tag { position: absolute; left: -2px; top: -18px; background: var(--pick); color: var(--text-strong); padding: 0 5px; border-radius: 3px 3px 0 0; font-size: 11px; white-space: nowrap; }
+
+/* The picker's buttons: what Esc, Enter and ← do, for a finger. */
+.pick-bar { gap: 6px; }
+.pick-bar .keep { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
+.pick-bar button:disabled { cursor: default; opacity: .5; }
+
+/* A finger has no hover: the row's buttons show all the time, and everything tapped is at least 32px tall. */
+@media (pointer: coarse) {
+  header button, .controls button, .pick-bar button, .result-bar button { min-height: 32px; padding: 4px 10px; }
+  .area-pill > button.icon { width: 36px; padding: 4px 0; }
+  label.toggle { min-height: 32px; }
+  input[type="checkbox"] { width: 18px; height: 18px; }
+  .dot { width: 40px; height: 40px; }
+  .picker li { min-height: 34px; }
+  .picker li .toggle { width: 24px; align-self: stretch; display: inline-flex; align-items: center; justify-content: center; }
+  .picker li .copy, .picker li .watch-toggle { visibility: visible; width: 28px; height: 28px; }
+  .tl-controls button, .way-more button { min-height: 28px; }
+}
+
+/* A phone: the card is a sheet across the bottom (or the top) edge, and the page keeps the rest of the screen. */
+@media (max-width: 600px), (pointer: coarse) and (max-height: 500px) {
+  /* Over the dock's inline style; a drag lets go of it so the sheet follows the finger to the other edge. */
+  .rpr:not([data-collapsed="true"]):not([data-dragging="true"]) { left: 0 !important; right: 0 !important; }
+  .rpr:not([data-collapsed="true"]):not([data-dragging="true"])[data-corner^="bottom"] { top: auto !important; bottom: 0 !important; }
+  .rpr:not([data-collapsed="true"]):not([data-dragging="true"])[data-corner^="top"] { top: 0 !important; bottom: auto !important; }
+  /* Opaque: over the whole width the page's text shows through the card's usual tint. */
+  .card, .rpr[data-wide="true"] .card { width: 100vw; max-width: none; background: var(--sunken); max-height: 60vh; max-height: 60dvh; overscroll-behavior: contain;
+    border-radius: 12px 12px 0 0; border-width: 1px 0 0; padding-bottom: calc(8px + env(safe-area-inset-bottom)); }
+  .rpr[data-corner^="top"] .card { border-radius: 0 0 12px 12px; border-width: 0 0 1px; padding-top: calc(8px + env(safe-area-inset-top)); }
+  /* The title bar stays while the report scrolls: collapsing the sheet must not need a scroll back up. */
+  header { position: sticky; top: -8px; z-index: 5; background: var(--sunken); padding-bottom: 6px; margin-bottom: 4px; }
+  .rpr[data-corner^="top"] header { top: calc(-8px - env(safe-area-inset-top)); margin-top: calc(-8px - env(safe-area-inset-top)); padding-top: calc(8px + env(safe-area-inset-top)); }
+  .result-bar { bottom: calc(-8px - env(safe-area-inset-bottom)); margin-bottom: calc(-8px - env(safe-area-inset-bottom)); padding-bottom: calc(8px + env(safe-area-inset-bottom)); }
+  /* The tree takes what it needs up to a third of the screen: the page above it is where the finger picks. */
+  .picker ul { height: auto; max-height: 30vh; max-height: 30dvh; overscroll-behavior: contain; }
+  /* A sheet is already as wide as the screen. */
+  [data-rpr="wide"] { display: none; }
+  .result-bar { background: var(--sunken); }
+  .result-bar .saved { flex-basis: 100%; }
+  .area-pill .scope { max-width: 40vw; }
+}
 `;

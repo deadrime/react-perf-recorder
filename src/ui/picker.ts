@@ -141,6 +141,22 @@ export class Picker {
     return true;
   }
 
+  /** A component is active in the tree, so there is somewhere to step out to. */
+  get canParent() {
+    return this.frozen && Boolean(this.current) && !this.browsing && !this.quietOpen;
+  }
+
+  /** One step out, for a finger that has no ←: the component around the active one, and past the top the whole app. */
+  parent() {
+    if (!this.canParent) return;
+    if (!this.current!.parent) {
+      this.release();
+      return;
+    }
+    this.current = this.current!.parent;
+    this.render();
+  }
+
   /** A filter was switched: rebuild the path around the active component. */
   refresh() {
     if (this.frozen && this.current) this.build(this.engine.ownersOfFiber(this.current.owner.fiber), this.current.owner.fiber);
