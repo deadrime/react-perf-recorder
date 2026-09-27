@@ -137,24 +137,19 @@ const PickBar = ({ p }: { p: PanelViewProps }) =>
   p.picking ? (
     <div class="row pick-bar" data-rpr="pick-bar">
       {p.picking.tree ? (
-        <>
-          <button
-            type="button"
-            data-rpr="pick-parent"
-            title="The component around this one (←)"
-            disabled={!p.picking.parent}
-            onClick={p.on.pickParent}
-          >
-            ↑ Parent
-          </button>
-          <button type="button" class="keep" data-rpr="pick-keep" title="Take what the tree shows as the area (Enter)" onClick={p.on.pickKeep}>
-            ✓ Keep
-          </button>
-        </>
+        <button type="button" data-rpr="pick-parent" title="The component around this one (←)" disabled={!p.picking.parent} onClick={p.on.pickParent}>
+          ↑ Parent
+        </button>
       ) : null}
       <button type="button" data-rpr="pick-cancel" title="Put the area back as it was (Esc)" onClick={p.on.pickCancel}>
         ✕ Cancel
       </button>
+      {/* Last and at the right edge: where the thumb ends the pick. */}
+      {p.picking.tree ? (
+        <button type="button" class="keep" data-rpr="pick-keep" title="Take what the tree shows as the area (Enter)" onClick={p.on.pickKeep}>
+          ✓ Keep
+        </button>
+      ) : null}
     </div>
   ) : null;
 

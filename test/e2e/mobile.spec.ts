@@ -75,3 +75,26 @@ test('on a phone the report scrolls inside the sheet, not the page under it', as
   // The title bar stays in the sheet, so it can be collapsed from anywhere in the report.
   await expect(page.locator('[data-rpr="collapse"]')).toBeInViewport();
 });
+
+test('on a phone an outline stays on its element while the page scrolls under it', async ({ page }) => {
+  // No feed ticks: the one render is the typed letter, so no fresh measure hides a stale box.
+  await page.goto('/app?rpr=panel&tick=600000');
+  await expect.poll(() => page.evaluate(() => Boolean((window as any).__REACT_PERF_RECORDER__?.engine.idleHighlighting))).toBe(true);
+  await page.locator('[data-rpr="collapse"]').tap();
+  await page.getByTestId('message').pressSequentially('a');
+  /** How much the overlay has drawn on the left edge of the Send button, where it is now. */
+  const onEdge = () =>
+    page.evaluate(() => {
+      const canvas = document.querySelector('[data-react-perf-recorder]')!.shadowRoot!.querySelector('canvas')!;
+      const r = document.querySelector('[data-testid="send"]')!.getBoundingClientRect();
+      const dpr = canvas.width / innerWidth;
+      const data = canvas
+        .getContext('2d')!
+        .getImageData(Math.round((r.left - 1) * dpr), Math.round((r.top + r.height / 2) * dpr), Math.ceil(4 * dpr), 1).data;
+      return Math.max(...data.filter((_, i) => i % 4 === 3));
+    });
+  await expect.poll(onEdge).toBeGreaterThan(0);
+  await page.evaluate(() => window.scrollBy(0, 120));
+  await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))));
+  expect(await onEdge()).toBeGreaterThan(0);
+});

@@ -411,7 +411,8 @@ button[data-copied="true"] { color: var(--good); }
 
 /* The picker's buttons: what Esc, Enter and ← do, for a finger. */
 .pick-bar { gap: 6px; }
-.pick-bar .keep { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
+.pick-bar .keep { margin-left: auto; color: var(--text-strong); background: var(--accent-fill); border-color: var(--accent-strong); }
+.pick-bar .keep:hover { background: var(--accent-strong); }
 .pick-bar button:disabled { cursor: default; opacity: .5; }
 
 /* A finger has no hover: the row's buttons show all the time, and everything tapped is at least 32px tall. */
