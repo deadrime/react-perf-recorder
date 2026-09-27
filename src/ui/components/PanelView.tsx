@@ -131,22 +131,6 @@ const LiveRoots = ({ p }: { p: PanelViewProps }) => (
   </div>
 );
 
-/** What Esc and Enter do, as buttons: a phone has no keys. Stepping out is a tap on the row above. */
-const PickBar = ({ p }: { p: PanelViewProps }) =>
-  p.picking ? (
-    <div class="row pick-bar" data-rpr="pick-bar">
-      {/* Both at the right edge, where the thumb is; Confirm last, as the one that ends the pick. */}
-      <button type="button" class="cancel" data-rpr="pick-cancel" title="Put the area back as it was (Esc)" onClick={p.on.pickCancel}>
-        ✕ Cancel
-      </button>
-      {p.picking.tree ? (
-        <button type="button" class="confirm" data-rpr="pick-confirm" title="Take what the tree shows as the area (Enter)" onClick={p.on.pickConfirm}>
-          ✓ Confirm
-        </button>
-      ) : null}
-    </div>
-  ) : null;
-
 const View = (p: PanelViewProps): JSX.Element => (
   <div
     class="rpr"
@@ -154,6 +138,7 @@ const View = (p: PanelViewProps): JSX.Element => (
     data-collapsed={String(p.collapsed && !p.recording)}
     data-recording={String(p.recording)}
     data-wide={p.wide && p.result ? 'true' : undefined}
+    data-picking={p.picking ? 'true' : undefined}
     hidden={!p.visible}
     style={dockStyle(p.corner, p.offset)}
   >
@@ -212,7 +197,6 @@ const View = (p: PanelViewProps): JSX.Element => (
         </label>
       ) : null}
       <Watching p={p} />
-      <PickBar p={p} />
       <div class="picker" data-rpr="picker">
         {p.tree ? <Tree {...p.tree} copied={p.copied} /> : null}
       </div>

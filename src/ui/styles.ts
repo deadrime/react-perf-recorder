@@ -410,8 +410,7 @@ button[data-copied="true"] { color: var(--good); }
 .box .tag { position: absolute; left: -2px; top: -18px; background: var(--pick); color: var(--text-strong); padding: 0 5px; border-radius: 3px 3px 0 0; font-size: 11px; white-space: nowrap; }
 
 /* The picker's buttons: what Esc and Enter do, for a finger. */
-.pick-bar { gap: 6px; }
-.pick-bar .cancel { margin-left: auto; }
+.pick-bar { display: inline-flex; gap: 6px; margin-left: auto; }
 .pick-bar .confirm { color: var(--text-strong); background: var(--accent-fill); border-color: var(--accent-strong); }
 .pick-bar .confirm:hover { background: var(--accent-strong); }
 
@@ -446,6 +445,11 @@ button[data-copied="true"] { color: var(--good); }
   .picker ul { height: auto; max-height: 30vh; max-height: 30dvh; overscroll-behavior: contain; }
   /* A sheet is already as wide as the screen. */
   [data-rpr="wide"] { display: none; }
+  /* Picking: the area and Cancel · Confirm in one row. Recording waits for the pick, the tree has Whole app and ⧉. */
+  .rpr[data-picking="true"] .controls > .rec, .rpr[data-picking="true"] .controls > .reload,
+  .rpr[data-picking="true"] .area-pill > [data-rpr="copy-scope"], .rpr[data-picking="true"] .area-pill > [data-rpr="clear-scope"] { display: none; }
+  .rpr[data-picking="true"] .controls { flex-wrap: nowrap; }
+  .rpr[data-picking="true"] .area-pill .scope { max-width: 32vw; }
   .result-bar { background: var(--sunken); }
   .result-bar .saved { flex-basis: 100%; }
   .area-pill .scope { max-width: 40vw; }

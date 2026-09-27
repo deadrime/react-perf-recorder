@@ -24,6 +24,10 @@ test('on a phone the area is picked and kept by taps, and the page above the she
 
   await page.getByTestId('unread').tap();
   await expect(page.locator('[data-rpr="scope"]')).toHaveText('Unread');
+  // The area and Cancel · Confirm share one row: recording and the area's own buttons step aside while picking.
+  await expect(page.locator('[data-rpr="record"]')).toBeHidden();
+  const [area, confirm] = await Promise.all(['scope', 'pick-confirm'].map((id) => page.locator(`[data-rpr="${id}"]`).boundingBox()));
+  expect(Math.abs(area!.y + area!.height / 2 - (confirm!.y + confirm!.height / 2))).toBeLessThan(4);
   // A tapped row is only tried on: the tree stays open until Confirm.
   await page.locator('[data-rpr="tree"] li[data-name="Workspace"]').tap();
   await expect(page.locator('[data-rpr="scope"]')).toHaveText('Workspace');
