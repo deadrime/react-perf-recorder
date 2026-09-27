@@ -8,7 +8,8 @@ set -euo pipefail
 repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
 # claude plugin eval takes one --case glob, without braces; --cases a,b,c runs a copy of the plugin whose evals/ holds
-# only those. It sits beside this one, so the manifest's ../../dist still reaches the build.
+# only those. It sits beside this one, so the manifest's ../../dist still reaches the build; the manifest and the cases
+# are copied, since eval takes neither through a link, and each copied scaffold calls the real scaffold.mjs.
 plugin="$repo/test/eval-plugin"
 args=()
 cases=""
@@ -21,15 +22,16 @@ while [ $# -gt 0 ]; do
 done
 if [ -n "$cases" ]; then
   plugin="$(mktemp -d "$repo/test/.eval-plugin-XXXXXX")"
-  for entry in "$repo/test/eval-plugin"/* "$repo/test/eval-plugin/.claude-plugin"; do
+  for entry in "$repo/test/eval-plugin"/*; do
     [ "$(basename "$entry")" = evals ] || ln -s "$entry" "$plugin/"
   done
+  cp -R "$repo/test/eval-plugin/.claude-plugin" "$plugin/"
   mkdir "$plugin/evals"
-  ln -s "$repo/test/eval-plugin/evals/scaffold.mjs" "$plugin/evals/"
   IFS=, read -ra names <<<"$cases"
   for name in "${names[@]}"; do
     [ -f "$repo/test/eval-plugin/evals/$name/case.yaml" ] || { echo "no case $name in test/eval-plugin/evals" >&2; rm -rf "$plugin"; exit 1; }
-    ln -s "$repo/test/eval-plugin/evals/$name" "$plugin/evals/"
+    cp -R "$repo/test/eval-plugin/evals/$name" "$plugin/evals/"
+    sed -i "s#\"\$(dirname \"\${BASH_SOURCE\[0\]}\")/../scaffold.mjs\"#\"$repo/test/eval-plugin/evals/scaffold.mjs\"#" "$plugin/evals/$name/scaffold.sh"
   done
 fi
 sessions="$(mktemp -d)"
