@@ -1,0 +1,535 @@
+{
+  "date": "2026-09-27",
+  "claudeVersion": "2.1.283",
+  "totalCost": 43.03,
+  "with": {
+    "runs": 36,
+    "solved": 35,
+    "checked": 33,
+    "passed": 32,
+    "score": 0.97,
+    "cost": 0.336,
+    "seconds": 152,
+    "turns": 16,
+    "measured": 34,
+    "proving": 34
+  },
+  "without": {
+    "runs": 36,
+    "solved": 26,
+    "checked": 21,
+    "passed": 21,
+    "score": 0.86,
+    "cost": 0.86,
+    "seconds": 423,
+    "turns": 52,
+    "measured": 0,
+    "proving": 0
+  },
+  "cases": [
+    {
+      "name": "connect-filter-rec",
+      "input": "recording",
+      "with": {
+        "runs": 2,
+        "solved": 2,
+        "checked": 2,
+        "passed": 2,
+        "score": 1,
+        "cost": 0.24,
+        "seconds": 93,
+        "turns": 17,
+        "measured": 2,
+        "proving": 2
+      },
+      "without": {
+        "runs": 2,
+        "solved": 2,
+        "checked": 2,
+        "passed": 2,
+        "score": 1,
+        "cost": 0.702,
+        "seconds": 331,
+        "turns": 49,
+        "measured": 0,
+        "proving": 0
+      }
+    },
+    {
+      "name": "draft-context-rec",
+      "input": "recording",
+      "with": {
+        "runs": 2,
+        "solved": 2,
+        "checked": 2,
+        "passed": 2,
+        "score": 1,
+        "cost": 0.455,
+        "seconds": 212,
+        "turns": 36,
+        "measured": 2,
+        "proving": 2
+      },
+      "without": {
+        "runs": 2,
+        "solved": 2,
+        "checked": 1,
+        "passed": 1,
+        "score": 0.88,
+        "cost": 1.225,
+        "seconds": 508,
+        "turns": 60,
+        "measured": 0,
+        "proving": 0
+      }
+    },
+    {
+      "name": "effect-derived-state-rec",
+      "input": "recording",
+      "with": {
+        "runs": 2,
+        "solved": 2,
+        "checked": 2,
+        "passed": 2,
+        "score": 1,
+        "cost": 0.299,
+        "seconds": 154,
+        "turns": 2,
+        "measured": 2,
+        "proving": 2
+      },
+      "without": {
+        "runs": 2,
+        "solved": 1,
+        "checked": 1,
+        "passed": 1,
+        "score": 0.88,
+        "cost": 0.786,
+        "seconds": 345,
+        "turns": 31,
+        "measured": 0,
+        "proving": 0
+      }
+    },
+    {
+      "name": "exact-value-rec",
+      "input": "recording",
+      "with": {
+        "runs": 2,
+        "solved": 2,
+        "checked": 2,
+        "passed": 2,
+        "score": 1,
+        "cost": 0.342,
+        "seconds": 170,
+        "turns": 13,
+        "measured": 2,
+        "proving": 2
+      },
+      "without": {
+        "runs": 2,
+        "solved": 1,
+        "checked": 1,
+        "passed": 1,
+        "score": 0.63,
+        "cost": 1.224,
+        "seconds": 625,
+        "turns": 87,
+        "measured": 0,
+        "proving": 0
+      }
+    },
+    {
+      "name": "expensive-render-rec",
+      "input": "recording",
+      "with": {
+        "runs": 2,
+        "solved": 2,
+        "checked": 2,
+        "passed": 2,
+        "score": 1,
+        "cost": 0.247,
+        "seconds": 116,
+        "turns": 9,
+        "measured": 2,
+        "proving": 2
+      },
+      "without": {
+        "runs": 2,
+        "solved": 2,
+        "checked": 2,
+        "passed": 2,
+        "score": 1,
+        "cost": 0.73,
+        "seconds": 344,
+        "turns": 51,
+        "measured": 0,
+        "proving": 0
+      }
+    },
+    {
+      "name": "field-state-rec",
+      "input": "recording",
+      "with": {
+        "runs": 2,
+        "solved": 2,
+        "checked": 0,
+        "passed": 0,
+        "score": 0.75,
+        "cost": 0.631,
+        "seconds": 291,
+        "turns": 29,
+        "measured": 2,
+        "proving": 2
+      },
+      "without": {
+        "runs": 2,
+        "solved": 1,
+        "checked": 0,
+        "passed": 0,
+        "score": 0.75,
+        "cost": 1.024,
+        "seconds": 585,
+        "turns": 60,
+        "measured": 0,
+        "proving": 0
+      }
+    },
+    {
+      "name": "form-watch",
+      "input": "complaint",
+      "with": {
+        "runs": 2,
+        "solved": 2,
+        "checked": 2,
+        "passed": 2,
+        "score": 1,
+        "cost": 0.43,
+        "seconds": 201,
+        "turns": 13,
+        "measured": 2,
+        "proving": 2
+      },
+      "without": {
+        "runs": 2,
+        "solved": 1,
+        "checked": 1,
+        "passed": 1,
+        "score": 0.88,
+        "cost": 0.824,
+        "seconds": 420,
+        "turns": 49,
+        "measured": 0,
+        "proving": 0
+      }
+    },
+    {
+      "name": "form-watch-rec",
+      "input": "recording",
+      "with": {
+        "runs": 2,
+        "solved": 2,
+        "checked": 2,
+        "passed": 2,
+        "score": 1,
+        "cost": 0.369,
+        "seconds": 170,
+        "turns": 9,
+        "measured": 2,
+        "proving": 2
+      },
+      "without": {
+        "runs": 2,
+        "solved": 0,
+        "checked": 0,
+        "passed": 0,
+        "score": 0.75,
+        "cost": 0.84,
+        "seconds": 415,
+        "turns": 39,
+        "measured": 0,
+        "proving": 0
+      }
+    },
+    {
+      "name": "hook-reads-all-rec",
+      "input": "recording",
+      "with": {
+        "runs": 2,
+        "solved": 2,
+        "checked": 2,
+        "passed": 2,
+        "score": 1,
+        "cost": 0.267,
+        "seconds": 94,
+        "turns": 21,
+        "measured": 2,
+        "proving": 2
+      },
+      "without": {
+        "runs": 2,
+        "solved": 2,
+        "checked": 0,
+        "passed": 0,
+        "score": 0.75,
+        "cost": 0.814,
+        "seconds": 356,
+        "turns": 67,
+        "measured": 0,
+        "proving": 0
+      }
+    },
+    {
+      "name": "inline-context-rec",
+      "input": "recording",
+      "with": {
+        "runs": 2,
+        "solved": 2,
+        "checked": 2,
+        "passed": 2,
+        "score": 1,
+        "cost": 0.249,
+        "seconds": 99,
+        "turns": 17,
+        "measured": 2,
+        "proving": 2
+      },
+      "without": {
+        "runs": 2,
+        "solved": 2,
+        "checked": 1,
+        "passed": 1,
+        "score": 0.88,
+        "cost": 0.756,
+        "seconds": 376,
+        "turns": 65,
+        "measured": 0,
+        "proving": 0
+      }
+    },
+    {
+      "name": "memo-cache-slot-rec",
+      "input": "recording",
+      "with": {
+        "runs": 2,
+        "solved": 2,
+        "checked": 2,
+        "passed": 2,
+        "score": 1,
+        "cost": 0.384,
+        "seconds": 123,
+        "turns": 27,
+        "measured": 2,
+        "proving": 2
+      },
+      "without": {
+        "runs": 2,
+        "solved": 1,
+        "checked": 2,
+        "passed": 2,
+        "score": 1,
+        "cost": 0.978,
+        "seconds": 479,
+        "turns": 33,
+        "measured": 0,
+        "proving": 0
+      }
+    },
+    {
+      "name": "nested-component-rec",
+      "input": "recording",
+      "with": {
+        "runs": 2,
+        "solved": 2,
+        "checked": 2,
+        "passed": 2,
+        "score": 1,
+        "cost": 0.218,
+        "seconds": 98,
+        "turns": 4,
+        "measured": 2,
+        "proving": 2
+      },
+      "without": {
+        "runs": 2,
+        "solved": 2,
+        "checked": 2,
+        "passed": 2,
+        "score": 1,
+        "cost": 0.476,
+        "seconds": 221,
+        "turns": 33,
+        "measured": 0,
+        "proving": 0
+      }
+    },
+    {
+      "name": "new-array-selector-rec",
+      "input": "recording",
+      "with": {
+        "runs": 2,
+        "solved": 2,
+        "checked": 2,
+        "passed": 2,
+        "score": 1,
+        "cost": 0.324,
+        "seconds": 151,
+        "turns": 13,
+        "measured": 2,
+        "proving": 2
+      },
+      "without": {
+        "runs": 2,
+        "solved": 2,
+        "checked": 2,
+        "passed": 2,
+        "score": 1,
+        "cost": 0.776,
+        "seconds": 381,
+        "turns": 60,
+        "measured": 0,
+        "proving": 0
+      }
+    },
+    {
+      "name": "no-bug-rec",
+      "input": "control",
+      "with": {
+        "runs": 2,
+        "solved": 2,
+        "checked": 2,
+        "passed": 2,
+        "score": 1,
+        "cost": 0.424,
+        "seconds": 252,
+        "turns": 11,
+        "measured": 0,
+        "proving": 0
+      },
+      "without": {
+        "runs": 2,
+        "solved": 2,
+        "checked": 2,
+        "passed": 2,
+        "score": 1,
+        "cost": 1.074,
+        "seconds": 637,
+        "turns": 29,
+        "measured": 0,
+        "proving": 0
+      }
+    },
+    {
+      "name": "query-rest-rec",
+      "input": "recording",
+      "with": {
+        "runs": 2,
+        "solved": 2,
+        "checked": 2,
+        "passed": 2,
+        "score": 1,
+        "cost": 0.286,
+        "seconds": 133,
+        "turns": 19,
+        "measured": 2,
+        "proving": 2
+      },
+      "without": {
+        "runs": 2,
+        "solved": 2,
+        "checked": 1,
+        "passed": 1,
+        "score": 0.88,
+        "cost": 0.885,
+        "seconds": 449,
+        "turns": 73,
+        "measured": 0,
+        "proving": 0
+      }
+    },
+    {
+      "name": "router-in-layout-rec",
+      "input": "recording",
+      "with": {
+        "runs": 2,
+        "solved": 2,
+        "checked": 2,
+        "passed": 2,
+        "score": 1,
+        "cost": 0.301,
+        "seconds": 141,
+        "turns": 11,
+        "measured": 2,
+        "proving": 2
+      },
+      "without": {
+        "runs": 2,
+        "solved": 1,
+        "checked": 1,
+        "passed": 1,
+        "score": 0.75,
+        "cost": 0.818,
+        "seconds": 387,
+        "turns": 56,
+        "measured": 0,
+        "proving": 0
+      }
+    },
+    {
+      "name": "two-bugs-rec",
+      "input": "recording",
+      "with": {
+        "runs": 2,
+        "solved": 1,
+        "checked": 1,
+        "passed": 0,
+        "score": 0.7,
+        "cost": 0.307,
+        "seconds": 154,
+        "turns": 14,
+        "measured": 2,
+        "proving": 2
+      },
+      "without": {
+        "runs": 2,
+        "solved": 0,
+        "checked": 0,
+        "passed": 0,
+        "score": 0.4,
+        "cost": 0.849,
+        "seconds": 431,
+        "turns": 54,
+        "measured": 0,
+        "proving": 0
+      }
+    },
+    {
+      "name": "whole-object-rec",
+      "input": "recording",
+      "with": {
+        "runs": 2,
+        "solved": 2,
+        "checked": 2,
+        "passed": 2,
+        "score": 1,
+        "cost": 0.269,
+        "seconds": 92,
+        "turns": 21,
+        "measured": 2,
+        "proving": 2
+      },
+      "without": {
+        "runs": 2,
+        "solved": 2,
+        "checked": 2,
+        "passed": 2,
+        "score": 1,
+        "cost": 0.694,
+        "seconds": 322,
+        "turns": 53,
+        "measured": 0,
+        "proving": 0
+      }
+    }
+  ]
+}

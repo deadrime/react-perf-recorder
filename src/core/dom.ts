@@ -1,7 +1,45 @@
-import { fiberFromNode, isHost, Tag, type Fiber } from './fiber';
+import { fiberFromNode, isComposite, isHost, Tag, type Fiber } from './fiber';
 
 /** Whether a component changed something on the screen: the set holds one half of each fiber pair. */
 export const touchedHas = (touched: Set<Fiber>, f: Fiber) => touched.has(f) || (f.alternate !== null && touched.has(f.alternate));
+
+/**
+ * The component whose render made a node's element — its owner in a development build, whatever wraps the element
+ * where it is mounted (a provider, a Card) — else the nearest component above it. A text node goes by its element.
+ */
+function ownerOf(node: Node): Fiber | null {
+  let f = fiberFromNode(node);
+  while (f && f.tag === Tag.HostText) f = f.return;
+  // React 19 can put a server component's info here instead of a fiber.
+  const owner = f && isHost(f) ? f._debugOwner : null;
+  if (owner && typeof owner.tag === 'number') return owner;
+  for (; f; f = f.return) if (isComposite(f)) return f;
+  return null;
+}
+
+const isElement = (v: unknown) => typeof v === 'object' && v !== null && '$$typeof' in v;
+
+/**
+ * Whether a component that rendered got a new value in its props: a function, `children` or an element made anew
+ * each render is not one. Its two halves hold the props before and after.
+ */
+function gotNewValue(f: Fiber): boolean {
+  const next = f.memoizedProps as Record<string, unknown> | null;
+  const prev = f.alternate?.memoizedProps as Record<string, unknown> | null | undefined;
+  if (!next || !prev || next === prev) return false;
+  for (const key of new Set([...Object.keys(prev), ...Object.keys(next)])) {
+    const [a, b] = [prev[key], next[key]];
+    if (key === 'children' || Object.is(a, b) || typeof a === 'function' || typeof b === 'function') continue;
+    if (!isElement(a) && !isElement(b)) return true;
+  }
+  return false;
+}
+
+/** The component that passed `f` its props, when they carried a new value: its render made the change too. */
+function passerOf(f: Fiber): Fiber | null {
+  const owner = f._debugOwner;
+  return owner && typeof owner.tag === 'number' && gotNewValue(f) ? owner : null;
+}
 
 export interface DomCounts {
   text: number;
@@ -36,8 +74,15 @@ export class DomWatcher {
     });
   }
 
+  /**
+   * The components whose own elements changed in the last `takeForCommit`, and the ones that passed them the new
+   * value in props.
+   */
+  own = new Set<Fiber>();
+
   takeForCommit(): Set<Fiber> {
     const touched = new Set<Fiber>();
+    this.own = new Set<Fiber>();
     if (this.observer) this.consume(this.observer.takeRecords(), touched);
     return touched;
   }
@@ -77,6 +122,7 @@ export class DomWatcher {
 
   /** One half of each fiber pair is enough, as readers check both; host fibers are skipped, nobody asks about them. */
   private mark(node: Node, touched: Set<Fiber>) {
+    for (let owner = ownerOf(node); owner && !touchedHas(this.own, owner); owner = passerOf(owner)) this.own.add(owner);
     for (let f = fiberFromNode(node); f; f = f.return) {
       if (isHost(f) || f.tag === Tag.HostText) continue;
       if (touchedHas(touched, f)) return;

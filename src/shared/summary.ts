@@ -9,6 +9,8 @@ export interface RootLine {
   instances: number;
   perHit: number;
   noDomChange: number;
+  /** Hits that changed none of the root's own elements, when more than `noDomChange`: the change was below it. */
+  ownDomUnchanged?: number;
   /** Components mounted under the root: remounts on every hit point at a component declared in render or a new key. */
   mounts?: number;
   renderMsPerHit?: number;
@@ -204,20 +206,22 @@ export function stepParts(step: WayStep): Array<{ label?: string; text: string; 
   return parts;
 }
 
-const stepText = (step: WayStep) =>
+export const stepText = (step: WayStep) =>
   stepParts(step)
     .map((p) => (p.label ? `${p.label} ${p.text}` : p.text))
     .join(' · ');
 
 export function wayOf(rec: Pick<RecordingV2, 'roots' | 'outsideRoots' | 'reasons'>, links: ChainLink[]): { cause?: string; steps: WayStep[] } {
   const reasons = reasonsById(rec.reasons);
-  const root = links[0]?.root !== undefined ? [...rec.roots, ...rec.outsideRoots][links[0].root] : undefined;
+  const all = [...rec.roots, ...rec.outsideRoots];
+  const root = links[0]?.root !== undefined ? all[links[0].root] : undefined;
   const cause = root?.causes.find(([key]) => key !== 'core:none')?.[0];
+  // A root nested in another's cascade sits mid-way: every root's link names its state by its own hooks.
   const steps = links.map(
-    (link, i): WayStep =>
+    (link): WayStep =>
       link.skipped
         ? { name: '…', skipped: link.skipped }
-        : stepOf(link.name, link.reason !== undefined ? reasons.get(link.reason) : undefined, i === 0 ? root : undefined)
+        : stepOf(link.name, link.reason !== undefined ? reasons.get(link.reason) : undefined, link.root !== undefined ? all[link.root] : undefined)
   );
   return { ...(cause ? { cause } : {}), steps };
 }
@@ -270,6 +274,10 @@ export function waysOf(rec: Pick<RecordingV2, 'roots' | 'outsideRoots' | 'reason
 export interface CascadeNode {
   step: WayStep;
   n: number;
+  /** Milliseconds its renders took with their subtrees, when the build times renders. */
+  ms?: number;
+  /** Of those, its own: less every child link's, those left out of the record too. */
+  self?: number;
   children: CascadeNode[];
 }
 
@@ -283,11 +291,12 @@ export function cascadeOf(
   const reasons = reasonsById(rec.reasons);
   const roots = [...rec.roots, ...rec.outsideRoots];
   const byId = new Map<number, CascadeNode>();
-  for (const [id, n] of commit.ways) {
+  for (const [id, n, ms, self] of commit.ways) {
     const node = nodes[id];
     if (!node) continue;
     const reason = node.reason !== undefined ? reasons.get(node.reason) : undefined;
-    byId.set(id, { step: stepOf(node.name, reason, node.root !== undefined ? roots[node.root] : undefined), n, children: [] });
+    const step = stepOf(node.name, reason, node.root !== undefined ? roots[node.root] : undefined);
+    byId.set(id, { step, n, ...(ms !== undefined ? { ms } : {}), ...(self !== undefined ? { self } : {}), children: [] });
   }
   const top: CascadeNode[] = [];
   for (const [id, entry] of byId) {
@@ -309,7 +318,8 @@ export function cascadeLines(tree: CascadeNode[], max = 15): string[] {
     for (const entry of list) {
       if (lines.length >= max) return;
       const why = stepText(entry.step);
-      lines.push(`${'  '.repeat(depth)}${entry.step.name}${why ? ` · ${why}` : ''}${entry.n > 1 ? ` ×${entry.n}` : ''}`);
+      const ms = entry.ms !== undefined ? ` ${entry.ms}ms` : '';
+      lines.push(`${'  '.repeat(depth)}${entry.step.name}${why ? ` · ${why}` : ''}${entry.n > 1 ? ` ×${entry.n}` : ''}${ms}`);
       walk(entry.children, depth + 1);
     }
   };
@@ -371,6 +381,7 @@ export function rootLine(root: RootStat, durationMs: number, reasons: Map<number
     instances: root.instances,
     perHit: root.perHit,
     noDomChange: root.noDomChange,
+    ...(root.ownDomUnchanged ? { ownDomUnchanged: root.ownDomUnchanged } : {}),
     ...(root.mounts ? { mounts: root.mounts } : {}),
     ...(root.renderMs ? { renderMsPerHit: +(root.renderMs / Math.max(1, root.hits)).toFixed(2) } : {}),
     reasons: mergeSameContent(root.reasons.map(([id, n]) => [reasonLine(root, reasons.get(id), n, mode).replace(/^\d+× /, ''), n]))
@@ -383,6 +394,12 @@ export function rootLine(root: RootStat, durationMs: number, reasons: Map<number
 
 /** Why a memo hook remembers nothing, in words: which dependency moves, and whether only its reference does. */
 export function memoWhy(m: MemoHookStat): string {
+  // A package's own memo, e.g. zustand's around an inline selector: a recompute, not a render, and the app's to
+  // change only when what it passes does heavy work.
+  if (m.info?.library)
+    return `inside ${m.info.library}${
+      m.info.libraryAt !== undefined && m.info.path?.[m.info.libraryAt] ? `'s ${m.info.path[m.info.libraryAt]}` : ''
+    }: what the call passes is new on every render, which costs the library a recompute, not a render — it matters only if that argument does heavy work`;
   if (m.noDeps) return 'no dependency array: it runs on every render';
   const dep = m.deps[0];
   if (!dep) return 'its dependencies changed';

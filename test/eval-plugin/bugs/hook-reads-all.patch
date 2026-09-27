@@ -1,0 +1,12 @@
+--- a/src/lib/channel.ts
++++ b/src/lib/channel.ts
+@@ -1,6 +1,7 @@
+ import { useChatStore, type Chat } from '../store/chat';
+ 
+-/** The channel's state as components read it: through a selector, so each reads only its part. */
++/** The channel's state as components read it. */
+ export function useChannel<T>(select: (chat: Chat) => T): T {
+-  return useChatStore(select);
++  const chat = useChatStore();
++  return select(chat);
+ }

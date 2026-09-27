@@ -141,21 +141,30 @@ header .live { flex: 1; color: var(--muted-soft); white-space: nowrap; overflow:
 .tl-label { display: flex; align-items: center; gap: 4px; font-size: 10px; line-height: 1; color: var(--label); overflow: hidden; white-space: nowrap; }
 .tl-label .tl-name { overflow: hidden; text-overflow: ellipsis; }
 .tl-label .muted { margin-left: auto; font-size: 9px; }
-.tl-scroll { flex: 1; overflow-x: auto; overflow-y: hidden; cursor: grab; touch-action: pan-y; }
+/* Moved by dragging, the wheel and the overview's box: a scrollbar of its own would only repeat them, and in the
+   system's colours. */
+.tl-scroll { flex: 1; overflow-x: auto; overflow-y: hidden; cursor: grab; touch-action: pan-y; scrollbar-width: none; }
+.tl-scroll::-webkit-scrollbar { display: none; }
 .tl-scroll:active { cursor: grabbing; }
 .tl-strip { position: relative; min-width: 100%; padding-bottom: 12px; }
 .tl-grid { position: absolute; top: 0; bottom: 12px; width: 1px; background: var(--grid); }
 .tl-cursor { position: absolute; top: 0; bottom: 12px; width: 1px; z-index: 3; transform: translateX(-50%); background: color-mix(in srgb, var(--text-strong) 55%, transparent); pointer-events: none; }
 .tl-lane { position: relative; box-shadow: inset 0 -1px 0 var(--rule-soft); }
-/* The colour is the content box and is exactly as wide as the commit; the padding around it is the part that catches the pointer. */
-.tl-lane .tl-bar { position: absolute; bottom: 0; box-sizing: content-box; min-width: 2px; margin-left: -4px; padding: 0 4px; border: 0; border-radius: 1px; background-clip: content-box; cursor: pointer; }
-.tl-bar:hover { filter: brightness(1.35); }
-.tl-bar[data-picked="true"] { filter: brightness(1.6); }
+/* A bar is exactly as wide as the commit: a solid top edge and a fill under it, so a long commit zoomed in is a
+   tinted block rather than a slab of colour. The part that catches the pointer is wider, around it. */
+.tl-lane .tl-bar { position: absolute; bottom: 0; box-sizing: border-box; min-width: 3px; padding: 0; border: 0; border-top: 2px solid var(--bar);
+  border-radius: 1px; background: color-mix(in srgb, var(--bar) 35%, transparent); cursor: pointer; }
+.tl-lane .tl-bar::before { content: ''; position: absolute; inset: -2px -4px 0; }
+.tl-bar:hover { background: color-mix(in srgb, var(--bar) 50%, transparent); }
+/* Picked is more than hovered: a denser fill, and full opacity, so a faint bar's ring shows too. */
+.tl-bar[data-picked="true"] { background: color-mix(in srgb, var(--bar) 70%, transparent); outline: 1px solid var(--text-strong); opacity: 1 !important; }
 .tl-band { position: absolute; top: 0; bottom: 12px; transform: translateX(-50%); border-radius: 2px; background: color-mix(in srgb, var(--text-strong) 9%, transparent); pointer-events: none; }
 .tl-strip[data-lit="true"] .tl-bar:not([data-lit="true"]) { opacity: .25 !important; }
 .tl-actions { box-shadow: inset 0 -1px 0 var(--rule); }
 .tl-mark { position: absolute; top: 3px; height: 7px; min-width: 3px; padding: 0; border: 0; border-radius: 2px; background: var(--mark); cursor: pointer; }
-.tl-mark:hover, .tl-mark[data-picked="true"] { background: var(--text-strong); }
+/* An action runs for seconds and its bar can be the width of the tracks: picked, it takes the accent, not white. */
+.tl-mark:hover { background: color-mix(in srgb, var(--mark) 70%, var(--text-strong)); }
+.tl-mark[data-picked="true"] { background: color-mix(in srgb, var(--accent) 70%, transparent); }
 .tl-axis { position: relative; height: 12px; }
 .tl-tick { position: absolute; top: 1px; color: var(--faint); font-size: 9px; transform: translateX(-50%); white-space: nowrap; }
 .tl-tick[data-first="true"] { transform: none; }
@@ -167,6 +176,14 @@ header .live { flex: 1; color: var(--muted-soft); white-space: nowrap; overflow:
 .tl-causes { margin: 3px 0; }
 .tl-row { display: grid; grid-template-columns: 52px 1fr; align-items: baseline; gap: 6px; margin: 4px 0; }
 .tl-row-label { color: var(--muted); font-size: 11px; }
+/* The commit's render time as React DevTools draws it: a row a level, a bar as wide as it took. */
+.tl-row.flame { align-items: start; }
+.flame-chart { position: relative; min-width: 0; margin: 2px 0 4px; }
+.flame-bar { position: absolute; height: 17px; overflow: hidden; border-radius: 3px; box-sizing: border-box; border: 1px solid var(--card);
+  background: color-mix(in srgb, var(--accent) calc(var(--heat) * 100%), var(--sunken)); cursor: default; }
+.flame-bar[data-equal="true"] { background: color-mix(in srgb, var(--warn) calc(var(--heat) * 100%), var(--sunken)); }
+.flame-bar[data-hot="true"] .flame-label { color: #15151a; }
+.flame-label { display: block; padding: 0 4px; font-size: 10px; line-height: 15px; color: var(--text-strong); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cascade-tree { margin: 0; padding: 0; list-style: none; min-width: 0; }
 .cascade-row { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px; padding: 1px 0; }
 .cascade-arrow { color: var(--faint); }
@@ -192,6 +209,8 @@ button.scope:disabled { cursor: default; }
 header .highlight-toggle, header .fast-toggle { flex: none; cursor: pointer; }
 header .fast-toggle[hidden] { display: none; }
 button.icon { padding: 3px 7px; }
+/* An icon button is as wide whatever it shows: ⧉ turning into ✓ must not move the buttons after it. */
+.area-pill > button.icon { width: 28px; padding: 3px 0; }
 /* The area is one pill: Pick, or the area's name with copy and back-to-the-whole-app beside it. */
 .area-pill { display: inline-flex; align-items: stretch; min-width: 0; border: 1px solid var(--edge-strong); border-radius: 6px; background: var(--button); overflow: hidden; }
 .area-pill > button { display: inline-flex; align-items: center; justify-content: center; gap: 5px; border: 0; border-radius: 0; background: none; }
@@ -218,8 +237,7 @@ button.icon { padding: 3px 7px; }
 .memo-why { margin: 2px 0 2px; color: var(--text-2); }
 .memo-why code { color: var(--text-strong); }
 .memo .chain { color: var(--muted); font-size: 11px; }
-.memo .site { width: 100%; color: var(--accent); }
-.memo .site .copy-text { flex: 1; }
+.memo .site { max-width: 100%; color: var(--accent); }
 .memo .code { margin: 3px 0 1px; padding: 2px 8px; border-radius: 4px; background: var(--sunken); color: var(--label); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cmp { border: 1px solid var(--rule); border-radius: 8px; background: var(--raised); padding: 6px 10px 8px; }
 .cmp-head { display: flex; justify-content: space-between; padding: 0 0 4px; font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
@@ -337,15 +355,15 @@ button.reason-head { width: 100%; padding: 0; border: 0; background: none; font:
 .reason-body .sel { color: var(--text-2); word-break: break-all; }
 .reason-body .chain { color: var(--accent-soft); word-break: break-word; }
 /* A line that copies what it says: the text, and at its right an icon that shows on hover and ticks when it worked. */
-.copy-line { display: flex; align-items: baseline; gap: 6px; min-width: 0; padding: 0; border: 0; background: none; text-align: left; }
+.copy-line { display: inline-flex; align-items: baseline; gap: 6px; min-width: 0; padding: 0; border: 0; background: none; text-align: left; }
 .copy-line:hover { background: none; }
 .copy-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .copy-line:hover .copy-text { text-decoration: underline; }
-.copy-mark { flex: none; visibility: hidden; color: var(--muted); font-size: 11px; }
+/* The mark keeps its width when ⧉ turns into ✓, so nothing next to it moves. */
+.copy-mark { flex: none; display: inline-block; width: 1.1em; text-align: center; visibility: hidden; color: var(--muted); font-size: 11px; }
 .copy-line:hover .copy-mark, .copy-line:focus-visible .copy-mark, .copy-line[data-copied="true"] .copy-mark { visibility: visible; }
 .copy-line[data-copied="true"] .copy-mark { color: var(--good); }
-.reason-body .site { width: 100%; color: var(--accent); }
-.reason-body .site .copy-text { flex: 1; }
+.reason-body .site { max-width: 100%; color: var(--accent); }
 .reason-body .code { margin: 3px 0 1px 8px; padding: 2px 8px; border-radius: 4px; background: var(--sunken); color: var(--label); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* A warning of the recording: it colours every number above it, so it is drawn to be read first. */
@@ -378,14 +396,12 @@ button.reason-head { width: 100%; padding: 0; border: 0; background: none; font:
 .picker li .toggle:hover { color: var(--text-strong); }
 .picker li .name { flex: none; white-space: nowrap; }
 .picker li .src { flex: none; color: var(--muted); margin-left: auto; padding-left: 8px; white-space: nowrap; }
-/* The row's own buttons show on hover and on the active row, so the list stays quiet. */
-.picker li .copy, .picker li .watch-toggle { flex: none; margin-left: 8px; padding: 1px 4px; border-radius: 4px; font-size: 14px; line-height: 16px; color: var(--muted); visibility: hidden; }
-.picker li .watch-toggle { padding-right: 2px; }
-.picker li .copy { margin-left: -4px; padding-left: 2px; }
+/* The row's own buttons show on hover and on the active row; each one a fixed square, so ✓ takes the place of ⧉. */
+.picker li .copy, .picker li .watch-toggle { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; margin-left: 4px; padding: 0; border-radius: 4px; font-size: 13px; line-height: 1; color: var(--muted); visibility: hidden; }
 .picker li .watch-toggle[data-on="true"] { visibility: visible; color: var(--number); }
 .picker li:hover .copy, .picker li[data-active="true"] .copy,
 .picker li:hover .watch-toggle, .picker li[data-active="true"] .watch-toggle { visibility: visible; }
-.picker li .copy:hover, .picker li .watch-toggle:hover { color: var(--text-strong); background: var(--button-hover); }
+.picker li .copy:hover, .picker li .watch-toggle:hover { color: var(--text-strong); }
 .picker li .copy[data-copied="true"] { visibility: visible; color: var(--good); }
 button[data-copied="true"] { color: var(--good); }
 

@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -165,7 +166,46 @@ async function launch(chromium: Playwright['chromium'], headless: boolean) {
   }
 }
 
-async function runModule(file: string, page: PageLike) {
+/** A single line with no spaces that ends like a module file: meant as a path, whether or not it is there. */
+const looksLikePath = (spec: string) => /^[^\s]+\.(m|c)?[jt]s$/.test(spec.trim());
+
+/** Relative imports as they would read from the project, where the agent wrote them from, not from `scripts/`. */
+const fromProject = (code: string) =>
+  code.replace(
+    /(\bfrom\s*|\bimport\s*)(['"])(\.{1,2}\/[^'"]+)\2/g,
+    (_, lead, quote, spec) => `${lead}${quote}${pathToFileURL(path.resolve(spec)).href}${quote}`
+  );
+
+/**
+ * A path, or the module itself: agents pass the code inline as often as a file — the whole module, a CommonJS
+ * `module.exports =` one, or only the body of `async (page) => {…}`. Inline code is written to `scripts/` in the
+ * recordings folder: a bare import finds the project's packages from there, and a setup kept for replay stays.
+ */
+export function moduleFile(spec: string, dir: string): string {
+  if (fs.existsSync(path.resolve(spec))) return spec;
+  if (looksLikePath(spec)) throw new Error(`no such file: ${path.resolve(spec)} — a path is taken from ${process.cwd()}`);
+  if (!/\n|=>|\bpage\./.test(spec)) return spec;
+  let code: string;
+  if (/export\s+default/.test(spec)) code = spec;
+  else if (/module\.exports\s*=/.test(spec)) code = spec.replace(/module\.exports\s*=/, 'export default');
+  else if (/^\s*(async\s+)?(function\b|\([^)]*\)\s*=>|\w+\s*=>)/.test(spec)) code = `export default ${spec}\n`;
+  else {
+    // A body's own imports cannot stay inside the function it becomes: they go above it.
+    const lines = spec.split('\n');
+    let at = 0;
+    while (at < lines.length && (/^\s*import\s[^(]/.test(lines[at]) || !lines[at].trim())) at++;
+    code = `${lines.slice(0, at).join('\n')}\nexport default async (page) => {\n${lines.slice(at).join('\n')}\n};\n`.replace(/^\n/, '');
+  }
+  code = fromProject(code);
+  const scripts = path.join(dir, 'scripts');
+  fs.mkdirSync(scripts, { recursive: true });
+  const file = path.join(scripts, `rpr-module-${createHash('sha1').update(code).digest('hex').slice(0, 12)}.mjs`);
+  fs.writeFileSync(file, code);
+  return file;
+}
+
+async function runModule(spec: string, page: PageLike, dir: string) {
+  const file = moduleFile(spec, dir);
   // The server lives for the whole session and Node keeps a module by its URL: an edited script would run as it was.
   const resolved = path.resolve(file);
   const module = (await import(/* @vite-ignore */ `${pathToFileURL(resolved).href}?v=${fs.statSync(resolved).mtimeMs}`)) as {
@@ -247,7 +287,7 @@ export async function recordPage(options: RecordPageOptions, sessionsDir: string
     }
     // A link that signs the browser in — `/debug/<jwt>`, a magic link — is opened first and is never recorded.
     if (options.via) await page.goto(options.via, { waitUntil: 'load' });
-    if (options.setup) await runModule(options.setup, page);
+    if (options.setup) await runModule(options.setup, page, sessionsDir);
     const leftAt = page.url();
     if (stay) {
       if (!/^https?:/.test(leftAt)) throw new Error('setup left no page open: goto the app in it, or pass url');
@@ -314,6 +354,8 @@ export async function recordPage(options: RecordPageOptions, sessionsDir: string
         );
       }
     } else {
+      // The engine is in the page before the app: an app still loading has no React root yet to record.
+      await page.waitForFunction(`${ENGINE}.engine.componentNames(1).length > 0`, undefined, { timeout: Math.min(timeout, 15_000) }).catch(() => {});
       try {
         await page.evaluate(`${ENGINE}.engine.start(${JSON.stringify(start)})`);
       } catch (error) {
@@ -339,7 +381,7 @@ export async function recordPage(options: RecordPageOptions, sessionsDir: string
         await page.evaluate(`${ENGINE}.replay(${JSON.stringify(options.replay)})`);
         if (options.replay.skipped.length) warnings.push(`not replayed: ${options.replay.skipped.join('; ')}`);
       } else if (options.script) {
-        await runModule(options.script, page);
+        await runModule(options.script, page, sessionsDir);
       } else {
         await page.waitForTimeout(ms);
       }
@@ -350,7 +392,8 @@ export async function recordPage(options: RecordPageOptions, sessionsDir: string
     const rec = saved.recording;
     // A replay does again what the person did, not what prepared the page: the setup stays with the recording for it.
     const at = saved.id && path.join(sessionsDir, saved.id);
-    if (at && options.setup && fs.existsSync(at)) fs.writeFileSync(path.join(at, SETUP_FILE), JSON.stringify({ setup: path.resolve(options.setup) }));
+    if (at && options.setup && fs.existsSync(at))
+      fs.writeFileSync(path.join(at, SETUP_FILE), JSON.stringify({ setup: path.resolve(moduleFile(options.setup, sessionsDir)) }));
     return {
       id: saved.id,
       url: safeUrl(page.url()),

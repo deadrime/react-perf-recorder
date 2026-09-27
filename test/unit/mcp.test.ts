@@ -2,9 +2,10 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
-import { installedChromium } from '../../src/mcp/record';
+import { installedChromium, moduleFile } from '../../src/mcp/record';
 import { createServer, section } from '../../src/mcp/server';
 import type { RecordingV2, SessionEvent, SessionMeta } from '../../src/shared/schema';
 
@@ -165,5 +166,45 @@ describe('installedChromium', () => {
     expect(installedChromium(root)).toBe(path.join(root, 'chromium-1194', 'chrome-linux', 'chrome'));
     expect(installedChromium(path.join(root, 'none'))).toBeUndefined();
     fs.rmSync(root, { recursive: true, force: true });
+  });
+});
+
+describe('moduleFile', () => {
+  const dir = () => fs.mkdtempSync(path.join(os.tmpdir(), 'rpr-module-test-'));
+
+  it('takes a path as it is, and code — a module, a CommonJS one, or a body — as a module of its own', async () => {
+    const at = dir();
+    const file = path.join(at, 'scenario.mjs');
+    fs.writeFileSync(file, 'export default async () => {};');
+    expect(moduleFile(file, at)).toBe(file);
+    const read = (spec: string) => fs.readFileSync(moduleFile(spec, at), 'utf8');
+    expect(read("export default async (page) => {\n  await page.click('#send');\n};")).toContain("page.click('#send')");
+    expect(read("module.exports = async (page) => {\n  await page.click('#a');\n};")).toMatch(/^export default async/);
+    expect(read("await page.click('#b');")).toBe("export default async (page) => {\nawait page.click('#b');\n};\n");
+    // The function itself, as an agent writes it inline: the module exports it rather than wrapping it unrun.
+    expect(read("async (page) => { await page.click('#c'); }")).toBe("export default async (page) => { await page.click('#c'); }\n");
+  });
+
+  it('writes inline code into the recordings folder, where the project and its packages are found', async () => {
+    const at = dir();
+    const file = moduleFile("await page.click('#b');", at);
+    expect(path.dirname(file)).toBe(path.join(at, 'scripts'));
+  });
+
+  it("lifts a body's imports above the function, and reads a relative one from the project", async () => {
+    const at = dir();
+    const code = fs.readFileSync(
+      moduleFile("import { expect } from '@playwright/test';\nimport { login } from './e2e/helpers.mjs';\nawait login(page);", at),
+      'utf8'
+    );
+    expect(code.startsWith("import { expect } from '@playwright/test';\n")).toBe(true);
+    expect(code).toContain(`from '${pathToFileURL(path.resolve('e2e/helpers.mjs')).href}'`);
+    expect(code).toMatch(/export default async \(page\) => \{\nawait login\(page\);\n\};\n$/);
+    // It parses: the imports are not inside the function.
+    expect(() => new Function(code.replace(/^import .*$/gm, '').replace('export default', 'return'))).not.toThrow();
+  });
+
+  it('says a path that is not there is not there, rather than running it as code', () => {
+    expect(() => moduleFile('e2e/page.setup.mjs', dir())).toThrow(/no such file: .*e2e\/page\.setup\.mjs/);
   });
 });

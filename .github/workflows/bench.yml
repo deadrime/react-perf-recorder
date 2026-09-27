@@ -1,0 +1,32 @@
+name: bench
+
+# The agent benchmark's own checks, without an agent: every bug of the suite recorded as the person would, its root
+# among the first roots, its waste judged a failure, the clean app judged a fix. About a minute, one Vite and one
+# Chromium; the runs with agents stay manual.
+on:
+  push:
+    branches: [main, dev]
+    paths: ['src/**', 'test/eval-plugin/**', 'package.json', 'package-lock.json', '.github/workflows/bench.yml']
+  pull_request:
+    paths: ['src/**', 'test/eval-plugin/**', 'package.json', 'package-lock.json', '.github/workflows/bench.yml']
+
+jobs:
+  self-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # verify.mjs reads each recording back through the built CLI.
+      - run: npm run build
+      - id: playwright
+        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ steps.playwright.outputs.version }}
+      - run: npx playwright install --with-deps chromium
+      - run: node test/eval-plugin/verify.mjs --self-test

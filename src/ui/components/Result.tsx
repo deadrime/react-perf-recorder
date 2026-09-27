@@ -78,15 +78,21 @@ export function Result({
     const badges: Badge[] = [{ text: `×${root.hits}`, tone: 'count' }, { text: `${root.perHit}/hit` }];
     if (root.instances > 1) badges.push({ text: `${root.instances} inst` });
     if (root.noDomChange) badges.push({ text: `${root.noDomChange} wasted`, tone: 'warn' });
+    if (root.ownDomUnchanged)
+      badges.push({
+        text: `${root.ownDomUnchanged} for nothing`,
+        tone: 'warn',
+        title: 'Renders that changed none of its own elements, nor anything drawn from a value it passed: what changed below re-renders by itself',
+      });
     if (root.mounts) badges.push({ text: `${root.mounts} mounts` });
     if (root.renderMs) badges.push({ text: `${+(root.renderMs / Math.max(1, root.hits)).toFixed(2)}ms/hit` });
     return <StatCard key={root.key} name={root.name} source={root.source} badges={badges} reasons={stated(root, root)} openFirst={openFirst} />;
   };
 
-  // A root whose renders changed nothing on screen is the one to fix; with none, the one that rendered most is not
-  // called a cause — two clicks on a tab render a lot, and rightly.
-  const wasted = (r: RootStat) => r.noDomChange * r.perHit;
-  const suspect = roots.filter((r) => r.noDomChange > 0).sort((a, b) => wasted(b) - wasted(a))[0];
+  // A root whose renders changed nothing on screen, or nothing of its own, is the one to fix; with none, the one that
+  // rendered most is not called a cause — two clicks on a tab render a lot, and rightly.
+  const wasted = (r: RootStat) => (r.ownDomUnchanged ?? r.noDomChange) * r.perHit;
+  const suspect = roots.filter((r) => wasted(r) > 0).sort((a, b) => wasted(b) - wasted(a))[0];
   const lead = suspect ?? rec.roots[0] ?? rec.outsideRoots[0];
   const leadIsOutside = Boolean(lead) && rec.outsideRoots.includes(lead);
   const leadTitle = `${suspect ? 'Main cause · wasted renders' : 'Rendered most'}${leadIsOutside ? ' · from outside the area' : ''}`;
@@ -149,7 +155,7 @@ export function Result({
           id="memos"
           title="Memos that miss"
           note={`${rec.memos.filter((m) => m.recomputed === m.renders).length} every render · ${rec.memos.length}`}
-          open={rec.memos.some((m) => m.recomputed === m.renders)}
+          open={rec.memos.some((m) => m.recomputed === m.renders && !m.info?.library)}
         >
           <Memos memos={rec.memos} />
         </Fold>

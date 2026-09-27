@@ -83,6 +83,99 @@ describe('Recorder', () => {
     expect(rec.roots[0].noDomChange).toBe(1);
   });
 
+  it("tells a root whose own elements stayed from one whose child's did not", () => {
+    const store = createStore(() => ({ text: 'a' }));
+    const Line = ({ onEdit }: { onEdit: () => void }) => <span onClick={onEdit}>{useStore(store, (s) => s.text)}</span>;
+    // The form reads the text and draws a frame that never changes; the line under it reads the text itself, and a
+    // new function in its props is not a value the form had to render for.
+    const Form = () => {
+      useStore(store, (s) => s.text);
+      return (
+        <div className="frame">
+          <Line onEdit={() => {}} />
+        </div>
+      );
+    };
+    const Label = () => <b>{useStore(store, (s) => s.text)}</b>;
+    mount(
+      <>
+        <Form />
+        <Label />
+      </>
+    );
+    const { recorder } = makeRecorder();
+    recorder.start();
+    flush(() => store.setState({ text: 'b' }));
+    flush(() => store.setState({ text: 'c' }));
+    const rec = recorder.stop();
+
+    const form = rec.roots.find((r) => r.name === 'Form')!;
+    const label = rec.roots.find((r) => r.name === 'Label')!;
+    expect(form.noDomChange).toBe(0);
+    expect(form.ownDomUnchanged).toBe(2);
+    expect(label.noDomChange).toBe(0);
+    expect(label.ownDomUnchanged).toBeUndefined();
+  });
+
+  it('credits a root with what a child drew from a value it passed', () => {
+    const store = createStore(() => ({ text: 'a' }));
+    const Title = () => <i>limit</i>;
+    const title = <Title />;
+    const Stat = memo(({ label, value }: { label: ReactNode; value: string }) => (
+      <span>
+        {label} <b>{value}</b>
+      </span>
+    ));
+    // The hints read the text for the stat under them: their own frame stays, their render is what moved the stat.
+    const Hints = () => (
+      <div className="hints">
+        <Stat label={title} value={useStore(store, (s) => s.text)} />
+      </div>
+    );
+    mount(<Hints />);
+    const { recorder } = makeRecorder();
+    recorder.start();
+    flush(() => store.setState({ text: 'b' }));
+    flush(() => store.setState({ text: 'c' }));
+    const rec = recorder.stop();
+
+    const hints = rec.roots.find((r) => r.name === 'Hints')!;
+    expect({ hits: hints.hits, ownDomUnchanged: hints.ownDomUnchanged }).toEqual({ hits: 2, ownDomUnchanged: undefined });
+  });
+
+  it('credits a root with the elements its own render made, under a wrapper or a provider too', () => {
+    const store = createStore(() => ({ text: 'a' }));
+    const Ctx = createContext(0);
+    const Card = ({ children }: { children: ReactNode }) => <section className="card">{children}</section>;
+    // Both write the element that changes; a Card and a provider only hold it where it is mounted.
+    const InCard = () => (
+      <Card>
+        <span>{useStore(store, (s) => s.text)}</span>
+      </Card>
+    );
+    const InProvider = () => (
+      <Ctx.Provider value={1}>
+        <h1>{useStore(store, (s) => s.text)}</h1>
+      </Ctx.Provider>
+    );
+    mount(
+      <>
+        <InCard />
+        <InProvider />
+      </>
+    );
+    const { recorder } = makeRecorder();
+    recorder.start();
+    flush(() => store.setState({ text: 'b' }));
+    flush(() => store.setState({ text: 'c' }));
+    const rec = recorder.stop();
+
+    for (const name of ['InCard', 'InProvider']) {
+      const root = rec.roots.find((r) => r.name === name)!;
+      expect({ name, hits: root.hits, ownDomUnchanged: root.ownDomUnchanged }).toEqual({ name, hits: 2, ownDomUnchanged: undefined });
+    }
+  });
+
   it('a component that adds or removes rows under an element of its parent changed the DOM', () => {
     const store = createStore(() => ({ rows: ['a'] }));
     // The rows sit straight in the parent's <tbody>: the only DOM of Rows is the rows themselves.
@@ -260,7 +353,50 @@ describe('Recorder', () => {
     // The root itself has no chain: nothing above it.
     expect(rec.components.find((c) => c.name === 'Stats')!.chains).toBeUndefined();
     // Each commit keeps its cascade as a tree.
-    expect(cascadeLines(cascadeOf(rec, rec.commits.list[1]))).toEqual(['Stats · state #0', '  Line · prop online', '    Badge · prop count']);
+    const lines = cascadeLines(cascadeOf(rec, rec.commits.list[1])).map((line) => line.replace(/ [\d.]+ms$/, ''));
+    expect(lines).toEqual(['Stats · state #0', '  Line · prop online', '    Badge · prop count']);
+    // Each link's time holds its subtree's: a parent took at least as long as the child it rendered.
+    const [stats] = cascadeOf(rec, rec.commits.list[1]);
+    const line = stats.children[0];
+    expect(stats.ms).toBeGreaterThanOrEqual(line.ms!);
+    expect(line.ms).toBeGreaterThanOrEqual(line.children[0].ms!);
+  });
+
+  it('hangs a root that renders inside another root under it, and counts its time once', () => {
+    let set!: Setter;
+    const Ctx = createContext(0);
+    const Leaf = ({ v }: { v: number }) => <i>{v}</i>;
+    const Consumer = () => {
+      const v = useContext(Ctx);
+      return <Leaf v={v} />;
+    };
+    const Owner = ({ children }: { children: ReactNode }) => {
+      const [v, setV] = useState(0);
+      set = setV;
+      return <Ctx.Provider value={v}>{children}</Ctx.Provider>;
+    };
+    mount(
+      <Owner>
+        <Consumer />
+      </Owner>
+    );
+    const { recorder } = makeRecorder();
+    recorder.start();
+    flush(() => set(1));
+    const rec = recorder.stop();
+    const commit = rec.commits.list[0];
+    const [owner, ...others] = cascadeOf(rec, commit);
+    // One tree: Consumer is a root of its own, through the context, and it hangs under the root that rendered it.
+    expect(others).toEqual([]);
+    expect(owner.step.name).toBe('Owner');
+    expect(owner.children.map((node) => node.step.name)).toEqual(['Consumer']);
+    expect(owner.children[0].children.map((node) => node.step.name)).toEqual(['Leaf']);
+    expect(rec.roots.map((root) => root.name).sort()).toEqual(['Consumer', 'Owner']);
+    // The commit took what Owner took: Consumer's time is inside it, not added to it.
+    const ownerMs = commit.roots!.find((entry) => rec.roots[entry.i].name === 'Owner')!.ms!;
+    expect(commit.ms).toBeCloseTo(ownerMs, 2);
+    expect(owner.self!).toBeLessThanOrEqual(owner.ms!);
+    expect(owner.children[0].ms!).toBeLessThanOrEqual(owner.ms!);
   });
 
   it('keeps a way of twenty links whole, folds a longer one, and keeps none when recording fast', () => {

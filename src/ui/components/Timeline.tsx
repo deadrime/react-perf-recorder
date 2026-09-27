@@ -3,6 +3,7 @@ import type { JSX } from 'preact';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { ActionRecord, CommitRecord, RecordingV2 } from '../../shared/schema';
 import { actionText, cascadeOf, hookOf, reasonsById, type CascadeNode } from '../../shared/summary';
+import { Flame } from './Flame';
 import { ReasonLine, StepView } from './Stats';
 
 /**
@@ -26,6 +27,8 @@ export const causeColour = colourOf;
 const MIN_PX_PER_MS = 0.06;
 const STRIP_PX = 320;
 const BUCKET_PX = 2;
+/** The narrowest bar drawn: a quick commit still has to be seen; the area around it that takes the click is wider. */
+const MIN_BAR_PX = 3;
 const MIN_ZOOM = 1;
 const MAX_ZOOM = 30;
 /** A tick every ~70px, on a round number of milliseconds. */
@@ -49,6 +52,8 @@ interface Bar {
   /** The one worth opening: of the commits in the bar, the one that rendered most. */
   lead: number;
   title: string;
+  /** For a root's lane: its render time in the lead commit, when the build times renders. */
+  ms?: number;
 }
 
 interface Lane {
@@ -73,24 +78,29 @@ const baseScale = (durationMs: number, fitPx = STRIP_PX) => Math.max(MIN_PX_PER_
 
 /** A bar per column of pixels: several commits in one column become one bar that opens on the busiest of them. */
 function pack(
-  commits: Array<{ commit: CommitRecord; hits: number }>,
+  commits: Array<{ commit: CommitRecord; hits: number; ms?: number }>,
   scale: number,
   colour: (c: CommitRecord) => string,
   height: (hits: number) => number,
-  weight: (hits: number) => number = () => 1
+  weight: (hits: number, ms?: number) => number = () => 1
 ) {
   const byColumn = new Map<number, Bar & { top: number }>();
-  for (const { commit, hits } of commits) {
-    const x = Math.round((commit.atMs * scale) / BUCKET_PX) * BUCKET_PX;
-    const w = Math.max(2, Math.round((commit.ms ?? 0) * scale));
+  for (const { commit, hits, ms } of commits) {
+    // A commit is stamped when it lands, after React rendered it: the render is the time before that moment. Drawn
+    // from the stamp on, a long render would cover the commits that came after it.
+    const x = Math.round((Math.max(0, commit.atMs - (commit.ms ?? 0)) * scale) / BUCKET_PX) * BUCKET_PX;
+    // As wide as React took, what this lane is about (a root's own render) before the whole commit.
+    const w = Math.max(MIN_BAR_PX, Math.round((ms ?? commit.ms ?? 0) * scale));
     const bar = byColumn.get(x);
     if (!bar) {
       byColumn.set(x, {
         x,
         w,
         h: height(hits),
-        weight: weight(hits),
-        top: hits,
+        weight: weight(hits, ms),
+        // The commit a column opens on: the slowest where there are times, else the one that rendered most.
+        top: ms ?? hits,
+        ms,
         colour: colour(commit),
         ids: [commit.i],
         lead: commit.i,
@@ -100,12 +110,13 @@ function pack(
     }
     bar.ids.push(commit.i);
     bar.w = Math.max(bar.w, w);
-    if (hits > bar.top) {
-      bar.top = hits;
+    if ((ms ?? hits) > bar.top) {
+      bar.top = ms ?? hits;
       bar.lead = commit.i;
       bar.colour = colour(commit);
       bar.h = height(hits);
-      bar.weight = weight(hits);
+      bar.weight = weight(hits, ms);
+      bar.ms = ms;
     }
   }
   return [...byColumn.values()];
@@ -138,13 +149,16 @@ function layout(rec: RecordingV2, causeKeys: Map<number, string>, zoom: number, 
 
   // A lane per cascade root, in the order the report ranks them: where each one rendered, across the same time.
   const roots = rec.roots.slice(0, ROOT_LANES);
-  const byRoot = new Map<number, Array<{ commit: CommitRecord; hits: number }>>();
+  const byRoot = new Map<number, Array<{ commit: CommitRecord; hits: number; ms?: number }>>();
+  // The slowest render of any root: a root's bars are as bright as their time against it, so the slow ones stand out.
+  let slowest = 0;
   for (const commit of shown) {
     for (const entry of commit.roots ?? []) {
       if (entry.i >= roots.length) continue;
       const list = byRoot.get(entry.i) ?? [];
-      list.push({ commit, hits: entry.hits });
+      list.push({ commit, hits: entry.hits, ...(entry.ms !== undefined ? { ms: entry.ms } : {}) });
       byRoot.set(entry.i, list);
+      slowest = Math.max(slowest, entry.ms ?? 0);
     }
   }
   for (const [index, root] of roots.entries()) {
@@ -157,13 +171,13 @@ function layout(rec: RecordingV2, causeKeys: Map<number, string>, zoom: number, 
       note: `×${root.hits}`,
       height: ROOT_LANE_H,
       // A root either rendered in a commit or it did not, so every bar fills its lane and the columns of one moment
-      // line up; how many of its instances rendered is the brightness.
+      // line up. The brightness is its render time against the slowest root's; without times, how many instances.
       bars: pack(
         commits,
         scale,
         causeOf,
         () => ROOT_LANE_H - 1,
-        (hits) => 0.5 + 0.5 * Math.sqrt(hits / most)
+        (hits, ms) => (slowest ? 0.35 + 0.65 * Math.sqrt((ms ?? 0) / slowest) : 0.5 + 0.5 * Math.sqrt(hits / most))
       ),
     });
   }
@@ -171,7 +185,9 @@ function layout(rec: RecordingV2, causeKeys: Map<number, string>, zoom: number, 
   for (const lane of lanes) {
     for (const bar of lane.bars) {
       const commit = rec.commits.list[bar.lead];
-      bar.title = `${(commit.atMs / 1000).toFixed(2)}s · ${commit.renders} renders${bar.ids.length > 1 ? ` · ${bar.ids.length} commits` : ''}`;
+      const of = commit.ms !== undefined ? ` of ${commit.ms}ms` : '';
+      const own = bar.ms !== undefined ? ` · ${lane.label} ${+bar.ms.toFixed(2)}ms${of}` : '';
+      bar.title = `${(commit.atMs / 1000).toFixed(2)}s · ${commit.renders} renders${own}${bar.ids.length > 1 ? ` · ${bar.ids.length} commits` : ''}`;
     }
   }
 
@@ -253,6 +269,7 @@ function Cascade({ rec, commit }: { rec: RecordingV2; commit: CommitRecord }): J
   const tree = useMemo(() => cascadeOf(rec, commit), [rec, commit]);
   // Roots alone are the rows above already.
   if (!tree.some((node) => node.children.length)) return null;
+  const flame = <Flame tree={tree} />;
   const rows: JSX.Element[] = [];
   const walk = (list: CascadeNode[], depth: number) => {
     for (const node of list) {
@@ -275,12 +292,15 @@ function Cascade({ rec, commit }: { rec: RecordingV2; commit: CommitRecord }): J
   };
   walk(tree, 0);
   return (
-    <div class="tl-row cascade">
-      <span class="tl-row-label">cascade</span>
-      <ol class="cascade-tree" data-rpr="cascade">
-        {rows}
-      </ol>
-    </div>
+    <>
+      {flame}
+      <div class="tl-row cascade">
+        <span class="tl-row-label">cascade</span>
+        <ol class="cascade-tree" data-rpr="cascade">
+          {rows}
+        </ol>
+      </div>
+    </>
   );
 }
 
@@ -726,15 +746,15 @@ export function Timeline({
               <div class="tl-lane" key={lane.key} style={`height:${lane.height}px`}>
                 {lane.bars
                   .filter((bar) => onView(bar.x, bar.w))
+                  // The wide ones first, so the short commits inside a long one's span sit on top of it and take clicks.
+                  .sort((a, b) => b.w - a.w)
                   .map((bar) => (
                     <button
                       key={bar.x}
                       class="tl-bar"
                       data-picked={picked !== null && bar.ids.includes(picked) ? 'true' : undefined}
                       data-lit={lighting && bar.ids.some((i) => lit.has(i)) ? 'true' : undefined}
-                      // `background-color`, not the `background` shorthand: the shorthand would reset the clip that
-                      // keeps the colour off the padding, and the padding is the part that catches the pointer.
-                      style={`left:${bar.x}px;width:${bar.w}px;height:${bar.h}px;background-color:${bar.colour};opacity:${bar.weight}`}
+                      style={`left:${bar.x}px;width:${bar.w}px;height:${bar.h}px;--bar:${bar.colour};opacity:${bar.weight}`}
                       title={bar.title}
                       onClick={() => !panned.current && pickCommit(bar.lead)}
                     />

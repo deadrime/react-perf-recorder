@@ -148,7 +148,12 @@ export const BUGS: Record<Bug, BugCard> = {
 };
 
 const onThisPage = /^\/bug\/(.+)$/.exec(appPath())?.[1] ?? '';
-const enabled = new Set(onThisPage.split(',').filter(Boolean));
+// `/case/3` is `/bug/<the fourth bug>` with nothing on the page or in the url naming it: for the agent benchmark.
+const blindCase = /^\/case\/([\d,]+)$/.exec(appPath())?.[1];
+export const isBlindCase = blindCase !== undefined;
+const enabled = new Set(
+  isBlindCase ? blindCase!.split(',').map((i) => (Object.keys(BUGS) as Bug[])[Number(i)]) : onThisPage.split(',').filter(Boolean)
+);
 
 export const bug = (name: Bug) => enabled.has(name);
 

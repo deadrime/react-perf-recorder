@@ -1,7 +1,7 @@
 import { href, useNoPanel } from './base';
 import { ADVANCED } from './advanced';
 import { BASICS } from './basics';
-import { BUGS, SCENARIOS, enabledBugs } from './bugs';
+import { BUGS, SCENARIOS, enabledBugs, isBlindCase } from './bugs';
 
 /**
  * The fixture doubles as the demo: every seeded bug is a card that opens the app with that bug on, says what to do
@@ -146,6 +146,7 @@ export const Catalogue = () => {
 /** On every page but the front one: what is being shown here, and the way back to the cards. */
 export const BugStrip = ({ note }: { note?: string }) => {
   const on = enabledBugs();
+  if (isBlindCase) return null;
   return (
     <>
       <style>{STRIP_STYLES}</style>

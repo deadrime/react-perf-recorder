@@ -2,7 +2,7 @@ import { contextOf, isConsumerTag, isProviderTag, shownSiteOf, siteOf } from './
 import { mappedSite } from './sites';
 import { libraryOf } from './stack';
 
-export { captureRenderers, laneLabel, reactVersion, renderer, sourcesUnavailable, type Renderer } from './react-compat';
+export { captureRenderers, devtoolsHookAtLoad, laneLabel, reactVersion, renderer, sourcesUnavailable, type Renderer } from './react-compat';
 export { onSitesMapped, setSiteMapper, type Position, type SiteMapper } from './sites';
 
 export interface Hook {
@@ -49,6 +49,8 @@ export interface FiberRoot {
   containerInfo: Element;
   finishedLanes?: number;
   pendingLanes?: number;
+  /** Dev builds with a DevTools hook at load: the fibers that scheduled each pending lane's updates, a set a lane. */
+  pendingUpdatersLaneMap?: Array<Set<Fiber>>;
 }
 
 export const Tag = {

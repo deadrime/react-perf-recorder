@@ -1,0 +1,11 @@
+{
+  "name": "react-perf-recorder",
+  "description": "The shipped plugin (claude/) for claude plugin eval: the same agent and skill, and an MCP server told where the browsers and the sessions are, since an eval run passes only EVAL_* variables and moves HOME.",
+  "mcpServers": {
+    "react-perf-recorder": {
+      "command": "node",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/../../dist/cli.js", "mcp", "--dir", "${EVAL_RPR_DIR}"],
+      "env": { "PLAYWRIGHT_BROWSERS_PATH": "${EVAL_PLAYWRIGHT_BROWSERS_PATH}" }
+    }
+  }
+}

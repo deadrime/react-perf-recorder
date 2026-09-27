@@ -11,3 +11,7 @@ CONTEXT.md
 # The React 19 half of the test matrix; its lockfile is committed, its install is not
 test/react19/node_modules
 dist-pages
+
+# claude plugin eval output
+test/eval-plugin/evals/results/
+test/.eval-plugin-*/

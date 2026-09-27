@@ -8,6 +8,7 @@ import { hookChain, stateName, stepParts, type Way, type WayStep } from '../../s
 export interface Badge {
   text: string;
   tone?: 'count' | 'warn';
+  title?: string;
 }
 
 export interface StatReason {
@@ -215,7 +216,7 @@ export function StatCard({
             class="badge"
             key={badge.text}
             data-tone={badge.tone}
-            title={/ wasted$/.test(badge.text) ? 'Renders after which nothing in the DOM of that component changed' : undefined}
+            title={badge.title ?? (/ wasted$/.test(badge.text) ? 'Renders after which nothing in the DOM of that component changed' : undefined)}
           >
             {badge.text}
           </span>

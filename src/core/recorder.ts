@@ -16,6 +16,7 @@ import {
   type ReasonInfo,
   type ChainLink,
   type ChainNodeInfo,
+  type CommitWay,
 } from '../shared/schema';
 import { buildSegments, eventName, USER_EVENTS, type SegmentCommit } from '../shared/segments';
 import { safeUrl } from '../shared/url';
@@ -27,6 +28,7 @@ import { FrameWatcher } from './env/frames';
 import { trackHistory } from './env/navigations';
 import {
   mountedInPlace,
+  devtoolsHookAtLoad,
   findRoots,
   generatedSourceOf,
   hasProfileTimings,
@@ -52,6 +54,7 @@ import type { CauseEvent, PluginHost } from './plugins';
 import { didRender, hookTypeAt, parentReason, reasonsOf, snapshotOf, type Reason, type Snapshot } from './reasons';
 import { ScopeTracker, type ScopeHandle, type ScopeResolution } from './scope';
 import { updateOrigin, type UpdateOrigin } from './env/origin';
+import { reactWarningLines } from './env/react-warnings';
 import { runningTimer, runningTimerLibrary, setTimerSink } from './env/timers';
 
 export interface EngineConfig {
@@ -121,6 +124,7 @@ interface RootAgg {
   causes: Map<string, number>;
   lanes: Map<string, number>;
   noDomChange: number;
+  ownDomUnchanged: number;
   renderMs: number;
   mounts: number;
   library: boolean;
@@ -157,6 +161,8 @@ interface CommitState {
   renderMs: number;
   noDom: number;
   cascade: Map<RootAgg, number>;
+  /** Milliseconds each root took with its subtree in this commit, when the build times renders. */
+  rootMs: Map<RootAgg, number>;
   /** With sampled reasons: how many parent reasons each component has had worked out in this commit. */
   sampledParents: Map<ComponentAgg, number> | null;
   reasons: Map<RootAgg, Set<number>>;
@@ -165,8 +171,15 @@ interface CommitState {
   withoutDom: Set<Fiber>;
   mounted: Set<Fiber>;
   touched: Set<Fiber>;
-  /** Renders by chain link in this commit, its cascade as a tree; null when recording fast. */
-  ways: Map<number, number> | null;
+  /** The components whose own elements changed, not something under them. */
+  own: Set<Fiber>;
+  /**
+   * Renders by chain link in this commit, its cascade as a tree, and the milliseconds each link took with its
+   * subtree (`actualDuration`) when the build times renders; null when recording fast.
+   */
+  ways: Map<number, { n: number; ms?: number }> | null;
+  /** The build times this commit's renders: its time is recorded, a 0 included. */
+  timed: boolean;
 }
 
 /** The app's components above a fiber, nearest first, shared by every fiber below: text only when a root needs it. */
@@ -192,7 +205,9 @@ type StackItem = [
   rootKey: string | null,
   pending: [string, Fiber, boolean] | null,
   zone: string | null,
-  chain: number
+  chain: number,
+  /** The nearest link above that rendered in this commit, whatever did not render in between: where a nested root hangs. */
+  linkAbove: number
 ];
 
 const MAX_TIMES = 2000;
@@ -281,6 +296,10 @@ export class Recorder {
   private highlighted = false;
   /** Fibers a cause already names since the last commit. */
   private claimed = new WeakSet<Fiber>();
+  /** Fibers that scheduled an update not committed yet, with its lanes, as React reports them; null walks the tree. */
+  private updaters: Map<Fiber, number> | null = null;
+  /** Lanes that already had an update since the last commit: an origin is taken once a lane, as before. */
+  private notedLanes = 0;
   /** Where updates of this commit window came from, used only for the components no other event explains. */
   private origins: Array<UpdateOrigin & { fibers: Set<Fiber>; event: string | undefined }> = [];
   private frameCount = 0;
@@ -371,8 +390,10 @@ export class Recorder {
       this.roots,
       this.options.source ?? 'panel',
       (info) => this.onCommit(info),
-      () => this.noteUpdate()
+      (fiber, lane) => this.noteUpdate(fiber, lane),
+      devtoolsHookAtLoad()
     );
+    this.updaters = this.hook.updaters ? new Map() : null;
     // A store or query notifies its subscribers before the recorder hears about it, so the fibers React just
     // marked are the ones this event updated.
     this.deps.plugins.targets = () => this.freshUpdates();
@@ -474,6 +495,13 @@ export class Recorder {
     const event = currentEventType();
     const source = event === 'message' ? messageSource() : undefined;
     this.claimed = new WeakSet();
+    this.notedLanes = 0;
+    if (this.updaters)
+      for (const [f, pending] of this.updaters) {
+        const left = pending & ~lanes;
+        if (left) this.updaters.set(f, left);
+        else this.updaters.delete(f);
+      }
     const origins = this.origins;
     this.origins = [];
     const timer = runningTimer();
@@ -488,6 +516,7 @@ export class Recorder {
       renderMs: 0,
       noDom: 0,
       cascade: new Map(),
+      rootMs: new Map(),
       sampledParents: this.options.sampleReasons ? new Map() : null,
       reasons: new Map(),
       outside: null,
@@ -495,7 +524,9 @@ export class Recorder {
       withoutDom: new Set(),
       mounted: new Set(),
       ways: this.options.sampleReasons ? null : new Map(),
+      timed: false,
       touched: this.dom.takeForCommit(),
+      own: this.dom.own,
     };
     if (this.scope) {
       const prevs: Array<Snapshot | undefined> = [];
@@ -560,9 +591,10 @@ export class Recorder {
     const highlight = Boolean(this.deps.highlight) && this.deps.highlight!.enabled !== false && this.options.highlight !== false;
     if (highlight) this.highlighted = true;
     const base = path ? path.split(' < ') : [];
-    const stack: StackItem[] = [[start, parentRendered, null, rootKey, null, null, -1]];
+    const stack: StackItem[] = [[start, parentRendered, null, rootKey, null, null, -1, -1]];
     while (stack.length) {
-      const [f, parentDid, currentPath, currentKey, pending, zoneTag, currentChain] = stack.pop()!;
+      const [f, parentDid, currentPath, currentKey, pending, zoneTag, currentChain, linkAbove] = stack.pop()!;
+      let link = -1;
       let chain = currentChain;
       const prev = this.prevOf(f);
       const rendered = didRender(prev, f);
@@ -604,8 +636,10 @@ export class Recorder {
           (prev.props === f.memoizedProps ||
             ((f.tag === Tag.MemoComponent || f.tag === Tag.SimpleMemoComponent) && shallowEqual(prev.props, f.memoizedProps)));
         let rootAgg: RootAgg | null = null;
+        // A root inside another root's cascade: its time is already in that root's, and its link hangs under it.
+        const nested = currentKey !== null;
         if (!parentDid || ownWork) {
-          const hit = this.hitRoot(f, name, pathText(currentPath, base), prev!, c, false);
+          const hit = this.hitRoot(f, name, pathText(currentPath, base), prev!, c, false, nested);
           key = hit.agg.key;
           reasons = hit.reasons;
           rootAgg = hit.agg;
@@ -625,14 +659,14 @@ export class Recorder {
         }
         // Fast recordings keep no chains: they are there to cost less, and a chain is a sample of nothing.
         if (rootAgg) {
-          chain = this.options.sampleReasons ? -1 : this.chainLink(-1, name, firstId, rootAgg);
-          if (chain >= 0) c.ways?.set(chain, (c.ways.get(chain) ?? 0) + 1);
+          chain = this.options.sampleReasons ? -1 : this.chainLink(nested ? linkAbove : -1, name, firstId, rootAgg);
+          if (chain >= 0) this.countWay(c, (link = chain), f);
         }
         // A link of its own for what the app wrote; a package's internals and bare wrappers pass the chain through.
         else if (chain >= 0 && isComposite(f) && !isProvider(name) && !comp.library && !comp.wrapper) {
           chain = this.chainLink(chain, name, firstId);
           comp.chains.set(chain, (comp.chains.get(chain) ?? 0) + 1);
-          c.ways?.set(chain, (c.ways.get(chain) ?? 0) + 1);
+          this.countWay(c, (link = chain), f);
         }
         const agg = key ? this.rootsByKey.get(key) : undefined;
         if (agg) {
@@ -661,32 +695,38 @@ export class Recorder {
       }
       // A fiber that did not render has the snapshot it had: nothing to write.
       if (rendered || !prev) this.remember(f);
-      if (!(isolate && f === start) && f.sibling) stack.push([f.sibling, parentDid, currentPath, currentKey, pending, zoneTag, currentChain]);
+      if (!(isolate && f === start) && f.sibling)
+        stack.push([f.sibling, parentDid, currentPath, currentKey, pending, zoneTag, currentChain, linkAbove]);
       const untouched = this.prune && f.alternate !== null && f.child === f.alternate.child;
       if (f.child && !untouched) {
         const childPath = name && !this.structural(name, f) ? { name, up: currentPath } : currentPath;
-        stack.push([f.child, rendered, childPath, rendered ? key : currentKey, nextPending, zone, rendered ? chain : -1]);
+        stack.push([
+          f.child,
+          rendered,
+          childPath,
+          rendered ? key : currentKey,
+          nextPending,
+          zone,
+          rendered ? chain : -1,
+          link >= 0 ? link : linkAbove,
+        ]);
       }
     }
   }
 
   private readonly chainNodes: ChainNode[] = [];
-  /** Interned links: parent id → name → reason id → node id. */
+  /**
+   * Interned links: parent id → name → reason id → node id. A root's link is keyed by the root itself, so two roots of
+   * one name start two chains; a nested root's link has a parent too.
+   */
   private readonly chainIndex = new Map<number, Map<string, Map<number, number>>>();
-  /** A root's links are told apart by the root itself: two roots of one name start two chains. */
-  private readonly rootChains = new Map<RootAgg, Map<number, number>>();
 
   private chainLink(up: number, name: string, reason: number, root?: RootAgg): number {
-    let byReason: Map<number, number> | undefined;
-    if (root) {
-      byReason = this.rootChains.get(root);
-      if (!byReason) this.rootChains.set(root, (byReason = new Map()));
-    } else {
-      let byName = this.chainIndex.get(up);
-      if (!byName) this.chainIndex.set(up, (byName = new Map()));
-      byReason = byName.get(name);
-      if (!byReason) byName.set(name, (byReason = new Map()));
-    }
+    let byName = this.chainIndex.get(up);
+    if (!byName) this.chainIndex.set(up, (byName = new Map()));
+    const key = root ? `\0${root.key}` : name;
+    let byReason = byName.get(key);
+    if (!byReason) byName.set(key, (byReason = new Map()));
     const known = byReason.get(reason);
     if (known !== undefined) return known;
     if (this.chainNodes.length >= MAX_CHAIN_NODES) return -1;
@@ -710,12 +750,35 @@ export class Recorder {
       : links;
   }
 
-  /** A commit's busiest links and every link above them, so the tree they make has no holes. */
-  private commitWays(ways: Map<number, number>): Array<[number, number]> {
-    const kept = new Map(topEntries(ways, WAYS_PER_COMMIT));
-    for (const id of [...kept.keys()])
-      for (let up = this.chainNodes[id].up; up >= 0 && !kept.has(up); up = this.chainNodes[up].up) kept.set(up, ways.get(up) ?? 0);
-    return [...kept];
+  private countWay(c: CommitState, chain: number, f: Fiber) {
+    if (!c.ways) return;
+    let way = c.ways.get(chain);
+    if (!way) c.ways.set(chain, (way = { n: 0 }));
+    way.n++;
+    if (hasProfileTimings(f)) way.ms = (way.ms ?? 0) + f.actualDuration!;
+  }
+
+  /**
+   * A commit's links for its tree: every root's, the busiest, and the slowest by their own time, with every link above
+   * them so the tree has no holes. `[link, renders]`, and with timings the milliseconds with the subtree and alone.
+   */
+  private commitWays(ways: Map<number, { n: number; ms?: number }>): CommitWay[] {
+    // Own time is a link's time less its children's, all of them, before any is cut.
+    const self = new Map<number, number>();
+    for (const [id, way] of ways) if (way.ms !== undefined) self.set(id, (self.get(id) ?? 0) + way.ms);
+    for (const [id, way] of ways) {
+      const up = this.chainNodes[id].up;
+      if (way.ms !== undefined && self.has(up)) self.set(up, self.get(up)! - way.ms);
+    }
+    const ids = new Set<number>();
+    for (const id of ways.keys()) if (this.chainNodes[id].root) ids.add(id);
+    for (const [id] of topEntries(new Map([...ways].map(([id, way]) => [id, way.n])), WAYS_PER_COMMIT)) ids.add(id);
+    for (const [id] of topEntries(self, WAYS_PER_COMMIT / 2)) ids.add(id);
+    for (const id of [...ids]) for (let up = this.chainNodes[id].up; up >= 0 && !ids.has(up); up = this.chainNodes[up].up) ids.add(up);
+    return [...ids].map((id) => {
+      const way = ways.get(id) ?? { n: 0 };
+      return way.ms !== undefined ? [id, way.n, +way.ms.toFixed(2), +Math.max(0, self.get(id) ?? 0).toFixed(2)] : [id, way.n];
+    });
   }
 
   /** The links the commits point at, numbered afresh from 0, and each commit's links in those numbers. */
@@ -756,7 +819,16 @@ export class Recorder {
     return comp;
   }
 
-  private hitRoot(f: Fiber, name: string, path: string, prev: Snapshot, c: CommitState, outside: boolean): { agg: RootAgg; reasons: Reason[] } {
+  /** `nested`: inside another root's cascade in this commit, whose time already holds this one's. */
+  private hitRoot(
+    f: Fiber,
+    name: string,
+    path: string,
+    prev: Snapshot,
+    c: CommitState,
+    outside: boolean,
+    nested = false
+  ): { agg: RootAgg; reasons: Reason[] } {
     const source = sourceOf(f, this.config.projectRoot);
     const generated = generatedSourceOf(f);
     // Two roots of the same name in one file are told apart by the call site, which the source alone carries only
@@ -782,6 +854,7 @@ export class Recorder {
         causes: new Map(),
         lanes: new Map(),
         noDomChange: 0,
+        ownDomUnchanged: 0,
         renderMs: 0,
         mounts: 0,
         library: isLibraryFiber(f),
@@ -823,9 +896,12 @@ export class Recorder {
     }
     c.reasons.set(agg, ids);
     if (!outside && !touchedHas(c.touched, f)) agg.noDomChange++;
+    if (!outside && !touchedHas(c.own, f)) agg.ownDomUnchanged++;
     if (hasProfileTimings(f)) {
       agg.renderMs += f.actualDuration!;
-      c.renderMs += f.actualDuration!;
+      if (!nested) c.renderMs += f.actualDuration!;
+      c.timed = true;
+      c.rootMs.set(agg, (c.rootMs.get(agg) ?? 0) + f.actualDuration!);
     }
     if (!outside) c.cascade.set(agg, c.cascade.get(agg) ?? 0);
     return { agg, reasons };
@@ -847,6 +923,8 @@ export class Recorder {
     this.totals.commitsInScope++;
     const keys = new Set<string>();
     const targets = new Map<string, Set<Fiber>>();
+    // A fiber noted before the render may have got its other half only in it: the commit meets that one.
+    const bothHalves = (fibers: Iterable<Fiber>) => [...fibers].flatMap((f) => (f.alternate ? [f, f.alternate] : [f]));
     // When something in this task did mark work, a write that marked none is not what the commit is about. When
     // nothing could say — a query cache, a navigation — the events stand as they are.
     const someoneAimed = causes.some((cause) => cause.fibers?.size);
@@ -857,7 +935,7 @@ export class Recorder {
       }
       const key = this.attachCause(cause);
       keys.add(key);
-      if (cause.fibers?.size) targets.set(key, new Set([...(targets.get(key) ?? []), ...cause.fibers]));
+      if (cause.fibers?.size) targets.set(key, new Set([...(targets.get(key) ?? []), ...bothHalves(cause.fibers)]));
     }
     if (event && USER_EVENTS.has(event)) keys.add(this.attachCause({ plugin: 'core', type: `input ${eventName(event)}`, atMs: c.t }));
     else if (source) keys.add(this.attachCause({ plugin: 'core', type: `message ${source}`, atMs: c.t }));
@@ -869,7 +947,7 @@ export class Recorder {
       if ([...origin.fibers].some((f) => claimedByEvents.has(f))) continue;
       const key = this.attachCause({ plugin: 'core', type: origin.text, atMs: c.t });
       keys.add(key);
-      targets.set(key, new Set([...(targets.get(key) ?? []), ...origin.fibers]));
+      targets.set(key, new Set([...(targets.get(key) ?? []), ...bothHalves(origin.fibers)]));
     }
     if (!keys.size) keys.add(this.attachCause({ plugin: 'core', type: 'none', atMs: c.t }));
     for (const key of keys) this.causeStats.get(key)!.commits++;
@@ -897,12 +975,17 @@ export class Recorder {
       atMs: c.t,
       ...(previous ? { sinceMs: +(c.t - previous.atMs).toFixed(1) } : {}),
       renders: c.renders,
-      ...(c.renderMs ? { ms: +c.renderMs.toFixed(2) } : {}),
+      ...(c.timed ? { ms: +c.renderMs.toFixed(2) } : {}),
       ...(lane ? { lane } : {}),
       ...(event ? { event } : {}),
       ...(keys.size ? { causeIds: [...keys].map((key) => this.causeStats.get(key)!.i) } : {}),
       ...(ranked.length
-        ? { roots: ranked.slice(0, 10).map(([agg, hits]) => ({ i: agg.index, hits, reasonIds: [...(c.reasons.get(agg) ?? [])] })) }
+        ? {
+            roots: ranked.slice(0, 10).map(([agg, hits]) => {
+              const ms = c.rootMs.get(agg);
+              return { i: agg.index, hits, reasonIds: [...(c.reasons.get(agg) ?? [])], ...(ms !== undefined ? { ms: +ms.toFixed(2) } : {}) };
+            }),
+          }
         : {}),
       ...(c.outside ? { outside: c.outside.index } : {}),
       ...(c.noDom ? { noDom: c.noDom } : {}),
@@ -959,7 +1042,12 @@ export class Recorder {
    * An update was just scheduled and nothing else explains it: no user event, no timer callback, no store or query
    * event yet. The stack still holds the code that asked for it, so the cause names that code.
    */
-  private noteUpdate() {
+  private noteUpdate(fiber?: Fiber, lane = 0) {
+    if (fiber && this.updaters) {
+      this.updaters.set(fiber, (this.updaters.get(fiber) ?? 0) | lane);
+      if (this.notedLanes & lane) return;
+      this.notedLanes |= lane;
+    }
     if (this.origins.length >= MAX_UPDATE_NOTES || runningTimer()) return;
     // No claim: the store or query that is about to report this update should keep the right to name it.
     const fibers = this.freshUpdates(false);
@@ -973,6 +1061,7 @@ export class Recorder {
    * misses what a wide one finds, the walk stays wide.
    */
   private freshUpdates(claim = true): Set<Fiber> {
+    if (this.updaters) return this.unclaimedUpdaters(claim);
     const lanes = this.roots.reduce((all, root) => all | (root.pendingLanes ?? 0), 0);
     if (!lanes) return new Set();
     if (!this.narrowUpdateWalk) return this.scanUpdates(lanes, false, claim);
@@ -981,6 +1070,20 @@ export class Recorder {
     const wide = this.scanUpdates(lanes, false, claim);
     if (wide.size) this.narrowUpdateWalk = false;
     return wide;
+  }
+
+  /** React keeps whichever half the hook was bound to; the commit adds the other. */
+  private unclaimedUpdaters(claim: boolean): Set<Fiber> {
+    const out = new Set<Fiber>();
+    for (const f of this.updaters!.keys()) {
+      if (this.claimed.has(f)) continue;
+      out.add(f);
+      if (claim) {
+        this.claimed.add(f);
+        if (f.alternate) this.claimed.add(f.alternate);
+      }
+    }
+    return out;
   }
 
   private scanUpdates(lanes: number, narrow: boolean, claim: boolean): Set<Fiber> {
@@ -1159,6 +1262,9 @@ export class Recorder {
       causes: topEntries(agg.causes, 8),
       lanes: topEntries(agg.lanes, 5),
       noDomChange: agg.noDomChange,
+      // Worth saying only when the root's own elements stayed as they were more often than its whole subtree did.
+      // A package's provider draws next to nothing of its own: the count would say nothing about it.
+      ...(!agg.library && agg.ownDomUnchanged > agg.noDomChange ? { ownDomUnchanged: agg.ownDomUnchanged } : {}),
       ...(agg.renderMs ? { renderMs: +agg.renderMs.toFixed(1) } : {}),
       ...(agg.mounts ? { mounts: agg.mounts } : {}),
       ...(agg.library ? { library: true as const } : {}),
@@ -1312,7 +1418,7 @@ export class Recorder {
       commits: {
         list: this.commitList.map((commit) => ({
           ...commit,
-          ...(commit.ways ? { ways: commit.ways.map(([id, n]) => [ways.renumber.get(id)!, n] as [number, number]) } : {}),
+          ...(commit.ways ? { ways: commit.ways.map(([id, ...rest]) => [ways.renumber.get(id)!, ...rest] as CommitWay) } : {}),
           ...(commit.roots ? { roots: commit.roots.map((r) => ({ ...r, i: remap.get(r.i)! })) } : {}),
           ...(commit.outside !== undefined ? { outside: remap.get(commit.outside) } : {}),
           ...(actionOfCommit.get(commit.i) !== undefined ? { actionId: actionOfCommit.get(commit.i) } : {}),
@@ -1339,6 +1445,7 @@ export class Recorder {
       },
       warnings: [
         ...this.warnings,
+        ...reactWarningLines(this.t0),
         ...([...this.components.values()].some((comp) => comp.sampled)
           ? [
               `reasons of renders caused by a parent were worked out for ${SAMPLED_PARENTS} instances of a component a commit: their counts are a sample`,

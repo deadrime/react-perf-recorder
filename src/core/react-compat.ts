@@ -227,6 +227,11 @@ function knownRenderers(): Renderer[] {
   return [...captured, ...(hook?.renderers?.values() ?? [])];
 }
 
+/** react-dom found a DevTools hook when it loaded: its dev build then records which fibers schedule updates. */
+export function devtoolsHookAtLoad(): boolean {
+  return knownRenderers().length > 0;
+}
+
 export function reactVersion(): string | null {
   return knownRenderers().find((r) => r.version)?.version ?? null;
 }

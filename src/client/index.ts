@@ -1,4 +1,5 @@
 import { Engine, type BootConfig } from '../core/engine';
+import { captureReactWarnings } from '../core/env/react-warnings';
 import { captureRenderers, onSitesMapped, setSiteMapper, type Position } from '../core/fiber';
 import { PluginHost, type PluginEntry } from '../core/plugins';
 import { installTimers } from '../core/env/timers';
@@ -103,6 +104,7 @@ export function boot(config: ClientConfig, plugins: PluginEntry[], hot?: HotCont
   const existing = window[GLOBAL_KEY];
   if (existing) return existing;
   captureRenderers();
+  captureReactWarnings();
   if (config.endpoint) mapSitesThrough(config.endpoint);
   if (config.timers !== false) installTimers();
   const host = new PluginHost(plugins);

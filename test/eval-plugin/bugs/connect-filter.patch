@@ -1,0 +1,17 @@
+--- a/src/components/ActivityLog.tsx
++++ b/src/components/ActivityLog.tsx
+@@ -1,5 +1,5 @@
+ import { connect } from 'react-redux';
+-import { selectVisibleActivity, type ActivityItem, type State } from '../store/activity';
++import type { ActivityItem, State } from '../store/activity';
+ 
+ const ActivityLog = ({ items }: { items: ActivityItem[] }) => (
+   <ul className="activity" data-testid="activity">
+@@ -9,6 +9,6 @@
+   </ul>
+ );
+ 
+-const mapState = (state: State) => ({ items: selectVisibleActivity(state) });
++const mapState = (state: State) => ({ items: state.activity.items.filter((item) => !item.muted) });
+ 
+ export default connect(mapState)(ActivityLog);
