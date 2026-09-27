@@ -26,6 +26,11 @@ export const causeColour = colourOf;
 
 /** As close as zoom gets, whatever the length of the recording: a long one zooms further from its fit. */
 const DEEPEST_PX_PER_MS = 1.8;
+/**
+ * How hard a pinch zooms: the spread of the fingers to this power. 1 keeps the tracks under the fingers; below 1 is
+ * gentler (0.5: fingers three times apart zoom ×1.7), above 1 sharper.
+ */
+const PINCH_SPEED = 1;
 const STRIP_PX = 320;
 const BUCKET_PX = 2;
 /** The narrowest bar drawn: a quick commit still has to be seen; the area around it that takes the click is wider. */
@@ -548,7 +553,7 @@ export function Timeline({
     if (el && pinched && fingers.current.size === 2) {
       // From where the pinch began, not step by step: the scale of the last render lags the fingers.
       const { spread, middle } = spreadOf();
-      const next = clampZoom((pinched.zoom * spread) / pinched.spread);
+      const next = clampZoom(pinched.zoom * (spread / pinched.spread) ** PINCH_SPEED);
       const first = !pinchTo.current;
       pinchTo.current = { zoom: next, left: pinched.heldMs * baseScale(rec.durationMs, fitPx) * next - middle };
       setZoom(next);
