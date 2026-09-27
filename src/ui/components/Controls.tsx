@@ -105,9 +105,27 @@ export function Controls({ p }: { p: PanelViewProps }): JSX.Element {
           ×
         </button>
       </span>
+      {/* In the same row as the area: on a phone the rest of the row steps aside while picking, and it fits. */}
+      <PickBar p={p} />
     </div>
   );
 }
+
+/** What Esc and Enter do, as buttons: a phone has no keys. Stepping out is a tap on the row above. */
+const PickBar = ({ p }: { p: PanelViewProps }) =>
+  p.picking ? (
+    <span class="pick-bar" data-rpr="pick-bar">
+      {/* Both at the right edge, where the thumb is; Confirm last, as the one that ends the pick. */}
+      <button type="button" class="cancel" data-rpr="pick-cancel" title="Put the area back as it was (Esc)" onClick={p.on.pickCancel}>
+        ✕ Cancel
+      </button>
+      {p.picking.tree ? (
+        <button type="button" class="confirm" data-rpr="pick-confirm" title="Take what the tree shows as the area (Enter)" onClick={p.on.pickConfirm}>
+          ✓ Confirm
+        </button>
+      ) : null}
+    </span>
+  ) : null;
 
 /** What the outlines on the page mean: said where they are switched on, since nothing on the page can say it. */
 const HIGHLIGHT_LEGEND =

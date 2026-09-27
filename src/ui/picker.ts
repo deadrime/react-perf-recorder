@@ -10,7 +10,7 @@ export interface TreeRow {
 
 export interface TreeActions {
   select(index: number): void;
-  /** A tap: the row becomes the area on trial, as the arrows make it; Keep or Cancel ends the pick. */
+  /** A tap: the row becomes the area on trial, as the arrows make it; Confirm or Cancel ends the pick. */
   focus(index: number): void;
   hover(index: number): void;
   toggle(index: number): void;
@@ -143,22 +143,6 @@ export class Picker {
     this.callbacks.preview(null);
     this.render();
     return true;
-  }
-
-  /** A component is active in the tree, so there is somewhere to step out to. */
-  get canParent() {
-    return this.frozen && Boolean(this.current) && !this.browsing && !this.quietOpen;
-  }
-
-  /** One step out, for a finger that has no ←: the component around the active one, and past the top the whole app. */
-  parent() {
-    if (!this.canParent) return;
-    if (!this.current!.parent) {
-      this.release();
-      return;
-    }
-    this.current = this.current!.parent;
-    this.render();
   }
 
   /** A filter was switched: rebuild the path around the active component. */
