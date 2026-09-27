@@ -28,6 +28,7 @@ import { FrameWatcher } from './env/frames';
 import { trackHistory } from './env/navigations';
 import {
   mountedInPlace,
+  devtoolsHookAtLoad,
   findRoots,
   generatedSourceOf,
   hasProfileTimings,
@@ -294,6 +295,10 @@ export class Recorder {
   private highlighted = false;
   /** Fibers a cause already names since the last commit. */
   private claimed = new WeakSet<Fiber>();
+  /** Fibers that scheduled an update not committed yet, with its lanes, as React reports them; null walks the tree. */
+  private updaters: Map<Fiber, number> | null = null;
+  /** Lanes that already had an update since the last commit: an origin is taken once a lane, as before. */
+  private notedLanes = 0;
   /** Where updates of this commit window came from, used only for the components no other event explains. */
   private origins: Array<UpdateOrigin & { fibers: Set<Fiber>; event: string | undefined }> = [];
   private frameCount = 0;
@@ -384,8 +389,10 @@ export class Recorder {
       this.roots,
       this.options.source ?? 'panel',
       (info) => this.onCommit(info),
-      () => this.noteUpdate()
+      (fiber, lane) => this.noteUpdate(fiber, lane),
+      devtoolsHookAtLoad()
     );
+    this.updaters = this.hook.updaters ? new Map() : null;
     // A store or query notifies its subscribers before the recorder hears about it, so the fibers React just
     // marked are the ones this event updated.
     this.deps.plugins.targets = () => this.freshUpdates();
@@ -487,6 +494,13 @@ export class Recorder {
     const event = currentEventType();
     const source = event === 'message' ? messageSource() : undefined;
     this.claimed = new WeakSet();
+    this.notedLanes = 0;
+    if (this.updaters)
+      for (const [f, pending] of this.updaters) {
+        const left = pending & ~lanes;
+        if (left) this.updaters.set(f, left);
+        else this.updaters.delete(f);
+      }
     const origins = this.origins;
     this.origins = [];
     const timer = runningTimer();
@@ -908,6 +922,8 @@ export class Recorder {
     this.totals.commitsInScope++;
     const keys = new Set<string>();
     const targets = new Map<string, Set<Fiber>>();
+    // A fiber noted before the render may have got its other half only in it: the commit meets that one.
+    const bothHalves = (fibers: Iterable<Fiber>) => [...fibers].flatMap((f) => (f.alternate ? [f, f.alternate] : [f]));
     // When something in this task did mark work, a write that marked none is not what the commit is about. When
     // nothing could say — a query cache, a navigation — the events stand as they are.
     const someoneAimed = causes.some((cause) => cause.fibers?.size);
@@ -918,7 +934,7 @@ export class Recorder {
       }
       const key = this.attachCause(cause);
       keys.add(key);
-      if (cause.fibers?.size) targets.set(key, new Set([...(targets.get(key) ?? []), ...cause.fibers]));
+      if (cause.fibers?.size) targets.set(key, new Set([...(targets.get(key) ?? []), ...bothHalves(cause.fibers)]));
     }
     if (event && USER_EVENTS.has(event)) keys.add(this.attachCause({ plugin: 'core', type: `input ${eventName(event)}`, atMs: c.t }));
     else if (source) keys.add(this.attachCause({ plugin: 'core', type: `message ${source}`, atMs: c.t }));
@@ -930,7 +946,7 @@ export class Recorder {
       if ([...origin.fibers].some((f) => claimedByEvents.has(f))) continue;
       const key = this.attachCause({ plugin: 'core', type: origin.text, atMs: c.t });
       keys.add(key);
-      targets.set(key, new Set([...(targets.get(key) ?? []), ...origin.fibers]));
+      targets.set(key, new Set([...(targets.get(key) ?? []), ...bothHalves(origin.fibers)]));
     }
     if (!keys.size) keys.add(this.attachCause({ plugin: 'core', type: 'none', atMs: c.t }));
     for (const key of keys) this.causeStats.get(key)!.commits++;
@@ -1025,7 +1041,12 @@ export class Recorder {
    * An update was just scheduled and nothing else explains it: no user event, no timer callback, no store or query
    * event yet. The stack still holds the code that asked for it, so the cause names that code.
    */
-  private noteUpdate() {
+  private noteUpdate(fiber?: Fiber, lane = 0) {
+    if (fiber && this.updaters) {
+      this.updaters.set(fiber, (this.updaters.get(fiber) ?? 0) | lane);
+      if (this.notedLanes & lane) return;
+      this.notedLanes |= lane;
+    }
     if (this.origins.length >= MAX_UPDATE_NOTES || runningTimer()) return;
     // No claim: the store or query that is about to report this update should keep the right to name it.
     const fibers = this.freshUpdates(false);
@@ -1039,6 +1060,7 @@ export class Recorder {
    * misses what a wide one finds, the walk stays wide.
    */
   private freshUpdates(claim = true): Set<Fiber> {
+    if (this.updaters) return this.unclaimedUpdaters(claim);
     const lanes = this.roots.reduce((all, root) => all | (root.pendingLanes ?? 0), 0);
     if (!lanes) return new Set();
     if (!this.narrowUpdateWalk) return this.scanUpdates(lanes, false, claim);
@@ -1047,6 +1069,20 @@ export class Recorder {
     const wide = this.scanUpdates(lanes, false, claim);
     if (wide.size) this.narrowUpdateWalk = false;
     return wide;
+  }
+
+  /** React keeps whichever half the hook was bound to; the commit adds the other. */
+  private unclaimedUpdaters(claim: boolean): Set<Fiber> {
+    const out = new Set<Fiber>();
+    for (const f of this.updaters!.keys()) {
+      if (this.claimed.has(f)) continue;
+      out.add(f);
+      if (claim) {
+        this.claimed.add(f);
+        if (f.alternate) this.claimed.add(f.alternate);
+      }
+    }
+    return out;
   }
 
   private scanUpdates(lanes: number, narrow: boolean, claim: boolean): Set<Fiber> {

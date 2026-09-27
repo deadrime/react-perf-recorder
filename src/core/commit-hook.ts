@@ -21,6 +21,8 @@ export interface CommitInfo {
 export interface CommitHook {
   stop(): string[];
   overhead: { commitMs: number; maxCommitMs: number };
+  /** Whether updates come with their fiber, from React's own updater sets, rather than as a bare signal. */
+  updaters: boolean;
 }
 
 export function hookOwner(root: FiberRoot): string | null {
@@ -37,8 +39,13 @@ export function hookCommits(
   roots: FiberRoot[],
   owner: string,
   onCommit: (info: CommitInfo) => void,
-  /** Called the moment React marks new work on a root, while the code that scheduled it is still on the stack. */
-  onUpdate?: () => void
+  /**
+   * Called the moment React marks new work on a root, while the code that scheduled it is still on the stack. With
+   * `withUpdaters`, once per update and with the fiber that scheduled it and its lane.
+   */
+  onUpdate?: (fiber?: Fiber, lane?: number) => void,
+  /** React fills its updater sets: a DevTools hook was there when react-dom loaded. */
+  withUpdaters = false
 ): CommitHook {
   for (const root of roots) {
     const busy = hookOwner(root);
@@ -46,6 +53,14 @@ export function hookCommits(
   }
   const errors: string[] = [];
   const overhead = { commitMs: 0, maxCommitMs: 0 };
+  const report = (error: unknown) => {
+    if (errors.length < 3) errors.push(String((error as Error)?.stack || error).slice(0, 300));
+  };
+  const updaterSets = (root: FiberRoot) => {
+    const sets = root.pendingUpdatersLaneMap;
+    return withUpdaters && onUpdate && Array.isArray(sets) && sets.length && sets.every((s) => s instanceof Set) ? sets : null;
+  };
+  const updaters = roots.every((root) => updaterSets(root) !== null);
   const restores = roots.map((root) => {
     let current = root.current;
     let lanes = 0;
@@ -59,7 +74,7 @@ export function hookCommits(
       try {
         onCommit({ root, fiber, lanes: taken });
       } catch (error) {
-        if (errors.length < 3) errors.push(String((error as Error)?.stack || error).slice(0, 300));
+        report(error);
       }
       const ms = performance.now() - started;
       overhead.commitMs += ms;
@@ -82,15 +97,33 @@ export function hookCommits(
           const added = value & ~pendingLanes;
           lanes |= pendingLanes & ~value;
           pendingLanes = value;
-          if (!added || passthrough || !onUpdate) return;
+          if (!added || passthrough || !onUpdate || updaters) return;
           try {
             onUpdate();
           } catch (error) {
-            if (errors.length < 3) errors.push(String((error as Error)?.stack || error).slice(0, 300));
+            report(error);
           }
         },
       });
     }
+
+    // React adds the fiber that scheduled an update to its lane's set right after marking the lane, still inside the
+    // call that asked for it: the fiber comes without walking the tree, and every update, not only a lane's first.
+    const sets = updaters ? updaterSets(root)! : [];
+    const ownAdds = sets.map((updaterSet) => Object.getOwnPropertyDescriptor(updaterSet, 'add'));
+    sets.forEach((updaterSet, index) => {
+      const add = updaterSet.add;
+      updaterSet.add = function (fiber: Fiber) {
+        const result = add.call(this, fiber);
+        if (!passthrough)
+          try {
+            onUpdate!(fiber, 1 << index);
+          } catch (error) {
+            report(error);
+          }
+        return result;
+      };
+    });
 
     return () => {
       // Someone may have wrapped our accessor since; then only stop reacting and leave theirs in place.
@@ -100,11 +133,17 @@ export function hookCommits(
         passthrough = true;
       }
       if (hasPending) Object.defineProperty(root, 'pendingLanes', { configurable: true, enumerable: true, writable: true, value: pendingLanes });
+      sets.forEach((updaterSet, i) => {
+        const own = ownAdds[i];
+        if (own) Object.defineProperty(updaterSet, 'add', own);
+        else delete (updaterSet as { add?: unknown }).add;
+      });
     };
   });
   let active = true;
   return {
     overhead,
+    updaters,
     stop() {
       if (active) restores.forEach((restore) => restore());
       active = false;
