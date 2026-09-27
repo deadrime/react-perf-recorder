@@ -20,6 +20,13 @@ const Status = memo(({ id }: { id: string }) => {
   );
 });
 
+const NO_FILES: string[] = [];
+
+const Attachments = memo(({ id }: { id: string }) => {
+  const files = useChatStore((s) => s.attachmentsById[id] ?? NO_FILES);
+  return files.length ? <span className="files">📎 {files.join(', ')}</span> : null;
+});
+
 export const MessageRow = memo(({ id }: { id: string }) => {
   const message = useChatStore((s) => s.messageById[id]);
   const { dense } = useSettings();
@@ -34,6 +41,7 @@ export const MessageRow = memo(({ id }: { id: string }) => {
         <span className="text">{message.text}</span>
       </span>
       <Status id={id} />
+      <Attachments id={id} />
       <button type="button" className="delete" title="Delete" data-testid={`delete-${id}`} onClick={() => useChatStore.getState().removeMessage(id)}>
         ×
       </button>

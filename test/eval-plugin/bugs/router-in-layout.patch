@@ -6,7 +6,7 @@
  import { useFeed } from '../feed';
  import ActivityLog from './ActivityLog';
  import { useChatStore } from '../store/chat';
-@@ -12,7 +13,8 @@
+@@ -14,7 +15,8 @@
  import { WebhookForm } from './WebhookForm';
  
  function useChatLayout() {

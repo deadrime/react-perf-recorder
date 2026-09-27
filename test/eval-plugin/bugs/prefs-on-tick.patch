@@ -1,0 +1,21 @@
+--- a/src/store/chat.ts
++++ b/src/store/chat.ts
+@@ -64,6 +64,9 @@
+ const withMessage = (all: Record<string, Message>, message: Message) =>
+   Object.fromEntries([...Object.entries(all), [message.id, message] as const].slice(-MAX_MESSAGES));
+ 
++/** Prefs saved by an older build can miss a field: every write keeps them complete. */
++const completePrefs = (s: Chat): Partial<Chat> => ({ prefs: { ...DEFAULT_PREFS, ...s.prefs } });
++
+ const feed: Slice<FeedSlice> = (set) => ({
+   reactionsById: { m1: 2, m2: 0, m3: 5 },
+   tick: (step) =>
+@@ -82,7 +85,7 @@
+           next.messageById = withMessage(s.messageById, { id, from: senderAt(step), text, sentAt: Date.now() });
+           next.workspace = { ...next.workspace!, unread: s.workspace.unread + 1 };
+         }
+-        return next;
++        return { ...next, ...completePrefs(s) };
+       },
+       false,
+       step % ARRIVAL_EVERY === 0 ? 'feed/message' : 'feed/tick'

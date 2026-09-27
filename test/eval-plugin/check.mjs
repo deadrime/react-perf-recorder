@@ -42,7 +42,8 @@ for (const c of cases) {
     const id = fs.readFileSync(path.join(dir, 'recording.txt'), 'utf8').trim();
     const show = JSON.parse(execFileSync(process.execPath, [path.join(repo, 'dist/cli.js'), 'show', id, '--dir', sessions], { encoding: 'utf8' }));
     const roots = show.topRoots.slice(0, 3).map((r) => r.root);
-    const ok = CASES[c.name].root === null || roots.includes(CASES[c.name].root);
+    const { root, shown } = CASES[c.name];
+    const ok = root === null || (shown ? shown(show) : roots.includes(root));
     if (!ok) failed++;
     const top = show.topRoots.slice(0, 3).map((r) => `${r.root} ×${r.hits}${r.renderMsPerHit >= 5 ? ` ${r.renderMsPerHit} ms` : ''}`);
     console.log(
