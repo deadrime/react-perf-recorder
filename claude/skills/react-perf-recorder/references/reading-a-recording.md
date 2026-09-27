@@ -79,5 +79,10 @@ added them (`window resize @ src/Popover.tsx:45 window.addEventListener('resize'
 effect. CSS rules that keep growing are values put into CSS-in-JS styles (emotion, styled-components, goober, JSS —
 any of them): `styles` groups the new rules by sheet and by their declarations with the numbers taken out, names the
 component whose element carries one and the property that varies (`LeakyProgress (style[data-emotion]) varying
-width ×100`): move that value into `style` or a CSS variable. One recording shows growth; a leak is growth that repeats with the scenario —
+width ×100`): move that value into `style` or a CSS variable. `observers` and `connections` are observers never
+disconnected and sockets or channels left open, by the line that started them. `retained` is about components
+unmounted during the recording: with `collected: true` (record_page collects the garbage before Stop), `retained`
+per component counts those still in memory — something outside React holds a setter, a ref or a callback of theirs,
+usually the listener, timer or subscription in `listeners`/`intervals` above (`LeakyPopover 5 of 5`). With
+`collected: false` only `unmounted` means anything: record with record_page to know what stayed. One recording shows growth; a leak is growth that repeats with the scenario —
 record the same steps twice and compare, `compare_recordings` sets the growth of the two side by side.

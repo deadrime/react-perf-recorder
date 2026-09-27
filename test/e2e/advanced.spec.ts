@@ -141,8 +141,21 @@ test('what a leak leaves behind: classes of the value put into css, listeners of
   await page.getByTestId('run').click();
   await expect(page.getByTestId('bar-broken')).toHaveAttribute('class', /./);
   await expect.poll(() => page.getByTestId('bar-fixed').evaluate((el) => (el as HTMLElement).style.width)).toBe('100%');
-  const rec = (await page.evaluate(() => (window as any).__REACT_PERF_RECORDER__.engine.stop())) as RecordingV2;
+  // What record_page does before Stop: without a collection, what is still in memory says nothing.
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send('HeapProfiler.collectGarbage');
+  const rec = (await page.evaluate(() => (window as any).__REACT_PERF_RECORDER__.engine.stop({ collected: true }))) as RecordingV2;
   const growth = rec.growth!;
+  // The leaky popover's listener keeps its setter, and the setter the component: all five closed ones stay.
+  const retained = growth.retained!;
+  expect(retained.collected).toBe(true);
+  expect(retained.components.find((c) => c.name === 'LeakyPopover')).toMatchObject({
+    unmounted: 5,
+    retained: 5,
+    site: expect.stringMatching(/Leak\.tsx:\d+$/),
+  });
+  expect(retained.components.find((c) => c.name === 'TidyPopover')).toMatchObject({ unmounted: 5, retained: 0 });
+  expect(retained.retained).toBe(5);
   expect(growth.metrics.cssRules?.growing).toBe(true);
   expect(growth.metrics.listeners?.growing).toBe(true);
   // Five opens of each popover: the leaky one's listeners stay, the tidy one's last is there while it is open.

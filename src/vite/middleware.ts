@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import path from 'node:path';
 import { listingOf } from '../shared/listing';
-import { CLIENT_HEADER, ENDPOINT, SESSION_SCHEMA, type RecordingV2, type SessionEvent, type SessionMeta } from '../shared/schema';
+import { CLIENT_HEADER, ENDPOINT, growthOrigins, SESSION_SCHEMA, type RecordingV2, type SessionEvent, type SessionMeta } from '../shared/schema';
 
 export interface SessionStoreOptions {
   dir: string;
@@ -191,7 +191,7 @@ export class SessionStore {
         delete hook.generated;
       }
     }
-    for (const origin of [...(recording.growth?.intervals ?? []), ...(recording.growth?.listeners ?? [])]) {
+    for (const origin of growthOrigins(recording)) {
       const g = origin.generated;
       if (!g) continue;
       const mapped = await map(g);

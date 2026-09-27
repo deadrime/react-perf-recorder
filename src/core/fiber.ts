@@ -33,6 +33,10 @@ export interface Fiber {
   dependencies: { firstContext: ContextDependency | null } | null;
   mode: number;
   flags: number;
+  /** The flags of everything below, bubbled up on completion: a deletion somewhere under shows here. */
+  subtreeFlags?: number;
+  /** Children removed in this commit; kept on the parent until it renders again. */
+  deletions?: Fiber[] | null;
   lanes?: number;
   childLanes?: number;
   actualDuration?: number;

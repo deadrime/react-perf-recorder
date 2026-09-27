@@ -297,7 +297,7 @@ export interface CommitRecord {
 }
 
 /** What the page holds that a leak makes grow; `heapKB` only where the browser tells (Chrome's performance.memory). */
-export type GrowthKey = 'domNodes' | 'cssRules' | 'styleElements' | 'intervals' | 'listeners' | 'heapKB';
+export type GrowthKey = 'domNodes' | 'cssRules' | 'styleElements' | 'intervals' | 'listeners' | 'heapKB' | 'observers' | 'connections';
 
 export interface GrowthMetric {
   start: number;
@@ -343,9 +343,41 @@ export interface GrowthStats {
   listeners?: Array<GrowthOrigin & { target: string; type: string }>;
   /** New style rules, grouped, most first. */
   styles?: StyleGroup[];
+  /** Resize, intersection and mutation observers started during the recording and never disconnected. */
+  observers?: Array<GrowthOrigin & { kind: string }>;
+  /** WebSockets, EventSources and BroadcastChannels opened during the recording and still open. */
+  connections?: Array<GrowthOrigin & { kind: string; url?: string }>;
+  /** Components unmounted during the recording, and those something still holds after a garbage collection. */
+  retained?: RetainedStats;
 }
 
-export const GROWTH_KEYS: GrowthKey[] = ['domNodes', 'cssRules', 'styleElements', 'intervals', 'listeners', 'heapKB'];
+/** One component, by name and where it is used, of those unmounted during the recording. */
+export interface RetainedComponent {
+  name: string;
+  /** Where it is used, `src/Page.tsx:12`, and the line there once mapped. */
+  site?: string;
+  code?: string;
+  generated?: { url: string; line: number; column: number };
+  /** Defined in a package. */
+  library?: true;
+  unmounted: number;
+  /** Still in memory after the collection: something outside React holds it — a listener, a timer, a store. */
+  retained?: number;
+}
+
+export interface RetainedStats {
+  /** A garbage collection ran before counting; without one, what is still in memory says nothing. */
+  collected: boolean;
+  unmounted: number;
+  retained?: number;
+  /** Most retained first, then most unmounted. */
+  components: RetainedComponent[];
+  /** Removed DOM subtrees still in memory: `roots` removed at the top, `nodes` in them. */
+  detached?: { roots: number; nodes: number };
+}
+
+// Appended, not inserted: saved samples are read by position.
+export const GROWTH_KEYS: GrowthKey[] = ['domNodes', 'cssRules', 'styleElements', 'intervals', 'listeners', 'heapKB', 'observers', 'connections'];
 
 export interface Navigation {
   type: 'push' | 'replace' | 'pop';
@@ -473,3 +505,10 @@ export type SessionEvent =
   | { k: 'reload'; atMs: number }
   | { k: 'scope'; atMs: number; state: 'attached' | 'lost' | 'remounted' }
   | { k: 'end'; atMs: number };
+
+/** Everything in `growth` with a built position the dev server maps to `site` and `code`. */
+export function growthOrigins(rec: RecordingV2): Array<{ generated?: GrowthOrigin['generated']; site?: string; code?: string }> {
+  const g = rec.growth;
+  if (!g) return [];
+  return [...(g.intervals ?? []), ...(g.listeners ?? []), ...(g.observers ?? []), ...(g.connections ?? []), ...(g.retained?.components ?? [])];
+}

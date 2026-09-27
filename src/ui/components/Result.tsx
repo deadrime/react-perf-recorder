@@ -347,19 +347,18 @@ const SHORT: Record<GrowthKey, string> = {
   intervals: 'intervals',
   listeners: 'listeners',
   heapKB: 'heap KB',
+  observers: 'observers',
+  connections: 'sockets',
 };
 
 /** What the page held more of at the end, and who left it there; opens by itself when something kept growing. */
 function Growth({ growth }: { growth: GrowthStats }) {
   const keys = GROWTH_KEYS.filter((key) => growth.metrics[key]);
   const growing = keys.filter((key) => growth.metrics[key]!.growing);
+  const held = growth.retained?.collected ? growth.retained.components.filter((c) => c.retained) : [];
+  const note = [...growing.map((key) => SHORT[key]), ...(held.length ? ['retained'] : [])];
   return (
-    <Fold
-      id="growth"
-      title="Growth"
-      note={growing.length ? growing.map((key) => SHORT[key]).join(' · ') : 'nothing kept growing'}
-      open={growing.length > 0}
-    >
+    <Fold id="growth" title="Growth" note={note.length ? note.join(' · ') : 'nothing kept growing'} open={note.length > 0}>
       {keys.map((key) => {
         const m = growth.metrics[key]!;
         const d = m.end - m.start;
@@ -382,6 +381,20 @@ function Growth({ growth }: { growth: GrowthStats }) {
         <div class="growth-origin" key={`s${g.source}${g.shape}`}>
           <span class="badge" data-tone="count">{`${g.rules}×`}</span>
           <code title={g.shape}>{`css ${styleLine(g)}`}</code>
+        </div>
+      ))}
+      {[...(growth.observers ?? []), ...(growth.connections ?? [])].slice(0, 3).map((o) => (
+        <div class="growth-origin" key={`o${o.kind}${o.origin}`}>
+          <span class="badge" data-tone="count">{`${o.live}×`}</span>
+          <code title={o.code}>{`${o.kind} ${originLine(o)}`}</code>
+        </div>
+      ))}
+      {held.slice(0, 3).map((c) => (
+        <div class="growth-origin" key={`r${c.name}${c.site}`} data-rpr="retained">
+          <span class="badge" data-tone="warn">{`${c.retained} of ${c.unmounted}`}</span>
+          <code title="Unmounted during the recording and still in memory after a garbage collection">{`retained ${c.name}${
+            c.site ? ` @ ${c.site}` : ''
+          }`}</code>
         </div>
       ))}
       {(growth.listeners ?? []).slice(0, 3).map((l) => (

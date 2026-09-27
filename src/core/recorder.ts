@@ -349,7 +349,17 @@ export class Recorder {
       onFrame: (frame) => this.emit({ k: 'frame', frame }),
       onLatency: (entry) => this.emit({ k: 'latency', entry }),
     });
-    this.growth = options.growth === false ? null : new GrowthWatcher(() => this.now());
+    this.growth =
+      options.growth === false
+        ? null
+        : new GrowthWatcher(
+            () => this.now(),
+            this.config.projectRoot,
+            (f) => {
+              this.records.delete(f);
+              if (f.alternate) this.records.delete(f.alternate);
+            }
+          );
     this.actions =
       options.actions === false
         ? null
@@ -470,7 +480,8 @@ export class Recorder {
     };
   }
 
-  stop(): RecordingV2 {
+  /** `collected`: the page's garbage was collected just before, so what is still in memory is held by something. */
+  stop(collected = false): RecordingV2 {
     if (this.stopped) throw new RecorderError('NOT_RECORDING', 'recording already stopped');
     this.stopped = true;
     setTimerSink(null);
@@ -482,7 +493,7 @@ export class Recorder {
     this.counting = false;
     this.actions?.stop();
     this.stopHistory?.();
-    const growth = this.growth?.stop();
+    const growth = this.growth?.stop(collected);
     const sections = this.deps.plugins.stop(this.pluginSession());
     this.warnings.push(...this.deps.plugins.warnings.splice(0));
     const conditionsAfter = this.readConditions();
@@ -544,6 +555,7 @@ export class Recorder {
     } else {
       this.scan(fiber, false, '', null, c, false);
     }
+    this.growth?.commit(fiber);
     this.finishCommit(c, causes, lane, event, source, origins);
   }
 

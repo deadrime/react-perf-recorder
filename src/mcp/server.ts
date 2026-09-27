@@ -297,7 +297,9 @@ export function createServer(dir: string) {
               'root with its reasons, and the commit\'s cascade as a tree — for "what happened at 2.4s". actions: the element each ' +
               'one landed on, its component and file, what it cost. memos: useMemo/useCallback that keep recomputing, the dependency ' +
               'that moved and its line. growth: DOM nodes, CSS rules, <style> elements, live intervals, window/document listeners ' +
-              'and JS heap from start to stop, with slope, what kept growing, and where the intervals and listeners left behind were added — for a leak.'
+              'JS heap, observers and open sockets from start to stop, with slope, what kept growing, where the intervals, listeners and ' +
+              'observers left behind were added, and the components unmounted but still in memory after a garbage collection ' +
+              '(record_page collects before Stop) — for a leak.'
           ),
         top: z.number().int().min(1).max(100).optional().describe('How many entries of a long section, 10 by default.'),
         offset: z.number().int().min(0).optional().describe('Where to start in a long section, to page through it.'),

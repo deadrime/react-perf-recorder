@@ -103,12 +103,17 @@ export const Leak = () => (
       <Panel
         kind="broken"
         title="no cleanup"
-        says="The recorder says: window resize listeners keep growing, and where they were added."
+        says="The recorder says: window resize listeners keep growing, where they were added, and five closed LeakyPopovers still in memory."
         code={BROKEN_LISTENER}
       >
         <Popover leaky />
       </Panel>
-      <Panel kind="fixed" title="removed on unmount" says="The recorder says: nothing left behind." code={FIXED_LISTENER}>
+      <Panel
+        kind="fixed"
+        title="removed on unmount"
+        says="The recorder says: nothing left behind, none of the closed ones in memory."
+        code={FIXED_LISTENER}
+      >
         <Popover leaky={false} />
       </Panel>
     </Pair>

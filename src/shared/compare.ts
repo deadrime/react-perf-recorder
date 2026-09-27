@@ -318,12 +318,18 @@ export function compareRecordings(a: RecordingV2, b: RecordingV2, options: Compa
     // How much each count grew over the run: a fixed leak grows by less for the same scenario.
     ...(a.growth && b.growth
       ? {
-          growth: Object.fromEntries(
-            GROWTH_KEYS.filter((key) => a.growth!.metrics[key] && b.growth!.metrics[key]).map((key) => {
-              const [x, y] = [a.growth!.metrics[key]!, b.growth!.metrics[key]!];
-              return [key, delta(x.end - x.start, y.end - y.start)];
-            })
-          ),
+          growth: {
+            ...Object.fromEntries(
+              GROWTH_KEYS.filter((key) => a.growth!.metrics[key] && b.growth!.metrics[key]).map((key) => {
+                const [x, y] = [a.growth!.metrics[key]!, b.growth!.metrics[key]!];
+                return [key, delta(x.end - x.start, y.end - y.start)];
+              })
+            ),
+            // Unmounted and still held: counted only where both runs collected garbage before Stop.
+            ...(a.growth.retained?.collected && b.growth.retained?.collected
+              ? { retained: delta(a.growth.retained.retained ?? 0, b.growth.retained.retained ?? 0) }
+              : {}),
+          },
         }
       : {}),
     plugins,

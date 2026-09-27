@@ -464,6 +464,8 @@ export const GROWTH_LABELS: Record<GrowthKey, string> = {
   intervals: 'live intervals',
   listeners: 'window/document listeners',
   heapKB: 'JS heap KB',
+  observers: 'live observers',
+  connections: 'open sockets and channels',
 };
 
 /** `useWindowSize @ src/hooks/useWindowSize.ts:12 window.addEventListener('resize', onResize)`, as mapped. */
@@ -473,6 +475,20 @@ export const originLine = (o: GrowthOrigin) => `${o.site ? o.origin.replace(/@ .
 export const styleLine = (g: StyleGroup) =>
   `${g.component ?? g.shape ?? 'unknown'} (${g.source})${g.varying ? ` varying ${g.varying.map((v) => v.prop).join(', ')}` : ''}`;
 
+/** `unmounted and still in memory: LeakyPopover (src/Leak.tsx:42) 5 of 5`, after a garbage collection only. */
+export function retainedLine(growth: GrowthStats): string | null {
+  const r = growth.retained;
+  if (!r?.collected) return null;
+  const held = r.components.filter((c) => c.retained);
+  const detached = r.detached?.roots ? `${r.detached.roots} removed DOM subtrees (${r.detached.nodes} nodes)` : '';
+  if (!held.length && !detached) return null;
+  const who = held
+    .slice(0, 3)
+    .map((c) => `${c.name}${c.site ? ` (${c.site})` : ''} ${c.retained} of ${c.unmounted}`)
+    .join(', ');
+  return `unmounted and still in memory: ${[who, detached].filter(Boolean).join('; ')}`;
+}
+
 /** What kept growing, one line each, with who left most of it behind: `live intervals: 2 → 14 (+12/min), most from …`. */
 export function growthLines(growth: GrowthStats): string[] {
   const lines: string[] = [];
@@ -480,15 +496,18 @@ export function growthLines(growth: GrowthStats): string[] {
     const m = growth.metrics[key];
     if (!m?.growing) continue;
     const listener = key === 'listeners' ? growth.listeners?.[0] : undefined;
-    const top = key === 'intervals' ? growth.intervals?.[0] : listener;
+    const kinded = key === 'observers' ? growth.observers?.[0] : key === 'connections' ? growth.connections?.[0] : undefined;
+    const top = key === 'intervals' ? growth.intervals?.[0] : listener ?? kinded;
     const style = key === 'cssRules' ? growth.styles?.[0] : undefined;
     const who = top
-      ? `${listener ? `${listener.target} ${listener.type} ` : ''}${originLine(top)} ×${top.live}`
+      ? `${listener ? `${listener.target} ${listener.type} ` : kinded ? `${kinded.kind} ` : ''}${originLine(top)} ×${top.live}`
       : style
       ? `${styleLine(style)} ×${style.rules}`
       : '';
     lines.push(`${GROWTH_LABELS[key]}: ${m.start} → ${m.end} (${m.perMin > 0 ? '+' : ''}${m.perMin}/min)${who ? `, most from ${who}` : ''}`);
   }
+  const held = retainedLine(growth);
+  if (held) lines.push(held);
   return lines.length ? lines : ['nothing kept growing'];
 }
 

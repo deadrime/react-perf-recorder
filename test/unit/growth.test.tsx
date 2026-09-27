@@ -1,5 +1,8 @@
+import v8 from 'node:v8';
+import vm from 'node:vm';
 import { useEffect, useState } from 'react';
 import { installListeners } from '../../src/core/env/listeners';
+import { installObservers } from '../../src/core/env/observers';
 import { installTimers } from '../../src/core/env/timers';
 import { growthMetric } from '../../src/core/growth';
 import { declsOf, shapeOf } from '../../src/core/styles';
@@ -8,6 +11,7 @@ import { flush, makeRecorder, mount } from './helpers';
 
 installTimers();
 installListeners();
+installObservers();
 
 function useLeakyResize() {
   useEffect(() => {
@@ -157,5 +161,114 @@ describe('style growth', () => {
         ['background', 'url(a.png)'],
       ])
     ).toBe('width:#px;color:#hex;background:url()');
+  });
+});
+
+describe('retained components', () => {
+  // A collection on demand: what a test asks of V8 here, record_page asks of Chrome through CDP.
+  v8.setFlagsFromString('--expose-gc');
+  const gc = vm.runInNewContext('gc') as () => void;
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+  const held: Array<() => void> = [];
+  const Held = () => {
+    const [, set] = useState(0);
+    // A store's subscriber list that no unmount empties: it keeps the setter, and the setter keeps the component.
+    useEffect(() => void held.push(() => set((n) => n + 1)), []);
+    return <i />;
+  };
+  const Let = () => {
+    const [, set] = useState(0);
+    useEffect(() => {
+      const bump = () => set((n) => n + 1);
+      held.push(bump);
+      return () => void held.splice(held.indexOf(bump), 1);
+    }, []);
+    return <b />;
+  };
+  let flip: (n: number) => void = () => {};
+  function Swap() {
+    const [n, setN] = useState(0);
+    flip = setN;
+    return (
+      <div>
+        <Held key={`h${n}`} />
+        <Let key={`l${n}`} />
+      </div>
+    );
+  }
+
+  it('counts the unmounted components something still holds after a collection, and not the ones let go', async () => {
+    mount(<Swap />);
+    const { recorder } = makeRecorder();
+    recorder.start();
+    for (let i = 1; i <= 5; i++) flush(() => flip(i));
+    await settle();
+    gc();
+    const retained = recorder.stop(true).growth?.retained;
+    expect(retained).toMatchObject({ collected: true, unmounted: 10, retained: 5, detached: { roots: 0, nodes: 0 } });
+    expect(retained?.components).toEqual([
+      expect.objectContaining({ name: 'Held', unmounted: 5, retained: 5 }),
+      expect.objectContaining({ name: 'Let', unmounted: 5, retained: 0 }),
+    ]);
+    expect(growthLines({ samples: [], metrics: {}, retained })).toEqual([
+      expect.stringMatching(/^unmounted and still in memory: Held \(.*growth\.test\.tsx(:\d+)?\) 5 of 5$/),
+    ]);
+    held.length = 0;
+  });
+
+  it('without a collection tells what was unmounted, and nothing of what is in memory', () => {
+    mount(<Swap />);
+    const { recorder } = makeRecorder();
+    recorder.start();
+    for (let i = 1; i <= 3; i++) flush(() => flip(i));
+    const retained = recorder.stop().growth?.retained;
+    expect(retained).toMatchObject({ collected: false, unmounted: 6 });
+    expect(retained?.retained).toBeUndefined();
+    expect(retained?.components.every((c) => c.retained === undefined)).toBe(true);
+    held.length = 0;
+  });
+
+  it('counts removed DOM a module still holds', async () => {
+    const kept: Element[] = [];
+    const Row = () => <li ref={(el) => void (el && kept.push(el))}>row</li>;
+    const List = ({ n }: { n: number }) => (
+      <ul>
+        {Array.from({ length: n }, (_, i) => (
+          <Row key={i} />
+        ))}
+      </ul>
+    );
+    const { rerender } = mount(<List n={4} />);
+    const { recorder } = makeRecorder();
+    recorder.start();
+    rerender(<List n={1} />);
+    await settle();
+    gc();
+    expect(recorder.stop(true).growth?.retained?.detached).toEqual({ roots: 3, nodes: 3 });
+  });
+});
+
+describe('observers and connections', () => {
+  it('names the observers started and never disconnected, and the channels left open', () => {
+    const { recorder } = makeRecorder();
+    recorder.start();
+    const leaky = new MutationObserver(() => {});
+    leaky.observe(document.body, { childList: true });
+    const tidy = new MutationObserver(() => {});
+    tidy.observe(document.body, { childList: true });
+    tidy.disconnect();
+    const channel = new BroadcastChannel('sync');
+    const closed = new BroadcastChannel('other');
+    closed.close();
+    const { growth } = recorder.stop();
+    expect(growth?.observers).toEqual([
+      expect.objectContaining({ kind: 'MutationObserver', live: 1, origin: expect.stringMatching(/growth\.test\.tsx$/) }),
+    ]);
+    expect(growth?.connections).toEqual([expect.objectContaining({ kind: 'BroadcastChannel', url: 'sync', live: 1 })]);
+    expect(growth?.metrics.observers?.end).toBe((growth?.metrics.observers?.start ?? 0) + 1);
+    expect(channel).toBeInstanceOf(BroadcastChannel);
+    leaky.disconnect();
+    channel.close();
   });
 });

@@ -281,10 +281,15 @@ export async function recordPage(options: RecordPageOptions, sessionsDir: string
         });
     page = (await context.newPage()) as unknown as PageLike;
     page.setDefaultTimeout(timeout);
-    if (options.throttle && options.throttle > 1) {
-      const session = await context.newCDPSession(page as never);
-      await session.send('Emulation.setCPUThrottlingRate', { rate: options.throttle });
-    }
+    let cdp: { send(method: string, params?: object): Promise<unknown> } | null = null;
+    const session = async () => (cdp ??= await context.newCDPSession(page as never));
+    if (options.throttle && options.throttle > 1) await (await session()).send('Emulation.setCPUThrottlingRate', { rate: options.throttle });
+    // Before Stop, so the components still in memory are the ones something holds, not garbage not yet collected.
+    const collect = () =>
+      session()
+        .then((s) => s.send('HeapProfiler.collectGarbage'))
+        .then(() => true)
+        .catch(() => false);
     // A link that signs the browser in — `/debug/<jwt>`, a magic link — is opened first and is never recorded.
     if (options.via) await page.goto(options.via, { waitUntil: 'load' });
     if (options.setup) await runModule(options.setup, page, sessionsDir);
@@ -385,7 +390,8 @@ export async function recordPage(options: RecordPageOptions, sessionsDir: string
       } else {
         await page.waitForTimeout(ms);
       }
-      saved = await page.evaluate<Stopped>(`${ENGINE}.engine.stop().then((r) => ({ id: r.id ?? null, recording: r }))`);
+      const collected = await collect();
+      saved = await page.evaluate<Stopped>(`${ENGINE}.engine.stop({ collected: ${collected} }).then((r) => ({ id: r.id ?? null, recording: r }))`);
     } catch (error) {
       throw options.script || options.replay ? await explainFailure(error, page, navigatedTo, url, sessionsDir) : error;
     }

@@ -33,8 +33,13 @@
   kept rising through the second half of the recording is called growing; the intervals and listeners still there at
   Stop come with the line that added them, mapped by the dev server. New CSS rules, whichever CSS-in-JS wrote them,
   are grouped by their declarations with the numbers taken out, with the component whose element carries one and the
-  properties that vary between them. `growth: false` in the recording's options leaves
-  it out.
+  properties that vary between them. Resize, intersection and mutation observers never disconnected, and
+  WebSockets, EventSources and BroadcastChannels left open, come with the line that started them too. Components
+  unmounted during the recording are followed by weak references to their setters' queues, refs and instances;
+  after a garbage collection, one still in memory is held by something outside React — a listener, a timer, a
+  store's subscriber list. `record_page` collects through CDP before Stop; the panel's Stop collects only in a
+  Chrome started with `--js-flags=--expose-gc`, and otherwise tells how many were unmounted, not how many stayed.
+  `growth: false` in the recording's options leaves it out.
 
 ## Sessions
 

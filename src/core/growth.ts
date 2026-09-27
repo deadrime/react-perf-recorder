@@ -1,5 +1,8 @@
 import { GROWTH_KEYS, type GrowthKey, type GrowthMetric, type GrowthStats } from '../shared/schema';
 import { liveListeners } from './env/listeners';
+import { liveConnections, liveObservers } from './env/observers';
+import { RetainWatcher } from './retained';
+import type { Fiber } from './fiber';
 import type { Origin } from './stack';
 import { StyleWatcher } from './styles';
 import { liveIntervals } from './env/timers';
@@ -16,6 +19,8 @@ const NOISE: Record<GrowthKey, (start: number) => number> = {
   intervals: () => 1,
   listeners: () => 2,
   heapKB: (start) => Math.max(5 * 1024, start * 0.1),
+  observers: () => 2,
+  connections: () => 1,
 };
 
 function cssRules(): number {
@@ -48,6 +53,8 @@ function measure(): Array<number | null> {
     liveIntervals().length,
     liveListeners().length,
     heapKB(),
+    liveObservers().length,
+    liveConnections().length,
   ];
 }
 
@@ -115,8 +122,15 @@ export class GrowthWatcher {
   /** `performance.now()` at the start: what was added before it is not the recording's. */
   private startedAt = 0;
   private readonly styles = new StyleWatcher();
+  private readonly retain: RetainWatcher;
 
-  constructor(private readonly now: () => number) {}
+  constructor(private readonly now: () => number, projectRoot = '', forget?: (f: Fiber) => void) {
+    this.retain = new RetainWatcher(projectRoot, forget);
+  }
+
+  commit(root: Fiber) {
+    this.retain.commit(root);
+  }
 
   start() {
     this.startedAt = performance.now();
@@ -135,7 +149,18 @@ export class GrowthWatcher {
     }
   }
 
-  stop(): GrowthStats {
+  /** `collected`: the page's garbage was collected just before, as record_page does through CDP. */
+  stop(collected = false): GrowthStats {
+    // Chrome run with --js-flags=--expose-gc collects on its own.
+    const gc = (globalThis as { gc?: () => void }).gc;
+    if (!collected && typeof gc === 'function') {
+      try {
+        gc();
+        collected = true;
+      } catch {
+        // Not the real one.
+      }
+    }
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
     this.sample();
@@ -152,13 +177,25 @@ export class GrowthWatcher {
       type: item.type,
       ...rest,
     }));
+    const kinded = (items: ReturnType<typeof liveObservers>) =>
+      byOrigin(items.filter(since), (o) => `${o.kind} ${o.url ?? ''}`).map(({ item, ...rest }) => ({
+        kind: item.kind,
+        ...(item.url ? { url: item.url } : {}),
+        ...rest,
+      }));
+    const observers = kinded(liveObservers());
+    const connections = kinded(liveConnections());
     const styles = this.styles.stop();
+    const retained = this.retain.stop(collected);
     return {
       samples: this.samples,
       metrics,
       ...(intervals.length ? { intervals } : {}),
       ...(listeners.length ? { listeners } : {}),
       ...(styles.length ? { styles } : {}),
+      ...(observers.length ? { observers } : {}),
+      ...(connections.length ? { connections } : {}),
+      ...(retained ? { retained } : {}),
     };
   }
 }

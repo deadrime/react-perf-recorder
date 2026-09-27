@@ -3,6 +3,7 @@ import { captureReactWarnings } from '../core/env/react-warnings';
 import { captureRenderers, onSitesMapped, setSiteMapper, type Position } from '../core/fiber';
 import { PluginHost, type PluginEntry } from '../core/plugins';
 import { installListeners } from '../core/env/listeners';
+import { installObservers } from '../core/env/observers';
 import { installTimers } from '../core/env/timers';
 import { onRootCreated } from '../core/roots-notify';
 import { SessionWriter } from '../core/transport';
@@ -109,6 +110,7 @@ export function boot(config: ClientConfig, plugins: PluginEntry[], hot?: HotCont
   if (config.endpoint) mapSitesThrough(config.endpoint);
   if (config.timers !== false) installTimers();
   installListeners();
+  installObservers();
   const host = new PluginHost(plugins);
   host.setupAll();
   const engine = new Engine(config, host);
