@@ -145,6 +145,37 @@ test('on a phone the timeline fits a long recording, and two fingers zoom it', a
   // A pinch is not a tap on a bar.
   await expect(page.locator('.tl-bar[data-picked="true"]')).toHaveCount(0);
 
+  // A finger whose lift only the window heard (its bar re-rendered away) is not the first of the next pinch.
+  // Synthetic events: CDP touches always lift on the tracks and never leave a finger behind.
+  const label = await page.locator('.tl-controls .muted').first().textContent();
+  const panned = await tracks.evaluate(async (el) => {
+    const r = el.getBoundingClientRect();
+    const at = (type: string, pointerId: number, x: number, target: EventTarget = el) =>
+      target.dispatchEvent(
+        new PointerEvent(type, {
+          pointerId,
+          pointerType: 'touch',
+          isPrimary: true,
+          clientX: x,
+          clientY: r.top + r.height / 2,
+          bubbles: true,
+          composed: true,
+          cancelable: true,
+        })
+      );
+    const x = r.left + r.width / 2;
+    at('pointerdown', 11, x);
+    at('pointerup', 11, x, window);
+    const before = el.scrollLeft;
+    at('pointerdown', 12, x);
+    for (const dx of [10, 30, 60]) at('pointermove', 12, x - dx);
+    at('pointerup', 12, x - 60);
+    await new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)));
+    return el.scrollLeft - before;
+  });
+  expect(panned).toBe(60);
+  await expect(page.locator('.tl-controls .muted').first()).toHaveText(label!);
+
   // The overview takes a range every time, not only the first.
   const over = (await page.locator('[data-rpr="tl-overview"]').boundingBox())!;
   const brush = () => page.locator('.tl-brush').evaluate((el) => Math.round(parseFloat((el as HTMLElement).style.left)));
