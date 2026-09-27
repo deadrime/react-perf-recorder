@@ -25,6 +25,16 @@ test('on a phone the area is picked and kept by taps, and the page above the she
   await expect(page.locator('[data-rpr="scope"]')).toHaveText('Unread');
   await page.locator('[data-rpr="pick-parent"]').tap();
   await expect(page.locator('[data-rpr="scope"]')).toHaveText('Header');
+  // A tapped row is only tried on: the tree stays open until Keep.
+  await page.locator('[data-rpr="tree"] li[data-name="Workspace"]').tap();
+  await expect(page.locator('[data-rpr="scope"]')).toHaveText('Workspace');
+  await expect(page.locator('[data-rpr="tree"] li[data-name="Workspace"]')).toHaveAttribute('data-active', 'true');
+  // So is the Whole app row, and a row after it brings the area back into the tree.
+  await page.locator('[data-rpr="whole-app"]').tap();
+  await expect(page.locator('[data-rpr="scope"]')).toBeHidden();
+  await expect(page.locator('[data-rpr="whole-app"]')).toHaveAttribute('data-active', 'true');
+  await page.locator('[data-rpr="tree"] li[data-name="Header"]').tap();
+  await expect(page.locator('[data-rpr="scope"]')).toHaveText('Header');
   await page.locator('[data-rpr="pick-keep"]').tap();
   await expect(page.locator('[data-rpr="tree"]')).toHaveCount(0);
   await expect(page.locator('[data-rpr="scope"]')).toHaveText('Header');
