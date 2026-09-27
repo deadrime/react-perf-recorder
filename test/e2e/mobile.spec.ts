@@ -144,4 +144,37 @@ test('on a phone the timeline fits a long recording, and two fingers zoom it', a
   expect(Math.abs(zoomed.left - (by - 1) * (middle - box.x))).toBeLessThan(12);
   // A pinch is not a tap on a bar.
   await expect(page.locator('.tl-bar[data-picked="true"]')).toHaveCount(0);
+
+  // The overview takes a range every time, not only the first.
+  const over = (await page.locator('[data-rpr="tl-overview"]').boundingBox())!;
+  const brush = () => page.locator('.tl-brush').evaluate((el) => Math.round(parseFloat((el as HTMLElement).style.left)));
+  const swipe = async (points: Array<[number, number]>) => {
+    await touch1('touchStart', points[0]);
+    for (const p of points.slice(1)) await touch1('touchMove', p);
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  };
+  const touch1 = (type: 'touchStart' | 'touchMove', [x, y]: [number, number]) =>
+    cdp.send('Input.dispatchTouchEvent', { type, touchPoints: [{ x, y, id: 3 }] });
+  const oy = over.y + over.height / 2;
+  for (const [a, b] of [
+    [0.1, 0.4],
+    [0.5, 0.9],
+  ]) {
+    await swipe([
+      [over.x + over.width * a, oy],
+      [over.x + over.width * ((a + b) / 2), oy],
+      [over.x + over.width * b, oy],
+    ]);
+    await expect.poll(brush).toBe(a * 100);
+  }
+
+  // The tracks take every touch, so up and down on them scrolls the panel itself.
+  const panelTop = () => card(page).evaluate((el) => el.scrollTop);
+  const top = await panelTop();
+  await swipe([
+    [middle, y],
+    [middle + 2, y - 30],
+    [middle + 3, y - 80],
+  ]);
+  expect(await panelTop()).toBeGreaterThan(top + 40);
 });

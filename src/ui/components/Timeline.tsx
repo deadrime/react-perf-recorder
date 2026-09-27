@@ -437,6 +437,8 @@ function Overview({
   const duration = Math.max(1, rec.durationMs);
   const strip = useRef<HTMLDivElement>(null);
   const [drag, setDrag] = useState<{ from: number; to: number } | null>(null);
+  // What the handlers read: the state is for drawing and lags a quick tap by a render.
+  const held = useRef<{ from: number; to: number; id: number } | null>(null);
   const columns = useMemo(() => {
     // A column per percent of the recording, as tall as the renders in it: the shape of the session in 100 bars.
     const buckets = new Array(100).fill(0);
@@ -461,17 +463,29 @@ function Overview({
         e.preventDefault();
         (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
         const at = fractionAt(e.clientX);
+        held.current = { from: at, to: at, id: e.pointerId };
         setDrag({ from: at, to: at });
       }}
-      onPointerMove={(e) => drag && setDrag({ ...drag, to: fractionAt(e.clientX) })}
+      onPointerMove={(e) => {
+        const now = held.current;
+        if (!now || now.id !== e.pointerId) return;
+        now.to = fractionAt(e.clientX);
+        setDrag({ from: now.from, to: now.to });
+      }}
       onPointerUp={(e) => {
-        if (!drag) return;
-        const at = fractionAt(e.clientX);
-        const from = Math.min(drag.from, at) * duration;
-        const to = Math.max(drag.from, at) * duration;
+        const now = held.current;
+        if (!now || now.id !== e.pointerId) return;
+        held.current = null;
         setDrag(null);
+        const at = fractionAt(e.clientX);
+        const from = Math.min(now.from, at) * duration;
+        const to = Math.max(now.from, at) * duration;
         // A click rather than a drag: centre there instead of zooming into nothing.
         onRange(from, to - from < duration / 200 ? from : to);
+      }}
+      onPointerCancel={() => {
+        held.current = null;
+        setDrag(null);
       }}
     >
       {columns.map((c) => (
@@ -517,7 +531,8 @@ export function Timeline({
     });
   };
   // Dragging the tracks moves them sideways; a drag that moved is not a click on the bar it started from.
-  const drag = useRef<{ x: number; left: number; moved: boolean; on: HTMLElement } | null>(null);
+  // A finger decides its axis once: sideways moves the tracks, up and down scrolls the panel they are in.
+  const drag = useRef<{ x: number; y: number; left: number; top: number; axis: 'x' | 'y' | null; on: HTMLElement } | null>(null);
   const panned = useRef(false);
   // Two fingers zoom: the moment under their middle stays under it, so moving them together also pans.
   const fingers = useRef(new Map<number, number>());
@@ -527,13 +542,32 @@ export function Timeline({
     const [a, b] = [...fingers.current.values()];
     return { spread: Math.max(20, Math.abs(a - b)), middle: (a + b) / 2 - (scroll.current?.getBoundingClientRect().left ?? 0) };
   };
+  // A finger lifted over something that a zoom re-rendered away never tells the tracks: the window hears it.
+  useEffect(() => {
+    const lift = (event: PointerEvent) => {
+      if (fingers.current.delete(event.pointerId) && fingers.current.size < 2) pinch.current = null;
+    };
+    window.addEventListener('pointerup', lift, true);
+    window.addEventListener('pointercancel', lift, true);
+    return () => {
+      window.removeEventListener('pointerup', lift, true);
+      window.removeEventListener('pointercancel', lift, true);
+    };
+  }, []);
   const onPointerDown = (event: PointerEvent) => {
     const el = scroll.current;
     if (!el) return;
-    if (event.pointerType === 'touch') fingers.current.set(event.pointerId, event.clientX);
+    if (event.pointerType === 'touch') {
+      // The first finger of a gesture: whatever an earlier one left behind is gone.
+      if (event.isPrimary) {
+        fingers.current.clear();
+        pinch.current = null;
+      }
+      fingers.current.set(event.pointerId, event.clientX);
+    }
     if (fingers.current.size === 2) {
       event.preventDefault();
-      if (drag.current?.moved) drag.current.on.releasePointerCapture?.(event.pointerId);
+      if (drag.current?.axis) drag.current.on.releasePointerCapture?.(event.pointerId);
       drag.current = null;
       // A pinch is not a tap on the bar under either finger.
       panned.current = true;
@@ -544,7 +578,17 @@ export function Timeline({
     // No selection may start here: with the pointer held down over the page, the browser would otherwise select it.
     event.preventDefault();
     panned.current = false;
-    drag.current = { x: event.clientX, left: el.scrollLeft, moved: false, on: event.currentTarget as HTMLElement };
+    const panel = el.closest('.card');
+    drag.current = {
+      x: event.clientX,
+      y: event.clientY,
+      left: el.scrollLeft,
+      top: panel?.scrollTop ?? 0,
+      // A mouse only drags sideways: the wheel is its way up and down.
+      axis: null,
+      on: event.currentTarget as HTMLElement,
+    };
+    if (event.pointerType === 'mouse') drag.current.y = Number.NaN;
   };
   const onPointerMove = (event: PointerEvent) => {
     const el = scroll.current;
@@ -571,22 +615,24 @@ export function Timeline({
     const held = drag.current;
     if (!el || !held) return;
     const dx = event.clientX - held.x;
-    if (!held.moved && Math.abs(dx) > 3) {
-      held.moved = true;
+    const dy = Number.isNaN(held.y) ? 0 : event.clientY - held.y;
+    if (!held.axis && Math.max(Math.abs(dx), Math.abs(dy)) > 3) {
+      held.axis = Math.abs(dx) >= Math.abs(dy) ? 'x' : 'y';
       panned.current = true;
       // Captured only once the drag is real: a captured pointer sends the click to the tracks instead of the bar.
       held.on.setPointerCapture?.(event.pointerId);
     }
-    if (held.moved) {
-      el.scrollLeft = held.left - dx;
-      // The pointer is down over the page as well; without this it leaves a selection behind it.
-      document.getSelection()?.removeAllRanges();
-    }
+    if (held.axis === 'x') el.scrollLeft = held.left - dx;
+    // The tracks take every touch (touch-action: none), so the panel's own scroll is done here.
+    const panel = held.axis === 'y' ? el.closest('.card') : null;
+    if (panel) panel.scrollTop = held.top - dy;
+    // The pointer is down over the page as well; without this it leaves a selection behind it.
+    if (held.axis) document.getSelection()?.removeAllRanges();
   };
   const endPan = (event: PointerEvent) => {
     fingers.current.delete(event.pointerId);
     if (fingers.current.size < 2) pinch.current = null;
-    if (drag.current?.moved) drag.current.on.releasePointerCapture?.(event.pointerId);
+    if (drag.current?.axis) drag.current.on.releasePointerCapture?.(event.pointerId);
     drag.current = null;
   };
   useEffect(() => onScroll(), []);

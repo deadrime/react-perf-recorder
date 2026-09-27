@@ -143,7 +143,7 @@ header .live { flex: 1; color: var(--muted-soft); white-space: nowrap; overflow:
 .tl-label .muted { margin-left: auto; font-size: 9px; }
 /* Moved by dragging, the wheel and the overview's box: a scrollbar of its own would only repeat them, and in the
    system's colours. */
-.tl-scroll { flex: 1; overflow-x: auto; overflow-y: hidden; cursor: grab; touch-action: pan-y; scrollbar-width: none; }
+.tl-scroll { flex: 1; overflow-x: auto; overflow-y: hidden; cursor: grab; touch-action: none; scrollbar-width: none; }
 .tl-scroll::-webkit-scrollbar { display: none; }
 .tl-scroll:active { cursor: grabbing; }
 .tl-strip { position: relative; min-width: 100%; padding-bottom: 12px; }
@@ -425,6 +425,8 @@ button[data-copied="true"] { color: var(--good); }
   .picker li .toggle { width: 24px; align-self: stretch; display: inline-flex; align-items: center; justify-content: center; }
   .picker li .copy, .picker li .watch-toggle { visibility: visible; width: 28px; height: 28px; }
   .tl-controls button, .way-more button { min-height: 28px; }
+  /* A finger is wider than 14px: the overview grows to be hit. */
+  .tl-overview { height: 28px; }
 }
 
 /* A phone: the card is a sheet across the bottom (or the top) edge, and the page keeps the rest of the screen. */
