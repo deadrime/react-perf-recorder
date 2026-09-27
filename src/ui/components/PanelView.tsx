@@ -21,6 +21,10 @@ export interface PanelHandlers {
   repeat(): void;
   stop(): void;
   pick(): void;
+  /** The picker's own buttons, for a finger with no keys: one step out, keep what the tree shows, put the old area back. */
+  pickParent(): void;
+  pickKeep(): void;
+  pickCancel(): void;
   editScope(): void;
   copyScope(): void;
   clearScope(): void;
@@ -63,6 +67,8 @@ export interface PanelViewProps {
   live: Live | null;
   message: { text: string; kind: 'error' | 'notice' | 'muted' };
   tree: TreeProps | null;
+  /** The picker is on: `tree` once it has one open, `parent` while a component in it is active. */
+  picking: { tree: boolean; parent: boolean } | null;
   result: Saved | null;
   /** The result against the recording before it, when there is something to set side by side. */
   compared: Comparison | null;
@@ -125,6 +131,32 @@ const LiveRoots = ({ p }: { p: PanelViewProps }) => (
     ))}
   </div>
 );
+
+/** What Esc, Enter and ← do, as buttons: on a phone they are the only way to leave the picker but a row. */
+const PickBar = ({ p }: { p: PanelViewProps }) =>
+  p.picking ? (
+    <div class="row pick-bar" data-rpr="pick-bar">
+      {p.picking.tree ? (
+        <>
+          <button
+            type="button"
+            data-rpr="pick-parent"
+            title="The component around this one (←)"
+            disabled={!p.picking.parent}
+            onClick={p.on.pickParent}
+          >
+            ↑ Parent
+          </button>
+          <button type="button" class="keep" data-rpr="pick-keep" title="Take what the tree shows as the area (Enter)" onClick={p.on.pickKeep}>
+            ✓ Keep
+          </button>
+        </>
+      ) : null}
+      <button type="button" data-rpr="pick-cancel" title="Put the area back as it was (Esc)" onClick={p.on.pickCancel}>
+        ✕ Cancel
+      </button>
+    </div>
+  ) : null;
 
 const View = (p: PanelViewProps): JSX.Element => (
   <div
@@ -191,6 +223,7 @@ const View = (p: PanelViewProps): JSX.Element => (
         </label>
       ) : null}
       <Watching p={p} />
+      <PickBar p={p} />
       <div class="picker" data-rpr="picker">
         {p.tree ? <Tree {...p.tree} copied={p.copied} /> : null}
       </div>
