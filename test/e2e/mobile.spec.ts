@@ -133,9 +133,44 @@ test('on a phone the timeline fits a long recording, and two fingers zoom it', a
               { x: middle + half, y, id: 2 },
             ],
     });
+  // Every frame of the pinch: the overview's box may only narrow around the middle, never jump away and back; a bar
+  // may only move away from the middle, never step back; and the bars are moved, not made anew on every step.
+  await page.locator('.tl-brush').evaluate((brush, middle) => {
+    const root = brush.getRootNode() as ShadowRoot;
+    const seen = ((window as any).__pinch = { centres: [] as number[], bars: [] as Array<Record<string, number>>, added: 0 });
+    new MutationObserver((changes) => {
+      for (const change of changes) for (const node of change.addedNodes) if ((node as Element).classList?.contains('tl-bar')) seen.added++;
+    }).observe(root, { childList: true, subtree: true });
+    const sample = () => {
+      const box = brush as HTMLElement;
+      seen.centres.push(parseFloat(box.style.left) + parseFloat(box.style.width) / 2);
+      const bars: Record<string, number> = {};
+      for (const bar of root.querySelectorAll<HTMLElement>('.tl-bar')) bars[bar.title.split(' ·')[0]] = bar.getBoundingClientRect().left - middle;
+      seen.bars.push(bars);
+      if (seen.centres.length < 600) requestAnimationFrame(sample);
+    };
+    requestAnimationFrame(sample);
+  }, middle);
+  const before = await page.locator('.tl-bar').count();
   await touch('touchStart', 20);
-  for (const half of [30, 40, 50, 60]) await touch('touchMove', half);
+  for (const half of [24, 28, 32, 36, 40, 44, 48, 52, 56, 60]) await touch('touchMove', half);
   await touch('touchEnd', 60);
+  await page.waitForTimeout(100);
+  const seen = await page.evaluate(() => {
+    const got = (window as any).__pinch;
+    (window as any).__pinch = { centres: [], bars: [], added: 0 };
+    return got as { centres: number[]; bars: Array<Record<string, number>>; added: number };
+  });
+  expect(Math.max(...seen.centres.slice(1).map((c, i) => Math.abs(c - seen.centres[i])))).toBeLessThan(2);
+  let back = 0;
+  seen.bars.slice(1).forEach((now, i) => {
+    for (const [at, x] of Object.entries(now)) {
+      const was = seen.bars[i][at];
+      if (was !== undefined) back = Math.max(back, -Math.sign(was) * (x - was));
+    }
+  });
+  expect(back).toBeLessThan(0.5);
+  expect(seen.added).toBeLessThan(before);
   // However hard PINCH_SPEED makes it zoom, it zooms in, and the moment under the middle stays under it.
   await expect(page.locator('.tl-controls .muted').first()).not.toHaveText('fit');
   const zoomed = await size();
@@ -144,4 +179,68 @@ test('on a phone the timeline fits a long recording, and two fingers zoom it', a
   expect(Math.abs(zoomed.left - (by - 1) * (middle - box.x))).toBeLessThan(12);
   // A pinch is not a tap on a bar.
   await expect(page.locator('.tl-bar[data-picked="true"]')).toHaveCount(0);
+
+  // A finger whose lift only the window heard (its bar re-rendered away) is not the first of the next pinch.
+  // Synthetic events: CDP touches always lift on the tracks and never leave a finger behind.
+  const label = await page.locator('.tl-controls .muted').first().textContent();
+  const panned = await tracks.evaluate(async (el) => {
+    const r = el.getBoundingClientRect();
+    const at = (type: string, pointerId: number, x: number, target: EventTarget = el) =>
+      target.dispatchEvent(
+        new PointerEvent(type, {
+          pointerId,
+          pointerType: 'touch',
+          isPrimary: true,
+          clientX: x,
+          clientY: r.top + r.height / 2,
+          bubbles: true,
+          composed: true,
+          cancelable: true,
+        })
+      );
+    const x = r.left + r.width / 2;
+    at('pointerdown', 11, x);
+    at('pointerup', 11, x, window);
+    const before = el.scrollLeft;
+    at('pointerdown', 12, x);
+    for (const dx of [10, 30, 60]) at('pointermove', 12, x - dx);
+    at('pointerup', 12, x - 60);
+    await new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)));
+    return el.scrollLeft - before;
+  });
+  expect(panned).toBe(60);
+  await expect(page.locator('.tl-controls .muted').first()).toHaveText(label!);
+
+  // The overview takes a range every time, not only the first.
+  const over = (await page.locator('[data-rpr="tl-overview"]').boundingBox())!;
+  const brush = () => page.locator('.tl-brush').evaluate((el) => Math.round(parseFloat((el as HTMLElement).style.left)));
+  const swipe = async (points: Array<[number, number]>) => {
+    await touch1('touchStart', points[0]);
+    for (const p of points.slice(1)) await touch1('touchMove', p);
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  };
+  const touch1 = (type: 'touchStart' | 'touchMove', [x, y]: [number, number]) =>
+    cdp.send('Input.dispatchTouchEvent', { type, touchPoints: [{ x, y, id: 3 }] });
+  const oy = over.y + over.height / 2;
+  for (const [a, b] of [
+    [0.1, 0.4],
+    [0.5, 0.9],
+  ]) {
+    await swipe([
+      [over.x + over.width * a, oy],
+      [over.x + over.width * ((a + b) / 2), oy],
+      [over.x + over.width * b, oy],
+    ]);
+    await expect.poll(brush).toBe(a * 100);
+  }
+
+  // The tracks take every touch, so up and down on them scrolls the panel itself.
+  const panelTop = () => card(page).evaluate((el) => el.scrollTop);
+  const top = await panelTop();
+  await swipe([
+    [middle, y],
+    [middle + 2, y - 30],
+    [middle + 3, y - 80],
+  ]);
+  expect(await panelTop()).toBeGreaterThan(top + 40);
 });
