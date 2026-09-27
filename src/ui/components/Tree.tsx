@@ -95,6 +95,8 @@ function Row({ row, active, watching, onSelect, onHover, onToggle, onWatch, onCo
  */
 export function Tree(p: TreeProps): JSX.Element {
   const list = useRef<HTMLUListElement>(null);
+  // What pressed the row, taken from its pointerdown: a finger has no hover preview, so its tap only tries the row on.
+  const touch = useRef(false);
   useLayoutEffect(() => followActive(list.current));
   return (
     <>
@@ -120,7 +122,12 @@ export function Tree(p: TreeProps): JSX.Element {
           providers
         </label>
       </div>
-      <ul data-rpr="tree" ref={list} onMouseLeave={() => p.actions.leave()}>
+      <ul
+        data-rpr="tree"
+        ref={list}
+        onPointerDown={(e) => (touch.current = e.pointerType === 'touch' || e.pointerType === 'pen')}
+        onMouseLeave={() => p.actions.leave()}
+      >
         {/* The whole app sits above its components: the area that is no component, chosen like any row. */}
         <li
           class="whole-app"
@@ -128,7 +135,7 @@ export function Tree(p: TreeProps): JSX.Element {
           data-active={String(p.active < 0)}
           style={{ paddingLeft: indentOf(0) }}
           title="Record the whole app"
-          onClick={() => p.actions.wholeApp()}
+          onClick={() => (touch.current ? p.actions.focusWholeApp() : p.actions.wholeApp())}
           onMouseEnter={() => p.actions.leave()}
         >
           <span class="toggle">{ARROW.open}</span>
@@ -140,7 +147,7 @@ export function Tree(p: TreeProps): JSX.Element {
             row={row}
             active={i === p.active}
             watching={p.watched.includes(row.owner.name)}
-            onSelect={() => p.actions.select(i)}
+            onSelect={() => (touch.current ? p.actions.focus(i) : p.actions.select(i))}
             onHover={() => p.actions.hover(i)}
             onToggle={() => p.actions.toggle(i)}
             onWatch={() => p.onWatch(row.owner.name)}

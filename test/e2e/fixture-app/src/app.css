@@ -400,11 +400,11 @@ input {
 }
 
 .two {
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr));
 }
 
 .three {
-  grid-template-columns: repeat(auto-fit, minmax(270px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(270px, 100%), 1fr));
 }
 
 .case {
@@ -746,4 +746,19 @@ input {
   flex: 1 1 0;
   width: auto;
   min-width: 0;
+}
+
+/* A phone: the side panel goes under the thread instead of squeezing it to a word a line. */
+@media (max-width: 640px) {
+  .app {
+    padding: 12px 12px 40px;
+  }
+
+  .head {
+    flex-wrap: wrap;
+  }
+
+  .chat.wide {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }

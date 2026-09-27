@@ -144,6 +144,9 @@ export class Panel {
       repeat: () => this.repeat(),
       stop: () => void this.stop(),
       pick: () => this.togglePicker(),
+      pickParent: () => this.picker.parent(),
+      pickKeep: () => this.picker.keep(),
+      pickCancel: () => this.picker.cancel(),
       editScope: () => this.editScope(),
       copyScope: () => this.copyScope(),
       // With the tree open, × moves it to its Whole app row instead of leaving the old area active in it.
@@ -287,6 +290,7 @@ export class Panel {
       live,
       message: this.message,
       tree: this.tree,
+      picking: this.picker.active ? { tree: !this.picker.waiting, parent: this.picker.canParent } : null,
       result: this.result,
       compared: this.compared,
       replaying: this.replaying,
@@ -408,13 +412,10 @@ export class Panel {
     this.rememberScope();
     // With no area yet, the whole app's tree opens at its top; the whole app stays the area until a row is chosen.
     const top = this.scope ? null : this.engine.topComponent({ library: this.state.showLibrary, providers: this.state.showProviders });
-    // The page ignores the clicks meanwhile.
-    this.say(
-      `Click ${top ? 'an element or a row' : 'an element'} to take it as the area.\n↑↓ move · →← in and out · Enter keep · Esc cancel`,
-      'muted'
-    );
     if (top) this.picker.startAt(top, { quiet: true });
     else this.picker.start();
+    // The page ignores the clicks meanwhile. Said after the start, so the view draws the picker's buttons with it.
+    this.say(pickHint(top ? 'an element or a row' : 'an element', 'to take it as the area.'), 'muted');
   }
 
   /** Reopens the tree on the current area; without one, picks from scratch. */
@@ -425,8 +426,8 @@ export class Panel {
     this.picker.cancel();
     this.setCollapsed(false);
     this.rememberScope();
-    this.say('Click the page to pick elsewhere.\n↑↓ move · →← in and out · Enter keep · Esc cancel', 'muted');
     this.picker.startAt(target);
+    this.say(pickHint('the page', 'to pick elsewhere.', 'the page or a row'), 'muted');
   }
 
   /** The area as it was before the tree opened: Esc puts it back, whatever was tried in between. */
@@ -598,6 +599,13 @@ export class Panel {
   private persist() {
     saveState(this.state);
   }
+}
+
+/** The picker's hint in the words of the device: keys where there is a keyboard, taps where there is a finger. */
+function pickHint(what: string, why: string, tapWhat = what) {
+  const touch = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
+  // A tap only tries the area on: Keep is what takes it.
+  return touch ? `Tap ${tapWhat} to try it as the area, then ✓ Keep.` : `Click ${what} ${why}\n↑↓ move · →← in and out · Enter keep · Esc cancel`;
 }
 
 /** Worth a place in the report only when the two runs share something to set side by side. */

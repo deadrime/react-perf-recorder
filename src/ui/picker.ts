@@ -10,11 +10,15 @@ export interface TreeRow {
 
 export interface TreeActions {
   select(index: number): void;
+  /** A tap: the row becomes the area on trial, as the arrows make it; Keep or Cancel ends the pick. */
+  focus(index: number): void;
   hover(index: number): void;
   toggle(index: number): void;
   leave(): void;
   /** The row above the app's components: the whole app as the area, and the tree closes on it. */
   wholeApp(): void;
+  /** A tap on the Whole app row: it becomes the area on trial, the tree stays open. */
+  focusWholeApp(): void;
 }
 
 export interface PickerCallbacks {
@@ -139,6 +143,22 @@ export class Picker {
     this.callbacks.preview(null);
     this.render();
     return true;
+  }
+
+  /** A component is active in the tree, so there is somewhere to step out to. */
+  get canParent() {
+    return this.frozen && Boolean(this.current) && !this.browsing && !this.quietOpen;
+  }
+
+  /** One step out, for a finger that has no ←: the component around the active one, and past the top the whole app. */
+  parent() {
+    if (!this.canParent) return;
+    if (!this.current!.parent) {
+      this.release();
+      return;
+    }
+    this.current = this.current!.parent;
+    this.render();
   }
 
   /** A filter was switched: rebuild the path around the active component. */
@@ -324,6 +344,15 @@ export class Picker {
       active,
       {
         select: (i) => this.finish(rows[i]?.node.owner ?? null),
+        focus: (i) => {
+          const node = rows[i]?.node;
+          if (!node) return;
+          this.quietOpen = false;
+          // From the whole app back to the row it was on: render must preview it again.
+          if (this.browsing) this.previewed = null;
+          this.current = node;
+          this.render();
+        },
         hover: (i) => rows[i] && this.outline(rows[i].node.owner.fiber, rows[i].node.owner.name),
         toggle: (i) => {
           const node = rows[i]?.node;
@@ -336,6 +365,7 @@ export class Picker {
         },
         leave: () => this.hideOutline(),
         wholeApp: () => this.finish('whole-app'),
+        focusWholeApp: () => void this.release(),
       }
     );
     if (this.current && !this.browsing) this.outline(this.current.owner.fiber, this.current.owner.name);
