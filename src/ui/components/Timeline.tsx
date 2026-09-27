@@ -521,13 +521,16 @@ export function Timeline({
   // Only what is on screen is drawn: zoomed in, a long recording is tens of thousands of pixels wide.
   const [view, setView] = useState({ from: 0, to: STRIP_PX });
   const pending = useRef(false);
+  const measure = () => {
+    const el = scroll.current;
+    if (el) setView({ from: el.scrollLeft, to: el.scrollLeft + el.clientWidth });
+  };
   const onScroll = () => {
     if (pending.current) return;
     pending.current = true;
     requestAnimationFrame(() => {
       pending.current = false;
-      const el = scroll.current;
-      if (el) setView({ from: el.scrollLeft, to: el.scrollLeft + el.clientWidth });
+      measure();
     });
   };
   // Dragging the tracks moves them sideways; a drag that moved is not a click on the bar it started from.
@@ -537,7 +540,8 @@ export function Timeline({
   // Two fingers zoom: the moment under their middle stays under it, so moving them together also pans.
   const fingers = useRef(new Map<number, number>());
   const pinch = useRef<{ spread: number; zoom: number; heldMs: number } | null>(null);
-  const pinchTo = useRef<{ zoom: number; left: number } | null>(null);
+  // Where the tracks scroll once a zoom is drawn: set before paint, or the old scroll shows at the new zoom for a frame.
+  const scrollTo = useRef<number | null>(null);
   const spreadOf = () => {
     const [a, b] = [...fingers.current.values()];
     return { spread: Math.max(20, Math.abs(a - b)), middle: (a + b) / 2 - (scroll.current?.getBoundingClientRect().left ?? 0) };
@@ -598,18 +602,8 @@ export function Timeline({
       // From where the pinch began, not step by step: the scale of the last render lags the fingers.
       const { spread, middle } = spreadOf();
       const next = clampZoom(pinched.zoom * (spread / pinched.spread) ** PINCH_SPEED);
-      const first = !pinchTo.current;
-      pinchTo.current = { zoom: next, left: pinched.heldMs * baseScale(rec.durationMs, fitPx) * next - middle };
+      scrollTo.current = pinched.heldMs * baseScale(rec.durationMs, fitPx) * next - middle;
       setZoom(next);
-      if (first)
-        requestAnimationFrame(() => {
-          const after = scroll.current;
-          const target = pinchTo.current;
-          pinchTo.current = null;
-          if (!after || !target) return;
-          after.scrollLeft = Math.max(0, target.left);
-          onScroll();
-        });
       return;
     }
     const held = drag.current;
@@ -636,6 +630,13 @@ export function Timeline({
     drag.current = null;
   };
   useEffect(() => onScroll(), []);
+  useLayoutEffect(() => {
+    const el = scroll.current;
+    if (!el || scrollTo.current === null) return;
+    el.scrollLeft = Math.max(0, scrollTo.current);
+    scrollTo.current = null;
+    measure();
+  }, [zoom]);
   // Fit means the width the tracks have on the screen, which a wider panel makes wider.
   const [fitPx, setFitPx] = useState(STRIP_PX);
   useLayoutEffect(() => {
@@ -685,13 +686,8 @@ export function Timeline({
     const zoomed = clampZoom(next);
     const hold = anchorPx ?? (el ? el.clientWidth / 2 : 0);
     const heldMs = el ? (el.scrollLeft + hold) / scale : 0;
+    scrollTo.current = heldMs * baseScale(rec.durationMs, fitPx) * zoomed - hold;
     setZoom(zoomed);
-    requestAnimationFrame(() => {
-      const after = scroll.current;
-      if (!after) return;
-      after.scrollLeft = Math.max(0, heldMs * baseScale(rec.durationMs, fitPx) * zoomed - hold);
-      onScroll();
-    });
   };
   /** The wheel zooms, as it does in a profiler; a sideways wheel is left to the browser as a scroll. */
   const onWheel = (event: WheelEvent) => {
@@ -715,13 +711,15 @@ export function Timeline({
     const span = Math.max(1, toMs - fromMs);
     const wanted = toMs > fromMs ? el.clientWidth / (baseScale(rec.durationMs, fitPx) * span) : zoom;
     const zoomed = clampZoom(wanted);
+    // Its own scroll comes after the render; one a pinch or the wheel left unused would jump there first.
+    scrollTo.current = null;
     setZoom(zoomed);
     requestAnimationFrame(() => {
       const after = scroll.current;
       if (!after) return;
       const next = baseScale(rec.durationMs, fitPx) * zoomed;
       after.scrollLeft = Math.max(0, toMs > fromMs ? fromMs * next : fromMs * next - after.clientWidth / 2);
-      onScroll();
+      measure();
     });
   };
   const pickedBar = picked === null ? undefined : lanes[0].bars.find((b) => b.ids.includes(picked));
@@ -730,6 +728,7 @@ export function Timeline({
   /** Back to the whole recording with nothing picked: what the tracks showed when the report opened. */
   const narrowed = zoom > MIN_ZOOM || picked !== null || pickedAction !== null || litCause !== null;
   const showAll = () => {
+    scrollTo.current = null;
     setZoom(MIN_ZOOM);
     setPicked(null);
     setPickedAction(null);
@@ -738,7 +737,7 @@ export function Timeline({
       const el = scroll.current;
       if (!el) return;
       el.scrollLeft = 0;
-      onScroll();
+      measure();
     });
   };
   const pickCommit = (i: number) => {

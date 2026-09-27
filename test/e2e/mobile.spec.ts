@@ -133,9 +133,21 @@ test('on a phone the timeline fits a long recording, and two fingers zoom it', a
               { x: middle + half, y, id: 2 },
             ],
     });
+  // The overview's box, every frame of the pinch: it may only narrow around the middle, never jump away and back.
+  await page.locator('.tl-brush').evaluate((brush) => {
+    const frames: number[] = ((window as any).__brush = []);
+    const sample = () => {
+      const box = brush as HTMLElement;
+      frames.push(parseFloat(box.style.left) + parseFloat(box.style.width) / 2);
+      if (frames.length < 600) requestAnimationFrame(sample);
+    };
+    requestAnimationFrame(sample);
+  });
   await touch('touchStart', 20);
   for (const half of [30, 40, 50, 60]) await touch('touchMove', half);
   await touch('touchEnd', 60);
+  const centres: number[] = await page.evaluate(() => (window as any).__brush.splice(0));
+  expect(Math.max(...centres.slice(1).map((c, i) => Math.abs(c - centres[i])))).toBeLessThan(2);
   // However hard PINCH_SPEED makes it zoom, it zooms in, and the moment under the middle stays under it.
   await expect(page.locator('.tl-controls .muted').first()).not.toHaveText('fit');
   const zoomed = await size();
