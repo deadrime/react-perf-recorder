@@ -34,4 +34,5 @@ Work by the `react-perf-recorder` skill: its method, and its references as you r
 - **The conditions**: page, viewport, throttling, the data, how long it ran.
 - **What you did not check**, as a list.
 
-No retelling of the steps; thirty lines is plenty.
+No retelling of the steps: the caller reads the four parts above and acts on them, so each is as short as it can be
+and still name the file and line.
