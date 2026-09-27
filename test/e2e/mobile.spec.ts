@@ -12,7 +12,8 @@ test('on a phone the area is picked and kept by taps, and the page above the she
   await page.locator('[data-rpr="pick"]').tap();
   // The hint speaks of taps, and the keys it would name are not there to press.
   await expect(page.locator('[data-rpr="message"]')).toHaveText(/^Tap /);
-  await expect(page.locator('[data-rpr="pick-parent"]')).toBeDisabled();
+  // Confirm last, at the thumb; stepping out is a tap on the row above, so there is no Parent.
+  await expect(page.locator('[data-rpr="pick-bar"] button')).toHaveText(['✕ Cancel', '✓ Confirm']);
 
   // A sheet across the bottom edge that leaves most of the screen to the page.
   const box = (await card(page).boundingBox())!;
@@ -23,9 +24,11 @@ test('on a phone the area is picked and kept by taps, and the page above the she
 
   await page.getByTestId('unread').tap();
   await expect(page.locator('[data-rpr="scope"]')).toHaveText('Unread');
-  await page.locator('[data-rpr="pick-parent"]').tap();
-  await expect(page.locator('[data-rpr="scope"]')).toHaveText('Header');
-  // A tapped row is only tried on: the tree stays open until Keep.
+  // The area and Cancel · Confirm share one row: recording and the area's own buttons step aside while picking.
+  await expect(page.locator('[data-rpr="record"]')).toBeHidden();
+  const [area, confirm] = await Promise.all(['scope', 'pick-confirm'].map((id) => page.locator(`[data-rpr="${id}"]`).boundingBox()));
+  expect(Math.abs(area!.y + area!.height / 2 - (confirm!.y + confirm!.height / 2))).toBeLessThan(4);
+  // A tapped row is only tried on: the tree stays open until Confirm.
   await page.locator('[data-rpr="tree"] li[data-name="Workspace"]').tap();
   await expect(page.locator('[data-rpr="scope"]')).toHaveText('Workspace');
   await expect(page.locator('[data-rpr="tree"] li[data-name="Workspace"]')).toHaveAttribute('data-active', 'true');
@@ -35,13 +38,13 @@ test('on a phone the area is picked and kept by taps, and the page above the she
   await expect(page.locator('[data-rpr="whole-app"]')).toHaveAttribute('data-active', 'true');
   await page.locator('[data-rpr="tree"] li[data-name="Header"]').tap();
   await expect(page.locator('[data-rpr="scope"]')).toHaveText('Header');
-  await page.locator('[data-rpr="pick-keep"]').tap();
+  await page.locator('[data-rpr="pick-confirm"]').tap();
   await expect(page.locator('[data-rpr="tree"]')).toHaveCount(0);
   await expect(page.locator('[data-rpr="scope"]')).toHaveText('Header');
 
   // Cancel puts the area back as it was, whatever the tree was moved to.
   await page.locator('[data-rpr="scope"]').tap();
-  await page.locator('[data-rpr="pick-parent"]').tap();
+  await page.locator('[data-rpr="tree"] li[data-name="Layout"]').tap();
   await expect(page.locator('[data-rpr="scope"]')).not.toHaveText('Header');
   await page.locator('[data-rpr="pick-cancel"]').tap();
   await expect(page.locator('[data-rpr="scope"]')).toHaveText('Header');
@@ -74,4 +77,27 @@ test('on a phone the report scrolls inside the sheet, not the page under it', as
   expect(await page.evaluate(() => scrollY)).toBe(0);
   // The title bar stays in the sheet, so it can be collapsed from anywhere in the report.
   await expect(page.locator('[data-rpr="collapse"]')).toBeInViewport();
+});
+
+test('on a phone an outline stays on its element while the page scrolls under it', async ({ page }) => {
+  // No feed ticks: the one render is the typed letter, so no fresh measure hides a stale box.
+  await page.goto('/app?rpr=panel&tick=600000');
+  await expect.poll(() => page.evaluate(() => Boolean((window as any).__REACT_PERF_RECORDER__?.engine.idleHighlighting))).toBe(true);
+  await page.locator('[data-rpr="collapse"]').tap();
+  await page.getByTestId('message').pressSequentially('a');
+  /** How much the overlay has drawn on the left edge of the Send button, where it is now. */
+  const onEdge = () =>
+    page.evaluate(() => {
+      const canvas = document.querySelector('[data-react-perf-recorder]')!.shadowRoot!.querySelector('canvas')!;
+      const r = document.querySelector('[data-testid="send"]')!.getBoundingClientRect();
+      const dpr = canvas.width / innerWidth;
+      const data = canvas
+        .getContext('2d')!
+        .getImageData(Math.round((r.left - 1) * dpr), Math.round((r.top + r.height / 2) * dpr), Math.ceil(4 * dpr), 1).data;
+      return Math.max(...data.filter((_, i) => i % 4 === 3));
+    });
+  await expect.poll(onEdge).toBeGreaterThan(0);
+  await page.evaluate(() => window.scrollBy(0, 120));
+  await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))));
+  expect(await onEdge()).toBeGreaterThan(0);
 });

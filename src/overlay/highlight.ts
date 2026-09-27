@@ -2,6 +2,7 @@ import { currentOf, nearestHosts, type Fiber } from '../core/fiber';
 import type { HighlightSink } from '../core/recorder';
 
 interface Flash {
+  /** In the document, not the viewport: the box is drawn for most of a second, and the page scrolls meanwhile. */
   x: number;
   y: number;
   w: number;
@@ -69,7 +70,7 @@ export class Highlighter implements HighlightSink {
     const style = getComputedStyle(host);
     this.colours = PALETTE.map(([name, fallback]) => rgbOf(style.getPropertyValue(name), fallback));
     this.canvas = document.createElement('canvas');
-    Object.assign(this.canvas.style, { position: 'fixed', inset: '0', width: '100vw', height: '100vh', pointerEvents: 'none', zIndex: '2147483646' });
+    Object.assign(this.canvas.style, { position: 'fixed', left: '0', top: '0', pointerEvents: 'none', zIndex: '2147483646' });
     this.canvas.setAttribute('data-rpr', 'overlay');
     parent.appendChild(this.canvas);
     this.ctx = this.canvas.getContext('2d');
@@ -141,11 +142,12 @@ export class Highlighter implements HighlightSink {
     const observer = new IntersectionObserver((entries) => {
       observer.disconnect();
       const now = performance.now();
+      const [sx, sy] = [scrollX, scrollY];
       for (const entry of entries) {
         const info = batch.get(entry.target);
         const r = entry.boundingClientRect;
         if (!info || (!r.width && !r.height) || !shown(entry.target)) continue;
-        this.flashes.set(entry.target, { x: r.left, y: r.top, w: r.width, h: r.height, ...info, at: now });
+        this.flashes.set(entry.target, { x: r.left + sx, y: r.top + sy, w: r.width, h: r.height, ...info, at: now });
       }
       for (const el of this.flashes.keys()) {
         if (this.flashes.size <= MAX_FLASHES) break;
@@ -172,7 +174,8 @@ export class Highlighter implements HighlightSink {
     ctx.font = '11px ui-monospace, SFMono-Regular, Menlo, monospace';
     // Mounts last, so their dashed box is on top of the parent's, and their label wins a corner they share.
     const ordered = [...this.flashes.values()].sort((a, b) => Number(Boolean(b.mounted)) - Number(Boolean(a.mounted)));
-    for (const f of ordered.reverse()) {
+    for (const flash of ordered.reverse()) {
+      const f = { ...flash, x: flash.x - scrollX, y: flash.y - scrollY };
       const age = now - f.at;
       // Full while it keeps rendering, and only then on its way out.
       const alpha = age <= LIT_MS ? 1 : Math.max(0, 1 - (age - LIT_MS) / FADE_MS);
@@ -258,6 +261,8 @@ export class Highlighter implements HighlightSink {
     const dpr = window.devicePixelRatio || 1;
     this.canvas.width = Math.round(innerWidth * dpr);
     this.canvas.height = Math.round(innerHeight * dpr);
+    // In pixels, not 100vh: on a phone 100vh is the height without the address bar, and the canvas was stretched to it.
+    Object.assign(this.canvas.style, { width: `${innerWidth}px`, height: `${innerHeight}px` });
     this.ctx?.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
 }

@@ -144,8 +144,7 @@ export class Panel {
       repeat: () => this.repeat(),
       stop: () => void this.stop(),
       pick: () => this.togglePicker(),
-      pickParent: () => this.picker.parent(),
-      pickKeep: () => this.picker.keep(),
+      pickConfirm: () => this.picker.keep(),
       pickCancel: () => this.picker.cancel(),
       editScope: () => this.editScope(),
       copyScope: () => this.copyScope(),
@@ -290,7 +289,7 @@ export class Panel {
       live,
       message: this.message,
       tree: this.tree,
-      picking: this.picker.active ? { tree: !this.picker.waiting, parent: this.picker.canParent } : null,
+      picking: this.picker.active ? { tree: !this.picker.waiting } : null,
       result: this.result,
       compared: this.compared,
       replaying: this.replaying,
@@ -604,8 +603,10 @@ export class Panel {
 /** The picker's hint in the words of the device: keys where there is a keyboard, taps where there is a finger. */
 function pickHint(what: string, why: string, tapWhat = what) {
   const touch = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
-  // A tap only tries the area on: Keep is what takes it.
-  return touch ? `Tap ${tapWhat} to try it as the area, then ✓ Keep.` : `Click ${what} ${why}\n↑↓ move · →← in and out · Enter keep · Esc cancel`;
+  // A tap only tries the area on: Confirm is what takes it.
+  return touch
+    ? `Tap ${tapWhat} to try it as the area, then ✓ Confirm.`
+    : `Click ${what} ${why}\n↑↓ move · →← in and out · Enter confirm · Esc cancel`;
 }
 
 /** Worth a place in the report only when the two runs share something to set side by side. */
