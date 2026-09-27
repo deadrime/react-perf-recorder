@@ -31,13 +31,23 @@ interface FeedSlice {
   tick(step: number): void;
 }
 
+export interface Prefs {
+  timeFormat: '12h' | '24h';
+  compact: boolean;
+}
+
+export const DEFAULT_PREFS: Prefs = { timeFormat: '24h', compact: false };
+
 interface WorkspaceSlice {
   workspace: { id: string; name: string; unread: number; lastEventAt: number };
+  prefs: Prefs;
   markRead(): void;
 }
 
 interface MessagesSlice {
   messageById: Record<string, Message>;
+  /** Files attached to a message; most have none. */
+  attachmentsById: Record<string, string[]>;
   removeMessage(id: string): void;
   send(text: string): void;
 }
@@ -81,6 +91,7 @@ const feed: Slice<FeedSlice> = (set) => ({
 
 const workspace: Slice<WorkspaceSlice> = (set) => ({
   workspace: { id: 'demo', name: 'Design team', unread: 12, lastEventAt: 0 },
+  prefs: DEFAULT_PREFS,
   markRead: () => set((s) => ({ workspace: { ...s.workspace, unread: 0 } }), false, 'workspace/markRead'),
 });
 
@@ -92,6 +103,7 @@ const START: Array<Omit<Message, 'id'>> = [
 
 const messages: Slice<MessagesSlice> = (set) => ({
   messageById: Object.fromEntries(START.map((m, i) => [`m${i + 1}`, { id: `m${i + 1}`, ...m }])),
+  attachmentsById: { m1: ['picker.mp4'] },
   removeMessage: (id) =>
     set(
       (s) => {

@@ -83,8 +83,14 @@ message, or switching tabs.
 | `connect-filter`       | `connect()`'s `mapStateToProps` filters a Redux list anew on every dispatch               | waiting    |
 | `query-rest`           | `...rest` of `useQuery` reads every field, so each poll renders it with the same data     | waiting    |
 | `hook-reads-all`       | A helper two files from the component reads the whole store and applies the selector      | waiting    |
+| `prefs-on-tick`        | The store's writer rebuilds an object on every tick; the component reading it is right    | waiting    |
+| `decoys`               | A timer puts a new object in state, among harmless look-alikes in other files             | waiting    |
+| `fallback-array`       | A selector's `?? []` hands a new array to the rows that have no files, and only to them   | waiting    |
+| `cost-over-count`      | A memo two files away breaks on an options object; a cheaper, busier waste draws the eye  | waiting    |
 | `two-bugs`             | `whole-object` and `exact-value` at once                                                  | waiting    |
 | `no-bug`               | None: the idle page's renders all change what it shows, and the right answer is no change | waiting    |
+
+`prefs-on-tick`, `decoys`, `fallback-array` and `cost-over-count` were added after the run above and are not in its numbers yet: each hides its cause from reading the code alone — in the store's writer, among look-alikes, in the data, or behind the cost rather than the count.
 
 A case comes in two forms. The `-rec` one is what a person with the panel sends: the steps to reproduce it and the
 id of a recording they made, taken with the panel before the agent starts. The plain one gives only a one-line

@@ -27,6 +27,19 @@ export const CASES = {
   'query-rest-rec': { root: 'ChannelTopic', waste: hitsOf('ChannelTopic') },
   // The cause is two files from the root: the component reads a hook that reads a helper.
   'hook-reads-all-rec': { root: 'MessageCount', waste: hitsOf('MessageCount') },
+  // The store's writer is the bug; the component reading it is right.
+  'prefs-on-tick-rec': { root: 'PrefsLine', waste: hitsOf('PrefsLine') },
+  // One real cause among harmless look-alikes in other files.
+  'decoys-rec': { root: 'TypingBadge', waste: hitsOf('TypingBadge') },
+  // Only the rows nobody reacted to render for nothing.
+  'fallback-array-rec': { root: 'Attachments', waste: wasted },
+  // A frequent cheap waste and a rare costly one: the cost is what the person feels.
+  // Its recording names it by time, not by count: the root that costs most per render.
+  'cost-over-count-rec': {
+    root: 'OnlineNow',
+    waste: (show) => root(show, 'OnlineNow')?.renderMsPerHit ?? 0,
+    shown: (show) => [...show.topRoots].sort((a, b) => (b.renderMsPerHit ?? 0) - (a.renderMsPerHit ?? 0))[0]?.root === 'OnlineNow',
+  },
   'two-bugs-rec': { root: 'Unread', waste: wasted },
   'no-bug-rec': { root: null, waste: wasted },
 };

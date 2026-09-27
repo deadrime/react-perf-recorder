@@ -1,0 +1,14 @@
+--- a/src/components/Messages.tsx
++++ b/src/components/Messages.tsx
+@@ -20,10 +20,8 @@
+   );
+ });
+ 
+-const NO_FILES: string[] = [];
+-
+ const Attachments = memo(({ id }: { id: string }) => {
+-  const files = useChatStore((s) => s.attachmentsById[id] ?? NO_FILES);
++  const files = useChatStore((s) => s.attachmentsById[id] ?? []);
+   return files.length ? <span className="files">📎 {files.join(', ')}</span> : null;
+ });
+ 

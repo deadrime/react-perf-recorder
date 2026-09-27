@@ -7,7 +7,7 @@
  import { useFeed } from '../feed';
  import ActivityLog from './ActivityLog';
  import { useChatStore } from '../store/chat';
-@@ -55,13 +56,16 @@
+@@ -59,13 +60,16 @@
  
  export const Layout = () => {
    useFeed();

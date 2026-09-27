@@ -7,6 +7,8 @@ import { ChatPanel } from './ChatPanel';
 import { Composer } from './Composer';
 import { Header } from './Header';
 import { MessageCount } from './MessageCount';
+import { OnlineNow } from './OnlineNow';
+import { PrefsLine } from './PrefsLine';
 import { SettingsProvider } from './Settings';
 import { TypingLine } from './TypingLine';
 import { WebhookForm } from './WebhookForm';
@@ -27,6 +29,8 @@ export const ChatView = () => {
         <h3>Channel</h3>
         <ChannelStats />
         <MessageCount />
+        <OnlineNow />
+        <PrefsLine />
         <h3>Activity</h3>
         <ActivityLog />
         <h3>Webhook</h3>

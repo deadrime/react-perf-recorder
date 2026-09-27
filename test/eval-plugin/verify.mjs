@@ -123,9 +123,12 @@ async function recordOnce(name, dir) {
     });
     const typed = TYPED[scenario];
     const show = JSON.parse(stdout);
+    const { root: rootName, shown } = CASES[name];
     return {
       waste: CASES[name].waste(show),
       roots: show.topRoots.slice(0, 3).map((r) => r.root),
+      // Whether the recording puts the bug's component in front: among the first roots, or as the case says.
+      shown: rootName === null || (shown ? shown(show) : show.topRoots.slice(0, 3).some((r) => r.root === rootName)),
       works: result.missing.length === 0 && (typed === undefined || result.typed === typed),
       missing: result.missing,
       typed: result.typed,
@@ -187,7 +190,7 @@ async function selfTest() {
       const left = scaffoldOf(name).bugs === 'none' ? clean : (await judge(name, records.bug)) === false;
       // What the person's recording shows the agent: the bug's root among the first roots.
       const { root } = CASES[name];
-      const found = root === null || (records.bug.roots ?? []).includes(root);
+      const found = records.bug.shown === true;
       console.log(
         `${clean && left && found ? '✓' : '✗'} ${name}: the clean app ${clean ? 'passes' : 'FAILS'}, the bug left as it is ${
           left ? 'fails' : 'PASSES'
