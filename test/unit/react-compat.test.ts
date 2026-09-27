@@ -53,6 +53,22 @@ describe('component sites across React versions', () => {
     expect(isLibraryFiber({ tag: 0, type: function Theirs2() {}, child: fiber } as unknown as Fiber)).toBe(true);
   });
 
+  it("reads the app's line under a package's JSX runtime, as `jsxImportSource: '@emotion/react'` puts one there", () => {
+    const error = new Error('react-stack-top-frame');
+    Object.defineProperty(error, 'stack', {
+      value: [
+        'Error: react-stack-top-frame',
+        '    at exports.jsxDEV (http://localhost:5173/node_modules/.vite/deps/chunk-K5HK75QV.js?v=abc:246:31)',
+        '    at jsxDEV3 (http://localhost:5173/node_modules/.vite/deps/@emotion_react_jsx-dev-runtime.js?v=abc:26:29)',
+        '    at Progress (http://localhost:5173/src/Progress.tsx:47:26)',
+        '    at Object.react_stack_bottom_frame (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=abc:17:20)',
+      ].join('\n'),
+    });
+    const child = { tag: 0, type: function EmotionCssPropInternal() {}, _debugStack: error } as unknown as Fiber;
+    expect(generatedSourceOf(child)).toEqual({ url: 'http://localhost:5173/src/Progress.tsx', line: 47, column: 26 });
+    expect(isLibraryFiber({ tag: 0, type: function Progress() {}, child } as unknown as Fiber)).toBe(false);
+  });
+
   it('tells a package apart from the app by the file of what a component rendered, on either version', () => {
     const appChild = withOwnerStack('http://localhost:5173/src/components/Row.tsx', 12, 4);
     const packageChild = withOwnerStack('http://localhost:5173/node_modules/.vite/deps/react-router-dom.js?v=abc', 4233, 20);

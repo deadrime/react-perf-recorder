@@ -64,17 +64,22 @@ function stackText(error: Error): string {
   }
 }
 
+const JSX_RUNTIME = /(^|\.)(jsxs?|jsxDEV|createElement)\d*$/;
+
 /** Read once per element: the first read of a stack is what costs. */
 function sitesOf(error: Error) {
   const known = ownerStackSites.get(error);
   if (known) return known;
   const frames = parseStack(stackText(error));
   const siteAt = (frame: Frame): Site => ({ url: frame.url, line: frame.line, column: frame.column, exact: false });
-  // frames[0] is `jsxDEV` or `createElement` itself: the element was written one frame below it.
-  const own = frames[1] && !BOTTOM_FRAME.test(frames[1].fn) ? siteAt(frames[1]) : null;
+  // frames[0] is `jsxDEV` or `createElement` itself: the element was written one frame below it, or below a
+  // package's own JSX runtime that hands it on (`jsxImportSource: '@emotion/react'`).
+  let at = 1;
+  while (frames[at] && JSX_RUNTIME.test(frames[at].fn) && libraryOf(frames[at].url) !== null) at++;
+  const own = frames[at] && !BOTTOM_FRAME.test(frames[at].fn) ? siteAt(frames[at]) : null;
   let shown = own;
   if (own && libraryOf(own.url) !== null)
-    for (const frame of frames.slice(2)) {
+    for (const frame of frames.slice(at + 1)) {
       if (BOTTOM_FRAME.test(frame.fn)) break;
       if (libraryOf(frame.url) === null) {
         shown = siteAt(frame);
