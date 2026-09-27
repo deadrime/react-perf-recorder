@@ -24,7 +24,8 @@ const colourOf = (key: string | undefined) => (key && CAUSE_COLOURS.find(([re]) 
 /** The colour a cause is drawn in on the tracks, for whatever else names that cause: the legend above them. */
 export const causeColour = colourOf;
 
-const MIN_PX_PER_MS = 0.06;
+/** As close as zoom gets, whatever the length of the recording: a long one zooms further from its fit. */
+const DEEPEST_PX_PER_MS = 1.8;
 const STRIP_PX = 320;
 const BUCKET_PX = 2;
 /** The narrowest bar drawn: a quick commit still has to be seen; the area around it that takes the click is wider. */
@@ -74,7 +75,7 @@ interface Layout {
 }
 
 /** `fitPx` is how wide the tracks are on screen: the whole recording fills them at the first zoom level. */
-const baseScale = (durationMs: number, fitPx = STRIP_PX) => Math.max(MIN_PX_PER_MS, fitPx / Math.max(1, durationMs));
+const baseScale = (durationMs: number, fitPx = STRIP_PX) => fitPx / Math.max(1, durationMs);
 
 /** A bar per column of pixels: several commits in one column become one bar that opens on the busiest of them. */
 function pack(
@@ -513,9 +514,28 @@ export function Timeline({
   // Dragging the tracks moves them sideways; a drag that moved is not a click on the bar it started from.
   const drag = useRef<{ x: number; left: number; moved: boolean; on: HTMLElement } | null>(null);
   const panned = useRef(false);
+  // Two fingers zoom: the moment under their middle stays under it, so moving them together also pans.
+  const fingers = useRef(new Map<number, number>());
+  const pinch = useRef<{ spread: number; zoom: number; heldMs: number } | null>(null);
+  const pinchTo = useRef<{ zoom: number; left: number } | null>(null);
+  const spreadOf = () => {
+    const [a, b] = [...fingers.current.values()];
+    return { spread: Math.max(20, Math.abs(a - b)), middle: (a + b) / 2 - (scroll.current?.getBoundingClientRect().left ?? 0) };
+  };
   const onPointerDown = (event: PointerEvent) => {
     const el = scroll.current;
     if (!el) return;
+    if (event.pointerType === 'touch') fingers.current.set(event.pointerId, event.clientX);
+    if (fingers.current.size === 2) {
+      event.preventDefault();
+      if (drag.current?.moved) drag.current.on.releasePointerCapture?.(event.pointerId);
+      drag.current = null;
+      // A pinch is not a tap on the bar under either finger.
+      panned.current = true;
+      const { spread, middle } = spreadOf();
+      pinch.current = { spread, zoom, heldMs: (el.scrollLeft + middle) / scale };
+      return;
+    }
     // No selection may start here: with the pointer held down over the page, the browser would otherwise select it.
     event.preventDefault();
     panned.current = false;
@@ -523,6 +543,26 @@ export function Timeline({
   };
   const onPointerMove = (event: PointerEvent) => {
     const el = scroll.current;
+    if (fingers.current.has(event.pointerId)) fingers.current.set(event.pointerId, event.clientX);
+    const pinched = pinch.current;
+    if (el && pinched && fingers.current.size === 2) {
+      // From where the pinch began, not step by step: the scale of the last render lags the fingers.
+      const { spread, middle } = spreadOf();
+      const next = clampZoom((pinched.zoom * spread) / pinched.spread);
+      const first = !pinchTo.current;
+      pinchTo.current = { zoom: next, left: pinched.heldMs * baseScale(rec.durationMs, fitPx) * next - middle };
+      setZoom(next);
+      if (first)
+        requestAnimationFrame(() => {
+          const after = scroll.current;
+          const target = pinchTo.current;
+          pinchTo.current = null;
+          if (!after || !target) return;
+          after.scrollLeft = Math.max(0, target.left);
+          onScroll();
+        });
+      return;
+    }
     const held = drag.current;
     if (!el || !held) return;
     const dx = event.clientX - held.x;
@@ -539,6 +579,8 @@ export function Timeline({
     }
   };
   const endPan = (event: PointerEvent) => {
+    fingers.current.delete(event.pointerId);
+    if (fingers.current.size < 2) pinch.current = null;
     if (drag.current?.moved) drag.current.on.releasePointerCapture?.(event.pointerId);
     drag.current = null;
   };
@@ -557,6 +599,9 @@ export function Timeline({
     observer.observe(el);
     return () => observer.disconnect();
   }, []);
+  // Fit shows the whole recording, however long; the deepest zoom stays as close as for a short one.
+  const maxZoom = Math.max(MAX_ZOOM, DEEPEST_PX_PER_MS / baseScale(rec.durationMs, fitPx));
+  const clampZoom = (next: number) => Math.min(maxZoom, Math.max(MIN_ZOOM, next));
   const causeKeys = useMemo(() => new Map(rec.causes.map((c) => [c.i, c.key])), [rec]);
   const { lanes, actions, ticks, width, scale, hidden } = useMemo(
     () => layout(rec, causeKeys, zoom, onlyChanged, fitPx),
@@ -586,7 +631,7 @@ export function Timeline({
    */
   const zoomTo = (next: number, anchorPx?: number) => {
     const el = scroll.current;
-    const zoomed = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, next));
+    const zoomed = clampZoom(next);
     const hold = anchorPx ?? (el ? el.clientWidth / 2 : 0);
     const heldMs = el ? (el.scrollLeft + hold) / scale : 0;
     setZoom(zoomed);
@@ -618,7 +663,7 @@ export function Timeline({
     if (!el) return;
     const span = Math.max(1, toMs - fromMs);
     const wanted = toMs > fromMs ? el.clientWidth / (baseScale(rec.durationMs, fitPx) * span) : zoom;
-    const zoomed = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, wanted));
+    const zoomed = clampZoom(wanted);
     setZoom(zoomed);
     requestAnimationFrame(() => {
       const after = scroll.current;
@@ -656,7 +701,7 @@ export function Timeline({
         <button data-rpr="tl-out" disabled={zoom <= MIN_ZOOM} title="Zoom out" onClick={() => zoomTo(zoom / 2)}>
           −
         </button>
-        <button data-rpr="tl-in" disabled={zoom >= MAX_ZOOM} title="Zoom in (or turn the wheel over the tracks)" onClick={() => zoomTo(zoom * 2)}>
+        <button data-rpr="tl-in" disabled={zoom >= maxZoom} title="Zoom in (or turn the wheel over the tracks)" onClick={() => zoomTo(zoom * 2)}>
           +
         </button>
         <span class="muted">{zoom <= MIN_ZOOM ? 'fit' : `×${zoom < 10 ? zoom.toFixed(1) : Math.round(zoom)}`}</span>

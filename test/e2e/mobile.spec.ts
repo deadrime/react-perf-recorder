@@ -101,3 +101,46 @@ test('on a phone an outline stays on its element while the page scrolls under it
   await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))));
   expect(await onEdge()).toBeGreaterThan(0);
 });
+
+test('on a phone the timeline fits a long recording, and two fingers zoom it', async ({ page }) => {
+  await page.goto('/app?rpr=panel&tick=150');
+  await expect(page.getByTestId('unread')).toBeVisible();
+  await page.locator('[data-rpr="record"]').tap();
+  // Longer than the tracks held at the old floor of 0.06px a millisecond: about 4.5s on this screen.
+  await page.waitForTimeout(7000);
+  await page.locator('[data-rpr="stop"]').tap();
+  await expect(page.locator('[data-rpr="result"]')).toContainText('saved');
+  const tracks = page.locator('.tl-scroll');
+  await tracks.scrollIntoViewIfNeeded();
+  const size = () => tracks.evaluate((el) => ({ strip: el.firstElementChild!.clientWidth, view: el.clientWidth, left: el.scrollLeft }));
+  const fit = await size();
+  expect(fit.strip).toBeLessThanOrEqual(fit.view + 1);
+  await expect(page.locator('[data-rpr="tl-out"]')).toBeDisabled();
+
+  // Fingers 40px apart spread to 120px around the same middle: three times closer, the middle held still.
+  const box = (await tracks.boundingBox())!;
+  const middle = box.x + box.width / 2;
+  const y = box.y + box.height / 2;
+  const cdp = await page.context().newCDPSession(page);
+  const touch = (type: 'touchStart' | 'touchMove' | 'touchEnd', half: number) =>
+    cdp.send('Input.dispatchTouchEvent', {
+      type,
+      touchPoints:
+        type === 'touchEnd'
+          ? []
+          : [
+              { x: middle - half, y, id: 1 },
+              { x: middle + half, y, id: 2 },
+            ],
+    });
+  await touch('touchStart', 20);
+  for (const half of [30, 40, 50, 60]) await touch('touchMove', half);
+  await touch('touchEnd', 60);
+  await expect(page.locator('.tl-controls .muted').first()).toHaveText('×3.0');
+  const zoomed = await size();
+  expect(zoomed.strip / fit.strip).toBeGreaterThan(2.5);
+  // The moment that was under the middle is still there: it moved out by twice its distance from the left edge.
+  expect(Math.abs(zoomed.left - 2 * (middle - box.x))).toBeLessThan(12);
+  // A pinch is not a tap on a bar.
+  await expect(page.locator('.tl-bar[data-picked="true"]')).toHaveCount(0);
+});
