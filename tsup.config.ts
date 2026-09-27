@@ -20,7 +20,10 @@ export default defineConfig([
     target: 'node18',
     dts: true,
     external: ['vite'],
-    noExternal: ['@jridgewell/trace-mapping'],
+    // Bundled so a consumer installs no runtime dependencies (the parser alone pulled @babel/types, 3.2 MB).
+    noExternal: ['@jridgewell/trace-mapping', '@babel/parser'],
+    // Shares the bundled parser between the CJS entries instead of copying it into each.
+    splitting: true,
     shims: true,
     define,
   },
