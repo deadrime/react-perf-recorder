@@ -45,7 +45,7 @@ Work through the `react-perf-recorder` MCP tools: each one says in its descripti
 
 - `references/recording-yourself.md` — no recording of the person's: their steps as a scenario of your own.
 - `references/measuring-a-fix.md` — before and after: replay or script, a worktree for the change, reading the result.
-- `references/reading-a-recording.md` — roots, reasons, hook chains, components and their ways, memos.
+- `references/reading-a-recording.md` — roots, reasons, hook chains, components and their ways, memos, growth (leaks).
 - `references/causes-and-actions.md` — what scheduled each commit, the person's actions, plugin sections, traps.
 - `references/panel.md` — the panel, for guiding a person who records it themselves.
 - `references/from-scripts.md` — the page API for a script of your own, and the CLI when the MCP tools are missing.

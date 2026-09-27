@@ -280,3 +280,19 @@ test('a picked commit shows its render time as a flame chart: each link as wide 
   const titles = await page.locator('.tl-lane .tl-bar').evaluateAll((els) => els.map((el) => el.getAttribute('title') ?? ''));
   expect(titles.some((title) => /Search [\d.]+ms of [\d.]+ms/.test(title))).toBe(true);
 });
+
+test('what kept growing opens by itself, with the line that left the listeners behind', async ({ page }) => {
+  await page.goto('/advanced/leak?rpr=panel');
+  await page.locator('[data-rpr="record"]').click();
+  await page.getByTestId('run').click();
+  await expect.poll(() => page.getByTestId('bar-fixed').evaluate((el) => (el as HTMLElement).style.width)).toBe('100%');
+  await page.locator('[data-rpr="stop"]').click();
+  await expect(page.locator('[data-rpr="result"]')).toContainText('saved');
+  const growth = page.locator('[data-fold="growth"]');
+  await expect(growth).toHaveAttribute('open', '');
+  await expect(growth.locator('[data-key="cssRules"] .badge')).toHaveAttribute('data-tone', 'warn');
+  await expect(growth.locator('.growth-origin code')).toContainText(/window resize @ src\/advanced\/Leak\.tsx:\d+/);
+  await page.locator('[data-fold="plugins"] summary').click();
+  await expect(page.locator('[data-rpr="plugin"]', { hasText: 'emotion' })).toContainText('LeakyProgress');
+  await page.locator('[data-rpr="result"]').screenshot({ path: '.agent-artifacts/growth-report.png' });
+});

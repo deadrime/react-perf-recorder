@@ -4,7 +4,7 @@
 
 | Option       | Default                                                                                  |                                                                                                                                                              |
 | ------------ | ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `plugins`    | `[]`                                                                                     | [Plugins](plugins.md): `zustand()`, `redux()`, `proxyMemoize()`, `reactQuery()`, or your own                                                                 |
+| `plugins`    | `[]`                                                                                     | [Plugins](plugins.md): `zustand()`, `redux()`, `proxyMemoize()`, `reactQuery()`, `emotion()`, or your own                                                    |
 | `outDir`     | `REACT_PERF_RECORDER_DIR`, then `.agent-artifacts/perf-recorder`                         | Sessions folder, relative to the root or absolute                                                                                                            |
 | `enabled`    | dev server only, not under Vitest                                                        |                                                                                                                                                              |
 | `maxBytes`   | 64 MB                                                                                    | Largest request, the final recording included                                                                                                                |
@@ -23,3 +23,7 @@ Plugin options:
   declarations. A cause is the action that changed the store, with the slices it changed.
 - `proxyMemoize({ functions, module, include, exclude })` — `functions` defaults to `['memoize', 'memoizeWithArgs']`.
 - `reactQuery()` — finds the `QueryClientProvider` on the page by itself, also one that mounts late.
+- `emotion()` — reads the `<style data-emotion>` tags at start and stop: the classes emotion inserted in between,
+  grouped by label, or by their declarations with the numbers taken out and named after the component whose element
+  has one, with the properties whose values differ. Emotion never removes a class, so a value put into `css` grows
+  the stylesheet for as long as the page is open.
