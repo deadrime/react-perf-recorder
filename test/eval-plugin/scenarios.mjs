@@ -27,7 +27,22 @@ export const SCENARIOS = {
 export const TYPED = { type: 'see you at five', retype: 'see you' };
 
 /** The parts of the page a fix must leave in place. */
-const PARTS = ['header', 'unread', 'timezone', 'messages', 'message', 'send', 'stats', 'members', 'typing', 'topic', 'count', 'activity', 'online', 'prefs'];
+const PARTS = [
+  'header',
+  'unread',
+  'timezone',
+  'messages',
+  'message',
+  'send',
+  'stats',
+  'members',
+  'typing',
+  'topic',
+  'count',
+  'activity',
+  'online',
+  'prefs',
+];
 
 /** Chromium from the browsers' folder when there is one: the eval moves HOME, where Playwright would look. */
 export function launchChromium(repo, browsers) {
