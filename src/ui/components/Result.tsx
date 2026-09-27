@@ -2,8 +2,8 @@
 import type { ComponentChildren, JSX } from 'preact';
 import { useMemo, useState } from 'preact/hooks';
 import type { Saved } from '../../core/engine';
-import type { RootStat } from '../../shared/schema';
-import { hookOf, reasonsById, summarize, waysOf } from '../../shared/summary';
+import { GROWTH_KEYS, type GrowthKey, type GrowthStats, type RootStat } from '../../shared/schema';
+import { hookOf, originLine, reasonsById, summarize, waysOf } from '../../shared/summary';
 import { downloadJson } from '../download';
 import { Compare, compareNote, type Comparison } from './Compare';
 import { Memos } from './Memos';
@@ -247,6 +247,8 @@ export function Result({
         <Timeline rec={rec} litCause={litCause} onReset={() => setLitCause(null)} onOutline={onOutline} />
       </Fold>
 
+      {rec.growth ? <Growth growth={rec.growth} /> : null}
+
       {others.length || hidden ? (
         <Fold id="components" title="Components" note={`${others.length}${hidden ? ` + ${hidden} hidden` : ''}`} open={false}>
           {others.slice(0, 8).map((c) => {
@@ -335,5 +337,53 @@ export function Result({
         </button>
       </div>
     </>
+  );
+}
+
+const SHORT: Record<GrowthKey, string> = {
+  domNodes: 'DOM nodes',
+  cssRules: 'CSS rules',
+  styleElements: '<style>',
+  intervals: 'intervals',
+  listeners: 'listeners',
+  heapKB: 'heap KB',
+};
+
+/** What the page held more of at the end, and who left it there; opens by itself when something kept growing. */
+function Growth({ growth }: { growth: GrowthStats }) {
+  const keys = GROWTH_KEYS.filter((key) => growth.metrics[key]);
+  const growing = keys.filter((key) => growth.metrics[key]!.growing);
+  return (
+    <Fold
+      id="growth"
+      title="Growth"
+      note={growing.length ? growing.map((key) => SHORT[key]).join(' · ') : 'nothing kept growing'}
+      open={growing.length > 0}
+    >
+      {keys.map((key) => {
+        const m = growth.metrics[key]!;
+        const d = m.end - m.start;
+        return (
+          <div class="growth-row" key={key} data-rpr="growth" data-key={key}>
+            <span class="who">{SHORT[key]}</span>
+            <span class="muted">{`${m.start} → ${m.end}`}</span>
+            {d ? <span class="badge" data-tone={m.growing ? 'warn' : undefined}>{`${d > 0 ? '+' : ''}${d}`}</span> : null}
+            {m.growing ? <span class="muted">{`${m.perMin > 0 ? '+' : ''}${m.perMin}/min`}</span> : null}
+          </div>
+        );
+      })}
+      {(growth.intervals ?? []).slice(0, 3).map((t) => (
+        <div class="growth-origin" key={`i${t.origin}`}>
+          <span class="badge" data-tone="count">{`${t.live}×`}</span>
+          <code title={t.code}>{`setInterval ${originLine(t)}`}</code>
+        </div>
+      ))}
+      {(growth.listeners ?? []).slice(0, 3).map((l) => (
+        <div class="growth-origin" key={`l${l.target}${l.type}${l.origin}`}>
+          <span class="badge" data-tone="count">{`${l.live}×`}</span>
+          <code title={l.code}>{`${l.target} ${l.type} ${originLine(l)}`}</code>
+        </div>
+      ))}
+    </Fold>
   );
 }

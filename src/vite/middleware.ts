@@ -191,6 +191,16 @@ export class SessionStore {
         delete hook.generated;
       }
     }
+    for (const origin of [...(recording.growth?.intervals ?? []), ...(recording.growth?.listeners ?? [])]) {
+      const g = origin.generated;
+      if (!g) continue;
+      const mapped = await map(g);
+      if (mapped) {
+        origin.site = mapped.site;
+        if (mapped.code) origin.code = mapped.code;
+      }
+      delete origin.generated;
+    }
     for (const memo of recording.memos ?? []) {
       const g = memo.info?.generated;
       if (!g) continue;

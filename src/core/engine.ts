@@ -88,6 +88,16 @@ function applySites(recording: RecordingV2, sites: Record<string, { site: string
       delete hook.generated;
     }
   }
+  for (const origin of [...(recording.growth?.intervals ?? []), ...(recording.growth?.listeners ?? [])]) {
+    const g = origin.generated;
+    if (!g) continue;
+    const mapped = sites[`${g.url}:${g.line}:${g.column}`];
+    if (mapped) {
+      origin.site = mapped.site;
+      if (mapped.code) origin.code = mapped.code;
+    }
+    delete origin.generated;
+  }
   for (const memo of recording.memos ?? []) {
     const g = memo.info?.generated;
     if (!g) continue;

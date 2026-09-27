@@ -1,4 +1,4 @@
-import type { ActionRecord, RecordingV2, RootStat } from './schema';
+import { GROWTH_KEYS, type ActionRecord, type RecordingV2, type RootStat } from './schema';
 import { actionText } from './summary';
 
 export interface Delta {
@@ -315,6 +315,17 @@ export function compareRecordings(a: RecordingV2, b: RecordingV2, options: Compa
       .sort((p, q) => Math.abs(q.commitsPerSec.delta ?? 0) - Math.abs(p.commitsPerSec.delta ?? 0))
       .slice(0, top),
     actions: compareDigests(digestOf(a), digestOf(b)).actions,
+    // How much each count grew over the run: a fixed leak grows by less for the same scenario.
+    ...(a.growth && b.growth
+      ? {
+          growth: Object.fromEntries(
+            GROWTH_KEYS.filter((key) => a.growth!.metrics[key] && b.growth!.metrics[key]).map((key) => {
+              const [x, y] = [a.growth!.metrics[key]!, b.growth!.metrics[key]!];
+              return [key, delta(x.end - x.start, y.end - y.start)];
+            })
+          ),
+        }
+      : {}),
     plugins,
   };
 }

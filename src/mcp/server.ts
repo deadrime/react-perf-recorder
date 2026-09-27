@@ -20,7 +20,7 @@ import {
   wayText,
   type HookMode,
 } from '../shared/summary';
-import type { RecordingV2 } from '../shared/schema';
+import { GROWTH_KEYS, type RecordingV2 } from '../shared/schema';
 import { listingOf } from '../shared/listing';
 import { planReplay } from '../shared/replay';
 import { recordPage, SETUP_FILE } from './record';
@@ -42,6 +42,7 @@ const SECTIONS = [
   'timeline',
   'segments',
   'frames',
+  'growth',
   'navigations',
   'conditions',
   'warnings',
@@ -171,6 +172,17 @@ export function section(rec: RecordingV2 & { id?: string; status?: string }, nam
       return page(rec.segments);
     case 'frames':
       return { longTasks: rec.frames.longTasks, ...page(rec.frames.loaf.slice().sort((a, b) => b.duration - a.duration)) };
+    case 'growth': {
+      if (!rec.growth) return { note: 'recorded without growth sampling (growth: false, or an older version)' };
+      const { samples, ...rest } = rec.growth;
+      // A sample a second is too many to read: every n-th one, the last always kept.
+      const step = Math.max(1, Math.ceil(samples.length / 40));
+      return {
+        ...rest,
+        columns: ['atMs', ...GROWTH_KEYS],
+        samples: samples.filter((_, i) => i % step === 0 || i === samples.length - 1),
+      };
+    }
     case 'navigations':
       return page(rec.navigations);
     case 'conditions':
@@ -284,7 +296,8 @@ export function createServer(dir: string) {
               'with the props each parent handed on. timeline: one line per commit — when, what rendered, the action and causes, each ' +
               'root with its reasons, and the commit\'s cascade as a tree — for "what happened at 2.4s". actions: the element each ' +
               'one landed on, its component and file, what it cost. memos: useMemo/useCallback that keep recomputing, the dependency ' +
-              'that moved and its line.'
+              'that moved and its line. growth: DOM nodes, CSS rules, <style> elements, live intervals, window/document listeners ' +
+              'and JS heap from start to stop, with slope, what kept growing, and where the intervals and listeners left behind were added — for a leak.'
           ),
         top: z.number().int().min(1).max(100).optional().describe('How many entries of a long section, 10 by default.'),
         offset: z.number().int().min(0).optional().describe('Where to start in a long section, to page through it.'),

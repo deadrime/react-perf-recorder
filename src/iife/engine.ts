@@ -1,4 +1,5 @@
 import { Engine } from '../core/engine';
+import { installListeners } from '../core/env/listeners';
 import { installTimers } from '../core/env/timers';
 import { captureReactWarnings } from '../core/env/react-warnings';
 import { captureRenderers } from '../core/fiber';
@@ -29,5 +30,6 @@ if (!target[GLOBAL_KEY]) {
   captureReactWarnings();
   // Injected after the app booted: only timers scheduled from now on are seen.
   installTimers();
+  installListeners();
   target[GLOBAL_KEY] = { version: engine.version, engine, panel: null, format: { summarize, reasonLine, hookText, actionText } };
 }

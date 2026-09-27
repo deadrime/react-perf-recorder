@@ -296,6 +296,41 @@ export interface CommitRecord {
   ways?: CommitWay[];
 }
 
+/** What the page holds that a leak makes grow; `heapKB` only where the browser tells (Chrome's performance.memory). */
+export type GrowthKey = 'domNodes' | 'cssRules' | 'styleElements' | 'intervals' | 'listeners' | 'heapKB';
+
+export interface GrowthMetric {
+  start: number;
+  end: number;
+  peak: number;
+  /** Least-squares slope over the samples. */
+  perMin: number;
+  /** Grew by more than noise and was still growing in the second half: what a leak looks like. */
+  growing?: true;
+}
+
+/** Where what stayed behind was added: `useWindowSize @ src/hooks/useWindowSize.ts`, and its line once mapped. */
+export interface GrowthOrigin {
+  origin: string;
+  live: number;
+  /** The call in the generated code; the dev server maps it to `site` and `code`. */
+  generated?: { url: string; line: number; column: number };
+  site?: string;
+  code?: string;
+}
+
+export interface GrowthStats {
+  /** `[atMs, ...values in GROWTH_KEYS order]`, about one a second; null where a value is not known. */
+  samples: Array<[number, ...Array<number | null>]>;
+  metrics: Partial<Record<GrowthKey, GrowthMetric>>;
+  /** Intervals set during the recording and never cleared, by where they were set. */
+  intervals?: Array<GrowthOrigin>;
+  /** Listeners added during the recording and still there, by target, type and where they were added. */
+  listeners?: Array<GrowthOrigin & { target: string; type: string }>;
+}
+
+export const GROWTH_KEYS: GrowthKey[] = ['domNodes', 'cssRules', 'styleElements', 'intervals', 'listeners', 'heapKB'];
+
 export interface Navigation {
   type: 'push' | 'replace' | 'pop';
   atMs: number;
@@ -355,6 +390,8 @@ export interface RecordingV2 {
   bigCommits: number[];
   frames: { longTasks: { count: number; maxMs: number; totalMs: number }; loaf: LongFrame[]; fps?: number };
   dom: { text: number; attr?: number; child?: number };
+  /** What grew on the page from start to stop: nodes, CSS rules, intervals, listeners, heap. */
+  growth?: GrowthStats;
   navigations: Navigation[];
   hmr: Array<{ atMs: number; type: string; paths: string[] }>;
   conditions: Conditions;
