@@ -133,21 +133,44 @@ test('on a phone the timeline fits a long recording, and two fingers zoom it', a
               { x: middle + half, y, id: 2 },
             ],
     });
-  // The overview's box, every frame of the pinch: it may only narrow around the middle, never jump away and back.
-  await page.locator('.tl-brush').evaluate((brush) => {
-    const frames: number[] = ((window as any).__brush = []);
+  // Every frame of the pinch: the overview's box may only narrow around the middle, never jump away and back; a bar
+  // may only move away from the middle, never step back; and the bars are moved, not made anew on every step.
+  await page.locator('.tl-brush').evaluate((brush, middle) => {
+    const root = brush.getRootNode() as ShadowRoot;
+    const seen = ((window as any).__pinch = { centres: [] as number[], bars: [] as Array<Record<string, number>>, added: 0 });
+    new MutationObserver((changes) => {
+      for (const change of changes) for (const node of change.addedNodes) if ((node as Element).classList?.contains('tl-bar')) seen.added++;
+    }).observe(root, { childList: true, subtree: true });
     const sample = () => {
       const box = brush as HTMLElement;
-      frames.push(parseFloat(box.style.left) + parseFloat(box.style.width) / 2);
-      if (frames.length < 600) requestAnimationFrame(sample);
+      seen.centres.push(parseFloat(box.style.left) + parseFloat(box.style.width) / 2);
+      const bars: Record<string, number> = {};
+      for (const bar of root.querySelectorAll<HTMLElement>('.tl-bar')) bars[bar.title.split(' ·')[0]] = bar.getBoundingClientRect().left - middle;
+      seen.bars.push(bars);
+      if (seen.centres.length < 600) requestAnimationFrame(sample);
     };
     requestAnimationFrame(sample);
-  });
+  }, middle);
+  const before = await page.locator('.tl-bar').count();
   await touch('touchStart', 20);
-  for (const half of [30, 40, 50, 60]) await touch('touchMove', half);
+  for (const half of [24, 28, 32, 36, 40, 44, 48, 52, 56, 60]) await touch('touchMove', half);
   await touch('touchEnd', 60);
-  const centres: number[] = await page.evaluate(() => (window as any).__brush.splice(0));
-  expect(Math.max(...centres.slice(1).map((c, i) => Math.abs(c - centres[i])))).toBeLessThan(2);
+  await page.waitForTimeout(100);
+  const seen = await page.evaluate(() => {
+    const got = (window as any).__pinch;
+    (window as any).__pinch = { centres: [], bars: [], added: 0 };
+    return got as { centres: number[]; bars: Array<Record<string, number>>; added: number };
+  });
+  expect(Math.max(...seen.centres.slice(1).map((c, i) => Math.abs(c - seen.centres[i])))).toBeLessThan(2);
+  let back = 0;
+  seen.bars.slice(1).forEach((now, i) => {
+    for (const [at, x] of Object.entries(now)) {
+      const was = seen.bars[i][at];
+      if (was !== undefined) back = Math.max(back, -Math.sign(was) * (x - was));
+    }
+  });
+  expect(back).toBeLessThan(0.5);
+  expect(seen.added).toBeLessThan(before);
   // However hard PINCH_SPEED makes it zoom, it zooms in, and the moment under the middle stays under it.
   await expect(page.locator('.tl-controls .muted').first()).not.toHaveText('fit');
   const zoomed = await size();

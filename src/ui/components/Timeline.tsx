@@ -83,6 +83,8 @@ interface Layout {
 const baseScale = (durationMs: number, fitPx = STRIP_PX) => fitPx / Math.max(1, durationMs);
 
 /** A bar per column of pixels: several commits in one column become one bar that opens on the busiest of them. */
+const px = (value: number) => Math.round(value * 100) / 100;
+
 function pack(
   commits: Array<{ commit: CommitRecord; hits: number; ms?: number }>,
   scale: number,
@@ -94,12 +96,14 @@ function pack(
   for (const { commit, hits, ms } of commits) {
     // A commit is stamped when it lands, after React rendered it: the render is the time before that moment. Drawn
     // from the stamp on, a long render would cover the commits that came after it.
-    const x = Math.round((Math.max(0, commit.atMs - (commit.ms ?? 0)) * scale) / BUCKET_PX) * BUCKET_PX;
+    // Not snapped to whole pixels: while zooming, a snapped bar steps back and forth around where it should be.
+    const x = px(Math.max(0, commit.atMs - (commit.ms ?? 0)) * scale);
     // As wide as React took, what this lane is about (a root's own render) before the whole commit.
-    const w = Math.max(MIN_BAR_PX, Math.round((ms ?? commit.ms ?? 0) * scale));
-    const bar = byColumn.get(x);
+    const w = Math.max(MIN_BAR_PX, px((ms ?? commit.ms ?? 0) * scale));
+    const column = Math.round(x / BUCKET_PX);
+    const bar = byColumn.get(column);
     if (!bar) {
-      byColumn.set(x, {
+      byColumn.set(column, {
         x,
         w,
         h: height(hits),
@@ -119,6 +123,8 @@ function pack(
     if ((ms ?? hits) > bar.top) {
       bar.top = ms ?? hits;
       bar.lead = commit.i;
+      // Drawn where its lead is: where the first commit is shifts when a zoom splits the column.
+      bar.x = x;
       bar.colour = colour(commit);
       bar.h = height(hits);
       bar.weight = weight(hits, ms);
@@ -200,13 +206,13 @@ function layout(rec: RecordingV2, causeKeys: Map<number, string>, zoom: number, 
   // An action runs until the last commit it is answerable for: the bar is how long its consequences went on.
   const actions = rec.actions.map((action) => {
     const last = (action.commitIds ?? []).reduce((end, i) => Math.max(end, rec.commits.list[i]?.atMs ?? 0), action.endMs);
-    return { x: Math.round(action.atMs * scale), w: Math.max(3, Math.round((last - action.atMs) * scale)), action };
+    return { x: px(action.atMs * scale), w: Math.max(3, px((last - action.atMs) * scale)), action };
   });
 
   const step = TICK_STEPS.find((ms) => ms * scale >= 70) ?? TICK_STEPS[TICK_STEPS.length - 1];
   const ticks: Array<{ x: number; label: string }> = [];
   for (let t = 0; t <= duration; t += step) {
-    ticks.push({ x: Math.round(t * scale), label: step < 1000 ? `${Math.round(t)}ms` : `${+(t / 1000).toFixed(1)}s` });
+    ticks.push({ x: px(t * scale), label: step < 1000 ? `${Math.round(t)}ms` : `${+(t / 1000).toFixed(1)}s` });
   }
   return { lanes, actions, ticks, width, scale, hidden };
 }
@@ -542,6 +548,13 @@ export function Timeline({
   const pinch = useRef<{ spread: number; zoom: number; heldMs: number } | null>(null);
   // Where the tracks scroll once a zoom is drawn: set before paint, or the old scroll shows at the new zoom for a frame.
   const scrollTo = useRef<number | null>(null);
+  // The browser scrolls by whole pixels: the rest of a zoom's scroll is a shift of the strip, or it trembles by it.
+  const nudge = useRef(0);
+  const setNudge = (px: number) => {
+    nudge.current = px;
+    const strip = scroll.current?.firstElementChild as HTMLElement | null;
+    if (strip) strip.style.transform = px ? `translateX(${px}px)` : '';
+  };
   const spreadOf = () => {
     const [a, b] = [...fingers.current.values()];
     return { spread: Math.max(20, Math.abs(a - b)), middle: (a + b) / 2 - (scroll.current?.getBoundingClientRect().left ?? 0) };
@@ -633,8 +646,12 @@ export function Timeline({
   useLayoutEffect(() => {
     const el = scroll.current;
     if (!el || scrollTo.current === null) return;
-    el.scrollLeft = Math.max(0, scrollTo.current);
+    const want = Math.max(0, scrollTo.current);
+    el.scrollLeft = want;
     scrollTo.current = null;
+    const rest = el.scrollLeft - want;
+    // More than a pixel off is the end of the strip holding the scroll back, not rounding.
+    setNudge(Math.abs(rest) < 1 ? rest : 0);
     measure();
   }, [zoom]);
   // Fit means the width the tracks have on the screen, which a wider panel makes wider.
@@ -719,6 +736,7 @@ export function Timeline({
       if (!after) return;
       const next = baseScale(rec.durationMs, fitPx) * zoomed;
       after.scrollLeft = Math.max(0, toMs > fromMs ? fromMs * next : fromMs * next - after.clientWidth / 2);
+      setNudge(0);
       measure();
     });
   };
@@ -737,6 +755,7 @@ export function Timeline({
       const el = scroll.current;
       if (!el) return;
       el.scrollLeft = 0;
+      setNudge(0);
       measure();
     });
   };
@@ -801,11 +820,15 @@ export function Timeline({
           onPointerUp={endPan}
           onPointerCancel={endPan}
         >
-          <div class="tl-strip" data-lit={lighting ? 'true' : undefined} style={`width:${width}px`}>
+          <div
+            class="tl-strip"
+            data-lit={lighting ? 'true' : undefined}
+            style={`width:${width}px${nudge.current ? `;transform:translateX(${nudge.current}px)` : ''}`}
+          >
             {ticks
               .filter((t) => onView(t.x))
               .map((t) => (
-                <span key={`grid-${t.x}`} class="tl-grid" style={`left:${t.x}px`} />
+                <span key={`grid-${t.label}`} class="tl-grid" style={`left:${t.x}px`} />
               ))}
             {commit ? (
               <>
@@ -845,7 +868,8 @@ export function Timeline({
                   .sort((a, b) => b.w - a.w)
                   .map((bar) => (
                     <button
-                      key={bar.x}
+                      // The first commit of the column, not its x: keyed by x, every bar is made anew on each step of a zoom.
+                      key={bar.ids[0]}
                       class="tl-bar"
                       data-picked={picked !== null && bar.ids.includes(picked) ? 'true' : undefined}
                       data-lit={lighting && bar.ids.some((i) => lit.has(i)) ? 'true' : undefined}
@@ -860,7 +884,7 @@ export function Timeline({
               {ticks
                 .filter((t) => onView(t.x))
                 .map((t) => (
-                  <span key={t.x} class="tl-tick" data-first={t.x === 0 ? 'true' : undefined} style={`left:${t.x}px`}>
+                  <span key={t.label} class="tl-tick" data-first={t.x === 0 ? 'true' : undefined} style={`left:${t.x}px`}>
                     {t.label}
                   </span>
                 ))}
