@@ -90,7 +90,7 @@ message, or switching tabs.
 | `two-bugs`             | `whole-object` and `exact-value` at once                                                  | waiting    |
 | `no-bug`               | None: the idle page's renders all change what it shows, and the right answer is no change | waiting    |
 
-`prefs-on-tick`, `decoys`, `fallback-array` and `cost-over-count` were added after the run above and are not in its numbers yet: each hides its cause from reading the code alone — in the store's writer, among look-alikes, in the data, or behind the cost rather than the count.
+`prefs-on-tick`, `decoys`, `fallback-array` and `cost-over-count` were added after the run above and are not in its numbers yet. Each puts its cause away from where a reader of the code looks first — in the store's writer, among look-alikes, in the data, or behind the cost rather than the count. A first run, one a side, found that the app is small enough to read whole: the agent without the recorder fixed all four too, in three times the time and cost, and in two of them edited files the bug was not in.
 
 A case comes in two forms. The `-rec` one is what a person with the panel sends: the steps to reproduce it and the
 id of a recording they made, taken with the panel before the agent starts. The plain one gives only a one-line
