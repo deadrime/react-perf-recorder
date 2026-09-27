@@ -409,11 +409,11 @@ button[data-copied="true"] { color: var(--good); }
 .box { position: fixed; pointer-events: none; border: 2px solid var(--pick); background: color-mix(in srgb, var(--pick) 8%, transparent); z-index: 2147483646; border-radius: 3px; }
 .box .tag { position: absolute; left: -2px; top: -18px; background: var(--pick); color: var(--text-strong); padding: 0 5px; border-radius: 3px 3px 0 0; font-size: 11px; white-space: nowrap; }
 
-/* The picker's buttons: what Esc, Enter and ← do, for a finger. */
+/* The picker's buttons: what Esc and Enter do, for a finger. */
 .pick-bar { gap: 6px; }
-.pick-bar .keep { margin-left: auto; color: var(--text-strong); background: var(--accent-fill); border-color: var(--accent-strong); }
-.pick-bar .keep:hover { background: var(--accent-strong); }
-.pick-bar button:disabled { cursor: default; opacity: .5; }
+.pick-bar .cancel { margin-left: auto; }
+.pick-bar .confirm { color: var(--text-strong); background: var(--accent-fill); border-color: var(--accent-strong); }
+.pick-bar .confirm:hover { background: var(--accent-strong); }
 
 /* A finger has no hover: the row's buttons show all the time, and everything tapped is at least 32px tall. */
 @media (pointer: coarse) {

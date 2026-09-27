@@ -12,7 +12,8 @@ test('on a phone the area is picked and kept by taps, and the page above the she
   await page.locator('[data-rpr="pick"]').tap();
   // The hint speaks of taps, and the keys it would name are not there to press.
   await expect(page.locator('[data-rpr="message"]')).toHaveText(/^Tap /);
-  await expect(page.locator('[data-rpr="pick-parent"]')).toBeDisabled();
+  // Confirm last, at the thumb; stepping out is a tap on the row above, so there is no Parent.
+  await expect(page.locator('[data-rpr="pick-bar"] button')).toHaveText(['✕ Cancel', '✓ Confirm']);
 
   // A sheet across the bottom edge that leaves most of the screen to the page.
   const box = (await card(page).boundingBox())!;
@@ -23,9 +24,7 @@ test('on a phone the area is picked and kept by taps, and the page above the she
 
   await page.getByTestId('unread').tap();
   await expect(page.locator('[data-rpr="scope"]')).toHaveText('Unread');
-  await page.locator('[data-rpr="pick-parent"]').tap();
-  await expect(page.locator('[data-rpr="scope"]')).toHaveText('Header');
-  // A tapped row is only tried on: the tree stays open until Keep.
+  // A tapped row is only tried on: the tree stays open until Confirm.
   await page.locator('[data-rpr="tree"] li[data-name="Workspace"]').tap();
   await expect(page.locator('[data-rpr="scope"]')).toHaveText('Workspace');
   await expect(page.locator('[data-rpr="tree"] li[data-name="Workspace"]')).toHaveAttribute('data-active', 'true');
@@ -35,13 +34,13 @@ test('on a phone the area is picked and kept by taps, and the page above the she
   await expect(page.locator('[data-rpr="whole-app"]')).toHaveAttribute('data-active', 'true');
   await page.locator('[data-rpr="tree"] li[data-name="Header"]').tap();
   await expect(page.locator('[data-rpr="scope"]')).toHaveText('Header');
-  await page.locator('[data-rpr="pick-keep"]').tap();
+  await page.locator('[data-rpr="pick-confirm"]').tap();
   await expect(page.locator('[data-rpr="tree"]')).toHaveCount(0);
   await expect(page.locator('[data-rpr="scope"]')).toHaveText('Header');
 
   // Cancel puts the area back as it was, whatever the tree was moved to.
   await page.locator('[data-rpr="scope"]').tap();
-  await page.locator('[data-rpr="pick-parent"]').tap();
+  await page.locator('[data-rpr="tree"] li[data-name="Layout"]').tap();
   await expect(page.locator('[data-rpr="scope"]')).not.toHaveText('Header');
   await page.locator('[data-rpr="pick-cancel"]').tap();
   await expect(page.locator('[data-rpr="scope"]')).toHaveText('Header');

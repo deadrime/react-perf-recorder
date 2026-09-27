@@ -7,7 +7,9 @@ area and the followed components survive the reload; `?rpr=rec` does the same fr
 
 Next to them is the area. **⌖ Pick** chooses the part of the page to record — with no area it opens the tree of the
 whole app; a click on the page takes the component under the cursor and opens the tree around it. In the tree `↑`/`↓`
-move, `→` goes inside, `←` goes up, `Enter` keeps the area, `Esc` puts back the one before. Once an area is picked,
+move, `→` goes inside, `←` goes up, `Enter` confirms the area, `Esc` puts back the one before; **✕ Cancel** and
+**✓ Confirm** under the area do the same. On a phone the panel is a sheet on the bottom edge, and a tapped row is only
+tried on, outlined on the page, until Confirm. Once an area is picked,
 its name opens the tree again, `⧉` copies it as text for an assistant (component, file and line, path, DOM, the
 `scope` for scripts), and `×` goes back to the whole app. `◎` in the tree follows a component by name through the
 recording. While recording the area cannot change, and Pick is hidden.
