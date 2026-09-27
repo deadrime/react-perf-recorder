@@ -19,7 +19,7 @@ body { margin: 0; background: #131317; }
 .demo code { color: #ffd60a; }
 .demo .steps { margin: 0 0 24px; padding-left: 18px; color: #b9b9c2; }
 .demo .steps li { margin: 3px 0; }
-.demo .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 12px; }
+.demo .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(330px, 100%), 1fr)); gap: 12px; }
 .demo .sandbox { display: flex; align-items: baseline; gap: 10px; margin: 0 0 26px; padding: 10px 14px; border: 1px solid #0a84ff;
   border-radius: 10px; background: rgba(10,132,255,.08); color: #e8e8ea; text-decoration: none; }
 .demo .sandbox:hover { background: rgba(10,132,255,.16); }
@@ -43,6 +43,13 @@ body { margin: 0; background: #131317; }
 .demo .links a { padding: 7px 14px; border: 1px solid #3a3a44; border-radius: 8px; color: #e8e8ea; text-decoration: none; }
 .demo .links a:hover { border-color: #0a84ff; }
 .demo .links a.primary { border-color: #0a84ff; background: rgba(10,132,255,.14); }
+/* A phone: the install lines wrap rather than hide their ends behind a sideways scroll. */
+@media (max-width: 600px) {
+  .demo { padding: 20px 16px 48px; }
+  .demo .hero h1 { font-size: 22px; }
+  .demo .hero pre { font-size: 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .demo .sandbox { flex-direction: column; gap: 2px; }
+}
 `;
 
 /** The strip sits on the app's own page, which is left unstyled on purpose: it may not touch anything but itself. */

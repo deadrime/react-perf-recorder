@@ -63,9 +63,15 @@ const DOCS_STYLES = `
 .docs th, .docs td { padding: 6px 10px; border: 1px solid #3a3a44; text-align: left; vertical-align: top; }
 .docs th { color: #fff; background: #1b1b21; }
 .docs table + table { margin-top: 16px; }
+/* A phone: the pages are one strip that scrolls sideways and stays on top, not a wall of links above the text. */
 @media (max-width: 760px) {
-  .docs { grid-template-columns: 1fr; gap: 12px; }
-  .docs nav { position: static; flex-direction: row; flex-wrap: wrap; }
+  .docs { grid-template-columns: minmax(0, 1fr); gap: 12px; padding: 0 16px 48px; }
+  .docs nav { top: 0; z-index: 1; flex-direction: row; flex-wrap: nowrap; overflow-x: auto; margin: 0 -16px; padding: 8px 16px;
+    background: #131317; border-bottom: 1px solid #2a2a32; white-space: nowrap; scrollbar-width: none; }
+  .docs nav::-webkit-scrollbar { display: none; }
+  .docs nav .home { margin-bottom: 0; }
+  .docs h1 { margin-top: 8px; font-size: 22px; }
+  .docs pre code { font-size: 12px; }
 }
 `;
 
@@ -78,6 +84,10 @@ export const DocsPage = () => {
   // returns — a browser or an extension may return something — would be taken for the effect's cleanup.
   useEffect(() => {
     window.scrollTo(0, 0);
+    // On a phone the nav is a strip that scrolls sideways: the page's own link is brought into it.
+    const nav = document.querySelector<HTMLElement>('.docs nav');
+    const current = nav?.querySelector<HTMLElement>('[aria-current="page"]');
+    if (nav && current && nav.scrollWidth > nav.clientWidth) nav.scrollLeft = current.offsetLeft - (nav.clientWidth - current.offsetWidth) / 2;
   }, [page]);
   return (
     <>
