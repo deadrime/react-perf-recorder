@@ -1,5 +1,6 @@
 import { Engine } from '../core/engine';
 import { installTimers } from '../core/env/timers';
+import { captureReactWarnings } from '../core/env/react-warnings';
 import { captureRenderers } from '../core/fiber';
 import { PluginHost } from '../core/plugins';
 import { GLOBAL_KEY } from '../shared/schema';
@@ -24,6 +25,8 @@ if (!target[GLOBAL_KEY]) {
     new PluginHost([])
   );
   captureRenderers();
+  // Only warnings printed from here on: React has printed the first render's already.
+  captureReactWarnings();
   // Injected after the app booted: only timers scheduled from now on are seen.
   installTimers();
   target[GLOBAL_KEY] = { version: engine.version, engine, panel: null, format: { summarize, reasonLine, hookText, actionText } };

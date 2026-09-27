@@ -15,6 +15,11 @@ renders itself nor anything a child drew from a value the root passed it in prop
 render on their own anyway, so the root's own render was spent handing them what they had. `mounts` other than zero on a page that only changes text means remounting: a
 component declared inside a render, or an unstable `key`.
 
+A `warnings` line starting `React warned:` is React's own dev warning, caught since the page loaded: a list without
+keys, two children with one key, a component setting another's state while it renders, an update loop. It names the
+component; ", before the recording" means React printed it at load and prints it once, so it holds whether or not
+the steps repeated it.
+
 ## Reasons
 
 - `state now` (the name the code gives it; `#2` when it is not known), `external store #3 [useStore] selectPrice`,

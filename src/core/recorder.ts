@@ -54,6 +54,7 @@ import type { CauseEvent, PluginHost } from './plugins';
 import { didRender, hookTypeAt, parentReason, reasonsOf, snapshotOf, type Reason, type Snapshot } from './reasons';
 import { ScopeTracker, type ScopeHandle, type ScopeResolution } from './scope';
 import { updateOrigin, type UpdateOrigin } from './env/origin';
+import { reactWarningLines } from './env/react-warnings';
 import { runningTimer, runningTimerLibrary, setTimerSink } from './env/timers';
 
 export interface EngineConfig {
@@ -1444,6 +1445,7 @@ export class Recorder {
       },
       warnings: [
         ...this.warnings,
+        ...reactWarningLines(this.t0),
         ...([...this.components.values()].some((comp) => comp.sampled)
           ? [
               `reasons of renders caused by a parent were worked out for ${SAMPLED_PARENTS} instances of a component a commit: their counts are a sample`,
