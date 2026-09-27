@@ -13,35 +13,38 @@ changing what the page shows, and show with before-and-after numbers that the fi
 
 <!-- results:start -->
 
-30 runs a side over 15 cases, 2026-09-26, Claude Code 2.1.283; the whole run cost $36.63.
+36 runs a side over 18 cases, 2026-09-27, Claude Code 2.1.283; the whole run cost $43.03.
 
 |                                                              | With the recorder |  Without |                            |
 | ------------------------------------------------------------ | ----------------: | -------: | -------------------------- |
-| Fixed: the waste gone from a new recording, the page working |          29 of 30 | 20 of 30 |                            |
-| The code checks passed                                       |          23 of 30 | 16 of 30 |                            |
-| Every check passed, the answer naming the file               |          23 of 30 | 16 of 30 |                            |
-| Proved with a before/after recording                         |          28 of 28 |        — | no browser to measure with |
-| Cost of a task, mean                                         |             $0.38 |    $0.85 | 2.3× cheaper               |
-| Time to the answer, mean                                     |             216 s |    463 s | 2.1× faster                |
-| Turns, mean                                                  |                16 |       45 |                            |
+| Fixed: the waste gone from a new recording, the page working |          35 of 36 | 26 of 36 |                            |
+| The code checks passed                                       |          33 of 36 | 21 of 36 |                            |
+| Every check passed, the answer naming the file               |          32 of 36 | 21 of 36 |                            |
+| Proved with a before/after recording                         |          34 of 34 |        — | no browser to measure with |
+| Cost of a task, mean                                         |             $0.34 |    $0.86 | 2.6× cheaper               |
+| Time to the answer, mean                                     |             152 s |    423 s | 2.8× faster                |
+| Turns, mean                                                  |                16 |       52 |                            |
 
 | Case                       | What the agent gets                  | Fixed, with / without | Cost, with / without | Time, with / without |
 | -------------------------- | ------------------------------------ | --------------------- | -------------------- | -------------------- |
-| `draft-context-rec`        | the steps and the person’s recording | 2/2 · 0/2             | $0.39 · $0.89        | 187 s · 427 s        |
-| `effect-derived-state-rec` | the steps and the person’s recording | 2/2 · 2/2             | $0.38 · $1.11        | 176 s · 610 s        |
-| `exact-value-rec`          | the steps and the person’s recording | 2/2 · 2/2             | $0.35 · $0.80        | 199 s · 428 s        |
-| `expensive-render-rec`     | the steps and the person’s recording | 2/2 · 2/2             | $0.24 · $0.64        | 93 s · 330 s         |
-| `field-state-rec`          | the steps and the person’s recording | 2/2 · 1/2             | $0.46 · $1.18        | 286 s · 639 s        |
-| `form-watch`               | a one-line complaint                 | 2/2 · 0/2             | $0.54 · $0.69        | 205 s · 340 s        |
-| `form-watch-rec`           | the steps and the person’s recording | 1/2 · 1/2             | $0.58 · $1.25        | 310 s · 628 s        |
-| `inline-context-rec`       | the steps and the person’s recording | 2/2 · 2/2             | $0.29 · $0.72        | 147 s · 355 s        |
-| `memo-cache-slot-rec`      | the steps and the person’s recording | 2/2 · 1/2             | $0.56 · $0.94        | 314 s · 478 s        |
-| `nested-component-rec`     | the steps and the person’s recording | 2/2 · 2/2             | $0.24 · $0.49        | 306 s · 209 s        |
-| `new-array-selector-rec`   | the steps and the person’s recording | 2/2 · 2/2             | $0.32 · $0.79        | 276 s · 384 s        |
-| `no-bug-rec`               | the steps and a recording, no bug    | 2/2 · 2/2             | $0.42 · $1.28        | 218 s · 1258 s       |
-| `router-in-layout-rec`     | the steps and the person’s recording | 2/2 · 1/2             | $0.26 · $0.67        | 240 s · 316 s        |
-| `two-bugs-rec`             | the steps and the person’s recording | 2/2 · 0/2             | $0.33 · $0.66        | 143 s · 293 s        |
-| `whole-object-rec`         | the steps and the person’s recording | 2/2 · 2/2             | $0.25 · $0.57        | 142 s · 260 s        |
+| `connect-filter-rec`       | the steps and the person’s recording | 2/2 · 2/2             | $0.24 · $0.70        | 93 s · 331 s         |
+| `draft-context-rec`        | the steps and the person’s recording | 2/2 · 2/2             | $0.46 · $1.23        | 212 s · 508 s        |
+| `effect-derived-state-rec` | the steps and the person’s recording | 2/2 · 1/2             | $0.30 · $0.79        | 154 s · 345 s        |
+| `exact-value-rec`          | the steps and the person’s recording | 2/2 · 1/2             | $0.34 · $1.22        | 170 s · 625 s        |
+| `expensive-render-rec`     | the steps and the person’s recording | 2/2 · 2/2             | $0.25 · $0.73        | 116 s · 344 s        |
+| `field-state-rec`          | the steps and the person’s recording | 2/2 · 1/2             | $0.63 · $1.02        | 291 s · 585 s        |
+| `form-watch`               | a one-line complaint                 | 2/2 · 1/2             | $0.43 · $0.82        | 201 s · 420 s        |
+| `form-watch-rec`           | the steps and the person’s recording | 2/2 · 0/2             | $0.37 · $0.84        | 170 s · 415 s        |
+| `hook-reads-all-rec`       | the steps and the person’s recording | 2/2 · 2/2             | $0.27 · $0.81        | 94 s · 356 s         |
+| `inline-context-rec`       | the steps and the person’s recording | 2/2 · 2/2             | $0.25 · $0.76        | 99 s · 376 s         |
+| `memo-cache-slot-rec`      | the steps and the person’s recording | 2/2 · 1/2             | $0.38 · $0.98        | 123 s · 479 s        |
+| `nested-component-rec`     | the steps and the person’s recording | 2/2 · 2/2             | $0.22 · $0.48        | 98 s · 221 s         |
+| `new-array-selector-rec`   | the steps and the person’s recording | 2/2 · 2/2             | $0.32 · $0.78        | 151 s · 381 s        |
+| `no-bug-rec`               | the steps and a recording, no bug    | 2/2 · 2/2             | $0.42 · $1.07        | 252 s · 637 s        |
+| `query-rest-rec`           | the steps and the person’s recording | 2/2 · 2/2             | $0.29 · $0.89        | 133 s · 449 s        |
+| `router-in-layout-rec`     | the steps and the person’s recording | 2/2 · 1/2             | $0.30 · $0.82        | 141 s · 387 s        |
+| `two-bugs-rec`             | the steps and the person’s recording | 1/2 · 0/2             | $0.31 · $0.85        | 154 s · 431 s        |
+| `whole-object-rec`         | the steps and the person’s recording | 2/2 · 2/2             | $0.27 · $0.69        | 92 s · 322 s         |
 
 <!-- results:end -->
 
@@ -83,8 +86,6 @@ message, or switching tabs.
 | `two-bugs`             | `whole-object` and `exact-value` at once                                                  | waiting    |
 | `no-bug`               | None: the idle page's renders all change what it shows, and the right answer is no change | waiting    |
 
-`connect-filter`, `query-rest` and `hook-reads-all` were added after the run above and are not in its numbers yet.
-
 A case comes in two forms. The `-rec` one is what a person with the panel sends: the steps to reproduce it and the
 id of a recording they made, taken with the panel before the agent starts. The plain one gives only a one-line
 complaint ("typing into the message box lags"), and the agent works out the scenario itself; `form-watch` runs in
@@ -108,9 +109,10 @@ both forms. Every prompt asks whether something renders for nothing and says to 
 
 - Two runs a side per case: a single run moves a case's row by a half. The totals are the ones to read.
 - Every bug can be found by reading the code, and the agent without the plugin found most of them. Where it fell
-  short, its edits left the root rendering as before — the form root in `form-watch`, the layout in
-  `draft-context` — or fixed one bug of two in `two-bugs`. The recording shows the root still rendering after a fix,
-  and the second root waiting; reading the code does not.
+  short, its edits mostly left the root rendering as before — the form root in `form-watch`, in three runs of four
+  across its two forms — or fixed one bug of two in `two-bugs`, both times; one run of `effect-derived-state` left
+  the page broken. The recording shows the root still rendering after a fix, and the second root waiting; reading the
+  code does not. With the plugin, the one miss was also `two-bugs`: one run fixed `whole-object` and left `exact-value`.
 - The code checks pass less often than the fixes work, and the new recording is the one counted. In `field-state`
   the agents kept `fieldState` and stopped validating the whole form on every key instead — the renders were gone, the
   code check still saw the bug's line.
