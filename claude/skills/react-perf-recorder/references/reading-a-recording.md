@@ -76,7 +76,8 @@ intervals, listeners on window/document/`<html>`/`<body>`, and the JS heap where
 peak and slope per minute. `growing` marks a count that rose past noise and was still rising in the second half; a
 burst that settled is a page loading, not a leak. The intervals and listeners left behind come with the line that
 added them (`window resize @ src/Popover.tsx:45 window.addEventListener('resize', place)`): a missing cleanup in that
-effect. CSS rules that keep growing on a CSS-in-JS page are values interpolated into styles — with the `emotion`
-plugin, `plugin:emotion` groups the new classes by label or by component and names the property that varies (`width`):
-move it into `style` or a CSS variable. One recording shows growth; a leak is growth that repeats with the scenario —
+effect. CSS rules that keep growing are values put into CSS-in-JS styles (emotion, styled-components, goober, JSS —
+any of them): `styles` groups the new rules by sheet and by their declarations with the numbers taken out, names the
+component whose element carries one and the property that varies (`LeakyProgress (style[data-emotion]) varying
+width ×100`): move that value into `style` or a CSS variable. One recording shows growth; a leak is growth that repeats with the scenario —
 record the same steps twice and compare, `compare_recordings` sets the growth of the two side by side.

@@ -291,8 +291,6 @@ test('what kept growing opens by itself, with the line that left the listeners b
   const growth = page.locator('[data-fold="growth"]');
   await expect(growth).toHaveAttribute('open', '');
   await expect(growth.locator('[data-key="cssRules"] .badge')).toHaveAttribute('data-tone', 'warn');
-  await expect(growth.locator('.growth-origin code')).toContainText(/window resize @ src\/advanced\/Leak\.tsx:\d+/);
-  await page.locator('[data-fold="plugins"] summary').click();
-  await expect(page.locator('[data-rpr="plugin"]', { hasText: 'emotion' })).toContainText('LeakyProgress');
-  await page.locator('[data-rpr="result"]').screenshot({ path: '.agent-artifacts/growth-report.png' });
+  await expect(growth.locator('.growth-origin code', { hasText: 'window' })).toContainText(/window resize @ src\/advanced\/Leak\.tsx:\d+/);
+  await expect(growth.locator('.growth-origin code', { hasText: 'css' })).toContainText('LeakyProgress (style[data-emotion]) varying width');
 });

@@ -1,6 +1,7 @@
 import { GROWTH_KEYS, type GrowthKey, type GrowthMetric, type GrowthStats } from '../shared/schema';
 import { liveListeners } from './env/listeners';
 import type { Origin } from './stack';
+import { StyleWatcher } from './styles';
 import { liveIntervals } from './env/timers';
 
 const SAMPLE_MS = 1000;
@@ -113,11 +114,13 @@ export class GrowthWatcher {
   private ticks = 0;
   /** `performance.now()` at the start: what was added before it is not the recording's. */
   private startedAt = 0;
+  private readonly styles = new StyleWatcher();
 
   constructor(private readonly now: () => number) {}
 
   start() {
     this.startedAt = performance.now();
+    this.styles.start();
     this.sample();
     this.timer = setInterval(() => {
       if (++this.ticks % this.every === 0) this.sample();
@@ -149,11 +152,13 @@ export class GrowthWatcher {
       type: item.type,
       ...rest,
     }));
+    const styles = this.styles.stop();
     return {
       samples: this.samples,
       metrics,
       ...(intervals.length ? { intervals } : {}),
       ...(listeners.length ? { listeners } : {}),
+      ...(styles.length ? { styles } : {}),
     };
   }
 }

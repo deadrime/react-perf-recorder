@@ -31,7 +31,9 @@
 - **Growth** — what a leak makes grow, sampled once a second: DOM nodes, CSS rules, `<style>` elements, live
   intervals, listeners on window, document, `<html>` and `<body>`, and the JS heap where Chrome tells it. A count that
   kept rising through the second half of the recording is called growing; the intervals and listeners still there at
-  Stop come with the line that added them, mapped by the dev server. `growth: false` in the recording's options leaves
+  Stop come with the line that added them, mapped by the dev server. New CSS rules, whichever CSS-in-JS wrote them,
+  are grouped by their declarations with the numbers taken out, with the component whose element carries one and the
+  properties that vary between them. `growth: false` in the recording's options leaves
   it out.
 
 ## Sessions

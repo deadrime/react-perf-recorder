@@ -2,7 +2,6 @@ import path from 'node:path';
 import react from '@vitejs/plugin-react-swc';
 import { defineConfig } from 'vite';
 import { perfRecorder } from '../../../src/vite';
-import { emotion } from '../../../src/plugins/emotion';
 import { proxyMemoize } from '../../../src/plugins/proxy-memoize';
 import { reactQuery } from '../../../src/plugins/react-query';
 import { redux } from '../../../src/plugins/redux';
@@ -30,7 +29,7 @@ export default defineConfig({
     perfRecorder({
       enabled: true,
       outDir: process.env.FIXTURE_OUT_DIR ?? path.resolve(__dirname, '../../../.agent-artifacts/fixture-sessions'),
-      plugins: [zustand(), proxyMemoize({ functions: ['memoize', 'memoizeWithArgs'] }), reactQuery(), redux(), emotion()],
+      plugins: [zustand(), proxyMemoize({ functions: ['memoize', 'memoizeWithArgs'] }), reactQuery(), redux()],
     }),
   ],
 });

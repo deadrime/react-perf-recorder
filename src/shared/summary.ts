@@ -6,6 +6,7 @@ import {
   type GrowthKey,
   type GrowthOrigin,
   type GrowthStats,
+  type StyleGroup,
   type HookInfo,
   type MemoHookStat,
   type PluginSection,
@@ -468,6 +469,10 @@ export const GROWTH_LABELS: Record<GrowthKey, string> = {
 /** `useWindowSize @ src/hooks/useWindowSize.ts:12 window.addEventListener('resize', onResize)`, as mapped. */
 export const originLine = (o: GrowthOrigin) => `${o.site ? o.origin.replace(/@ .*$/, `@ ${o.site}`) : o.origin}${o.code ? ` ${o.code}` : ''}`;
 
+/** `LeakyProgress (style[data-emotion]) varying width`, or the declarations when no element carries the class now. */
+export const styleLine = (g: StyleGroup) =>
+  `${g.component ?? g.shape ?? 'unknown'} (${g.source})${g.varying ? ` varying ${g.varying.map((v) => v.prop).join(', ')}` : ''}`;
+
 /** What kept growing, one line each, with who left most of it behind: `live intervals: 2 → 14 (+12/min), most from …`. */
 export function growthLines(growth: GrowthStats): string[] {
   const lines: string[] = [];
@@ -476,7 +481,12 @@ export function growthLines(growth: GrowthStats): string[] {
     if (!m?.growing) continue;
     const listener = key === 'listeners' ? growth.listeners?.[0] : undefined;
     const top = key === 'intervals' ? growth.intervals?.[0] : listener;
-    const who = top ? `${listener ? `${listener.target} ${listener.type} ` : ''}${originLine(top)} ×${top.live}` : '';
+    const style = key === 'cssRules' ? growth.styles?.[0] : undefined;
+    const who = top
+      ? `${listener ? `${listener.target} ${listener.type} ` : ''}${originLine(top)} ×${top.live}`
+      : style
+      ? `${styleLine(style)} ×${style.rules}`
+      : '';
     lines.push(`${GROWTH_LABELS[key]}: ${m.start} → ${m.end} (${m.perMin > 0 ? '+' : ''}${m.perMin}/min)${who ? `, most from ${who}` : ''}`);
   }
   return lines.length ? lines : ['nothing kept growing'];

@@ -157,10 +157,8 @@ test('what a leak leaves behind: classes of the value put into css, listeners of
   ]);
   // Playwright's own listeners on the window run from evaluated code: not the page's.
   expect(growth.listeners!.every((l) => l.site?.includes('Leak.tsx'))).toBe(true);
-  const emotion = rec.plugins.emotion as { active: boolean; data: { groups: Array<{ classes: number }> } };
-  expect(emotion.active).toBe(true);
-  // The 100 widths of the broken bar, one class each; the fixed bar adds none.
-  // No babel plugin, no label: the classes are grouped by their declarations and named by the element that has one.
-  expect(emotion.data.groups[0]).toMatchObject({ classes: 100, component: 'LeakyProgress', varying: [{ prop: 'width' }] });
-  expect(emotion.data.groups.reduce((n, g) => n + g.classes, 0)).toBe(100);
+  // No babel plugin, no label: the 100 widths of the broken bar are one group, named by the element that has one.
+  expect(growth.styles?.[0]).toMatchObject({ component: 'LeakyProgress', rules: 100, classes: 100, varying: [{ prop: 'width' }] });
+  // The fixed bar's one class was there before the recording: nothing else was added.
+  expect(growth.styles!.reduce((n, g) => n + g.rules, 0)).toBe(100);
 });

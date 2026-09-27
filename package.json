@@ -25,7 +25,6 @@
     "zustand",
     "redux",
     "react-query",
-    "emotion",
     "memory-leak",
     "devtools"
   ],
@@ -64,11 +63,6 @@
       "import": "./dist/node/plugins/redux.js",
       "require": "./dist/node/plugins/redux.cjs"
     },
-    "./plugins/emotion": {
-      "types": "./dist/node/plugins/emotion.d.ts",
-      "import": "./dist/node/plugins/emotion.js",
-      "require": "./dist/node/plugins/emotion.cjs"
-    },
     "./plugins/zustand/runtime": {
       "types": "./dist/browser/plugins/zustand.d.ts",
       "import": "./dist/browser/plugins/zustand.js"
@@ -84,10 +78,6 @@
     "./plugins/redux/runtime": {
       "types": "./dist/browser/plugins/redux.d.ts",
       "import": "./dist/browser/plugins/redux.js"
-    },
-    "./plugins/emotion/runtime": {
-      "types": "./dist/browser/plugins/emotion.d.ts",
-      "import": "./dist/browser/plugins/emotion.js"
     },
     "./runtime": {
       "types": "./dist/browser/runtime.d.ts",
@@ -134,7 +124,6 @@
     "node": ">=18.18"
   },
   "devDependencies": {
-    "@emotion/css": "11.13.5",
     "@emotion/react": "11.14.0",
     "@jridgewell/trace-mapping": "0.3.31",
     "@modelcontextprotocol/sdk": "1.30.0",

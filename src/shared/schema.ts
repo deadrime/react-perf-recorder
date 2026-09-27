@@ -319,6 +319,20 @@ export interface GrowthOrigin {
   code?: string;
 }
 
+/** Rules added to the stylesheets during the recording, of one kind: same sheet, same declarations but for numbers. */
+export interface StyleGroup {
+  /** The app's component whose element carries one of the newest classes. */
+  component?: string;
+  /** What wrote the sheet: `style[data-emotion]`, `style[data-styled]`, `adopted`. */
+  source: string;
+  rules: number;
+  classes: number;
+  /** Properties whose values differ between the rules: what the component puts into its styles. */
+  varying?: Array<{ prop: string; values: string[] }>;
+  shape: string;
+  examples: string[];
+}
+
 export interface GrowthStats {
   /** `[atMs, ...values in GROWTH_KEYS order]`, about one a second; null where a value is not known. */
   samples: Array<[number, ...Array<number | null>]>;
@@ -327,6 +341,8 @@ export interface GrowthStats {
   intervals?: Array<GrowthOrigin>;
   /** Listeners added during the recording and still there, by target, type and where they were added. */
   listeners?: Array<GrowthOrigin & { target: string; type: string }>;
+  /** New style rules, grouped, most first. */
+  styles?: StyleGroup[];
 }
 
 export const GROWTH_KEYS: GrowthKey[] = ['domNodes', 'cssRules', 'styleElements', 'intervals', 'listeners', 'heapKB'];

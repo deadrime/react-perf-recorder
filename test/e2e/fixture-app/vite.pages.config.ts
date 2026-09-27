@@ -3,7 +3,6 @@ import path from 'node:path';
 import react from '@vitejs/plugin-react-swc';
 import { defineConfig, type Plugin } from 'vite';
 import { perfRecorder } from '../../../src/vite';
-import { emotion } from '../../../src/plugins/emotion';
 import { proxyMemoize } from '../../../src/plugins/proxy-memoize';
 import { reactQuery } from '../../../src/plugins/react-query';
 import { zustand } from '../../../src/plugins/zustand';
@@ -51,7 +50,7 @@ export default defineConfig(({ command }) => ({
       enabled: true,
       // Under `dev:pages` recordings are kept where the fixture's own server keeps them.
       outDir: path.resolve(__dirname, '../../../.agent-artifacts/fixture-sessions'),
-      plugins: [zustand(), proxyMemoize({ functions: ['memoize', 'memoizeWithArgs'] }), reactQuery(), emotion()],
+      plugins: [zustand(), proxyMemoize({ functions: ['memoize', 'memoizeWithArgs'] }), reactQuery()],
     }),
     spaFallback(outDir),
   ],

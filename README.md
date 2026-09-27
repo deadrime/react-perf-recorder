@@ -19,10 +19,9 @@ import { zustand } from 'react-perf-recorder/plugins/zustand';
 import { proxyMemoize } from 'react-perf-recorder/plugins/proxy-memoize';
 import { reactQuery } from 'react-perf-recorder/plugins/react-query';
 import { redux } from 'react-perf-recorder/plugins/redux';
-import { emotion } from 'react-perf-recorder/plugins/emotion';
 
 export default defineConfig({
-  plugins: [react(), perfRecorder({ plugins: [zustand(), redux(), proxyMemoize(), reactQuery(), emotion()] })],
+  plugins: [react(), perfRecorder({ plugins: [zustand(), redux(), proxyMemoize(), reactQuery()] })],
 });
 ```
 
@@ -38,7 +37,8 @@ an area of the page to record alone.
 - **Wasted renders** — those after which nothing in the DOM changed, and remounts.
 - **Causes** — the store action, query, timer, socket message or click behind each commit.
 - **Growth** — what the page holds more of at the end: DOM nodes, CSS rules, intervals and listeners left behind
-  with the line that added them, the heap; with `emotion()`, the component whose values keep adding classes.
+  with the line that added them, CSS rules any CSS-in-JS keeps inserting with the component and the property that
+  varies, the heap.
 - **A timeline** of actions and commits; a picked commit shows its cascade as a tree and outlines its components on
   the page.
 - **Memos that miss** — a `useMemo` that recomputes on every render, and the dependency that moved.

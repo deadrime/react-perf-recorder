@@ -3,7 +3,7 @@ import type { ComponentChildren, JSX } from 'preact';
 import { useMemo, useState } from 'preact/hooks';
 import type { Saved } from '../../core/engine';
 import { GROWTH_KEYS, type GrowthKey, type GrowthStats, type RootStat } from '../../shared/schema';
-import { hookOf, originLine, reasonsById, summarize, waysOf } from '../../shared/summary';
+import { hookOf, originLine, reasonsById, styleLine, summarize, waysOf } from '../../shared/summary';
 import { downloadJson } from '../download';
 import { Compare, compareNote, type Comparison } from './Compare';
 import { Memos } from './Memos';
@@ -376,6 +376,12 @@ function Growth({ growth }: { growth: GrowthStats }) {
         <div class="growth-origin" key={`i${t.origin}`}>
           <span class="badge" data-tone="count">{`${t.live}×`}</span>
           <code title={t.code}>{`setInterval ${originLine(t)}`}</code>
+        </div>
+      ))}
+      {(growth.styles ?? []).slice(0, 3).map((g) => (
+        <div class="growth-origin" key={`s${g.source}${g.shape}`}>
+          <span class="badge" data-tone="count">{`${g.rules}×`}</span>
+          <code title={g.shape}>{`css ${styleLine(g)}`}</code>
         </div>
       ))}
       {(growth.listeners ?? []).slice(0, 3).map((l) => (
