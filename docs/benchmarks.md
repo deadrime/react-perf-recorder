@@ -133,6 +133,7 @@ node test/eval-plugin/verify.mjs .agent-artifacts/evals/aggregate-result.json
 node test/eval-plugin/summarize.mjs .agent-artifacts/evals/aggregate-result.json
 ```
 
-`run.sh` runs `claude plugin eval` on the cases in `test/eval-plugin/evals`, keeping each run's sandbox;
+`run.sh` runs `claude plugin eval` on the cases in `test/eval-plugin/evals`, keeping each run's sandbox — or only
+some of them, `--cases decoys-rec,fallback-array-rec`;
 `verify.mjs` records what each agent left; `summarize.mjs` writes the tables above and the numbers the site draws
 them from, `docs/benchmarks.json`.
