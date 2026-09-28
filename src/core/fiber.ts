@@ -66,8 +66,10 @@ export const Tag = {
   HostComponent: 5,
   HostText: 6,
   ForwardRef: 11,
+  SuspenseComponent: 13,
   MemoComponent: 14,
   SimpleMemoComponent: 15,
+  OffscreenComponent: 22,
   HostHoistable: 26,
   HostSingleton: 27,
 } as const;
