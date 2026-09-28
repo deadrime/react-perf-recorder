@@ -538,6 +538,12 @@ input {
   color: var(--text);
 }
 
+/* A checkbox keeps its own size: at the field width above it pushed the task title down to one letter. */
+.rows input[type='checkbox'] {
+  width: auto;
+  flex: none;
+}
+
 .rows .label {
   width: 42px;
   flex: none;
@@ -548,7 +554,7 @@ input {
   color: var(--accent);
 }
 
-/* The code behind a case, folded away until it is asked for. */
+/* The code behind a case: open where the versions stand side by side, folded on a phone. */
 .code {
   margin-top: 8px;
 }
@@ -558,6 +564,10 @@ input {
   font-size: 12px;
   cursor: pointer;
   list-style: none;
+}
+
+.code summary::-webkit-details-marker {
+  display: none;
 }
 
 .code summary::before {
@@ -574,31 +584,119 @@ input {
 
 .code pre {
   margin: 6px 0 0;
-  padding: 8px 0;
+  padding: 10px 0;
+  border: 1px solid #25252e;
   border-radius: 8px;
-  background: #16161b;
-  overflow-x: auto;
-  font: 12px/1.6 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  color: #c8c8d2;
+  background: #121216;
+  font: 12px/1.65 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color: #d6deeb;
+  tab-size: 2;
 }
 
+/* A long line wraps under its own indent instead of hiding the note at its end behind a scroll. */
 .code .line {
   display: block;
-  padding: 0 10px;
+  padding: 0 12px 0 calc(10px + var(--indent, 2ch));
+  text-indent: calc(-1 * var(--indent, 2ch));
   border-left: 2px solid transparent;
-  white-space: pre;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .code .bad {
   border-left-color: #ff8a80;
-  background: rgba(255, 138, 128, 0.08);
-  color: #ffd7d3;
+  background: rgba(255, 138, 128, 0.09);
 }
 
 .case.fixed .code .bad {
   border-left-color: #5ddc9a;
   background: rgba(93, 220, 154, 0.08);
-  color: #cdf5e1;
+}
+
+.tk-k {
+  color: #c792ea;
+}
+
+.tk-s {
+  color: #c3e88d;
+}
+
+.tk-n {
+  color: #f78c6c;
+}
+
+.tk-f {
+  color: #82aaff;
+}
+
+.tk-t {
+  color: #ffcb6b;
+}
+
+.tk-tag {
+  color: #f07178;
+}
+
+.tk-a {
+  color: #addb67;
+  font-style: italic;
+}
+
+.tk-p {
+  color: #89ddff;
+}
+
+.tk-c {
+  color: #6c7086;
+  font-style: italic;
+}
+
+/* Kept whole: a note that does not fit goes under its line rather than leaving `// ←` at the edge. */
+.tk-note {
+  display: inline-block;
+  text-indent: 0;
+  color: #ffb4ab;
+  font-style: italic;
+}
+
+.case.fixed .tk-note {
+  color: #8ee6b5;
+}
+
+/*
+ * Side by side, the parts of the versions line up: each case lends its heading, demo, note and code to the rows of
+ * the pair, so the two snippets start on one line and end on another.
+ */
+@media (min-width: 900px) {
+  .basics {
+    max-width: 1320px;
+  }
+
+  .two > .case,
+  .three > .case {
+    display: grid;
+    grid-row: span 4;
+    grid-template-rows: subgrid;
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: 0;
+  }
+
+  .two > .case > .code[open],
+  .three > .case > .code[open] {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .two > .case > .code[open]::details-content,
+  .three > .case > .code[open]::details-content {
+    display: flex;
+    flex: 1;
+  }
+
+  .two > .case > .code[open] pre,
+  .three > .case > .code[open] pre {
+    flex: 1;
+  }
 }
 
 /* A surface to move the pointer over: what happens to its position is the whole point of the ref case. */
