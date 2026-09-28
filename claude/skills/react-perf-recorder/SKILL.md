@@ -30,9 +30,9 @@ numbers belong in the answer.
    letter in its child's input — renders for nothing, and the fix is in it. When its reason is a package's own state
    (`[package] useX › State`), the root reads more of what that hook returned than it shows — a getter, a proxied
    field, a function that subscribes as it reads wherever it is called, an effect too: move that read into the
-   child that shows it. A fix changes when things render, not what the page does: validation, a call its comment
-   says is there on purpose, what is shown and when stay as they were. When the waste goes only with a behavior,
-   say so and leave that choice to the person.
+   child that shows it. A fix changes when things render, not what the page does: what is shown, checked and sent, and
+   when, stays as it was — read what a call you remove does, not only what its comment says. When the waste goes
+   only with a behavior, say so and leave that choice to the person.
 5. **Prove it** when numbers were asked for or the cause is a guess: `references/measuring-a-fix.md`. Counts that did
    not move put the fix in doubt before the recorder.
 6. **Read what is left.** The recording after the fix is the next look at the page, and a complaint can have more

@@ -98,6 +98,39 @@ describe('eval cases', () => {
     });
   });
 
+  // A bug with more than one right fix: the check takes each, and still fails the bug left as it is.
+  it('field-state counts either half of the waste gone', () => {
+    const fixed = cases.find((c) => c.name === 'field-state-rec')!.graders.find((g) => g.name === 'fixed')!;
+    const dir = patched(['field-state']);
+    try {
+      const file = path.join(dir, 'src/components/Composer/index.tsx');
+      const bug = fs.readFileSync(file, 'utf8');
+      expect(fixed.pattern.test(bug)).toBe(true);
+      expect(fixed.pattern.test(bug.replace('void trigger();', ''))).toBe(false);
+      expect(fixed.pattern.test(bug.replace(/fieldState/g, 'state'))).toBe(false);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('draft-context counts the draft moved out of Layout, wherever it went', () => {
+    const fixed = cases.find((c) => c.name === 'draft-context-rec')!.graders.find((g) => g.name === 'fixed')!;
+    const dir = patched(['draft-context']);
+    try {
+      const bug = fs.readFileSync(path.join(dir, 'src/components/ChatView.tsx'), 'utf8');
+      expect(fixed.pattern.test(bug)).toBe(true);
+      const below = bug
+        .replace("  const [draft, setDraft] = useState('');\n", '')
+        .replace(
+          'export const Layout = () => {',
+          "const DraftScope = ({ children }: { children: ReactNode }) => {\n  const [draft, setDraft] = useState('');\n  return children;\n};\n\nexport const Layout = () => {"
+        );
+      expect(fixed.pattern.test(below)).toBe(false);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it('memo-cache-slot counts a fix in either file, and nothing else', () => {
     const fixed = cases.find((c) => c.name === 'memo-cache-slot-rec')!.graders.find((g) => g.name === 'fixed')!;
     const edit = (file: string, text: string, keys: [string, string]) =>

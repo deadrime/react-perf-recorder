@@ -119,9 +119,10 @@ both forms. Every prompt asks whether something renders for nothing and says to 
   across its two forms — or fixed one bug of two in `two-bugs`, both times; one run of `effect-derived-state` left
   the page broken. The recording shows the root still rendering after a fix, and the second root waiting; reading the
   code does not. With the plugin, the one miss was also `two-bugs`: one run fixed `whole-object` and left `exact-value`.
-- The code checks pass less often than the fixes work, and the new recording is the one counted. In `field-state`
-  the agents kept `fieldState` and stopped validating the whole form on every key instead — the renders were gone, the
-  code check still saw the bug's line.
+- The code checks pass less often than the fixes work, and the new recording is the one counted. A bug can have
+  more than one right fix, and a check takes each one found so far: in `field-state` dropping the whole form's
+  `trigger()` on every key, whose rules read no other field, shows the same page with no waste left; in
+  `draft-context` the state can move into a provider below the layout.
 - Cost is the agent's own, from Claude Code; the checks cost nothing.
 
 ## Running it
