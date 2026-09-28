@@ -5,13 +5,29 @@ const settle = (page) => page.waitForTimeout(600);
 
 export const SCENARIOS = {
   /** The issue list left open while teammates work. */
-  'wait-issues': { route: '/issues', ready: 'issue-row', run: (page) => page.waitForTimeout(5000) },
-  'wait-board': { route: '/board', ready: 'card', run: (page) => page.waitForTimeout(5000) },
-  'wait-dashboard': { route: '/dashboard', ready: 'throughput', run: (page) => page.waitForTimeout(5000) },
+  'wait-issues': {
+    route: '/issues',
+    ready: 'issue-row',
+    steps: 'open the issue list, wait for the issues to load, then leave it alone for a few seconds while teammates work.',
+    run: (page) => page.waitForTimeout(5000),
+  },
+  'wait-board': {
+    route: '/board',
+    ready: 'card',
+    steps: 'open the board, wait for the cards to load, then leave it alone for a few seconds while teammates work.',
+    run: (page) => page.waitForTimeout(5000),
+  },
+  'wait-dashboard': {
+    route: '/dashboard',
+    ready: 'throughput',
+    steps: 'open the dashboard, wait for the chart to load, then leave it alone for a few seconds.',
+    run: (page) => page.waitForTimeout(5000),
+  },
   /** Typing a search into the issue list. */
   search: {
     route: '/issues',
     ready: 'issue-row',
+    steps: 'open the issue list and type "sso login" into the search box above it.',
     run: async (page) => {
       await page.getByTestId('issue-search').pressSequentially('sso login', { delay: 90 });
       await page.waitForTimeout(800);
@@ -22,6 +38,7 @@ export const SCENARIOS = {
   'hover-rows': {
     route: '/issues',
     ready: 'issue-row',
+    steps: 'open the issue list and move the pointer slowly down the first sixteen rows.',
     run: async (page) => {
       const rows = page.getByTestId('issue-row');
       for (let i = 0; i < 16; i++) {
@@ -36,6 +53,7 @@ export const SCENARIOS = {
   comment: {
     route: '/issues/WEB-2',
     ready: 'comment-input',
+    steps: 'open issue WEB-2, click the comment box and type "Looks good to me, merging after lunch".',
     run: async (page) => {
       await page.getByTestId('comment-input').click();
       await page.getByTestId('comment-input').pressSequentially('Looks good to me, merging after lunch', { delay: 90 });
@@ -47,6 +65,7 @@ export const SCENARIOS = {
   'hover-chart': {
     route: '/dashboard',
     ready: 'throughput',
+    steps: 'open the dashboard and move the pointer slowly across the throughput chart, left to right.',
     run: async (page) => {
       const box = await page.getByTestId('throughput').locator('svg').boundingBox();
       for (let i = 0; i <= 30; i++) {
@@ -89,5 +108,6 @@ export async function recordScenario(page, base, name) {
     }),
     { parts, typed: scenario.typed }
   );
-  return { id, scenario: name, ...health, typedOk: !scenario.typed || health.typed === scenario.typed.text };
+  const typedOk = !scenario.typed || health.typed === scenario.typed.text;
+  return { id, scenario: name, ...health, typedOk, works: health.missing.length === 0 && typedOk };
 }

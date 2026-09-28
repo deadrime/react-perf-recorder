@@ -28,6 +28,7 @@ export default defineConfig({
             'react-dom',
             'react-dom/client',
             'react/jsx-dev-runtime',
+            'react/jsx-runtime',
             'zustand',
             'zustand/vanilla',
             'zustand/middleware',
@@ -39,6 +40,10 @@ export default defineConfig({
             'proxy-memoize',
             '@reduxjs/toolkit',
             'react-redux',
+            // Orbit's jsx-runtime imports and the recorder's panel: found late, they reloaded its pages
+            'preact',
+            'preact/hooks',
+            'preact/jsx-dev-runtime',
           ],
         },
       }

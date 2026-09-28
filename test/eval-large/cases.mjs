@@ -1,5 +1,6 @@
 // The large app's cases: the patches from bugs/ they apply, the scenario that shows the waste, the root it starts at,
-// the number a recording gives for it, and what a person would say about it — the symptom, never the cause.
+// the number a recording gives for it, and what a person would say about it — the symptom, never the cause. For the
+// agent runs' graders: the files under src/ a fix may touch, and the ones an answer names the bug in, any of them.
 const wasted = (show) => show.totals.rendersWithoutDom;
 const root = (show, name) => show.topRoots.find((r) => r.root === name);
 const hitsOf = (name) => (show) => root(show, name)?.hits ?? 0;
@@ -13,6 +14,8 @@ export const BUGS = {
     scenario: 'wait-issues',
     root: 'IssuesToolbar',
     waste: hitsOf('IssuesToolbar'),
+    files: ['context/AuthContext.tsx'],
+    named: ['AuthContext.tsx'],
     complaint: 'Leaving the issue list open makes the laptop fan spin up, though nothing on the page seems to change.',
   },
   // An inline arrow per row: the memoized rows render whenever the list does.
@@ -20,6 +23,8 @@ export const BUGS = {
     scenario: 'wait-issues',
     root: 'IssuesPage',
     waste: wasted,
+    files: ['features/issues/IssueTable.tsx', 'features/issues/IssueRow.tsx'],
+    named: ['IssueTable.tsx', 'IssueRow.tsx'],
     complaint: 'The issue list stutters every time a teammate edits an issue.',
   },
   // The debounce is rebuilt with the callback it wraps, on every key: the list is filtered once per letter.
@@ -27,6 +32,8 @@ export const BUGS = {
     scenario: 'search',
     root: 'IssuesPage',
     waste: hitsOf('IssuesPage'),
+    files: ['hooks/useDebouncedCallback.ts', 'features/issues/SearchBox.tsx'],
+    named: ['useDebouncedCallback.ts'],
     complaint: 'Typing into the issue search lags, and the list jumps around after every letter.',
   },
   // A selector taking an object: its cache misses on every call, so each column gets a new array on every dispatch.
@@ -34,6 +41,8 @@ export const BUGS = {
     scenario: 'wait-board',
     root: 'BoardColumn',
     waste: noDomUnder('BoardColumn'),
+    files: ['store/selectors.ts', 'features/board/BoardColumn.tsx'],
+    named: ['selectors.ts', 'BoardColumn.tsx'],
     complaint: 'The board gets sluggish while the team is active, even in columns where nothing changed.',
   },
   // A card wrapped in a tooltip only while someone views it: the card remounts as viewers come and go.
@@ -41,6 +50,8 @@ export const BUGS = {
     scenario: 'wait-board',
     root: 'IssueCard',
     waste: mountsUnder('IssueCard'),
+    files: ['features/board/IssueCard.tsx', 'components/ui/Tooltip.tsx'],
+    named: ['IssueCard.tsx'],
     complaint: 'Cards on the board flicker when a teammate opens one of them.',
   },
   // withPermission() called in render: a new component type each time, so the comment box remounts and loses the text.
@@ -49,6 +60,8 @@ export const BUGS = {
     root: 'IssueDrawer',
     waste: mountsUnder('IssueDrawer'),
     visible: true,
+    files: ['features/issues/IssueDrawer.tsx', 'components/withPermission.tsx'],
+    named: ['IssueDrawer.tsx'],
     complaint: 'The comment box on an issue sometimes wipes what I am typing.',
   },
   // An effect copies the filtered list into state: a second commit after every change of the issues.
@@ -56,6 +69,8 @@ export const BUGS = {
     scenario: 'wait-issues',
     root: 'IssuesPage',
     waste: hitsOf('IssuesPage'),
+    files: ['features/issues/IssuesPage.tsx'],
+    named: ['IssuesPage.tsx'],
     complaint: 'The issue list flashes "No issues match" when it opens, and feels heavier than it should when issues change.',
   },
   // The chart's data rebuilt on every render, and the hover renders it.
@@ -63,6 +78,8 @@ export const BUGS = {
     scenario: 'hover-chart',
     root: 'ThroughputChart',
     waste: msPerHit('ThroughputChart'),
+    files: ['features/dashboard/ThroughputChart.tsx'],
+    named: ['ThroughputChart.tsx'],
     complaint: 'Moving the mouse over the throughput chart on the dashboard is choppy.',
   },
   // The sidebar reads the whole app store, heartbeat included.
@@ -70,6 +87,8 @@ export const BUGS = {
     scenario: 'wait-issues',
     root: 'Sidebar',
     waste: hitsOf('Sidebar'),
+    files: ['components/layout/Sidebar.tsx', 'store/app.ts'],
+    named: ['Sidebar.tsx'],
     complaint: 'The app keeps using CPU while it sits idle on the issue list.',
   },
   // The members indexed in the query function: a Map is never structurally shared, so every poll renders every avatar.
@@ -77,6 +96,8 @@ export const BUGS = {
     scenario: 'wait-issues',
     root: 'Avatar',
     waste: wasted,
+    files: ['queries/members.ts'],
+    named: ['members.ts'],
     complaint: 'The idle issue list hitches every couple of seconds.',
   },
   // The hovered row kept in the table: every row renders as the pointer moves.
@@ -84,6 +105,8 @@ export const BUGS = {
     scenario: 'hover-rows',
     root: 'IssueTable',
     waste: hitsOf('IssueTable'),
+    files: ['features/issues/IssueTable.tsx', 'features/issues/IssueRow.tsx', 'app.css'],
+    named: ['IssueTable.tsx', 'IssueRow.tsx'],
     complaint: 'Moving the pointer down the issue list feels laggy.',
   },
   // Three at once, as an app that grew for a while has them: all three must go.

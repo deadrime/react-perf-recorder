@@ -84,13 +84,26 @@ To look at the app with the recorder's panel:
 npx vite --config test/eval-large/vite.config.ts   # http://localhost:5394/?tick=150
 ```
 
-## Not yet wired to the agent runs
+## With agents
 
-`test/eval-plugin`'s `run.sh`, `scaffold.mjs` and `verify.mjs` still serve only the chat app. Running these cases with
-agents needs three things there:
+The agent benchmark in `test/eval-plugin` runs these bugs too, as `orbit-<bug>-rec` in `test/eval-plugin/evals-large`,
+apart from the chat's cases so a run of those stays what it was. `evals.mjs` here writes the cases from `cases.mjs`
+and `scenarios.mjs`; run it again after changing either (a unit test fails while they differ). Each case gets:
 
-- the app folder and the bugs folder as a parameter;
-- the scenarios taken from `scenarios.mjs` here;
-- the page's ready marker (`issue-row` rather than `unread`).
+- the complaint and the scenario's steps as its prompt, and the person's recording of that scenario;
+- graders for the answer naming the bug's file, a fix that edits only the files in `cases.mjs`, and a before-and-after
+  recording.
 
-Each case also needs a `case.yaml`, a prompt built from its complaint, and graders.
+There is no `no-bug` case for agents: the clean app renders for nothing too, so "change nothing" is not the right
+answer there. Whether a fix worked is `verify.mjs`'s call, as for the chat: it records what the agent left.
+
+```sh
+npm run build
+bash test/eval-plugin/run.sh --eval-dir evals-large --runs 1 --ablation none --keep-temp \
+  --json .agent-artifacts/evals-orbit/aggregate-result.json
+node test/eval-plugin/verify.mjs .agent-artifacts/evals-orbit/aggregate-result.json
+node test/eval-plugin/transcripts.mjs .agent-artifacts/evals-orbit/aggregate-result.json
+```
+
+`--cases orbit-store-whole-rec,orbit-query-index-rec` runs only some of them. `summarize.mjs` writes the chat's
+tables in `docs/benchmarks.md`, so it is not for an Orbit run yet.
