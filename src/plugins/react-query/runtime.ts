@@ -6,6 +6,40 @@ interface QueryCache {
 
 const ACTIONS = new Set(['fetch', 'success', 'error', 'invalidate']);
 
+const keyText = (key: unknown) => JSON.stringify(key)?.slice(0, 70) ?? '';
+
+interface Observer {
+  getCurrentResult?: unknown;
+  getCurrentQuery?: () => { queryKey: unknown };
+  getQueries?: () => Array<{ queryKey: unknown }>;
+  mutate?: unknown;
+  options?: { select?: unknown; mutationKey?: unknown };
+}
+
+/** The store behind a hook, from the observer react-query keeps in the deps of the subscribe it hands React. */
+function describeObserver(observer: Observer | null, next: (fn: Function) => string): { store: string; selector?: string } | null {
+  if (!observer || typeof observer.getCurrentResult !== 'function') return null;
+  if (typeof observer.getCurrentQuery === 'function') {
+    const select = observer.options?.select;
+    return { store: `query ${keyText(observer.getCurrentQuery().queryKey)}`, ...(typeof select === 'function' ? { selector: next(select) } : {}) };
+  }
+  if (typeof observer.getQueries === 'function')
+    return {
+      store: `queries ${
+        observer
+          .getQueries()
+          .map((q) => keyText(q.queryKey))
+          .join(', ')
+          .slice(0, 70) || '(none)'
+      }`,
+    };
+  if (typeof observer.mutate === 'function') {
+    const key = observer.options?.mutationKey;
+    return { store: key === undefined ? 'mutation' : `mutation ${keyText(key)}` };
+  }
+  return null;
+}
+
 /** A provider that mounts late (a lazy route, a recording from the page load) is looked for again, this often at most. */
 const SEARCH_EVERY_MS = 1000;
 
@@ -28,7 +62,7 @@ export default definePlugin(() => {
       const action = event.action?.type;
       const updated = event.type === 'updated';
       if (!(event.type === 'added' || event.type === 'removed' || (updated && action && ACTIONS.has(action)))) return;
-      const key = JSON.stringify(event.query.queryKey).slice(0, 70);
+      const key = keyText(event.query.queryKey);
       const kind = updated ? action! : event.type;
       counts.set(`${kind} ${key}`, (counts.get(`${kind} ${key}`) ?? 0) + 1);
       if (!updated) {
@@ -49,6 +83,7 @@ export default definePlugin(() => {
   return {
     name: 'react-query',
     packages: ['@tanstack/react-query', '@tanstack/query-core'],
+    describeHook: (deps, next) => describeObserver(deps[0] as Observer | null, next),
     start(session) {
       counts.clear();
       found = false;

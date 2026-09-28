@@ -130,6 +130,8 @@ export function hookOf(root: RootStat, reason: ReasonInfo | undefined) {
   return reason.hook !== undefined ? root.hooks?.[reason.hook] : undefined;
 }
 
+const storeMark = (reason: Pick<ReasonInfo, 'storeChange'>) => (reason.storeChange ? ` ${reason.storeChange.toUpperCase()}` : '');
+
 const names = (list: string[] | undefined, max = 5) => (list ?? []).slice(0, max).join(', ');
 
 /**
@@ -143,7 +145,9 @@ export function reasonText(reason: Omit<ReasonInfo, 'i' | 'text'>): string {
     case 'state':
       return reason.hook === undefined ? `class state${mark}` : `state #${reason.hook}${mark}`;
     case 'store':
-      return `external store #${reason.hook}${mark}${reason.store ? ` [${reason.store}]` : ''}${reason.selector ? ` ${reason.selector}` : ''}`;
+      return `external store #${reason.hook}${mark}${storeMark(reason)}${reason.store ? ` [${reason.store}]` : ''}${
+        reason.selector ? ` ${reason.selector}` : ''
+      }`;
     case 'context':
       return `context ${reason.context || '(unnamed)'}${mark}`;
     case 'props':
@@ -187,7 +191,10 @@ function rootWhy(reason: ReasonInfo, root: RootStat | undefined): { kind?: strin
       return { kind: 'state', what: `${name ?? (reason.hook === undefined ? 'of a class' : `#${reason.hook}`)}${mark}` };
     }
     case 'store':
-      return { kind: 'store', what: `${[reason.store, reason.selector].filter(Boolean).join(' ') || `#${reason.hook}`}${mark}` };
+      return {
+        kind: 'store',
+        what: `${[reason.store, reason.selector].filter(Boolean).join(' ') || `#${reason.hook}`}${mark}${storeMark(reason)}`,
+      };
     case 'context':
       return { kind: 'context', what: `${reason.context || '(unnamed)'}${mark}` };
     default:
@@ -407,6 +414,35 @@ export function rootLine(root: RootStat, durationMs: number, reasons: Map<number
     causes: root.causes.slice(0, 3).map(([k, n]) => `${n}× ${k}`),
     ...(root.lanes.length ? { lanes: root.lanes.map(([l, n]) => `${l}:${n}`).join(' ') } : {}),
   };
+}
+
+export interface WastingRoot {
+  root: string;
+  source: string;
+  hits: number;
+  instances: number;
+  noDomChange: number;
+  ownDomUnchanged?: number;
+}
+
+/**
+ * Roots that mostly render for nothing: a quarter of their renders or more left their own DOM as it was. After a fix,
+ * what is still here is the next thing to look at — or a root whose render is needed, which its own file shows.
+ */
+export function wastingRoots(rec: Pick<RecordingV2, 'roots'>, top = 5): WastingRoot[] {
+  const waste = (r: RootStat) => Math.max(r.noDomChange, r.ownDomUnchanged ?? 0);
+  return rec.roots
+    .filter((r) => waste(r) >= 2 && waste(r) >= 0.25 * r.hits * Math.max(1, r.instances))
+    .sort((a, b) => waste(b) - waste(a))
+    .slice(0, top)
+    .map((r) => ({
+      root: r.name,
+      source: r.source,
+      hits: r.hits,
+      instances: r.instances,
+      noDomChange: r.noDomChange,
+      ...(r.ownDomUnchanged ? { ownDomUnchanged: r.ownDomUnchanged } : {}),
+    }));
 }
 
 /** Why a memo hook remembers nothing, in words: which dependency moves, and whether only its reference does. */

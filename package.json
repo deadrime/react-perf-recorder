@@ -105,9 +105,6 @@
     "format": "prettier --write .",
     "prepublishOnly": "npm run typecheck && npm test && npm run build"
   },
-  "dependencies": {
-    "@babel/parser": "^7.29.9"
-  },
   "peerDependencies": {
     "react": "^18.2.0 || >=19.1.0",
     "vite": ">=5 <9"
@@ -124,6 +121,7 @@
     "node": ">=18.18"
   },
   "devDependencies": {
+    "@babel/parser": "7.29.9",
     "@emotion/react": "11.14.0",
     "@jridgewell/trace-mapping": "0.3.31",
     "@modelcontextprotocol/sdk": "1.30.0",

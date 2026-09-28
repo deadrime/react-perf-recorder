@@ -23,21 +23,26 @@ numbers belong in the answer.
    one component — it re-renders, `memo` holds, the fix helped — stands on that component's own counts in
    `components` or `watch`, not on totals or on how a reason is worded.
 4. **Fix where the recording puts the waste.** A root that renders for nothing — subscribed to more than it shows,
-   fed a value that changes for nothing — is fixed at that cause, and its own count has to fall; `memo` on its
+   fed a value that changes for nothing — is fixed at that cause, and its own `hits` have to fall; `memo` on its
    children leaves it rendering. A root whose render is needed is fixed below it, and its renders per hit have to
    fall. Whether it is needed is in `ownDomUnchanged`, not in `noDomChange`, which counts what changed anywhere under
    it: a root whose own elements stayed as they were in most of its hits — a form root whose only change is the
    letter in its child's input — renders for nothing, and the fix is in it. When its reason is a package's own state
    (`[package] useX › State`), the root reads more of what that hook returned than it shows — a getter, a proxied
    field, a function that subscribes as it reads wherever it is called, an effect too: move that read into the
-   child that shows it.
+   child that shows it. A fix changes when things render, not what the page does: what is shown, checked and sent, and
+   when, stays as it was — read what a call you remove does, not only what its comment says. When the waste goes
+   only with a behavior, say so and leave that choice to the person.
 5. **Prove it** when numbers were asked for or the cause is a guess: `references/measuring-a-fix.md`. Counts that did
    not move put the fix in doubt before the recorder.
-6. **Read what is left.** The recording after the fix is the next look at the page: a root still rendering with no
-   DOM change is the next cause, and a complaint can have more than one. Stop when what remains changes what the
-   page shows — and when the first recording shows nothing wasted, say so and change nothing: a render that
-   changes the page is not a bug. A root whose own count did not fall is not fixed: something in its render still
-   subscribes it; find it rather than adding `memo` below.
+6. **Read what is left.** The recording after the fix is the next look at the page, and a complaint can have more
+   than one cause. Every root in its `wasting` (`wastingAfter` in a comparison) rendered for nothing by its own
+   counts, however it reads; open its code for why. What subscribes it is the next cause. Only work its render does
+   besides the DOM — a canvas it draws, an effect it has to run — leaves it as it is, named in the answer with its
+   numbers. Stop when what remains changes what the page shows — and when the first recording shows nothing
+   wasted, say so and change nothing: a render that changes the page is not a bug. A root whose own `hits` did not
+   fall is not fixed, whatever its cascade did: something in its render still subscribes it; find it rather than
+   adding `memo` below.
 
 Work through the `react-perf-recorder` MCP tools: each one says in its description when to use it and what it takes.
 

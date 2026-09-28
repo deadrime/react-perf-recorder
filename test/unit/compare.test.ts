@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { aggregateEvents } from '../../src/shared/aggregate';
 import { compareDigests, compareRecordings, digestOf } from '../../src/shared/compare';
-import { summarize, waysOf, wayText } from '../../src/shared/summary';
+import { summarize, wastingRoots, waysOf, wayText } from '../../src/shared/summary';
 import type { SessionEvent, SessionMeta } from '../../src/shared/schema';
 
 const meta: SessionMeta = {
@@ -30,6 +30,49 @@ const events = (renders: number): SessionEvent[] => [
 ];
 
 describe('partial recordings and comparison', () => {
+  it('names the roots a fix left rendering for nothing, and not a root whose renders show', () => {
+    const before = aggregateEvents(meta, events(3));
+    const after = aggregateEvents(meta, events(3));
+    const root = (name: string, hits: number, instances: number, noDomChange: number, ownDomUnchanged?: number) => ({
+      ...after.roots[0],
+      key: name,
+      name,
+      source: `src/${name}.tsx:1`,
+      hits,
+      instances,
+      noDomChange,
+      ...(ownDomUnchanged ? { ownDomUnchanged } : {}),
+    });
+    after.roots = [root('Clock', 5, 3, 15), root('Form', 36, 1, 0, 35), root('Badge', 34, 1, 1), root('Bar', 34, 1, 0)];
+    expect(wastingRoots(after).map((r) => r.root)).toEqual(['Form', 'Clock']);
+    expect(compareRecordings(before, after).wastingAfter).toEqual([
+      { root: 'Form', source: 'src/Form.tsx:1', hits: 36, instances: 1, noDomChange: 0, ownDomUnchanged: 35 },
+      { root: 'Clock', source: 'src/Clock.tsx:1', hits: 5, instances: 3, noDomChange: 15 },
+    ]);
+  });
+
+  it('says when a root still wastes as much as before, and not when its waste fell', () => {
+    const before = aggregateEvents(meta, events(3));
+    const after = aggregateEvents(meta, events(3));
+    const root = (name: string, hits: number, ownDomUnchanged: number) => ({
+      ...before.roots[0],
+      key: name,
+      name,
+      source: `src/${name}.tsx:1`,
+      hits,
+      instances: 1,
+      noDomChange: 0,
+      ownDomUnchanged,
+    });
+    before.roots = [root('Form', 16, 15), root('List', 30, 29)];
+    after.roots = [root('Form', 16, 15), root('List', 30, 10)];
+    const notes = compareRecordings(before, after).warnings.filter((w) => w.includes('did not reach'));
+    expect(notes).toEqual([
+      'Form (src/Form.tsx:1) still renders for nothing, 15 of 16 hits before and 15 of 16 after: the change did not reach its cause',
+    ]);
+    expect(compareRecordings(before, after).comparable).toBe(true);
+  });
+
   it('rebuilds a summary from streamed events', () => {
     const rec = aggregateEvents(meta, events(30));
     expect(rec.partial).toBe(true);

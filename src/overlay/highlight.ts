@@ -14,6 +14,8 @@ interface Flash {
   mounted?: boolean;
   /** When the element last rendered: a box is lit from there, not from the first render of a streak. */
   at: number;
+  /** A container scrolled under the box: its place is read from the element each frame, clipped to the container. */
+  scroller?: Element;
 }
 
 /** An outline holds while renders keep coming and fades once they stop: a steady box, not a strobe. */
@@ -80,12 +82,24 @@ export class Highlighter implements HighlightSink {
       this.redraw();
     });
     // A pinned box follows its element when the page scrolls under it.
-    window.addEventListener('scroll', () => this.redraw(), { capture: true, passive: true });
+    window.addEventListener('scroll', (event) => this.scrolled(event.target), { capture: true, passive: true });
   }
 
   /** Outlines these components until the next call; an empty list takes them away. */
   pin(items: Array<{ fiber: Fiber; label: string }>) {
     this.pinned = items;
+    this.redraw();
+  }
+
+  /** Window scroll is taken off document coords in draw; an inner container moves its boxes without it. */
+  private scrolled(target: EventTarget | null) {
+    if (target instanceof Element && target !== document.scrollingElement) {
+      for (const [el, f] of this.flashes) {
+        if (!target.contains(el)) continue;
+        // The innermost container clips tightest.
+        if (!f.scroller || f.scroller.contains(target)) f.scroller = target;
+      }
+    }
     this.redraw();
   }
 
@@ -174,8 +188,18 @@ export class Highlighter implements HighlightSink {
     ctx.font = '11px ui-monospace, SFMono-Regular, Menlo, monospace';
     // Mounts last, so their dashed box is on top of the parent's, and their label wins a corner they share.
     const ordered = [...this.flashes.values()].sort((a, b) => Number(Boolean(b.mounted)) - Number(Boolean(a.mounted)));
+    for (const [el, flash] of this.flashes) if (flash.scroller) this.follow(el, flash);
     for (const flash of ordered.reverse()) {
       const f = { ...flash, x: flash.x - scrollX, y: flash.y - scrollY };
+      let top = 0;
+      if (flash.scroller) {
+        const clip = flash.scroller.getBoundingClientRect();
+        top = clip.top;
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(clip.left, clip.top, clip.width, clip.height);
+        ctx.clip();
+      }
       const age = now - f.at;
       // Full while it keeps rendering, and only then on its way out.
       const alpha = age <= LIT_MS ? 1 : Math.max(0, 1 - (age - LIT_MS) / FADE_MS);
@@ -192,17 +216,26 @@ export class Highlighter implements HighlightSink {
         labelled.add(at);
         if (f.mounted) mountedAt.add(at);
         const width = this.widthOf(ctx, label) + 6;
-        const y = f.y > 14 ? f.y - 14 : f.y;
+        // Inside the box when there is no room above it, or the scroller would clip the label away.
+        const y = f.y - 14 >= top ? f.y - 14 : f.y;
         ctx.fillStyle = `rgba(${r},${g},${b},${alpha * 0.9})`;
         ctx.fillRect(f.x, y, width, 14);
         ctx.fillStyle = `rgba(0,0,0,${alpha})`;
         ctx.fillText(label, f.x + 3, y + 11);
       }
+      if (flash.scroller) ctx.restore();
     }
     this.drawPinned(ctx);
     this.costMs += performance.now() - started;
     if (this.flashes.size) requestAnimationFrame(() => this.draw());
     else this.drawing = false;
+  }
+
+  /** Scrolling does not dirty layout, so reading the rect here costs no reflow, as for a pinned box. */
+  private follow(el: Element, flash: Flash) {
+    if (!el.isConnected || !flash.scroller?.isConnected) return;
+    const r = el.getBoundingClientRect();
+    Object.assign(flash, { x: r.left + scrollX, y: r.top + scrollY, w: r.width, h: r.height });
   }
 
   /** Labels repeat from frame to frame while a box fades: measured once each. */
