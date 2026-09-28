@@ -15,7 +15,12 @@ What scheduled each commit, aimed at the components it actually updated:
 | `core:navigation push`                | a navigation                                                                     |
 | `core:effect @ src/hooks/useX.ts`     | a setState from an effect                                                        |
 | `core:update <fn> @ src/…`            | a plain call in the app's code; `(<package>)` when it came from inside a library |
+| `core:store resync`                   | React found a store changed with no notification and rendered its readers again  |
 | `core:none`                           | React scheduled the work itself — rare, and worth a second look                  |
+
+`core:store resync` follows a commit during which a store changed without telling React — a query that a newly
+mounted component started fetching, a store written in an effect: React re-checks each store hook it just rendered
+and renders again the ones that moved (`RESYNC` in their reasons), however little they show of the change.
 
 A cause goes to the roots whose components it updated: a subscriber of `priceStore` gets
 `zustand:priceStore.setState`, not the action that landed in the same commit.

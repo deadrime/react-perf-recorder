@@ -38,6 +38,11 @@ export default definePlugin((options: { verbose: boolean }) => ({
     // hands useSyncExternalStore itself (`snapshot`: zustand 5's useStore, react-redux's connect)
     return null;
   },
+  describeHook(deps, next) {
+    // a store hook whose library hands useSyncExternalStore a useCallback subscribe of its own: `deps` are that
+    // callback's dependencies, where it keeps its observer (react-query: `{ store: 'query ["members"]', selector }`)
+    return null;
+  },
   start(session) {}, // session.emitCause({ type, changes }) queues a cause for the next commit
   commit(session) {}, // after each commit of a recording: find what mounted late; keep it cheap
   stop(session) {
