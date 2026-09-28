@@ -19,7 +19,7 @@ dependencies. Their code is also well known enough for a model to remember the c
   issues and comment on them, notifications arrive, presence changes, and a heartbeat reports the latency.
 - **Pages:**
   - the issue list, with filters in the URL, search, sorting, bulk actions and keyboard navigation;
-  - the board, with drag and drop;
+  - the board, with drag and drop between and within columns, by mouse or by a long press on a phone;
   - an issue drawer, with properties, comments, @mentions and #issue references, presence and a typing indicator;
   - a dashboard, with an SVG throughput chart, workload and activity;
   - projects, the inbox and settings.

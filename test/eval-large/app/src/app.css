@@ -817,6 +817,17 @@ code {
 .card-live {
   border-color: rgba(94, 106, 210, 0.7);
 }
+.card-dragging {
+  opacity: 0.4;
+}
+/* Takes no room: its 2px and the column's two 6px gaps are eaten by the margins, so cards don't jump under the pointer. */
+.drop-line {
+  flex: none;
+  height: 2px;
+  margin: -4px 0;
+  border-radius: 1px;
+  background: var(--accent);
+}
 .card-title {
   margin: 0;
 }

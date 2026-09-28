@@ -27,21 +27,41 @@ class TouchDataTransfer {
   setDragImage() {}
 }
 
-function fire(target: Element, type: string, dataTransfer: TouchDataTransfer, x: number, y: number) {
+function fire(target: Element, type: string, dataTransfer: TouchDataTransfer, x: number, y: number, relatedTarget: Element | null = null) {
   const event = new Event(type, { bubbles: true, cancelable: true });
   Object.defineProperties(event, {
     dataTransfer: { value: dataTransfer },
     clientX: { value: x },
     clientY: { value: y },
+    relatedTarget: { value: relatedTarget },
   });
   target.dispatchEvent(event);
   return event.defaultPrevented;
 }
 
-/** The element that scrolls sideways under the dragged one, if any: the board on a phone. */
-function sideScroller(from: Element): HTMLElement | null {
-  for (let el = from.parentElement; el; el = el.parentElement) {
-    if (el.scrollWidth > el.clientWidth && /(auto|scroll)/.test(getComputedStyle(el).overflowX)) return el;
+const SCROLL_STEP = 8;
+
+/** -1 or 1 when the finger is at an edge the element can still scroll towards, 0 otherwise. */
+function towards(at: number, from: number, to: number, scrolled: number, room: number) {
+  if (at < from + EDGE_PX && scrolled > 0) return -1;
+  if (at > to - EDGE_PX && scrolled < room - 1) return 1;
+  return 0;
+}
+
+/**
+ * What to scroll near an edge: from the element under the finger up to the page, the first one that can still move
+ * that way. A column scrolls up and down, the board sideways, as a browser does it for a mouse.
+ */
+function edgeScroll(from: Element | null, x: number, y: number): { el: Element; left: number; top: number } | null {
+  const page = document.scrollingElement ?? document.documentElement;
+  for (let el: Element | null = from; el; el = el === page ? null : el.parentElement ?? page) {
+    const style = getComputedStyle(el);
+    const box = el === page ? { left: 0, top: 0, right: innerWidth, bottom: innerHeight } : el.getBoundingClientRect();
+    const sideways = el === page || /(auto|scroll)/.test(style.overflowX);
+    const upDown = el === page || /(auto|scroll)/.test(style.overflowY);
+    const dx = sideways ? towards(x, Math.max(box.left, 0), Math.min(box.right, innerWidth), el.scrollLeft, el.scrollWidth - el.clientWidth) : 0;
+    const dy = upDown ? towards(y, Math.max(box.top, 0), Math.min(box.bottom, innerHeight), el.scrollTop, el.scrollHeight - el.clientHeight) : 0;
+    if (dx || dy) return { el, left: dx * SCROLL_STEP, top: dy * SCROLL_STEP };
   }
   return null;
 }
@@ -54,10 +74,14 @@ export function enableTouchDrag() {
     ghost: HTMLElement;
     data: TouchDataTransfer;
     over: Element | null;
-    scroller: HTMLElement | null;
+    /** Elements scrolled so far, with the scroll snapping they had: snapping would pull every small step back. */
+    snapped: Map<HTMLElement, string>;
     x: number;
     y: number;
     frame: number;
+    /** A lifted card that has not moved yet doesn't scroll, even when it sits at an edge. */
+    moved: boolean;
+    origin: { x: number; y: number };
   } | null = null;
 
   const cancelHold = () => {
@@ -74,23 +98,26 @@ export function enableTouchDrag() {
     drag.ghost.style.transform = `translate(${x}px, ${y}px) translate(-50%, -50%) rotate(2deg)`;
     const over = target(x, y);
     if (over !== drag.over) {
-      if (drag.over) fire(drag.over, 'dragleave', drag.data, x, y);
-      if (over) fire(over, 'dragenter', drag.data, x, y);
+      if (drag.over) fire(drag.over, 'dragleave', drag.data, x, y, over);
+      if (over) fire(over, 'dragenter', drag.data, x, y, drag.over);
       drag.over = over;
     }
     if (over) fire(over, 'dragover', drag.data, x, y);
   };
 
-  // Near an edge of the screen the board scrolls on by itself, so a card reaches a column that is off screen.
+  // Near an edge the board scrolls on by itself, so a card reaches a column that is off screen, or a slot below the fold.
   const autoScroll = () => {
     if (!drag) return;
-    const { scroller, x } = drag;
-    if (scroller) {
-      const step = x < EDGE_PX ? -8 : x > innerWidth - EDGE_PX ? 8 : 0;
-      if (step) {
-        scroller.scrollLeft += step;
-        moveTo(drag.x, drag.y);
+    const step = drag.moved ? edgeScroll(drag.over, drag.x, drag.y) : null;
+    if (step) {
+      const el = step.el as HTMLElement;
+      if (!drag.snapped.has(el)) {
+        drag.snapped.set(el, el.style.scrollSnapType);
+        el.style.scrollSnapType = 'none';
       }
+      el.scrollLeft += step.left;
+      el.scrollTop += step.top;
+      moveTo(drag.x, drag.y);
     }
     drag.frame = requestAnimationFrame(autoScroll);
   };
@@ -106,7 +133,6 @@ export function enableTouchDrag() {
       margin: '0',
       pointerEvents: 'none',
       zIndex: '2147483646',
-      opacity: '0.9',
       boxShadow: '0 12px 32px rgba(0,0,0,.5)',
     });
     document.body.appendChild(ghost);
@@ -114,17 +140,14 @@ export function enableTouchDrag() {
     fire(source, 'dragstart', data, x, y);
     source.style.opacity = '0.4';
     navigator.vibrate?.(10);
-    const scroller = sideScroller(source);
-    // Scroll snapping would pull every small step of the auto-scroll back.
-    if (scroller) scroller.style.scrollSnapType = 'none';
-    drag = { source, ghost, data, over: null, scroller, x, y, frame: 0 };
+    drag = { source, ghost, data, over: null, snapped: new Map(), x, y, frame: 0, moved: false, origin: { x, y } };
     moveTo(x, y);
     drag.frame = requestAnimationFrame(autoScroll);
   };
 
   const finish = (drop: boolean) => {
     if (!drag) return;
-    const { source, ghost, data, over, scroller, x, y, frame } = drag;
+    const { source, ghost, data, over, snapped, x, y, frame } = drag;
     cancelAnimationFrame(frame);
     if (over) {
       // A drop counts only where the last dragover was accepted, as a browser does it.
@@ -134,7 +157,7 @@ export function enableTouchDrag() {
     }
     fire(source, 'dragend', data, x, y);
     source.style.opacity = '';
-    if (scroller) scroller.style.scrollSnapType = '';
+    for (const [el, snap] of snapped) el.style.scrollSnapType = snap;
     ghost.remove();
     drag = null;
     // The lift ends with a tap on the card, which would open it.
@@ -165,6 +188,7 @@ export function enableTouchDrag() {
       const touch = e.touches[0];
       if (drag) {
         e.preventDefault();
+        drag.moved ||= Math.hypot(touch.clientX - drag.origin.x, touch.clientY - drag.origin.y) > MOVE_TOLERANCE;
         moveTo(touch.clientX, touch.clientY);
       } else if (start && Math.hypot(touch.clientX - start.x, touch.clientY - start.y) > MOVE_TOLERANCE) cancelHold();
     },

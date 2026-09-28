@@ -1,8 +1,9 @@
-import { memo, useState } from 'react';
+import { Fragment, memo, useState, type DragEvent } from 'react';
 import { shallowEqual } from 'react-redux';
 import type { IssueStatus } from '../../api/types';
 import { StatusIcon } from '../../components/ui/Badges';
 import { useAuth } from '../../context/AuthContext';
+import { orderAt } from '../../lib/boardOrder';
 import { cx } from '../../lib/cx';
 import { STATUS_LABEL } from '../../lib/meta';
 import { useAppDispatch, useAppSelector } from '../../store';
@@ -18,29 +19,52 @@ interface Props {
 
 const CARD_LIMIT = 40;
 
+/** The slot under the pointer, as the number of cards above it, and whether a drop there leaves the dragged card be. */
+function slotAt(e: DragEvent<HTMLElement>) {
+  const cards = [...e.currentTarget.querySelectorAll('[data-testid="card"]')];
+  const slot = cards.filter((card) => {
+    const { top, height } = card.getBoundingClientRect();
+    return e.clientY > top + height / 2;
+  }).length;
+  const dragged = cards.findIndex((card) => card.classList.contains('card-dragging'));
+  return { slot, stays: dragged !== -1 && (slot === dragged || slot === dragged + 1) };
+}
+
 export const BoardColumn = memo(function BoardColumn({ projectId, status, onOpen }: Props) {
   const issues = useAppSelector((s) => selectColumnIssues(s, projectId, status), shallowEqual);
   const dispatch = useAppDispatch();
   const { can } = useAuth();
-  const [over, setOver] = useState(false);
+  const [over, setOver] = useState<number | null>(null);
   const [expanded, setExpanded] = useState(false);
   const points = issues.reduce((sum, i) => sum + (i.estimate ?? 0), 0);
   const shown = expanded ? issues : issues.slice(0, CARD_LIMIT);
 
   return (
     <section
-      className={cx('column', over && 'column-over')}
+      className={cx('column', over !== null && 'column-over')}
       data-testid={`column-${status}`}
+      onDragStart={(e) => (e.target as HTMLElement).classList.add('card-dragging')}
+      onDragEnd={(e) => (e.target as HTMLElement).classList.remove('card-dragging')}
       onDragOver={(e) => {
         if (!can('issue:edit')) return;
         e.preventDefault();
-        if (!over) setOver(true);
+        // -1: over the column, but a drop would change nothing, so no line.
+        const { slot, stays } = slotAt(e);
+        const next = stays ? -1 : slot;
+        if (next !== over) setOver(next);
       }}
-      onDragLeave={() => setOver(false)}
+      onDragLeave={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setOver(null);
+      }}
       onDrop={(e) => {
-        setOver(false);
+        e.preventDefault();
+        setOver(null);
         const id = e.dataTransfer.getData('text/issue-id');
-        if (id) dispatch(updateIssue({ id, patch: { status } }));
+        if (!id) return;
+        const sortOrder = orderAt(issues, id, slotAt(e).slot);
+        const moved = !issues.some((i) => i.id === id);
+        if (moved) dispatch(updateIssue({ id, patch: { status, sortOrder: sortOrder ?? 0 } }));
+        else if (sortOrder !== null) dispatch(updateIssue({ id, patch: { sortOrder } }));
       }}
     >
       <header className="column-head">
@@ -51,9 +75,13 @@ export const BoardColumn = memo(function BoardColumn({ projectId, status, onOpen
         {points > 0 && <span className="muted small">{points} pts</span>}
       </header>
       <div className="column-body">
-        {shown.map((issue) => (
-          <IssueCard key={issue.id} issue={issue} onOpen={onOpen} />
+        {shown.map((issue, i) => (
+          <Fragment key={issue.id}>
+            {over === i && <div className="drop-line" />}
+            <IssueCard issue={issue} onOpen={onOpen} />
+          </Fragment>
         ))}
+        {over !== null && over >= shown.length && <div className="drop-line" />}
         {issues.length > shown.length && (
           <button className="link-btn" onClick={() => setExpanded(true)}>
             Show {issues.length - shown.length} more
