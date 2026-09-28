@@ -103,7 +103,7 @@ const Lists = ({ mode }: { mode: Mode }) => <List key={run.use()} mode={mode} />
 export const Keys = () => {
   return (
     <Case
-      title="key: the position or the thing"
+      title="key={index} in a list that changes"
       what={
         <>
           Three copies of one list of tasks, each row in <code>memo</code> with a checkbox of its own. The only difference is what goes into{' '}

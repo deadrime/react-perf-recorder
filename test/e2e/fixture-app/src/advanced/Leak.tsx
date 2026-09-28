@@ -73,7 +73,7 @@ function run() {
 
 export const Leak = () => (
   <Case
-    title="what stays behind"
+    title="leaks: CSS classes and listeners that pile up"
     what={
       <>
         Nothing here renders too often. It is what stays behind: CSS-in-JS turns every value into a class of its own and never removes one, and a

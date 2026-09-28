@@ -145,12 +145,13 @@ export const StateDown = () => {
   const [deadline] = useState(() => Date.now() + 2000);
   return (
     <Case
-      title="state belongs to the smallest component that shows it"
+      title="state kept too high in the tree"
       what={
         <>
           A clock that ticks every second, and two places it can hide. In the card: every tick renders the card and the
           list below it. In a custom hook: the component calling it renders every second although all it shows is
-          whether a deadline has passed — a yes or a no that changes once. State is for what the screen shows.
+          whether a deadline has passed — a yes or a no that changes once. Move the state down to the component that
+          shows it.
         </>
       }
     >

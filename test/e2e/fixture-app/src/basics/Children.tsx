@@ -76,7 +76,7 @@ const FrameWithChildren = ({ children }: { children: ReactNode }) => {
 
 export const Children = () => (
   <Case
-    title="children come in as a prop, and skip"
+    title="children as a prop: skip without memo"
     what={
       <>
         Both frames hold a clock that ticks every second. The left one renders the report itself, so it builds a new

@@ -48,7 +48,7 @@ const InboxWithData = () => {
 
 export const QueryFields = () => (
   <Case
-    title="read only the fields you show"
+    title="a useQuery result spread into props"
     what={
       <>
         Both inboxes poll the server every 0.7 seconds and get the same three messages back. react-query tracks which fields of its result a component

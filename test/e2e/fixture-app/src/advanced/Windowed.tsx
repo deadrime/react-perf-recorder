@@ -88,12 +88,13 @@ const Log = ({ side, windowed }: { side: string; windowed: boolean }) => {
 
 export const Windowed = () => (
   <Case
-    title="ten thousand rows, a dozen on the screen"
+    title="a virtualized list of ten thousand rows"
     what={
       <>
         Both logs hold ten thousand lines. On the left every line is in the DOM, so turning on the time renders all of them, and opening the page
         mounts them all. On the right only the lines that fit are rendered, plus a few: the same switch renders about twenty, and scrolling mounts the
-        lines that come in while the ones that stay are skipped.
+        lines that come in while the ones that stay are skipped. This is list virtualization (windowing), what react-window and TanStack Virtual do;
+        here it is a dozen lines by hand.
       </>
     }
   >

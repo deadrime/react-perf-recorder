@@ -94,7 +94,7 @@ function resize() {
 
 export const Measure = () => (
   <Case
-    title="keep the answer, not the measurement"
+    title="a measured width kept in state"
     what={
       <>
         Both rows show as many tags as fit and count the rest. On the left the width goes into state, so a resize renders the row and every tag in it

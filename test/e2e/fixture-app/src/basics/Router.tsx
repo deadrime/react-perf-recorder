@@ -143,7 +143,7 @@ const RouterButton = () => (
 export const Router = () => {
   return (
     <Case
-      title="who needs to know the URL"
+      title="a router hook high in the tree"
       what={
         <>
           Both cards show the same three letters and the folder from the query string. On the left the card itself reads the URL, so every switch

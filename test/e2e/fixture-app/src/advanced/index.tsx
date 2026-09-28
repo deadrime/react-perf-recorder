@@ -28,27 +28,27 @@ export const ADVANCED: Record<string, AdvancedCase> = {
     element: EffectChain,
   },
   measure: {
-    title: 'keep the answer, not the measurement',
-    what: 'A width kept in state renders on every frame of a resize; the number of tags that fit changes a few times.',
+    title: 'a measured width kept in state',
+    what: 'It renders on every frame of a resize, while the number of tags that fit, the one thing shown, changes a few times.',
     element: Measure,
   },
   deferred: {
-    title: 'the field first, the list when there is time',
+    title: 'a slow list filtered as you type',
     what: 'Two thousand rows filtered with every letter make typing stutter; useDeferredValue keeps the field ahead of the list.',
     element: HeavyList,
   },
   window: {
-    title: 'ten thousand rows, a dozen on the screen',
-    what: 'A log with every line in the DOM renders all of them for one switch; windowed, it renders the twenty or so it shows.',
+    title: 'a virtualized list of ten thousand rows',
+    what: 'A log with every line in the DOM renders all ten thousand for one switch; virtualized, it renders only the twenty or so on the screen.',
     element: Windowed,
   },
   suspense: {
-    title: 'a tab that hides behind its spinner',
-    what: 'A tab set straight away swaps the panel for a spinner while its data comes; set in a transition, the old panel stays.',
+    title: 'a Suspense spinner on every tab switch',
+    what: 'A tab set straight away swaps the panel for its Suspense fallback while the data comes; set in startTransition, the old panel stays.',
     element: Fallback,
   },
   query: {
-    title: 'read only the fields you show',
+    title: 'a useQuery result spread into props',
     what: 'Spreading the rest of a useQuery result reads isFetching too: every poll renders the list with the same data.',
     element: QueryFields,
   },
@@ -69,8 +69,8 @@ export const ADVANCED: Record<string, AdvancedCase> = {
     element: LibraryContext,
   },
   redux: {
-    title: 'every card reads the whole list',
-    what: 'A Redux selector that returns the whole favourites array renders every card for a star on one.',
+    title: 'a Redux selector that returns the whole list',
+    what: 'Each card selects the whole favourites array to find itself in it: a star on one card renders all of them.',
     element: ReduxFavorites,
   },
   getters: {
@@ -79,7 +79,7 @@ export const ADVANCED: Record<string, AdvancedCase> = {
     element: PropGetters,
   },
   leak: {
-    title: 'what stays behind',
+    title: 'leaks: CSS classes and listeners that pile up',
     what: 'A value put into css() is a new class every time and a listener without a cleanup outlives its popover: neither renders more, both pile up.',
     element: Leak,
   },
