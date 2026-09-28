@@ -111,5 +111,14 @@ describe('eval cases', () => {
       expect(fixed.pattern.test(edit('components/Header.tsx', 'memoize((s) => 1)', keys))).toBe(false);
     }
     expect(fixed.pattern.test(JSON.stringify({ type: 'tool_result', content: 'memoizeWithArgs(messageInfo, { size: 1 })' }))).toBe(false);
+    // A row that stops calling the shared selector, however it selects instead; not one that keeps calling it.
+    const row = (text: string) =>
+      JSON.stringify({
+        name: 'Edit',
+        input: { file_path: '/w/src/components/Messages.tsx', old_string: 'useChatStore((s) => selectMessageInfo(s, id))', new_string: text },
+      });
+    expect(fixed.pattern.test(row('useChatStore((s) => s.reactionsById[id] ?? 0)'))).toBe(true);
+    expect(fixed.pattern.test(row('useChatStore(useMemo(() => makeSelectInfo(id), [id]))'))).toBe(true);
+    expect(fixed.pattern.test(row('useChatStore((s) => selectMessageInfo(s, id), shallow)'))).toBe(false);
   });
 });
