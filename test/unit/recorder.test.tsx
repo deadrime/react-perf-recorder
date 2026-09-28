@@ -5,6 +5,8 @@ import { flushSync } from 'react-dom';
 import { findRoots, fiberFromNode } from '../../src/core/fiber';
 import { PluginHost } from '../../src/core/plugins';
 import { scopeFromFiber } from '../../src/core/scope';
+import { aggregateEvents } from '../../src/shared/aggregate';
+import type { SessionMeta } from '../../src/shared/schema';
 import { cascadeLines, cascadeOf, hookText, reasonText } from '../../src/shared/summary';
 import { config, flush, makeRecorder, mount, reasonsOf } from './helpers';
 
@@ -397,6 +399,59 @@ describe('Recorder', () => {
     expect(commit.ms).toBeCloseTo(ownerMs, 2);
     expect(owner.self!).toBeLessThanOrEqual(owner.ms!);
     expect(owner.children[0].ms!).toBeLessThanOrEqual(owner.ms!);
+  });
+
+  it('ranks a root by what it mounts too, and counts the mounts of each commit', () => {
+    let tick!: Setter;
+    let flip!: Setter;
+    const Idle = () => <i />;
+    const Ticker = () => {
+      const [n, setN] = useState(0);
+      tick = setN;
+      return (
+        <b data-n={n}>
+          <Idle />
+          <Idle />
+        </b>
+      );
+    };
+    const Part = () => <u />;
+    const Panel = () => (
+      <>
+        {Array.from({ length: 10 }, (_, i) => (
+          <Part key={i} />
+        ))}
+      </>
+    );
+    const Card = () => {
+      const [k, setK] = useState(0);
+      flip = setK;
+      return <Panel key={k} />;
+    };
+    mount(
+      <>
+        <Ticker />
+        <Card />
+      </>
+    );
+    const { recorder, events } = makeRecorder();
+    recorder.start();
+    for (let i = 1; i <= 5; i++) flush(() => tick(i));
+    for (let i = 1; i <= 3; i++) flush(() => flip(i));
+    const rec = recorder.stop();
+    // Ticker renders 15 times, Card 3 times and remounts 33 components: renders alone would put Ticker first.
+    const byName = new Map(rec.roots.map((root) => [root.name, root]));
+    expect([byName.get('Ticker')!.cascade, byName.get('Card')!.cascade, byName.get('Card')!.mounts]).toEqual([15, 3, 33]);
+    expect(rec.roots.map((root) => root.name)).toEqual(['Card', 'Ticker']);
+    expect(rec.commits.list.map((commit) => commit.mounts ?? 0)).toEqual([0, 0, 0, 0, 0, 11, 11, 11]);
+    // A partial recording rebuilt from the stream ranks and counts them the same.
+    const meta = { id: 'partial', createdAt: '', updatedAt: '', source: 'test', page: {}, scope: null, plugins: [] } as unknown as SessionMeta;
+    const partial = aggregateEvents(meta, events);
+    expect(partial.roots.map((root) => [root.name, root.mounts])).toEqual([
+      ['Card', 33],
+      ['Ticker', undefined],
+    ]);
+    expect(partial.totals.mounts).toBe(33);
   });
 
   it('keeps a way of twenty links whole, folds a longer one, and keeps none when recording fast', () => {

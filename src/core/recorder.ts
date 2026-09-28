@@ -167,6 +167,8 @@ interface CommitState {
   renderMs: number;
   noDom: number;
   cascade: Map<RootAgg, number>;
+  /** Components mounted under each root in this commit. */
+  mounts: Map<RootAgg, number>;
   /** Milliseconds each root took with its subtree in this commit, when the build times renders. */
   rootMs: Map<RootAgg, number>;
   /** With sampled reasons: how many parent reasons each component has had worked out in this commit. */
@@ -479,7 +481,7 @@ export class Recorder {
       elapsedMs,
       scopeState: this.scope?.state ?? null,
       topRoots: [...this.rootList]
-        .sort((a, b) => b.cascade - a.cascade)
+        .sort((a, b) => b.cascade + b.mounts - (a.cascade + a.mounts))
         .slice(0, 3)
         .map((agg) => ({
           name: agg.name,
@@ -555,6 +557,7 @@ export class Recorder {
       renderMs: 0,
       noDom: 0,
       cascade: new Map(),
+      mounts: new Map(),
       rootMs: new Map(),
       sampledParents: this.options.sampleReasons ? new Map() : null,
       reasons: new Map(),
@@ -653,7 +656,10 @@ export class Recorder {
         this.totals.mounts++;
         this.componentOf(name, f).mounts++;
         const agg = currentKey ? this.rootsByKey.get(currentKey) : undefined;
-        if (agg) agg.mounts++;
+        if (agg) {
+          agg.mounts++;
+          c.mounts.set(agg, (c.mounts.get(agg) ?? 0) + 1);
+        }
       }
       if (name && rendered) {
         c.renders++;
@@ -1015,7 +1021,11 @@ export class Recorder {
       for (const key of own.length ? own : keys) agg.causes.set(key, (agg.causes.get(key) ?? 0) + 1);
       if (lane && agg.lastCommit === this.totals.commits) agg.lanes.set(lane, (agg.lanes.get(lane) ?? 0) + 1);
     }
-    const ranked = [...c.cascade].sort((a, b) => b[1] - a[1]);
+    // A root whose cost is what it mounts (a tooltip per card, a remounting list) ranks by that too.
+    const weight = ([agg, n]: [RootAgg, number]) => n + (c.mounts.get(agg) ?? 0);
+    const ranked = [...c.cascade].sort((a, b) => weight(b) - weight(a));
+    let mounts = 0;
+    for (const n of c.mounts.values()) mounts += n;
     const roots = ranked.slice(0, 5).map(([agg, n]) => [agg.index, n] as [number, number]);
     const previous = this.commitList[this.commitList.length - 1];
     const record: CommitRecord = {
@@ -1023,6 +1033,7 @@ export class Recorder {
       atMs: c.t,
       ...(previous ? { sinceMs: +(c.t - previous.atMs).toFixed(1) } : {}),
       renders: c.renders,
+      ...(mounts ? { mounts } : {}),
       ...(c.timed ? { ms: +c.renderMs.toFixed(2) } : {}),
       ...(lane ? { lane } : {}),
       ...(event ? { event } : {}),
@@ -1051,7 +1062,12 @@ export class Recorder {
       ...(record.ms ? { ms: record.ms } : {}),
       ...(lane ? { lane } : {}),
       ...(event ? { event } : {}),
-      roots: ranked.map(([agg, n]) => [agg.index, n, [...(c.reasons.get(agg) ?? [])]] as [number, number, number[]]),
+      ...(mounts ? { mounts } : {}),
+      roots: ranked.map(([agg, n]) => {
+        const reasons = [...(c.reasons.get(agg) ?? [])];
+        const m = c.mounts.get(agg);
+        return m ? [agg.index, n, reasons, m] : [agg.index, n, reasons];
+      }),
       causes: [...keys],
       ...(c.outside ? { outside: c.outside.index } : {}),
       ...(c.noDom ? { noDom: c.noDom } : {}),
@@ -1342,12 +1358,14 @@ export class Recorder {
     conditionsAfter: Conditions,
     growth?: GrowthStats
   ): RecordingV2 {
-    const inside = this.rootList.filter((r) => !r.outside).sort((a, b) => b.cascade - a.cascade);
-    const outside = this.rootList.filter((r) => r.outside).sort((a, b) => b.cascade - a.cascade);
+    // Mounts count as renders here: a root whose cost is the subtree it mounts would rank below a few idle renders.
+    const byWeight = (a: RootAgg, b: RootAgg) => b.cascade + b.mounts - (a.cascade + a.mounts);
+    const inside = this.rootList.filter((r) => !r.outside).sort(byWeight);
+    const outside = this.rootList.filter((r) => r.outside).sort(byWeight);
     const hooksFor = new Set([...inside.slice(0, 30), ...outside.slice(0, 10)]);
     const statsByIndex = new Map<number, RootStat>();
     for (const agg of this.rootList) statsByIndex.set(agg.index, this.rootStat(agg, hooksFor.has(agg)));
-    // Roots are ordered by cascade, inside the scope first; timeline, segments and watch are remapped to that order.
+    // Roots are ordered by cascade and mounts, inside the scope first; timeline, segments and watch are remapped to that order.
     const remap = new Map<number, number>();
     const orderedInside = inside.map((agg) => agg.index);
     const allOrdered = [...orderedInside, ...outside.map((agg) => agg.index)];

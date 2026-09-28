@@ -244,6 +244,7 @@ function CommitDetail({ rec, commit, more }: { rec: RecordingV2; commit: CommitR
             title="Renders after which nothing in the DOM of that component changed"
           >{`${commit.noDom} wasted`}</span>
         ) : null}
+        {commit.mounts ? <span class="badge">{`${commit.mounts} mounts`}</span> : null}
         {commit.ms ? <span class="badge">{`${commit.ms}ms`}</span> : null}
         {commit.lane ? <span class="badge">{commit.lane}</span> : null}
         {commit.event ? <span class="badge">{commit.event}</span> : null}
