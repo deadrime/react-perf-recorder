@@ -201,9 +201,13 @@ function makeIssues(): Issue[] {
         updatedAt,
         completedAt,
         dueDate: rnd() < 0.3 ? BOOTED_AT + between(-5, 30) * DAY : null,
+        sortOrder: 0,
       });
     }
   }
+  // The board starts in the order a triage would leave it: urgent first, then the most recently touched.
+  const triaged = [...issues].sort((a, b) => a.priority - b.priority || b.updatedAt - a.updatedAt);
+  for (const [i, issue] of triaged.entries()) issue.sortOrder = i;
   return issues;
 }
 
