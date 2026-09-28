@@ -7,7 +7,9 @@ import { Contexts } from './Contexts';
 import { Dialog } from './Dialog';
 import { Effects } from './Effects';
 import { Forms } from './Forms';
+import { Init } from './Init';
 import { Nested } from './Nested';
+import { Notify } from './Notify';
 import { Router } from './Router';
 import { Selection } from './Selection';
 import { Subscriptions } from './Subscriptions';
@@ -91,6 +93,16 @@ export const BASICS: Record<string, BasicsCase> = {
     title: 'derive it while you render',
     what: 'State copied from props in an effect costs a second commit and leaves the screen one render behind.',
     element: Effects,
+  },
+  notify: {
+    title: 'a child tells its parent in an effect',
+    what: 'A child that keeps a value and hands it up from an effect costs its parent a second commit, and shows the old value in between.',
+    element: Notify,
+  },
+  init: {
+    title: 'state that starts from something',
+    what: 'useState(parse(text)) parses on every render; a draft restarted from an effect shows the old one for a commit.',
+    element: Init,
   },
   nested: {
     title: 'a component declared inside a render',
