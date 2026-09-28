@@ -31,11 +31,9 @@ dependencies. Their code is also well known enough for a model to remember the c
   - React Router 6 with a hash router, so a copy is served from any folder.
 - **StrictMode** is on, as in most apps.
 
-The clean app is not free of waste, and should not be. The idle issue list re-renders about 72 components in five
-seconds that change nothing in the DOM. The page re-renders with fresh data and takes a few unchanged children with
-it. Also, when someone comes online, a new avatar's members query fetches on mount, and React re-renders the 28
-avatars already on screen again (the recording shows `RESYNC` and `core:store resync`). Each bug below adds a lot more
-than that.
+The clean app is not free of waste, and should not be. The idle issue list re-renders about 44 components in five
+seconds that change nothing in the DOM: the page re-renders with fresh data and takes a few unchanged children with
+it. Each bug below adds a lot more than that.
 
 ## The bugs
 

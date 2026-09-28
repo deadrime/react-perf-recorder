@@ -7,6 +7,9 @@ const hitsOf = (name) => (show) => root(show, name)?.hits ?? 0;
 const mountsUnder = (name) => (show) => root(show, name)?.mounts ?? 0;
 const noDomUnder = (name) => (show) => root(show, name)?.noDomChange ?? 0;
 const msPerHit = (name) => (show) => root(show, name)?.renderMsPerHit ?? 0;
+// Roots rank by the renders they cause, and a remount's children count as mounts, not renders: a remount bug is
+// shown when its root leads by mounts.
+const leadsByMounts = (name) => (show) => [...show.topRoots].sort((a, b) => (b.mounts ?? 0) - (a.mounts ?? 0))[0]?.root === name;
 
 export const BUGS = {
   // The auth context depends on the whole connection object: every heartbeat renders everything that reads it.
@@ -50,6 +53,7 @@ export const BUGS = {
     scenario: 'wait-board',
     root: 'IssueCard',
     waste: mountsUnder('IssueCard'),
+    shown: leadsByMounts('IssueCard'),
     files: ['features/board/IssueCard.tsx', 'components/ui/Tooltip.tsx'],
     named: ['IssueCard.tsx'],
     complaint: 'Cards on the board flicker when a teammate opens one of them.',

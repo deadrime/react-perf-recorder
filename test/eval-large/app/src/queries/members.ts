@@ -9,7 +9,7 @@ const membersQuery = {
   queryKey: ['members'],
   queryFn: api.members,
   refetchInterval: MEMBERS_POLL_MS,
-  staleTime: 0,
+  staleTime: MEMBERS_POLL_MS,
 };
 
 export const useMembers = () => useQuery(membersQuery);
