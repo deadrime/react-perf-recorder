@@ -466,8 +466,8 @@ export const Catalogue = () => {
                 <div>
                   <b>▷ Orbit, a larger app</b>
                   <span>
-                    An issue tracker with 480 issues, teammates editing them live, Redux, zustand, React Query and forms. The app the agent benchmark
-                    runs on, without its bugs.
+                    An issue tracker with 480 issues, teammates editing them live, Redux, zustand, React Query and forms. The clean app the agent
+                    benchmark injects its bugs into.
                   </span>
                 </div>
                 <span className="go" aria-hidden="true">
