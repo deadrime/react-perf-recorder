@@ -51,6 +51,28 @@ describe('partial recordings and comparison', () => {
     ]);
   });
 
+  it('says when a root still wastes as much as before, and not when its waste fell', () => {
+    const before = aggregateEvents(meta, events(3));
+    const after = aggregateEvents(meta, events(3));
+    const root = (name: string, hits: number, ownDomUnchanged: number) => ({
+      ...before.roots[0],
+      key: name,
+      name,
+      source: `src/${name}.tsx:1`,
+      hits,
+      instances: 1,
+      noDomChange: 0,
+      ownDomUnchanged,
+    });
+    before.roots = [root('Form', 16, 15), root('List', 30, 29)];
+    after.roots = [root('Form', 16, 15), root('List', 30, 10)];
+    const notes = compareRecordings(before, after).warnings.filter((w) => w.includes('did not reach'));
+    expect(notes).toEqual([
+      'Form (src/Form.tsx:1) still renders for nothing, 15 of 16 hits before and 15 of 16 after: the change did not reach its cause',
+    ]);
+    expect(compareRecordings(before, after).comparable).toBe(true);
+  });
+
   it('rebuilds a summary from streamed events', () => {
     const rec = aggregateEvents(meta, events(30));
     expect(rec.partial).toBe(true);
