@@ -90,7 +90,7 @@ export interface RecordOptions {
   meta?: Record<string, Primitive>;
   /** Work out parent-caused reasons for the first instances of a component per commit only; render counts stay exact. */
   sampleReasons?: boolean;
-  /** Sample DOM nodes, CSS rules, intervals, listeners and heap once a second; off leaves `growth` out. */
+  /** Sample DOM nodes, CSS rules, intervals, listeners and heap, four times a second for 10 s and then once a second; off leaves `growth` out. */
   growth?: boolean;
 }
 

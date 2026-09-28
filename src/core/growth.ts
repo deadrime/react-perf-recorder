@@ -7,7 +7,10 @@ import type { Origin } from './stack';
 import { StyleWatcher } from './styles';
 import { liveIntervals } from './env/timers';
 
-const SAMPLE_MS = 1000;
+const TICK_MS = 250;
+/** Four a second for the first ten seconds: a short recording has too few points to tell a leak from a burst. */
+const FAST_TICKS = 40;
+const SLOW_EVERY = 1000 / TICK_MS;
 /** Ten minutes a second apart; a longer recording keeps every other sample and samples half as often. */
 const MAX_SAMPLES = 600;
 
@@ -58,7 +61,8 @@ function measure(): Array<number | null> {
   ];
 }
 
-function slopePerMin(points: Array<[number, number]>): number {
+/** Least-squares slope, per ms. */
+function slopeOf(points: Array<[number, number]>): number {
   if (points.length < 2) return 0;
   const n = points.length;
   const mx = points.reduce((s, p) => s + p[0], 0) / n;
@@ -69,7 +73,11 @@ function slopePerMin(points: Array<[number, number]>): number {
     num += (x - mx) * (y - my);
     den += (x - mx) ** 2;
   }
-  const perMin = den ? (num / den) * 60_000 : 0;
+  return den ? num / den : 0;
+}
+
+function slopePerMin(points: Array<[number, number]>): number {
+  const perMin = slopeOf(points) * 60_000;
   return Math.abs(perMin) >= 10 ? Math.round(perMin) : +perMin.toFixed(1);
 }
 
@@ -78,11 +86,12 @@ export function growthMetric(key: GrowthKey, points: Array<[number, number]>): G
   const start = points[0][1];
   const end = points[points.length - 1][1];
   const noise = NOISE[key](start);
-  // The value halfway through: a leak keeps growing after it, a page that settles does not.
-  const half = (points[0][0] + points[points.length - 1][0]) / 2;
-  const mid = points.reduce((best, p) => (Math.abs(p[0] - half) < Math.abs(best[0] - half) ? p : best))[1];
+  // The trend of the second half, not one point in it: a popover that opens and closes saws the count up and down.
+  const t1 = points[points.length - 1][0];
+  const half = (points[0][0] + t1) / 2;
+  const lateRise = slopeOf(points.filter((p) => p[0] >= half)) * (t1 - half);
   // A quarter of the growth after the middle: a burst at the start that settled is a page loading, not a leak.
-  const growing = end - start >= noise && (points.length < 3 || end - mid >= Math.max(noise / 2, (end - start) / 4));
+  const growing = end - start >= noise && (points.length < 3 || lateRise >= Math.max(noise / 2, (end - start) / 4));
   return {
     start,
     end,
@@ -137,8 +146,9 @@ export class GrowthWatcher {
     this.styles.start();
     this.sample();
     this.timer = setInterval(() => {
-      if (++this.ticks % this.every === 0) this.sample();
-    }, SAMPLE_MS);
+      if (++this.ticks === FAST_TICKS) this.every = SLOW_EVERY;
+      if (this.ticks % this.every === 0) this.sample();
+    }, TICK_MS);
   }
 
   private sample() {

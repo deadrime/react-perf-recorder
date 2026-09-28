@@ -140,7 +140,8 @@ test('what a leak leaves behind: classes of the value put into css, listeners of
   await page.evaluate(() => (window as any).__REACT_PERF_RECORDER__.engine.start({ source: 'e2e', highlight: false }));
   await page.getByTestId('run').click();
   await expect(page.getByTestId('bar-broken')).toHaveAttribute('class', /./);
-  await expect.poll(() => page.getByTestId('bar-fixed').evaluate((el) => (el as HTMLElement).style.width)).toBe('100%');
+  // Stopped as the run ends: expect.poll backs off to a second, and a flat tail that long hides the growth.
+  await page.waitForFunction(() => (document.querySelector('[data-testid=bar-fixed]') as HTMLElement | null)?.style.width === '100%');
   // What record_page does before Stop: without a collection, what is still in memory says nothing.
   const cdp = await page.context().newCDPSession(page);
   await cdp.send('HeapProfiler.collectGarbage');

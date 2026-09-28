@@ -285,7 +285,8 @@ test('what kept growing opens by itself, with the line that left the listeners b
   await page.goto('/advanced/leak?rpr=panel');
   await page.locator('[data-rpr="record"]').click();
   await page.getByTestId('run').click();
-  await expect.poll(() => page.getByTestId('bar-fixed').evaluate((el) => (el as HTMLElement).style.width)).toBe('100%');
+  // Stopped as the run ends: expect.poll backs off to a second, and a flat tail that long hides the growth.
+  await page.waitForFunction(() => (document.querySelector('[data-testid=bar-fixed]') as HTMLElement | null)?.style.width === '100%');
   await page.locator('[data-rpr="stop"]').click();
   await expect(page.locator('[data-rpr="result"]')).toContainText('saved');
   const growth = page.locator('[data-fold="growth"]');

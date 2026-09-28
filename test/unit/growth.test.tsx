@@ -298,3 +298,11 @@ describe('removed DOM', () => {
     expect(recorder.stop(true).growth?.retained).toMatchObject({ unmounted: 0, detached: { roots: 2, nodes: 2 } });
   });
 });
+
+describe('growth that saws', () => {
+  it('calls a count a leak by its trend, when a popover opening and closing saws it up and down', () => {
+    // Five leaky opens and a tidy popover whose one listener comes and goes: 6 → 11, but 10 at the middle.
+    const saw = [6, 8, 7, 9, 8, 10, 9, 11, 10, 12, 11].map((v, i) => [i * 300, v] as [number, number]);
+    expect(growthMetric('listeners', saw)?.growing).toBe(true);
+  });
+});
