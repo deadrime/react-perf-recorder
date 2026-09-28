@@ -182,14 +182,15 @@ test('an initial value passed as a call: the same renders, a much longer time', 
   expect(ms('NotesEager')).toBeGreaterThan(ms('NotesLazy') * 2);
 });
 
-test('a draft restarted from an effect: two commits for a switch; set while rendering, one', async ({ page }) => {
+test('a draft reset from an effect: two commits for a switch; reset by a key, one', async ({ page }) => {
   const rec = await record(page, '/basics/init', async () => {
     for (let i = 0; i < 2; i++) await page.getByTestId('next-user').click();
     await page.waitForTimeout(200);
   });
   expect(rec.causes.find((c) => c.key === 'core:effect @ src/basics/Init.tsx')?.commits).toBe(2);
   expect(rec.roots.find((r) => r.name === 'EditorByEffect')!.hits).toBe(4);
-  expect(rec.roots.find((r) => r.name === 'EditorWhileRendering')!.hits).toBe(2);
+  expect(rec.roots.find((r) => r.name === 'EditorByKey')!.hits).toBe(2);
+  expect(rec.roots.map((r) => r.name)).not.toContain('FreshEditor');
 });
 
 test('a tab set straight away: the spinner mounts, the panel is the root of a Retry commit', async ({ page }) => {

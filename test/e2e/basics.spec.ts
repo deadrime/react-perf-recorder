@@ -280,14 +280,20 @@ test('an initial value passed as a call is worked out on every render; as a func
   expect(await parsed('lazy')).toBe(before.lazy);
 });
 
-test('a draft restarted from an effect renders twice for a new user; set while rendering, once', async ({ page }) => {
+test('a draft reset from an effect renders twice for a new user and shows the old draft; reset by a key, once', async ({ page }) => {
   await page.goto('/basics/init');
   const before = { broken: await countsIn(page, 'reset', 'broken'), fixed: await countsIn(page, 'reset', 'fixed') };
+  const stale = async (side: string) => Number(await page.getByTestId(`stale-${side}`).getAttribute('data-stale'));
+  await page.getByTestId('draft-effect').fill('typed');
+  await page.getByTestId('draft-key').fill('typed');
   for (let i = 0; i < 2; i++) await page.getByTestId('next-user').click();
   await expect(page.getByTestId('draft-effect')).toHaveValue('Cy Ortiz');
-  await expect(page.getByTestId('draft-render')).toHaveValue('Cy Ortiz');
-  expect((await countsIn(page, 'reset', 'broken'))[0]).toBe(before.broken[0] + 4);
-  expect((await countsIn(page, 'reset', 'fixed'))[0]).toBe(before.fixed[0] + 2);
+  await expect(page.getByTestId('draft-key')).toHaveValue('Cy Ortiz');
+  // The typing renders each editor once; every switch adds two renders on the left, one on the right.
+  expect((await countsIn(page, 'reset', 'broken'))[0]).toBe(before.broken[0] + 1 + 4);
+  expect((await countsIn(page, 'reset', 'fixed'))[0]).toBe(before.fixed[0] + 1 + 2);
+  expect(await stale('effect')).toBe(2);
+  expect(await stale('key')).toBe(0);
 });
 
 test('a component declared inside a render is mounted again every time', async ({ page }) => {
