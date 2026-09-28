@@ -413,13 +413,16 @@ export function createServer(dir: string) {
       if (!plan.steps.length) {
         const ms = args.ms ?? Math.min(60_000, Math.max(200, Math.round(rec.durationMs)));
         const result = await recordPage(
-          { ...args, url: args.url ?? rec.page.url, ms, ...(scope ? { scope } : {}), ...(setup ? { setup } : {}) },
+          { ...args, url: args.url ?? rec.page.startUrl ?? rec.page.url, ms, ...(scope ? { scope } : {}), ...(setup ? { setup } : {}) },
           dir
         );
         return json({ ...result, warnings: [`${replay} has no actions: recorded the page as it is for ${ms} ms instead`, ...result.warnings] });
       }
       return json(
-        await recordPage({ ...args, ...(scope ? { scope } : {}), ...(setup ? { setup } : {}), replay: { ...plan, url: rec.page.url } }, dir)
+        await recordPage(
+          { ...args, ...(scope ? { scope } : {}), ...(setup ? { setup } : {}), replay: { ...plan, url: rec.page.startUrl ?? rec.page.url } },
+          dir
+        )
       );
     }
   );

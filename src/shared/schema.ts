@@ -400,7 +400,8 @@ export interface RecordingV2 {
   label?: string;
   partial?: boolean;
   tool: { version: string; source: string; plugins: PluginInfo[] };
-  page: { url: string; title: string; viewport: string; dpr: number; userAgent: string };
+  /** `url` is where the recording stopped; `startUrl`, where it began, when the actions moved it (a search in the query). */
+  page: { url: string; startUrl?: string; title: string; viewport: string; dpr: number; userAgent: string };
   react: { version: string | null; roots: number; profileTimings: boolean };
   meta?: Record<string, Primitive>;
   options: Record<string, JsonValue>;

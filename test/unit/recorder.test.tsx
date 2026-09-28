@@ -552,6 +552,25 @@ describe('Recorder', () => {
     expect(partial.totals.mounts).toBe(33);
   });
 
+  it('keeps the address the recording began on when the actions changed it', () => {
+    let set!: Setter;
+    const Search = () => {
+      const [n, setN] = useState(0);
+      set = setN;
+      return <p>{n}</p>;
+    };
+    mount(<Search />);
+    history.replaceState(null, '', '/#/issues');
+    const { recorder } = makeRecorder();
+    recorder.start();
+    flush(() => set(1));
+    history.replaceState(null, '', '/#/issues?q=s+lon');
+    const rec = recorder.stop();
+    expect(rec.page.url).toMatch(/#\/issues\?q=s\+lon$/);
+    expect(rec.page.startUrl).toMatch(/#\/issues$/);
+    history.replaceState(null, '', '/');
+  });
+
   it('keeps a way of twenty links whole, folds a longer one, and keeps none when recording fast', () => {
     let set!: Setter;
     let lastRec!: ReturnType<ReturnType<typeof makeRecorder>['recorder']['stop']>;

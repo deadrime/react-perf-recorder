@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import type { RecordingV2 } from '../shared/schema';
-import type { ReplayPlan } from '../shared/replay';
+import { placeholderTyping, type ReplayPlan } from '../shared/replay';
 import { wastingRoots, type WastingRoot } from '../shared/summary';
 import { safeUrl } from '../shared/url';
 import { ON_LOAD_KEY } from '../ui/storage';
@@ -388,6 +388,8 @@ export async function recordPage(options: RecordPageOptions, sessionsDir: string
       if (options.replay) {
         await page.evaluate(`${ENGINE}.replay(${JSON.stringify(options.replay)})`);
         if (options.replay.skipped.length) warnings.push(`not replayed: ${options.replay.skipped.join('; ')}`);
+        const invented = placeholderTyping(options.replay);
+        if (invented) warnings.push(invented);
       } else if (options.script) {
         await runModule(options.script, page, sessionsDir);
       } else {

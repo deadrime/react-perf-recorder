@@ -14,7 +14,8 @@ Work by the `react-perf-recorder` skill: its method, and its references as you r
 - **The conditions come from the caller**: the URL, what the page should do, whether they record it themselves.
   Nothing to reproduce means nothing to measure — ask.
 - **Stop at the confidence the recording and the code give.** When the reason, the code and the counts agree, that is
-  the answer.
+  the answer — counts that the first explanation leaves unexplained, such as a top cause of the commits, are not
+  agreement.
 
 ## Boundaries
 

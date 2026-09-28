@@ -199,6 +199,20 @@ describe('partial recordings and comparison', () => {
     expect(result.warnings[0]).toMatch(/viewport differs/);
   });
 
+  it('warns when the runs began on another hash route, or their actions ended on different pages', () => {
+    const on = (url: string, startUrl?: string) => {
+      const rec = aggregateEvents(meta, events(30));
+      rec.page = { ...rec.page, url, ...(startUrl ? { startUrl } : {}) };
+      return rec;
+    };
+    const base = 'http://localhost:5173/?tick=150';
+    expect(compareRecordings(on(`${base}#/issues`), on(`${base}#/board`)).warnings).toContainEqual(expect.stringMatching(/^page differs/));
+    const ended = compareRecordings(on(`${base}#/issues?q=s+lon`, `${base}#/issues`), on(`${base}#/issues?q=s+lonxxx`, `${base}#/issues`));
+    expect(ended.warnings).toContainEqual(expect.stringMatching(/^the actions ended on different pages/));
+    // The recorder's own flag is not the page.
+    expect(compareRecordings(on(`${base}&rpr=rec#/issues`), on(`${base}#/issues`)).warnings.join()).not.toMatch(/page|pages/);
+  });
+
   it('warns when only one run drew the highlight', () => {
     const before = aggregateEvents(meta, events(30));
     const after = aggregateEvents(meta, events(30));
