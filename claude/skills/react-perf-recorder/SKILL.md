@@ -36,9 +36,10 @@ numbers belong in the answer.
 5. **Prove it** when numbers were asked for or the cause is a guess: `references/measuring-a-fix.md`. Counts that did
    not move put the fix in doubt before the recorder.
 6. **Read what is left.** The recording after the fix is the next look at the page, and a complaint can have more
-   than one cause. Every root in its `wasting` (`wastingAfter` in a comparison) is the next cause or a render the
-   page needs, and its own counts say which, not how it reads in the code; one left as it is gets its numbers in
-   the answer. Stop when what remains changes what the page shows — and when the first recording shows nothing
+   than one cause. Every root in its `wasting` (`wastingAfter` in a comparison) rendered for nothing by its own
+   counts, however it reads; open its code for why. What subscribes it is the next cause. Only work its render does
+   besides the DOM — a canvas it draws, an effect it has to run — leaves it as it is, named in the answer with its
+   numbers. Stop when what remains changes what the page shows — and when the first recording shows nothing
    wasted, say so and change nothing: a render that changes the page is not a bug. A root whose own `hits` did not
    fall is not fixed, whatever its cascade did: something in its render still subscribes it; find it rather than
    adding `memo` below.
