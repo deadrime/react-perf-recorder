@@ -615,8 +615,13 @@ export function Timeline({
       // From where the pinch began, not step by step: the scale of the last render lags the fingers.
       const { spread, middle } = spreadOf();
       const next = clampZoom(pinched.zoom * (spread / pinched.spread) ** PINCH_SPEED);
-      scrollTo.current = pinched.heldMs * baseScale(rec.durationMs, fitPx) * next - middle;
-      setZoom(next);
+      const left = pinched.heldMs * baseScale(rec.durationMs, fitPx) * next - middle;
+      // At a zoom limit nothing renders again, so the fingers' slide is scrolled here.
+      if (next === zoom) el.scrollLeft = Math.max(0, left);
+      else {
+        scrollTo.current = left;
+        setZoom(next);
+      }
       return;
     }
     const held = drag.current;
