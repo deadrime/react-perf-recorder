@@ -167,6 +167,8 @@ interface CommitState {
   renderMs: number;
   noDom: number;
   cascade: Map<RootAgg, number>;
+  /** Components mounted under each root in this commit. */
+  mounts: Map<RootAgg, number>;
   /** Milliseconds each root took with its subtree in this commit, when the build times renders. */
   rootMs: Map<RootAgg, number>;
   /** With sampled reasons: how many parent reasons each component has had worked out in this commit. */
@@ -481,7 +483,7 @@ export class Recorder {
       elapsedMs,
       scopeState: this.scope?.state ?? null,
       topRoots: [...this.rootList]
-        .sort((a, b) => b.cascade - a.cascade)
+        .sort((a, b) => b.cascade + b.mounts - (a.cascade + a.mounts))
         .slice(0, 3)
         .map((agg) => ({
           name: agg.name,
@@ -557,6 +559,7 @@ export class Recorder {
       renderMs: 0,
       noDom: 0,
       cascade: new Map(),
+      mounts: new Map(),
       rootMs: new Map(),
       sampledParents: this.options.sampleReasons ? new Map() : null,
       reasons: new Map(),
@@ -642,7 +645,9 @@ export class Recorder {
       let chain = currentChain;
       const prev = this.prevOf(f);
       const rendered = didRender(prev, f);
-      const name = nameOf(f);
+      // memo(C, areEqual) is a fiber of its own above C's, and it takes new props even when areEqual skips C: C's
+      // fiber is the one that tells whether it rendered.
+      const name = f.tag === Tag.MemoComponent ? null : nameOf(f);
       let key = currentKey;
       let nextPending = pending;
       const zone = isHost(f) && this.zoneNodes.size ? this.zoneNodes.get(f.stateNode) ?? zoneTag : zoneTag;
@@ -655,7 +660,10 @@ export class Recorder {
         this.totals.mounts++;
         this.componentOf(name, f).mounts++;
         const agg = currentKey ? this.rootsByKey.get(currentKey) : undefined;
-        if (agg) agg.mounts++;
+        if (agg) {
+          agg.mounts++;
+          c.mounts.set(agg, (c.mounts.get(agg) ?? 0) + 1);
+        }
       }
       if (name && rendered) {
         c.renders++;
@@ -680,10 +688,14 @@ export class Recorder {
           (prev.props === f.memoizedProps ||
             ((f.tag === Tag.MemoComponent || f.tag === Tag.SimpleMemoComponent) && shallowEqual(prev.props, f.memoizedProps)));
         let rootAgg: RootAgg | null = null;
-        // A root inside another root's cascade: its time is already in that root's, and its link hangs under it.
+        // A root inside another root's cascade: its link hangs under that root, and its time comes out of that root's.
         const nested = currentKey !== null;
         if (!parentDid || ownWork) {
           const hit = this.hitRoot(f, name, pathText(currentPath, base), prev!, c, false, nested);
+          const outer = nested ? this.rootsByKey.get(currentKey!) : undefined;
+          // The outer root's actualDuration holds this one's: left in, a page above a slow component reads as slow
+          // as the component in the roots. A commit's tree keeps it, nested under the outer root there.
+          if (outer && hasProfileTimings(f)) outer.renderMs -= f.actualDuration!;
           key = hit.agg.key;
           reasons = hit.reasons;
           rootAgg = hit.agg;
@@ -747,9 +759,12 @@ export class Recorder {
       const untouched = this.prune && f.alternate !== null && f.child === f.alternate.child;
       if (f.child && !untouched) {
         const childPath = name && !this.structural(name, f) ? { name, up: currentPath } : currentPath;
+        // A boundary renders again on its own when the data it waited for comes: what is under it was not rendered by
+        // a parent then, it is a root of that retry.
+        const through = f.tag === Tag.SuspenseComponent || f.tag === Tag.OffscreenComponent;
         stack.push([
           f.child,
-          rendered,
+          through ? parentDid : rendered,
           childPath,
           rendered ? key : currentKey,
           nextPending,
@@ -857,7 +872,7 @@ export class Recorder {
         wrapper: this.wrapperRe.test(name) || isProvider(name) || wrapsProvider(f),
         withoutDom: 0,
         byParent: 0,
-        memo: f.tag === Tag.MemoComponent || f.tag === Tag.SimpleMemoComponent,
+        memo: f.tag === Tag.SimpleMemoComponent || f.return?.tag === Tag.MemoComponent,
         reasons: new Map(),
         chains: new Map(),
       };
@@ -866,7 +881,7 @@ export class Recorder {
     return comp;
   }
 
-  /** `nested`: inside another root's cascade in this commit, whose time already holds this one's. */
+  /** `nested`: inside another root's cascade in this commit, whose time the commit's already holds. */
   private hitRoot(
     f: Fiber,
     name: string,
@@ -1017,7 +1032,11 @@ export class Recorder {
       for (const key of own.length ? own : keys) agg.causes.set(key, (agg.causes.get(key) ?? 0) + 1);
       if (lane && agg.lastCommit === this.totals.commits) agg.lanes.set(lane, (agg.lanes.get(lane) ?? 0) + 1);
     }
-    const ranked = [...c.cascade].sort((a, b) => b[1] - a[1]);
+    // A root whose cost is what it mounts (a tooltip per card, a remounting list) ranks by that too.
+    const weight = ([agg, n]: [RootAgg, number]) => n + (c.mounts.get(agg) ?? 0);
+    const ranked = [...c.cascade].sort((a, b) => weight(b) - weight(a));
+    let mounts = 0;
+    for (const n of c.mounts.values()) mounts += n;
     const roots = ranked.slice(0, 5).map(([agg, n]) => [agg.index, n] as [number, number]);
     const previous = this.commitList[this.commitList.length - 1];
     const record: CommitRecord = {
@@ -1025,6 +1044,7 @@ export class Recorder {
       atMs: c.t,
       ...(previous ? { sinceMs: +(c.t - previous.atMs).toFixed(1) } : {}),
       renders: c.renders,
+      ...(mounts ? { mounts } : {}),
       ...(c.timed ? { ms: +c.renderMs.toFixed(2) } : {}),
       ...(lane ? { lane } : {}),
       ...(event ? { event } : {}),
@@ -1053,7 +1073,12 @@ export class Recorder {
       ...(record.ms ? { ms: record.ms } : {}),
       ...(lane ? { lane } : {}),
       ...(event ? { event } : {}),
-      roots: ranked.map(([agg, n]) => [agg.index, n, [...(c.reasons.get(agg) ?? [])]] as [number, number, number[]]),
+      ...(mounts ? { mounts } : {}),
+      roots: ranked.map(([agg, n]) => {
+        const reasons = [...(c.reasons.get(agg) ?? [])];
+        const m = c.mounts.get(agg);
+        return m ? [agg.index, n, reasons, m] : [agg.index, n, reasons];
+      }),
       causes: [...keys],
       ...(c.outside ? { outside: c.outside.index } : {}),
       ...(c.noDom ? { noDom: c.noDom } : {}),
@@ -1344,12 +1369,14 @@ export class Recorder {
     conditionsAfter: Conditions,
     growth?: GrowthStats
   ): RecordingV2 {
-    const inside = this.rootList.filter((r) => !r.outside).sort((a, b) => b.cascade - a.cascade);
-    const outside = this.rootList.filter((r) => r.outside).sort((a, b) => b.cascade - a.cascade);
+    // Mounts count as renders here: a root whose cost is the subtree it mounts would rank below a few idle renders.
+    const byWeight = (a: RootAgg, b: RootAgg) => b.cascade + b.mounts - (a.cascade + a.mounts);
+    const inside = this.rootList.filter((r) => !r.outside).sort(byWeight);
+    const outside = this.rootList.filter((r) => r.outside).sort(byWeight);
     const hooksFor = new Set([...inside.slice(0, 30), ...outside.slice(0, 10)]);
     const statsByIndex = new Map<number, RootStat>();
     for (const agg of this.rootList) statsByIndex.set(agg.index, this.rootStat(agg, hooksFor.has(agg)));
-    // Roots are ordered by cascade, inside the scope first; timeline, segments and watch are remapped to that order.
+    // Roots are ordered by cascade and mounts, inside the scope first; timeline, segments and watch are remapped to that order.
     const remap = new Map<number, number>();
     const orderedInside = inside.map((agg) => agg.index);
     const allOrdered = [...orderedInside, ...outside.map((agg) => agg.index)];

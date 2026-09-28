@@ -142,6 +142,7 @@ export function section(rec: RecordingV2 & { id?: string; status?: string }, nam
             i: commit.i,
             atSec: +(commit.atMs / 1000).toFixed(2),
             renders: commit.renders,
+            ...(commit.mounts ? { mounts: commit.mounts } : {}),
             ...(commit.noDom ? { noDomChange: commit.noDom } : {}),
             ...(commit.ms ? { renderMs: commit.ms } : {}),
             ...(commit.sinceMs ? { sinceMs: commit.sinceMs } : {}),

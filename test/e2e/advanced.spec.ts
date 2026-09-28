@@ -29,7 +29,7 @@ const open = async (page: Page, id: string) => {
 
 test('the front page lists the harder cases apart from the textbook ones', async ({ page }) => {
   await page.goto('/');
-  await expect(page.locator('[data-testid="advanced"] [data-advanced]')).toHaveCount(9);
+  await expect(page.locator('[data-testid="advanced"] [data-advanced]')).toHaveCount(12);
   await page.locator('[data-advanced="chain"]').click();
   await expect(page.getByTestId('strip')).toContainText('a chain of effects');
 });
@@ -132,6 +132,51 @@ test('a selector of the whole list renders every card for a star; a selector of 
   expect(await countsOf(page, 'fixed')).toEqual(fixedNow);
   await expect(page.locator('[data-case="broken"] li.on')).toHaveCount(3);
   await expect(page.locator('[data-case="fixed"] li.on')).toHaveCount(2);
+});
+
+test('a log with every line in the DOM holds ten thousand; windowed, the lines that fit, and the rest as it scrolls', async ({ page }) => {
+  await page.goto('/advanced/window');
+  await expect(page.locator('[data-testid="log-whole"] li')).toHaveCount(10_000);
+  const windowed = page.locator('[data-testid="log-window"] li');
+  expect(await windowed.count()).toBeLessThan(30);
+  await page.getByTestId('log-window').evaluate((el) => (el.scrollTop = el.scrollHeight));
+  await expect(page.locator('[data-testid="log-window"] li[data-line="9999"]')).toHaveCount(1);
+  expect(await windowed.count()).toBeLessThan(30);
+});
+
+test('a tab set straight away shows the spinner in its place; set in a transition, the old tab stays', async ({ page }) => {
+  await page.goto('/advanced/suspense');
+  const panel = (side: string) => page.getByTestId(`tabs-${side}`).getByTestId('tab-panel');
+  await expect(panel('blocking')).toHaveAttribute('data-tab', 'overview');
+  await expect(panel('transition')).toHaveAttribute('data-tab', 'overview');
+
+  await page.getByTestId('tab-blocking-activity').click();
+  await expect(page.getByTestId('spinner-blocking')).toBeVisible();
+  await expect(panel('blocking')).toHaveAttribute('data-tab', 'activity');
+  await expect(page.getByTestId('spinner-blocking')).toHaveCount(0);
+
+  await page.getByTestId('tab-transition-activity').click();
+  // The old panel stays on the screen while the new one waits for its data.
+  await expect(panel('transition')).toHaveAttribute('data-tab', 'overview');
+  await expect(page.getByTestId('spinner-transition')).toHaveCount(0);
+  await expect(panel('transition')).toHaveAttribute('data-tab', 'activity');
+});
+
+test('options from a prop getter all render for a move of the pointer; a memo that compares what they show, two', async ({ page }) => {
+  await open(page, 'getters');
+  const move = async (side: string) => {
+    const before = await countsOf(page, side === 'props' ? 'broken' : 'fixed');
+    const options = page.getByTestId(`option-${side}`);
+    for (let i = 0; i < 4; i++) await options.nth(i).hover();
+    await expect(options.nth(3)).toHaveClass(/on/);
+    const after = await countsOf(page, side === 'props' ? 'broken' : 'fixed');
+    return after.reduce((sum, n, i) => sum + n - before[i], 0);
+  };
+  // Four moves: twelve options each on the left; on the right the one lit and the one that goes dark.
+  expect(await move('props')).toBe(48);
+  expect(await move('compare')).toBe(7);
+  const lit = await outlines(page);
+  expect(lit.broken).toBeGreaterThan(lit.fixed * 3);
 });
 
 test('what a leak leaves behind: classes of the value put into css, listeners of the popover without a cleanup', async ({ page }) => {

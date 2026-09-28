@@ -290,6 +290,7 @@ export interface CommitRecord {
   renders: number;
   noDom?: number;
   outside?: number;
+  /** Components mounted under the commit's roots. */
   mounts?: number;
   /** Cascade roots of this commit: which root, how many of its instances, and why each rendered. */
   roots?: Array<{ i: number; hits: number; reasonIds: number[]; /** Its render with its subtree, when the build times renders. */ ms?: number }>;
@@ -498,7 +499,9 @@ export type SessionEvent =
       ms?: number;
       lane?: string;
       event?: string;
-      roots?: Array<[number, number, number[]]>;
+      mounts?: number;
+      /** `[root, renders, reasonIds, mounts?]` */
+      roots?: Array<[number, number, number[]] | [number, number, number[], number]>;
       causes?: string[];
       outside?: number;
       noDom?: number;
