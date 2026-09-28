@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import type { RecordingV2 } from '../../src/shared/schema';
 
 /** The harder cases claim a difference too; these check it, by the counters and — where it is renders — the outlines. */
 const countsOf = (page: Page, side: 'broken' | 'fixed') =>
@@ -28,7 +29,7 @@ const open = async (page: Page, id: string) => {
 
 test('the front page lists the harder cases apart from the textbook ones', async ({ page }) => {
   await page.goto('/');
-  await expect(page.locator('[data-testid="advanced"] [data-advanced]')).toHaveCount(8);
+  await expect(page.locator('[data-testid="advanced"] [data-advanced]')).toHaveCount(9);
   await page.locator('[data-advanced="chain"]').click();
   await expect(page.getByTestId('strip')).toContainText('a chain of effects');
 });
@@ -131,4 +132,47 @@ test('a selector of the whole list renders every card for a star; a selector of 
   expect(await countsOf(page, 'fixed')).toEqual(fixedNow);
   await expect(page.locator('[data-case="broken"] li.on')).toHaveCount(3);
   await expect(page.locator('[data-case="fixed"] li.on')).toHaveCount(2);
+});
+
+test('what a leak leaves behind: classes of the value put into css, listeners of the popover without a cleanup', async ({ page }) => {
+  await page.goto('/advanced/leak');
+  await page.getByTestId('run').waitFor();
+  await page.evaluate(() => (window as any).__REACT_PERF_RECORDER__.engine.start({ source: 'e2e', highlight: false }));
+  await page.getByTestId('run').click();
+  await expect(page.getByTestId('bar-broken')).toHaveAttribute('class', /./);
+  // Stopped as the run ends: expect.poll backs off to a second, and a flat tail that long hides the growth.
+  await page.waitForFunction(() => (document.querySelector('[data-testid=bar-fixed]') as HTMLElement | null)?.style.width === '100%');
+  // What record_page does before Stop: without a collection, what is still in memory says nothing.
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send('HeapProfiler.collectGarbage');
+  const rec = (await page.evaluate(() => (window as any).__REACT_PERF_RECORDER__.engine.stop({ collected: true }))) as RecordingV2;
+  const growth = rec.growth!;
+  // The leaky popover's listener keeps its setter, and the setter the component: all five closed ones stay.
+  const retained = growth.retained!;
+  expect(retained.collected).toBe(true);
+  expect(retained.components.find((c) => c.name === 'LeakyPopover')).toMatchObject({
+    unmounted: 5,
+    retained: 5,
+    site: expect.stringMatching(/Leak\.tsx:\d+$/),
+  });
+  expect(retained.components.find((c) => c.name === 'TidyPopover')).toMatchObject({ unmounted: 5, retained: 0 });
+  expect(retained.retained).toBe(5);
+  expect(growth.metrics.cssRules?.growing).toBe(true);
+  expect(growth.metrics.listeners?.growing).toBe(true);
+  // Five opens of each popover: the leaky one's listeners stay, the tidy one's last is there while it is open.
+  const resize = growth.listeners!.filter((l) => l.target === 'window' && l.type === 'resize');
+  // Mapped by the dev server to the line of the leaky effect, the tidy one's is gone with it.
+  expect(resize).toEqual([
+    expect.objectContaining({
+      live: 5,
+      site: expect.stringMatching(/advanced\/Leak\.tsx:\d+$/),
+      code: expect.stringContaining("addEventListener('resize'"),
+    }),
+  ]);
+  // Playwright's own listeners on the window run from evaluated code: not the page's.
+  expect(growth.listeners!.every((l) => l.site?.includes('Leak.tsx'))).toBe(true);
+  // No babel plugin, no label: the 100 widths of the broken bar are one group, named by the element that has one.
+  expect(growth.styles?.[0]).toMatchObject({ component: 'LeakyProgress', rules: 100, classes: 100, varying: [{ prop: 'width' }] });
+  // The fixed bar's one class was there before the recording: nothing else was added.
+  expect(growth.styles!.reduce((n, g) => n + g.rules, 0)).toBe(100);
 });

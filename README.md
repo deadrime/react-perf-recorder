@@ -36,6 +36,10 @@ an area of the page to record alone.
   handed on; the link with equal props is where a `memo` stops the rest.
 - **Wasted renders** — those after which nothing in the DOM changed, and remounts.
 - **Causes** — the store action, query, timer, socket message or click behind each commit.
+- **Growth** — what the page holds more of at the end: DOM nodes, CSS rules, intervals and listeners left behind
+  with the line that added them, CSS rules any CSS-in-JS keeps inserting with the component and the property that
+  varies, observers never disconnected, sockets left open, the heap, and the components unmounted but still in
+  memory after a garbage collection (`record_page` collects before Stop).
 - **A timeline** of actions and commits; a picked commit shows its cascade as a tree and outlines its components on
   the page.
 - **Memos that miss** — a `useMemo` that recomputes on every render, and the dependency that moved.

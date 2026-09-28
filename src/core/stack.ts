@@ -55,3 +55,29 @@ export function libraryOf(url: string): string | null {
   if (at >= 0) return packageOf(path.slice(at + '/node_modules/'.length));
   return null;
 }
+
+export interface Origin {
+  text: string;
+  at?: Frame;
+}
+
+/** Code the page did not load: a test driver's or devtools' evaluated script, an extension's content script. */
+const INJECTED = /^(<anonymous>|native$|(chrome|moz|safari(-web)?)-extension:)/;
+
+/**
+ * Who made a call, from the stack taken in it: `useWindowSize @ src/hooks/useWindowSize.ts`, `(swiper)` when a
+ * package did, `''` when the stack says nothing; `at` is the app's frame, for the dev server to map to a line.
+ * The first frame is the recorder's wrapper, wherever it was loaded from.
+ */
+export function originOf(origin: Error, fallbackName = ''): Origin {
+  const frames = parseStack(origin.stack ?? '')
+    .slice(1)
+    .filter((f) => !INJECTED.test(f.url) && libraryOf(f.url) !== 'react-perf-recorder');
+  const app = frames.find((f) => libraryOf(f.url) === null);
+  const name = (app?.fn.split('.').pop() || fallbackName || '').replace(/^bound /, '');
+  if (app) return { text: `${name ? `${name} ` : ''}@ ${servedPath(app.url)}`, at: app };
+  const library = frames.map((f) => libraryOf(f.url)).find(Boolean);
+  return { text: library ? `(${library})` : '' };
+}
+
+export const originText = (origin: Error, fallbackName = '') => originOf(origin, fallbackName).text;

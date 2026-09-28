@@ -17,6 +17,7 @@ import {
   type ChainLink,
   type ChainNodeInfo,
   type CommitWay,
+  type GrowthStats,
 } from '../shared/schema';
 import { buildSegments, eventName, USER_EVENTS, type SegmentCommit } from '../shared/segments';
 import { safeUrl } from '../shared/url';
@@ -58,6 +59,7 @@ import { StoreChecks } from './store-checks';
 import { updateOrigin, type UpdateOrigin } from './env/origin';
 import { reactWarningLines } from './env/react-warnings';
 import { runningTimer, runningTimerLibrary, setTimerSink } from './env/timers';
+import { GrowthWatcher } from './growth';
 
 export interface EngineConfig {
   version: string;
@@ -88,6 +90,8 @@ export interface RecordOptions {
   meta?: Record<string, Primitive>;
   /** Work out parent-caused reasons for the first instances of a component per commit only; render counts stay exact. */
   sampleReasons?: boolean;
+  /** Sample DOM nodes, CSS rules, intervals, listeners and heap, four times a second for 10 s and then once a second; off leaves `growth` out. */
+  growth?: boolean;
 }
 
 export interface HighlightSink {
@@ -285,6 +289,7 @@ export class Recorder {
   private readonly dom = new DomWatcher();
   private readonly frames: FrameWatcher;
   private readonly actions: ActionTracker | null;
+  private readonly growth: GrowthWatcher | null;
   /** Whether childLanes can be trusted to point at fresh updates; React 19 answers no and the walk widens. */
   private narrowUpdateWalk = true;
   private hook: CommitHook | null = null;
@@ -353,6 +358,17 @@ export class Recorder {
       onFrame: (frame) => this.emit({ k: 'frame', frame }),
       onLatency: (entry) => this.emit({ k: 'latency', entry }),
     });
+    this.growth =
+      options.growth === false
+        ? null
+        : new GrowthWatcher(
+            () => this.now(),
+            this.config.projectRoot,
+            (f) => {
+              this.records.delete(f);
+              if (f.alternate) this.records.delete(f.alternate);
+            }
+          );
     this.actions =
       options.actions === false
         ? null
@@ -432,6 +448,7 @@ export class Recorder {
       requestAnimationFrame(tick);
     }
     this.actions?.start();
+    this.growth?.start();
     this.stopHistory = trackHistory(
       () => this.now(),
       (nav) => {
@@ -477,7 +494,8 @@ export class Recorder {
     };
   }
 
-  stop(): RecordingV2 {
+  /** `collected`: the page's garbage was collected just before, so what is still in memory is held by something. */
+  stop(collected = false): RecordingV2 {
     if (this.stopped) throw new RecorderError('NOT_RECORDING', 'recording already stopped');
     this.stopped = true;
     setTimerSink(null);
@@ -490,13 +508,14 @@ export class Recorder {
     this.counting = false;
     this.actions?.stop();
     this.stopHistory?.();
+    const growth = this.growth?.stop(collected);
     const sections = this.deps.plugins.stop(this.pluginSession());
     this.warnings.push(...this.deps.plugins.warnings.splice(0));
     const conditionsAfter = this.readConditions();
     this.overlayMs += this.deps.highlight?.takeCostMs?.() ?? 0;
     const durationMs = Math.round(this.now());
     this.emit({ k: 'end', atMs: durationMs });
-    return this.build(durationMs, sections, conditionsAfter);
+    return this.build(durationMs, sections, conditionsAfter, growth);
   }
 
   // ---- commits -------------------------------------------------------------------------------------------------
@@ -557,6 +576,7 @@ export class Recorder {
       this.scan(fiber, false, '', null, c, false);
     }
     this.storeChecks?.commit();
+    this.growth?.commit(fiber);
     this.finishCommit(c, causes, lane, event, source, origins, resyncOnly);
   }
 
@@ -1316,7 +1336,12 @@ export class Recorder {
     };
   }
 
-  private build(durationMs: number, sections: Record<string, RecordingV2['plugins'][string]>, conditionsAfter: Conditions): RecordingV2 {
+  private build(
+    durationMs: number,
+    sections: Record<string, RecordingV2['plugins'][string]>,
+    conditionsAfter: Conditions,
+    growth?: GrowthStats
+  ): RecordingV2 {
     const inside = this.rootList.filter((r) => !r.outside).sort((a, b) => b.cascade - a.cascade);
     const outside = this.rootList.filter((r) => r.outside).sort((a, b) => b.cascade - a.cascade);
     const hooksFor = new Set([...inside.slice(0, 30), ...outside.slice(0, 10)]);
@@ -1475,6 +1500,7 @@ export class Recorder {
         ...(this.options.frames && durationMs ? { fps: +((this.frameCount * 1000) / durationMs).toFixed(1) } : {}),
       },
       dom: { ...this.dom.counts },
+      ...(growth ? { growth } : {}),
       navigations: this.navigations,
       hmr: this.hmr,
       conditions: this.conditions,

@@ -4,6 +4,7 @@ import { BugStrip } from '../Demo';
 import { EffectChain } from './EffectChain';
 import { EmptyDefault } from './EmptyDefault';
 import { HeavyList } from './HeavyList';
+import { Leak } from './Leak';
 import { LibraryContext } from './LibraryContext';
 import { Measure } from './Measure';
 import { QueryFields } from './QueryFields';
@@ -58,6 +59,11 @@ export const ADVANCED: Record<string, AdvancedCase> = {
     title: 'every card reads the whole list',
     what: 'A Redux selector that returns the whole favourites array renders every card for a star on one.',
     element: ReduxFavorites,
+  },
+  leak: {
+    title: 'what stays behind',
+    what: 'A value put into css() is a new class every time and a listener without a cleanup outlives its popover: neither renders more, both pile up.',
+    element: Leak,
   },
 };
 

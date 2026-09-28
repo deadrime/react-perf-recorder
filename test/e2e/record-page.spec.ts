@@ -167,3 +167,15 @@ test('a page that reloads itself is not blamed on the script', async ({ baseURL 
   expect((failure as Error).message).toMatch(/reloaded itself at the url it was opened on/);
   fs.rmSync(/screenshot (\S+\.png)/.exec((failure as Error).message)?.[1] ?? '', { force: true });
 });
+
+test('collects the garbage before Stop, so what is still in memory is what something holds', async ({ baseURL }) => {
+  const script = moduleOf(
+    'leak',
+    "await page.getByTestId('run').click(); await page.waitForFunction(() => document.querySelector('[data-testid=bar-fixed]')?.style.width === '100%');"
+  );
+  const result = await recordPage({ url: `${baseURL}/advanced/leak`, script }, SESSIONS_DIR);
+  const retained = saved(result.id!).growth!.retained!;
+  expect(retained.collected).toBe(true);
+  expect(retained.components.find((c) => c.name === 'LeakyPopover')).toMatchObject({ unmounted: 5, retained: 5 });
+  expect(retained.components.find((c) => c.name === 'TidyPopover')).toMatchObject({ unmounted: 5, retained: 0 });
+});
