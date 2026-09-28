@@ -306,6 +306,9 @@ export const Catalogue = () => {
               <a className="wide" href="#try">
                 Try it
               </a>
+              <a className="wide" href={href('docs/benchmarks')}>
+                Benchmarks
+              </a>
               <a href={href('docs')}>Docs</a>
               <a href={REPO}>GitHub</a>
             </nav>
