@@ -1,4 +1,4 @@
-import { medianGap, topEntries } from './stats';
+import { medianGap, topEntries, topReasons } from './stats';
 import { buildSegments } from './segments';
 import {
   RECORDING_SCHEMA,
@@ -148,7 +148,7 @@ export function aggregateEvents(meta: SessionMeta, events: SessionEvent[]): Reco
       medianGapMs: medianGap(r.times),
       firstAtMs: r.times[0] ?? 0,
       lastAtMs: r.times.at(-1) ?? 0,
-      reasons: topEntries(r.reasons, 8),
+      reasons: topReasons(r.reasons, 8, (id) => reasons[id]),
       causes: topEntries(r.causes, 8),
       lanes: topEntries(r.lanes, 5),
       noDomChange: 0,

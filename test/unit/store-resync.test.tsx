@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query';
-import { act, useState } from 'react';
+import { act, useReducer, useState } from 'react';
 import { createStore, useStore } from 'zustand';
 import { findRoots, type Fiber, type Hook } from '../../src/core/fiber';
 import type { SessionEvent } from '../../src/shared/schema';
@@ -67,10 +67,11 @@ describe('store hooks that change without notifying', () => {
     expect(rest).toEqual([]);
     // The avatar for `a` rendered for presence; the refetch had already changed its query result, silently.
     const avatar = rec.roots.find((r) => r.name === 'Avatar')!;
+    // A silent change is not why anything rendered: it comes last, whatever its count.
     expect(reasonsOf(rec, avatar)).toEqual([
       expect.stringMatching(/^external store #\d+ \(s\) => s\.online\.includes\(id\)$/),
-      expect.stringMatching(/^external store #\d+ SILENT \[query \["members"\]\] byId$/),
       expect.stringMatching(/^external store #\d+ RESYNC \[query \["members"\]\] byId$/),
+      expect.stringMatching(/^external store #\d+ SILENT \[query \["members"\]\] byId$/),
     ]);
     expect(online.causes).not.toContain('core:store resync');
     // The avatar mounted in the list fetches the stale query; React re-checks the store after the commit and renders
@@ -78,7 +79,7 @@ describe('store hooks that change without notifying', () => {
     expect(resync.causes).toEqual(['core:store resync']);
     expect(resync.noDom).toBe(1);
     const reason = rec.reasons[resync.roots![0][2][0]];
-    expect(reason).toMatchObject({ kind: 'store', store: 'query ["members"]', resync: true });
+    expect(reason).toMatchObject({ kind: 'store', store: 'query ["members"]', storeChange: 'resync' });
   });
 
   it("marks nothing when React's updater sets are not there to say which component an update is for", async () => {
@@ -95,7 +96,7 @@ describe('store hooks that change without notifying', () => {
       flush(() => presence.setState({ online: ['a'] }));
       await settle();
       const rec = recorder.stop();
-      expect(rec.reasons.some((r) => r.silent || r.resync)).toBe(false);
+      expect(rec.reasons.some((r) => r.storeChange)).toBe(false);
       expect(rec.causes.map((c) => c.key)).not.toContain('core:store resync');
     } finally {
       roots.forEach((root, i) => (root.pendingUpdatersLaneMap = saved[i]));
@@ -130,6 +131,52 @@ describe('store hooks that change without notifying', () => {
     const rec = recorder.stop();
     const name = rec.roots.find((r) => r.name === 'Name')!;
     expect(reasonsOf(rec, name)).toEqual([expect.stringMatching(/^state #\d+$/), expect.stringMatching(/^external store #\d+ SILENT \[query/)]);
+  });
+
+  it('marks nothing when the store stayed and only the selector read it for another key', () => {
+    const people = createStore(() => ({ byId: { a: 'Ann', b: 'Bob' } as Record<string, string> }));
+    let pick!: (id: string) => void;
+    const Person = () => {
+      const [id, setId] = useState('a');
+      pick = setId;
+      return <b>{useStore(people, (s) => s.byId[id])}</b>;
+    };
+    mount(<Person />);
+    const { recorder } = makeRecorder();
+    recorder.start();
+    flush(() => pick('b'));
+    const rec = recorder.stop();
+    expect(rec.reasons.some((r) => r.storeChange)).toBe(false);
+  });
+
+  it('keeps the bailout when a silent store change is all that differs', async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    let same!: () => void;
+    const Name = () => {
+      const [n, dispatch] = useReducer((v: number) => v, 0);
+      same = dispatch;
+      const { data } = useQuery({ queryKey: ['members'], queryFn: members, staleTime: 0, select: byId });
+      return (
+        <b>
+          {data?.get('a')?.name}
+          {n}
+        </b>
+      );
+    };
+    mount(
+      <QueryClientProvider client={client}>
+        <Name />
+      </QueryClientProvider>
+    );
+    await settle();
+    const { recorder } = makeRecorder({}, [[rq, null]]);
+    recorder.start();
+    await act(() => client.refetchQueries({ queryKey: ['members'] }));
+    await settle();
+    flush(() => same());
+    const rec = recorder.stop();
+    const name = rec.roots.find((r) => r.name === 'Name')!;
+    expect(reasonsOf(rec, name)).toEqual(['bailout: state set to the same value', expect.stringMatching(/^external store #\d+ SILENT \[query/)]);
   });
 
   it("leaves React's store hooks as it found them when the recording stops", async () => {

@@ -31,10 +31,8 @@ export interface Reason {
   /** Every prop was equal: `memo` would have skipped this render. */
   equal?: true;
   sameContent?: true;
-  /** A store hook that changed without its store notifying: it rode along on a render something else caused. */
-  silent?: true;
-  /** React found the store changed when it re-checked it after a commit, and scheduled this render itself. */
-  resync?: true;
+  /** A store that changed before notifying (`silent`), or that React re-checked and re-rendered itself (`resync`). */
+  storeChange?: 'silent' | 'resync';
 }
 
 const MAX_PROPS = 10;
@@ -51,6 +49,8 @@ export interface Describer {
 export interface StoreCheckLog {
   watches(inst: unknown): boolean;
   check(inst: unknown): StoreCheck | undefined;
+  /** The store itself moved, read through the previous render's getSnapshot, not only the selector's inputs. */
+  moved(inst: unknown): boolean;
 }
 
 const same = (a: unknown, b: unknown) => sameContent(a, b, 20_000) === true;
@@ -133,14 +133,15 @@ export function reasonsOf(prev: Snapshot, f: Fiber, describe: Describer, checks?
           let store = describe.store(withSelector ? (deps[0] as Function) : getSnapshot);
           const named = !withSelector && !store && Array.isArray(deps) ? describe.hook?.(deps) : null;
           if (named) [store, selector] = [named.store, named.selector ?? selector];
-          const how = checks?.watches(b.queue) ? checks.check(b.queue) ?? 'silent' : undefined;
+          const how = checks?.watches(b.queue) ? checks.check(b.queue) ?? (checks.moved(b.queue) ? 'silent' : null) : null;
+          const storeChange = how === 'silent' || how === 'resync' ? how : undefined;
           out.push({
             kind: 'store',
             hook: i,
             ...(store ? { store } : {}),
             ...(selector ? { selector } : {}),
             ...mark,
-            ...(how === 'silent' ? { silent: true } : how === 'resync' ? { resync: true } : {}),
+            ...(storeChange ? { storeChange } : {}),
           });
         } else if (b.queue.lastRenderedReducer) {
           out.push({ kind: 'state', hook: i, ...mark });
@@ -169,9 +170,11 @@ export function reasonsOf(prev: Snapshot, f: Fiber, describe: Describer, checks?
   }
   // The function ran (new hook list) yet no state, store value, prop or context differs: React rendered it for an
   // update that set a value it already had, then bailed out.
-  if (!out.length && hasHooks(f) && prev.state !== f.memoizedState) return [{ kind: 'bailout' }];
-  // What scheduled the render leads; a store that changed silently follows.
-  if (out.some((r) => r.silent)) return [...out.filter((r) => !r.silent), ...out.filter((r) => r.silent)];
+  // A store that changed silently is not why it rendered: what did leads, and without it the render is a bailout.
+  const silent = out.filter((r) => r.storeChange === 'silent');
+  const causing = silent.length ? out.filter((r) => r.storeChange !== 'silent') : out;
+  if (!causing.length && hasHooks(f) && prev.state !== f.memoizedState) return [{ kind: 'bailout' }, ...silent];
+  if (silent.length) return [...causing, ...silent];
   return out.length ? out : [{ kind: 'unknown' }];
 }
 

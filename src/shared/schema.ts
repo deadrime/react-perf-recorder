@@ -106,10 +106,11 @@ export interface ReasonInfo {
   equal?: true;
   /** A new value with the same content: a subscription bug rather than new data. */
   sameContent?: true;
-  /** A store hook that changed without its store notifying: it rode along on a render something else caused. */
-  silent?: true;
-  /** React re-checked the store after a commit, found it changed without a notification, and scheduled this render. */
-  resync?: true;
+  /**
+   * `silent`: the store changed before telling React and rode along on a render something else caused. `resync`: React
+   * re-checked the store after a commit, found it changed, and scheduled this render itself.
+   */
+  storeChange?: 'silent' | 'resync';
   /** Older recordings carry the sentence; it is built from the fields above by `reasonText` when it is not there. */
   text?: string;
 }

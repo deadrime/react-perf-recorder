@@ -1,5 +1,5 @@
 import { sameContent } from '../shared/same-content';
-import { medianGap, topEntries } from '../shared/stats';
+import { medianGap, topEntries, topReasons } from '../shared/stats';
 import {
   RECORDING_SCHEMA,
   type ActionRecord,
@@ -21,7 +21,7 @@ import {
 import { buildSegments, eventName, USER_EVENTS, type SegmentCommit } from '../shared/segments';
 import { safeUrl } from '../shared/url';
 import { ActionTracker } from './actions';
-import { hookCommits, hookOwner, laneLabel, RecorderError, type CommitHook, type CommitInfo } from './commit-hook';
+import { hasUpdaterSets, hookCommits, hookOwner, laneLabel, RecorderError, type CommitHook, type CommitInfo } from './commit-hook';
 import { DomWatcher, touchedHas } from './dom';
 import { MemoHits } from './memo-hits';
 import { FrameWatcher } from './env/frames';
@@ -33,6 +33,7 @@ import {
   generatedSourceOf,
   hasProfileTimings,
   hostRootOf,
+  hasHooks,
   isComposite,
   isHost,
   isLibraryFiber,
@@ -266,6 +267,7 @@ export class Recorder {
   private readonly reasonIdsByFields = new Map<string, number>();
   private readonly memoHits = new MemoHits((f) => sourceOf(f, this.config.projectRoot));
   private readonly reasonList: ReasonInfo[] = [];
+  private readonly reasonInfo = (id: number) => this.reasonList[id];
   private readonly components = new Map<string, ComponentAgg>();
   private readonly watch = new Map<string, { mounted: number; renders: number; byRoot: Map<RootAgg | null, number> }>();
   private readonly zoneNodes = new Map<Element, string>();
@@ -388,30 +390,24 @@ export class Recorder {
       if (owner) throw new RecorderError('BUSY', `root.current is already hooked by ${owner}: wait for it to finish or call its stop()`, owner);
     }
     this.resolveZones();
-    this.storeChecks = new StoreChecks();
-    for (const root of this.roots) this.seed(root.current);
+    // Which fiber an update is for comes only with React's updater sets.
+    const withUpdaters = devtoolsHookAtLoad() && this.roots.every(hasUpdaterSets);
+    this.storeChecks = withUpdaters ? new StoreChecks() : null;
+    // An update already pending may come from a check the recorder never saw: then the first commit marks nothing.
+    const settled = this.roots.every((root) => !root.pendingLanes);
+    for (const root of this.roots) this.seed(root.current, settled);
     this.conditions = this.readConditions();
     this.deps.plugins.start(this.pluginSession(), this.t0);
     if (this.scope) this.dom.setScopeHosts(this.scopeHosts());
     this.dom.start();
-    try {
-      this.hook = hookCommits(
-        this.roots,
-        this.options.source ?? 'panel',
-        (info) => this.onCommit(info),
-        (fiber, lane) => this.noteUpdate(fiber, lane),
-        devtoolsHookAtLoad()
-      );
-    } catch (error) {
-      this.storeChecks.stop();
-      this.storeChecks = null;
-      throw error;
-    }
+    this.hook = hookCommits(
+      this.roots,
+      this.options.source ?? 'panel',
+      (info) => this.onCommit(info),
+      (fiber, lane) => this.noteUpdate(fiber, lane),
+      withUpdaters
+    );
     this.updaters = this.hook.updaters ? new Map() : null;
-    if (!this.updaters) {
-      this.storeChecks.stop();
-      this.storeChecks = null;
-    }
     // A store or query notifies its subscribers before the recorder hears about it, so the fibers React just
     // marked are the ones this event updated.
     this.deps.plugins.targets = () => this.freshUpdates();
@@ -473,7 +469,7 @@ export class Recorder {
           hits: agg.hits,
           perHit: agg.hits ? Math.round(agg.cascade / agg.hits) : 0,
           ...(() => {
-            const info = this.reasonList[topEntries(agg.reasons, 1)[0]?.[0] ?? -1];
+            const info = this.reasonList[topReasons(agg.reasons, 1, this.reasonInfo)[0]?.[0] ?? -1];
             // The sentence for whoever prints it, the fields for whoever draws them.
             return info ? { reason: textOf(info), info } : { reason: '' };
           })(),
@@ -721,6 +717,7 @@ export class Recorder {
       }
       // A fiber that did not render has the snapshot it had: nothing to write.
       if (rendered || !prev) this.remember(f);
+      if (rendered && hasHooks(f)) this.storeChecks?.rendered(f);
       // Hooks are made at mount and kept: a fiber's store hooks are watched once.
       if (!prev) this.storeChecks?.watch(f);
       if (!(isolate && f === start) && f.sibling)
@@ -1080,7 +1077,14 @@ export class Recorder {
       this.resyncs.add(fiber);
       this.claimed.add(fiber);
       if (fiber.alternate) this.claimed.add(fiber.alternate);
-    } else this.othersUpdated = true;
+    } else {
+      this.othersUpdated = true;
+      // A real update of a fiber React also resynced: its origin and a store's aim may name it after all.
+      if (fiber && (this.resyncs.delete(fiber) || (fiber.alternate !== null && this.resyncs.delete(fiber.alternate)))) {
+        this.claimed.delete(fiber);
+        if (fiber.alternate) this.claimed.delete(fiber.alternate);
+      }
+    }
     if (fiber && this.updaters) {
       this.updaters.set(fiber, (this.updaters.get(fiber) ?? 0) | lane);
       if (resync || this.notedLanes & lane) return;
@@ -1156,12 +1160,12 @@ export class Recorder {
     if (f.alternate) this.records.set(f.alternate, snapshot);
   }
 
-  private seed(start: Fiber) {
+  private seed(start: Fiber, settled = false) {
     const stack: Array<[Fiber, string | null]> = [[start, null]];
     while (stack.length) {
       const [f, zoneTag] = stack.pop()!;
       this.remember(f);
-      this.storeChecks?.watch(f);
+      this.storeChecks?.watch(f, settled);
       const name = nameOf(f);
       const w = name ? this.watch.get(name) : undefined;
       if (w) w.mounted++;
@@ -1297,7 +1301,7 @@ export class Recorder {
       medianGapMs: medianGapMs(agg.times),
       firstAtMs: agg.times[0] ?? 0,
       lastAtMs: agg.times.at(-1) ?? 0,
-      reasons: topEntries(agg.reasons, 8),
+      reasons: topReasons(agg.reasons, 8, this.reasonInfo),
       causes: topEntries(agg.causes, 8),
       lanes: topEntries(agg.lanes, 5),
       noDomChange: agg.noDomChange,
@@ -1418,7 +1422,7 @@ export class Recorder {
           withoutDom: s.withoutDom,
           byParent: s.byParent,
           ...(s.memo ? { memo: true as const } : {}),
-          reasons: topEntries(s.reasons, 4),
+          reasons: topReasons(s.reasons, 4, this.reasonInfo),
           ...(s.chains.size
             ? {
                 chains: topEntries(s.chains, CHAINS_PER_COMPONENT).map(([id, n]) => ({
