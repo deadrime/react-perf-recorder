@@ -73,7 +73,7 @@ export const BUGS = {
   'effect-filter': {
     scenario: 'wait-issues',
     root: 'IssuesPage',
-    waste: hitsOf('IssuesPage'),
+    waste: effectCommits,
     files: ['features/issues/IssuesPage.tsx'],
     named: ['IssuesPage.tsx'],
     complaint: 'The issue list flashes "No issues match" when it opens, and feels heavier than it should when issues change.',
