@@ -1,0 +1,38 @@
+--- a/src/features/issues/IssueRow.tsx
++++ b/src/features/issues/IssueRow.tsx
+@@ -13,7 +13,7 @@
+   selected: boolean;
+   active: boolean;
+   onToggle(id: string): void;
+-  onOpen(key: string): void;
++  onOpen(): void;
+ }
+ 
+ export const IssueRow = memo(function IssueRow({ issue, selected, active, onToggle, onOpen }: Props) {
+@@ -25,7 +25,7 @@
+       role="row"
+       data-testid="issue-row"
+       data-key={issue.key}
+-      onClick={() => onOpen(issue.key)}
++      onClick={onOpen}
+     >
+       <span className="cell-check" onClick={(e) => e.stopPropagation()}>
+         <input type="checkbox" checked={selected} onChange={() => onToggle(issue.id)} aria-label={`Select ${issue.key}`} />
+--- a/src/features/issues/IssueTable.tsx
++++ b/src/features/issues/IssueTable.tsx
+@@ -34,7 +34,14 @@
+   return (
+     <div className="table" role="table" data-testid="issue-table">
+       {issues.map((issue, i) => (
+-        <IssueRow key={issue.id} issue={issue} selected={selected.has(issue.id)} active={i === active} onToggle={toggle} onOpen={onOpen} />
++        <IssueRow
++          key={issue.id}
++          issue={issue}
++          selected={selected.has(issue.id)}
++          active={i === active}
++          onToggle={toggle}
++          onOpen={() => onOpen(issue.key)}
++        />
+       ))}
+       {selected.size > 0 && <BulkBar ids={selected} onClear={() => setSelected(new Set())} />}
+     </div>

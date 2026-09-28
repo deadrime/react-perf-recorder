@@ -136,7 +136,8 @@ node test/eval-plugin/transcripts.mjs .agent-artifacts/evals/aggregate-result.js
 ```
 
 `run.sh` runs `claude plugin eval` on the cases in `test/eval-plugin/evals`, keeping each run's sandbox — or only
-some of them, `--cases decoys-rec,fallback-array-rec`;
+some of them, `--cases decoys-rec,fallback-array-rec`, or the large app's with `--eval-dir evals-large`
+(`test/eval-large/README.md`);
 `verify.mjs` records what each agent left; `summarize.mjs` writes the tables above and the numbers the site draws
 them from, `docs/benchmarks.json`; `transcripts.mjs` writes every run of it to `.agent-artifacts/transcripts` — the
 prompt, the answer, the diff the agent left and its steps — so a wrong answer can be read after the sandboxes are gone.

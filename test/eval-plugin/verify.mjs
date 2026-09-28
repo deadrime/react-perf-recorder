@@ -6,8 +6,8 @@
 // One dev server serves every workspace, each under a path of its own, so the dependencies are bundled once; one
 // Chromium records them, VERIFY_JOBS pages at a time (4 by default).
 //   node test/eval-plugin/verify.mjs <aggregate-result.json>
-//   node test/eval-plugin/verify.mjs --self-test     the bug left as it is must fail and show its root among the
-//                                                    first three, the clean app must pass
+//   node test/eval-plugin/verify.mjs --self-test [case…]   the bug left as it is must fail and show its root among
+//                                                          the first three, the clean app must pass
 import { execFile, execFileSync, spawn } from 'node:child_process';
 import fs from 'node:fs';
 import net from 'node:net';
@@ -15,8 +15,9 @@ import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
+import { APPS, caseDirs, scaffoldArgs } from './apps.mjs';
 import { CASES } from './cases.mjs';
-import { TYPED, launchChromium, recordScenario } from './scenarios.mjs';
+import { launchChromium } from './scenarios.mjs';
 
 const run$ = promisify(execFile);
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -61,32 +62,34 @@ for (
   await new Promise((r) => setTimeout(r, 500));
 
 let workspaces = 0;
-/** A folder of the shared root: the app with the bugs patched in, or with the source an agent left. */
-function workspace({ bugs = 'none', from }) {
+/** A folder of the shared root: the case's app with the bugs patched in, or with the source an agent left. */
+function workspace({ app = APPS.chat, bugs = 'none', from }) {
   const dir = path.join(root, `w${++workspaces}`);
-  fs.cpSync(path.join(here, 'app'), dir, { recursive: true });
+  fs.cpSync(app.dir, dir, { recursive: true });
   if (from) {
     fs.rmSync(path.join(dir, 'src'), { recursive: true });
     fs.cpSync(path.join(from, 'src'), path.join(dir, 'src'), { recursive: true });
   } else
     for (const bug of bugs === 'none' ? [] : bugs.split(','))
-      execFileSync('patch', ['-p1', '--forward', '--batch', '--quiet', '-d', dir, '-i', path.join(here, 'bugs', `${bug}.patch`)]);
+      execFileSync('patch', ['-p1', '--forward', '--batch', '--quiet', '-d', dir, '-i', path.join(app.bugs, `${bug}.patch`)]);
   // Served under /w<n>/, the entry is found next to the page rather than at the server's root.
   const html = path.join(dir, 'index.html');
   fs.writeFileSync(html, fs.readFileSync(html, 'utf8').replace('src="/src/main.tsx"', 'src="./src/main.tsx"'));
   return dir;
 }
 
-/** The clean app opened once before the pool starts: Vite bundles the dependencies on the first visit and reloads. */
-{
-  const dir = workspace({});
-  const page = await browser.newPage();
-  for (let i = 0; i < 2; i++) {
-    await page.goto(`${base}/${path.basename(dir)}/?tick=150`, { waitUntil: 'networkidle' });
-    await page.waitForTimeout(1500);
+/** Each clean app opened once before the pool starts: Vite bundles the dependencies on the first visit and reloads. */
+async function warm(apps) {
+  for (const app of new Set(apps)) {
+    const dir = workspace({ app });
+    const page = await browser.newPage();
+    for (let i = 0; i < 2; i++) {
+      await app.open(page, `${base}/${path.basename(dir)}/?tick=150`).catch(() => {});
+      await page.waitForTimeout(1500);
+    }
+    await page.close();
+    fs.rmSync(dir, { recursive: true, force: true });
   }
-  await page.close();
-  fs.rmSync(dir, { recursive: true, force: true });
 }
 
 /** At most JOBS of these at once. */
@@ -103,25 +106,25 @@ async function slot(task) {
   }
 }
 
+const dirs = caseDirs();
 function scaffoldOf(name) {
-  const script = fs.readFileSync(path.join(here, 'evals', name, 'scaffold.sh'), 'utf8');
-  return { bugs: /scaffold\.mjs" ([\w,-]+)/.exec(script)[1], scenario: /--recorded=(\w+)/.exec(script)?.[1] ?? 'type' };
+  const { bugs, scenario = 'type', app } = scaffoldArgs(fs.readFileSync(path.join(dirs[name], 'scaffold.sh'), 'utf8'));
+  return { bugs, scenario, app: APPS[app] };
 }
 
 /** One recording of a case's scenario on a workspace, in a context of its own. */
 async function recordOnce(name, dir) {
-  const { scenario } = scaffoldOf(name);
-  const context = await browser.newContext();
+  const { scenario, app } = scaffoldOf(name);
+  const context = await browser.newContext(app.viewport ? { viewport: app.viewport } : {});
   try {
     const page = await context.newPage();
     const url = `${base}/${path.basename(dir)}/?tick=150`;
     // A first visit transforms the workspace's own files; the recording is the second.
-    await page.goto(url, { waitUntil: 'networkidle' });
-    const result = await recordScenario(page, url, scenario);
+    await app.open(page, url);
+    const result = await app.recordScenario(page, url, scenario);
     const { stdout } = await run$(process.execPath, [path.join(repo, 'dist/cli.js'), 'show', result.id, '--dir', sessions], {
       maxBuffer: 64 * 1024 * 1024,
     });
-    const typed = TYPED[scenario];
     const show = JSON.parse(stdout);
     const { root: rootName, shown } = CASES[name];
     return {
@@ -129,7 +132,7 @@ async function recordOnce(name, dir) {
       roots: show.topRoots.slice(0, 3).map((r) => r.root),
       // Whether the recording puts the bug's component in front: among the first roots, or as the case says.
       shown: rootName === null || (shown ? shown(show) : show.topRoots.slice(0, 3).some((r) => r.root === rootName)),
-      works: result.missing.length === 0 && (typed === undefined || result.typed === typed),
+      works: result.works,
       missing: result.missing,
       typed: result.typed,
     };
@@ -141,7 +144,7 @@ async function recordOnce(name, dir) {
 /** A recording of the scenario on the bug, the clean app or what an agent left; a failed one is tried once more. */
 const record = (name, source = {}) =>
   slot(async () => {
-    const dir = workspace(source);
+    const dir = workspace({ app: scaffoldOf(name).app, ...source });
     try {
       try {
         return await recordOnce(name, dir);
@@ -177,13 +180,15 @@ async function judge(name, after) {
   // No baseline, no verdict: a null taken for 0 would fail every run of the case, or pass half a fix.
   if (bug === null || clean === null) return null;
   if (!after.works || after.waste === null) return false;
-  const allowed = name === 'no-bug-rec' ? clean + Math.max(3, clean * 0.25) : clean + (1 - GONE) * (bug - clean);
+  const allowed = CASES[name].root === null ? clean + Math.max(3, clean * 0.25) : clean + (1 - GONE) * (bug - clean);
   return after.waste <= allowed;
 }
 
-async function selfTest() {
+async function selfTest(only) {
+  const names = Object.keys(CASES).filter((name) => !only.length || only.includes(name));
+  await warm(names.map((name) => scaffoldOf(name).app));
   const results = await Promise.all(
-    Object.keys(CASES).map(async (name) => {
+    names.map(async (name) => {
       const { records } = await baseline(name);
       // A failed baseline is a failed self-test, not a pass: judge says nothing without one.
       const clean = (await judge(name, records.clean)) === true;
@@ -205,6 +210,7 @@ async function selfTest() {
 async function verify(input) {
   const result = JSON.parse(fs.readFileSync(input, 'utf8'));
   const out = { cases: {} };
+  await warm(result.cases.filter((c) => CASES[c.name]).map((c) => scaffoldOf(c.name).app));
   await Promise.all(
     result.cases
       .filter((c) => CASES[c.name])
@@ -239,7 +245,7 @@ async function verify(input) {
 
 let ok = true;
 try {
-  if (process.argv.includes('--self-test')) ok = await selfTest();
+  if (process.argv.includes('--self-test')) ok = await selfTest(process.argv.slice(2).filter((a) => !a.startsWith('--')));
   else {
     const input = process.argv[2];
     if (!input) throw new Error('usage: verify.mjs <aggregate-result.json> | --self-test');

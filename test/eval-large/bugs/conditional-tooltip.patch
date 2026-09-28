@@ -1,0 +1,76 @@
+--- a/src/features/board/IssueCard.tsx
++++ b/src/features/board/IssueCard.tsx
+@@ -22,39 +22,39 @@
+   const due = issue.dueDate && issue.status !== 'done' ? dueLabel(issue.dueDate) : null;
+   const names = viewers.map((id) => members?.get(id)?.name.split(' ')[0]).join(', ');
+ 
+-  return (
+-    <Tooltip label={`${names} viewing`} disabled={!viewers.length}>
+-      <article
+-        className={cx('card', viewers.length > 0 && 'card-live')}
+-        draggable
+-        data-testid="card"
+-        data-key={issue.key}
+-        onDragStart={(e) => {
+-          e.dataTransfer.setData('text/issue-id', issue.id);
+-          e.dataTransfer.effectAllowed = 'move';
+-        }}
+-        onClick={() => onOpen(issue.key)}
+-      >
+-        <div className="row gap-sm">
+-          <span className="muted small">{issue.key}</span>
+-          <div className="grow" />
+-          {viewers.length > 0 && <AvatarStack ids={viewers} max={3} />}
+-          <Avatar id={issue.assigneeId} size="xs" />
+-        </div>
+-        <p className="card-title">{issue.title}</p>
+-        <div className="row gap-sm wrap">
+-          <PriorityIcon priority={issue.priority} />
+-          <LabelChips ids={issue.labelIds} max={2} />
+-          {due && <span className={cx('due', `due-${due.tone}`)}>{due.text}</span>}
+-          <div className="grow" />
+-          {issue.commentCount > 0 && (
+-            <span className="muted small">
+-              <Icon name="comment" size={12} /> {issue.commentCount}
+-            </span>
+-          )}
+-          {showEstimates && issue.estimate !== null && <span className="estimate">{issue.estimate}</span>}
+-        </div>
+-      </article>
+-    </Tooltip>
++  const card = (
++    <article
++      className={cx('card', viewers.length > 0 && 'card-live')}
++      draggable
++      data-testid="card"
++      data-key={issue.key}
++      onDragStart={(e) => {
++        e.dataTransfer.setData('text/issue-id', issue.id);
++        e.dataTransfer.effectAllowed = 'move';
++      }}
++      onClick={() => onOpen(issue.key)}
++    >
++      <div className="row gap-sm">
++        <span className="muted small">{issue.key}</span>
++        <div className="grow" />
++        {viewers.length > 0 && <AvatarStack ids={viewers} max={3} />}
++        <Avatar id={issue.assigneeId} size="xs" />
++      </div>
++      <p className="card-title">{issue.title}</p>
++      <div className="row gap-sm wrap">
++        <PriorityIcon priority={issue.priority} />
++        <LabelChips ids={issue.labelIds} max={2} />
++        {due && <span className={cx('due', `due-${due.tone}`)}>{due.text}</span>}
++        <div className="grow" />
++        {issue.commentCount > 0 && (
++          <span className="muted small">
++            <Icon name="comment" size={12} /> {issue.commentCount}
++          </span>
++        )}
++        {showEstimates && issue.estimate !== null && <span className="estimate">{issue.estimate}</span>}
++      </div>
++    </article>
+   );
++
++  return viewers.length ? <Tooltip label={`${names} viewing`}>{card}</Tooltip> : card;
+ });

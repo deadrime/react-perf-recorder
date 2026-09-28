@@ -1,0 +1,85 @@
+--- a/src/features/issues/IssueRow.tsx
++++ b/src/features/issues/IssueRow.tsx
+@@ -12,12 +12,15 @@
+   issue: Issue;
+   selected: boolean;
+   active: boolean;
++  hoveredId: string | null;
++  onHover(id: string): void;
+   onToggle(id: string): void;
+   onOpen(key: string): void;
+ }
+ 
+-export const IssueRow = memo(function IssueRow({ issue, selected, active, onToggle, onOpen }: Props) {
++export const IssueRow = memo(function IssueRow({ issue, selected, active, hoveredId, onHover, onToggle, onOpen }: Props) {
+   const showEstimates = useAppStore((s) => s.showEstimates);
++  const hovered = hoveredId === issue.id;
+   const due = issue.dueDate && issue.status !== 'done' ? dueLabel(issue.dueDate) : null;
+   return (
+     <div
+@@ -26,6 +29,7 @@
+       data-testid="issue-row"
+       data-key={issue.key}
+       onClick={() => onOpen(issue.key)}
++      onMouseEnter={() => onHover(issue.id)}
+     >
+       <span className="cell-check" onClick={(e) => e.stopPropagation()}>
+         <input type="checkbox" checked={selected} onChange={() => onToggle(issue.id)} aria-label={`Select ${issue.key}`} />
+@@ -46,15 +50,17 @@
+         <TimeAgo at={issue.updatedAt} />
+       </span>
+       <Avatar id={issue.assigneeId} showPresence />
+-      <span className="row-actions">
+-        <button
+-          className="icon-btn"
+-          aria-label="Copy link"
+-          onClick={(e) => (e.stopPropagation(), navigator.clipboard?.writeText(`${location.origin}/#/issues/${issue.key}`))}
+-        >
+-          <Icon name="link" size={14} />
+-        </button>
+-      </span>
++      {hovered && (
++        <span className="row-actions">
++          <button
++            className="icon-btn"
++            aria-label="Copy link"
++            onClick={(e) => (e.stopPropagation(), navigator.clipboard?.writeText(`${location.origin}/#/issues/${issue.key}`))}
++          >
++            <Icon name="link" size={14} />
++          </button>
++        </span>
++      )}
+     </div>
+   );
+ });
+--- a/src/features/issues/IssueTable.tsx
++++ b/src/features/issues/IssueTable.tsx
+@@ -13,6 +13,7 @@
+ export function IssueTable({ issues, onOpen }: Props) {
+   const [selected, setSelected] = useState<Set<string>>(() => new Set());
+   const [active, setActive] = useState(-1);
++  const [hovered, setHovered] = useState<string | null>(null);
+ 
+   const toggle = useCallback(
+     (id: string) =>
+@@ -32,9 +33,18 @@
+   if (!issues.length) return <EmptyState title="No issues match">Try removing a filter or searching for something else.</EmptyState>;
+ 
+   return (
+-    <div className="table" role="table" data-testid="issue-table">
++    <div className="table" role="table" data-testid="issue-table" onMouseLeave={() => setHovered(null)}>
+       {issues.map((issue, i) => (
+-        <IssueRow key={issue.id} issue={issue} selected={selected.has(issue.id)} active={i === active} onToggle={toggle} onOpen={onOpen} />
++        <IssueRow
++          key={issue.id}
++          issue={issue}
++          selected={selected.has(issue.id)}
++          active={i === active}
++          hoveredId={hovered}
++          onHover={setHovered}
++          onToggle={toggle}
++          onOpen={onOpen}
++        />
+       ))}
+       {selected.size > 0 && <BulkBar ids={selected} onClear={() => setSelected(new Set())} />}
+     </div>

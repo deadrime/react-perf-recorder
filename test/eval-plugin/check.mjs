@@ -7,18 +7,18 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { caseDirs, scaffoldArgs } from './apps.mjs';
 import { CASES } from './cases.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repo = path.resolve(here, '../..');
 
 const only = process.argv.slice(2);
-const cases = fs
-  .readdirSync(path.join(here, 'evals'))
-  .filter((c) => c.endsWith('-rec') && (!only.length || only.includes(c)))
-  .map((c) => {
-    const script = fs.readFileSync(path.join(here, 'evals', c, 'scaffold.sh'), 'utf8');
-    return { name: c, bug: /scaffold\.mjs" ([\w,-]+)/.exec(script)[1], scenario: /--recorded=(\w+)/.exec(script)?.[1] };
+const cases = Object.entries(caseDirs())
+  .filter(([c]) => c.endsWith('-rec') && (!only.length || only.includes(c)))
+  .map(([c, dir]) => {
+    const { bugs, scenario, app } = scaffoldArgs(fs.readFileSync(path.join(dir, 'scaffold.sh'), 'utf8'));
+    return { name: c, bug: bugs, scenario, app };
   });
 
 const sessions = fs.mkdtempSync(path.join(os.tmpdir(), 'rpr-check-'));
@@ -38,7 +38,9 @@ let failed = 0;
 for (const c of cases) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), `rpr-check-${c.bug}-`));
   try {
-    execFileSync(process.execPath, [path.join(here, 'evals/scaffold.mjs'), c.bug, dir, `--recorded=${c.scenario}`], { stdio: 'inherit' });
+    execFileSync(process.execPath, [path.join(here, 'evals/scaffold.mjs'), c.bug, dir, `--app=${c.app}`, `--recorded=${c.scenario}`], {
+      stdio: 'inherit',
+    });
     const id = fs.readFileSync(path.join(dir, 'recording.txt'), 'utf8').trim();
     const show = JSON.parse(execFileSync(process.execPath, [path.join(repo, 'dist/cli.js'), 'show', id, '--dir', sessions], { encoding: 'utf8' }));
     const roots = show.topRoots.slice(0, 3).map((r) => r.root);
@@ -47,7 +49,7 @@ for (const c of cases) {
     if (!ok) failed++;
     const top = show.topRoots.slice(0, 3).map((r) => `${r.root} ×${r.hits}${r.renderMsPerHit >= 5 ? ` ${r.renderMsPerHit} ms` : ''}`);
     console.log(
-      `${ok ? '✓' : '✗'} ${c.name.padEnd(24)} ${c.scenario.padEnd(5)} ${show.totals.renders} renders, ${
+      `${ok ? '✓' : '✗'} ${c.name.padEnd(28)} ${c.scenario.padEnd(11)} ${show.totals.renders} renders, ${
         show.totals.rendersWithoutDom
       } without DOM | ${top.join(', ')}`
     );

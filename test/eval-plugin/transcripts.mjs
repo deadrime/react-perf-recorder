@@ -149,10 +149,11 @@ function steps(trace, cwd) {
 function diff(caseDir, cwd) {
   const scaffold = fs.readFileSync(path.join(caseDir, 'scaffold.sh'), 'utf8');
   const bugs = /scaffold\.mjs"?\s+(\S+)/.exec(scaffold)?.[1];
+  const app = /--app=(\w+)/.exec(scaffold)?.[1] ?? 'chat';
   if (!bugs || !fs.existsSync(path.join(cwd, 'src'))) return null;
   const base = fs.mkdtempSync(path.join(os.tmpdir(), 'rpr-transcript-'));
   try {
-    execFileSync(process.execPath, [path.join(here, 'evals/scaffold.mjs'), bugs, base, '--no-serve'], { stdio: 'ignore' });
+    execFileSync(process.execPath, [path.join(here, 'evals/scaffold.mjs'), bugs, base, `--app=${app}`, '--no-serve'], { stdio: 'ignore' });
     // a/src and b/src side by side, so the diff's paths read as the agent saw them.
     const pair = path.join(base, '.pair');
     for (const [side, src] of [

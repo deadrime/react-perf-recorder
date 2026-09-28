@@ -126,6 +126,8 @@ body { margin: 0; background: #131317; }
 .demo .sandbox b { display: block; color: #fff; font-size: 16px; }
 .demo .sandbox span { color: #c4c4cc; font-size: 14.5px; }
 .demo .sandbox .go { margin-left: auto; color: #4aa8ff; font-size: 22px; }
+.demo .sandboxes { display: grid; gap: 12px; margin: 0 0 40px; }
+.demo .sandboxes .sandbox { margin: 0; }
 .demo .group { display: flex; align-items: baseline; gap: 12px; margin: 0 0 6px; }
 .demo .group h3 { margin: 0; font-size: 19px; }
 .demo .group small { color: #85858f; font: 13px var(--mono); }
@@ -449,16 +451,30 @@ export const Catalogue = () => {
                 <b>Turn on highlights</b> to see renders outlined live, and ⌖ Pick to record one of the two versions only.
               </li>
             </ul>
-            {/* The chat with no bug on: a real-looking app to try the recorder on, with no answer waiting to be found. */}
-            <a className="sandbox" href={href('app')} data-testid="sandbox">
-              <div>
-                <b>▷ Sandbox</b>
-                <span>A small team chat with a store, a live feed and a form. Open it and record whatever you like.</span>
-              </div>
-              <span className="go" aria-hidden="true">
-                →
-              </span>
-            </a>
+            {/* Apps with no bug on: real-looking ones to try the recorder on, with no answer waiting to be found. */}
+            <div className="sandboxes">
+              <a className="sandbox" href={href('app')} data-testid="sandbox">
+                <div>
+                  <b>▷ Sandbox</b>
+                  <span>A small team chat with a store, a live feed and a form. Open it and record whatever you like.</span>
+                </div>
+                <span className="go" aria-hidden="true">
+                  →
+                </span>
+              </a>
+              <a className="sandbox" href={href('orbit/')} data-testid="sandbox-orbit">
+                <div>
+                  <b>▷ Orbit, a larger app</b>
+                  <span>
+                    An issue tracker with 480 issues, teammates editing them live, Redux, zustand, React Query and forms. The app the agent benchmark
+                    runs on, without its bugs.
+                  </span>
+                </div>
+                <span className="go" aria-hidden="true">
+                  →
+                </span>
+              </a>
+            </div>
             <div className="group">
               <h3>The textbook ones</h3>
               <small>{Object.keys(BASICS).length} cases</small>

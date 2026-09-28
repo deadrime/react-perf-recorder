@@ -1,0 +1,28 @@
+--- a/src/features/issues/IssuesPage.tsx
++++ b/src/features/issues/IssuesPage.tsx
+@@ -1,4 +1,4 @@
+-import { useCallback, useMemo, useState } from 'react';
++import { useCallback, useEffect, useMemo, useState } from 'react';
+ import { Outlet, useLocation, useNavigate } from 'react-router-dom';
+ import { Button } from '../../components/ui/Button';
+ import { Spinner } from '../../components/ui/Misc';
+@@ -6,6 +6,7 @@
+ import { useDocumentTitle } from '../../hooks/useDocumentTitle';
+ import { useIssueFilters } from '../../hooks/useIssueFilters';
+ import { applyFilters } from '../../lib/filters';
++import type { Issue } from '../../api/types';
+ import { useAppSelector } from '../../store';
+ import { selectAllIssues, selectIssuesReady } from '../../store/selectors';
+ import { IssuesToolbar } from './IssuesToolbar';
+@@ -20,7 +21,10 @@
+   const navigate = useNavigate();
+   useDocumentTitle('Issues');
+ 
+-  const visible = useMemo(() => applyFilters(issues, filters), [issues, filters]);
++  const [visible, setVisible] = useState<Issue[]>([]);
++  useEffect(() => {
++    setVisible(applyFilters(issues, filters));
++  }, [issues, filters]);
+   const page = useMemo(() => visible.slice(0, limit), [visible, limit]);
+ 
+   const openIssue = useCallback((key: string) => navigate({ pathname: `/issues/${key}`, search }), [navigate, search]);

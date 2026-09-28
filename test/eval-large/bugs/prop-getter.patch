@@ -1,0 +1,50 @@
+--- a/src/hooks/useListbox.ts
++++ b/src/hooks/useListbox.ts
+@@ -1,13 +1,13 @@
+-import { useCallback, useRef, useState } from 'react';
++import { useState } from 'react';
+ 
+ /** Keyboard and pointer highlight for a list of options, with a prop getter per option as headless menu packages do. */
+ export function useListbox(count: number, onPick: (index: number) => void) {
+   const [active, setActive] = useState(0);
+-  const pick = useRef(onPick);
+-  pick.current = onPick;
+-  const activate = useCallback((index: number) => setActive(index), []);
+-  const choose = useCallback((index: number) => pick.current(index), []);
+   const move = (delta: number) => setActive((a) => Math.min(Math.max(a + delta, 0), count - 1));
+-  const getOptionProps = (index: number) => ({ index, active: index === active, onActivate: activate, onChoose: choose });
++  const getOptionProps = (index: number) => ({
++    active: index === active,
++    onMouseEnter: () => setActive(index),
++    onClick: () => onPick(index),
++  });
+   return { active, setActive, move, getOptionProps };
+ }
+--- a/src/components/ui/Dropdown.tsx
++++ b/src/components/ui/Dropdown.tsx
+@@ -28,21 +28,14 @@
+ interface OptionProps {
+   option: Option<string | number>;
+   checked: boolean;
+-  index: number;
+   active: boolean;
+-  onActivate(index: number): void;
+-  onChoose(index: number): void;
++  onMouseEnter(): void;
++  onClick(): void;
+ }
+ 
+-const MenuOption = memo(function MenuOption({ option, checked, index, active, onActivate, onChoose }: OptionProps) {
++const MenuOption = memo(function MenuOption({ option, checked, active, onMouseEnter, onClick }: OptionProps) {
+   return (
+-    <li
+-      role="option"
+-      aria-selected={checked}
+-      className={cx('menu-item', active && 'menu-item-active')}
+-      onMouseEnter={() => onActivate(index)}
+-      onClick={() => onChoose(index)}
+-    >
++    <li role="option" aria-selected={checked} className={cx('menu-item', active && 'menu-item-active')} onMouseEnter={onMouseEnter} onClick={onClick}>
+       {option.icon}
+       <span className="grow">{option.label}</span>
+       {option.hint && <span className="muted small">{option.hint}</span>}
