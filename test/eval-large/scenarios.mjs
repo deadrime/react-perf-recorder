@@ -63,6 +63,24 @@ export const SCENARIOS = {
       await settle(page);
     },
   },
+  /** The pointer down the people in the issue list's Assignee filter. */
+  'hover-menu': {
+    route: '/issues',
+    ready: 'issue-row',
+    steps: 'open the issue list, open the Assignee filter above it and move the pointer slowly down the list of people.',
+    run: async (page) => {
+      await page.getByTestId('filter-assignee').locator('.dropdown-trigger').click();
+      const options = page.getByTestId('filter-assignee').getByRole('option');
+      await options.first().waitFor();
+      const count = await options.count();
+      for (let i = 0; i < count; i++) {
+        const box = await options.nth(i).boundingBox();
+        if (box) await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2, { steps: 3 });
+        await page.waitForTimeout(60);
+      }
+      await settle(page);
+    },
+  },
   /** Writing a comment on an issue other people have open too. */
   comment: {
     route: '/issues/WEB-2',

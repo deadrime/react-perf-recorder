@@ -1,0 +1,11 @@
+--- a/src/features/issues/CommentComposer.tsx
++++ b/src/features/issues/CommentComposer.tsx
+@@ -64,7 +64,7 @@
+   const addComment = useAddComment(issueId);
+   const toast = useToast();
+   const issues = useAppSelector(selectAllIssues);
+-  const [references] = useState(() => buildReferenceIndex(issues));
++  const [references] = useState(buildReferenceIndex(issues));
+   const [mention, setMention] = useState<string | null>(null);
+   const [reference, setReference] = useState<string | null>(null);
+   const field = register('body', { required: true, maxLength: MAX, validate: (v) => v.trim().length > 0 });

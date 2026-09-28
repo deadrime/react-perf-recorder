@@ -20,7 +20,7 @@ dependencies. Their code is also well known enough for a model to remember the c
 - **Pages:**
   - the issue list, with filters in the URL, search, sorting, bulk actions and keyboard navigation;
   - the board, with drag and drop;
-  - an issue drawer, with properties, comments, mentions, presence and a typing indicator;
+  - an issue drawer, with properties, comments, @mentions and #issue references, presence and a typing indicator;
   - a dashboard, with an SVG throughput chart, workload and activity;
   - projects, the inbox and settings.
 - **Libraries.** Every one the recorder has a plugin for, used the way product code uses it:
@@ -40,22 +40,24 @@ it. Each bug below adds a lot more than that.
 Each bug is a patch in `bugs/`, a few lines written the way the mistake reads in a real codebase. Nothing in the patched
 copy names the bug or holds the other version.
 
-| Bug                   | What is wrong                                                                                             | Scenario      |
-| --------------------- | --------------------------------------------------------------------------------------------------------- | ------------- |
-| `auth-connection`     | The auth context's `can()` depends on the whole connection object, so every heartbeat renders its readers | `wait-issues` |
-| `row-callback`        | An inline `() => onOpen(issue.key)` per row: the memoized rows render whenever the list does              | `wait-issues` |
-| `debounce-deps`       | A shared `useDebouncedCallback` rebuilds the debounce when its callback changes, on every key             | `search`      |
-| `column-selector`     | A board selector takes `{ projectId, status }`: its cache misses on every call                            | `wait-board`  |
-| `conditional-tooltip` | A card is wrapped in a tooltip only while someone views it, so it remounts as viewers come and go         | `wait-board`  |
-| `hoc-in-render`       | `withPermission()` is called in the drawer's render: the comment box remounts and loses the text          | `comment`     |
-| `effect-filter`       | An effect copies the filtered issues into state: a second commit after every change                       | `wait-issues` |
-| `selection-effect`    | The table hands its selection up to the page from an effect: every ticked box is a second commit          | `select-rows` |
-| `chart-no-memo`       | The chart's 90-day series is rebuilt on every render, and hovering a bar renders it                       | `hover-chart` |
-| `store-whole`         | The sidebar reads the whole zustand store, heartbeat included                                             | `wait-issues` |
-| `query-index`         | The members are indexed into a `Map` inside the query function, which structural sharing cannot keep      | `wait-issues` |
-| `hover-state`         | The hovered row is state of the table, so every row renders as the pointer moves                          | `hover-rows`  |
-| `three-bugs`          | `auth-connection`, `query-index` and `effect-filter` at once                                              | `wait-issues` |
-| `no-bug`              | None: the right answer is to change nothing                                                               | `wait-issues` |
+| Bug                   | What is wrong                                                                                                  | Scenario      |
+| --------------------- | -------------------------------------------------------------------------------------------------------------- | ------------- |
+| `auth-connection`     | The auth context's `can()` depends on the whole connection object, so every heartbeat renders its readers      | `wait-issues` |
+| `row-callback`        | An inline `() => onOpen(issue.key)` per row: the memoized rows render whenever the list does                   | `wait-issues` |
+| `debounce-deps`       | A shared `useDebouncedCallback` rebuilds the debounce when its callback changes, on every key                  | `search`      |
+| `column-selector`     | A board selector takes `{ projectId, status }`: its cache misses on every call                                 | `wait-board`  |
+| `conditional-tooltip` | A card is wrapped in a tooltip only while someone views it, so it remounts as viewers come and go              | `wait-board`  |
+| `hoc-in-render`       | `withPermission()` is called in the drawer's render: the comment box remounts and loses the text               | `comment`     |
+| `effect-filter`       | An effect copies the filtered issues into state: a second commit after every change                            | `wait-issues` |
+| `selection-effect`    | The table hands its selection up to the page from an effect: every ticked box is a second commit               | `select-rows` |
+| `prop-getter`         | The Dropdown's prop getter hands each memoized option new handlers, so all of them render as the pointer moves | `hover-menu`  |
+| `eager-init`          | The composer's issue index is built as `useState`'s argument: rebuilt on every render, then thrown away        | `comment`     |
+| `chart-no-memo`       | The chart's 90-day series is rebuilt on every render, and hovering a bar renders it                            | `hover-chart` |
+| `store-whole`         | The sidebar reads the whole zustand store, heartbeat included                                                  | `wait-issues` |
+| `query-index`         | The members are indexed into a `Map` inside the query function, which structural sharing cannot keep           | `wait-issues` |
+| `hover-state`         | The hovered row is state of the table, so every row renders as the pointer moves                               | `hover-rows`  |
+| `three-bugs`          | `auth-connection`, `query-index` and `effect-filter` at once                                                   | `wait-issues` |
+| `no-bug`              | None: the right answer is to change nothing                                                                    | `wait-issues` |
 
 `cases.mjs` gives each case its scenario, the root its waste starts at, the number a recording gives for that waste,
 and a complaint that describes the symptom, never the cause.

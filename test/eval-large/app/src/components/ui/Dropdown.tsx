@@ -1,5 +1,6 @@
-import { useMemo, useRef, useState, type ReactNode } from 'react';
+import { memo, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useClickOutside } from '../../hooks/useClickOutside';
+import { useListbox } from '../../hooks/useListbox';
 import { cx } from '../../lib/cx';
 import { fuzzyScore } from '../../lib/search';
 import { Icon } from './Icon';
@@ -24,6 +25,32 @@ interface Props<T> {
   className?: string;
 }
 
+interface OptionProps {
+  option: Option<string | number>;
+  checked: boolean;
+  index: number;
+  active: boolean;
+  onActivate(index: number): void;
+  onChoose(index: number): void;
+}
+
+const MenuOption = memo(function MenuOption({ option, checked, index, active, onActivate, onChoose }: OptionProps) {
+  return (
+    <li
+      role="option"
+      aria-selected={checked}
+      className={cx('menu-item', active && 'menu-item-active')}
+      onMouseEnter={() => onActivate(index)}
+      onClick={() => onChoose(index)}
+    >
+      {option.icon}
+      <span className="grow">{option.label}</span>
+      {option.hint && <span className="muted small">{option.hint}</span>}
+      {checked && <Icon name="check" size={14} />}
+    </li>
+  );
+});
+
 export function Dropdown<T extends string | number>({
   trigger,
   options,
@@ -38,7 +65,6 @@ export function Dropdown<T extends string | number>({
 }: Props<T>) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
-  const [active, setActive] = useState(0);
   const root = useRef<HTMLDivElement>(null);
   useClickOutside(root, () => setOpen(false), open);
 
@@ -58,6 +84,7 @@ export function Dropdown<T extends string | number>({
     onSelect(value);
     if (!multiple) setOpen(false);
   };
+  const { active, setActive, move, getOptionProps } = useListbox(shown.length, (index) => choose(shown[index].value));
 
   return (
     <div className={cx('dropdown', className)} ref={root} data-testid={testId}>
@@ -86,8 +113,8 @@ export function Dropdown<T extends string | number>({
                 setActive(0);
               }}
               onKeyDown={(e) => {
-                if (e.key === 'ArrowDown') setActive((a) => Math.min(a + 1, shown.length - 1));
-                else if (e.key === 'ArrowUp') setActive((a) => Math.max(a - 1, 0));
+                if (e.key === 'ArrowDown') move(1);
+                else if (e.key === 'ArrowUp') move(-1);
                 else if (e.key === 'Enter' && shown[active]) choose(shown[active].value);
                 else if (e.key === 'Escape') setOpen(false);
               }}
@@ -95,19 +122,7 @@ export function Dropdown<T extends string | number>({
           )}
           <ul>
             {shown.map((o, i) => (
-              <li
-                key={o.value}
-                role="option"
-                aria-selected={selected.includes(o.value)}
-                className={cx('menu-item', i === active && 'menu-item-active')}
-                onMouseEnter={() => setActive(i)}
-                onClick={() => choose(o.value)}
-              >
-                {o.icon}
-                <span className="grow">{o.label}</span>
-                {o.hint && <span className="muted small">{o.hint}</span>}
-                {selected.includes(o.value) && <Icon name="check" size={14} />}
-              </li>
+              <MenuOption key={o.value} option={o} checked={selected.includes(o.value)} {...getOptionProps(i)} />
             ))}
             {!shown.length && <li className="menu-empty">No matches</li>}
           </ul>

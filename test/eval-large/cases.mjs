@@ -7,9 +7,13 @@ const hitsOf = (name) => (show) => root(show, name)?.hits ?? 0;
 const mountsUnder = (name) => (show) => root(show, name)?.mounts ?? 0;
 const noDomUnder = (name) => (show) => root(show, name)?.noDomChange ?? 0;
 const msPerHit = (name) => (show) => root(show, name)?.renderMsPerHit ?? 0;
+const cascadeOf = (name) => (show) => (root(show, name)?.hits ?? 0) * (root(show, name)?.perHit ?? 0);
 const effectCommits = (show) => show.topCauses.filter((c) => c.key.startsWith('core:effect')).reduce((n, c) => n + c.commits, 0);
 // Roots rank by the renders they cause, and a remount's children count as mounts, not renders: a remount bug is
 // shown when its root leads by mounts.
+// A bug that costs time rather than renders: its root takes 5 ms or more a hit. Ancestors rendering in the same
+// commit count its time too, so ranking roots by time is no test.
+const slowAt = (name) => (show) => (root(show, name)?.renderMsPerHit ?? 0) >= 5;
 const leadsByMounts = (name) => (show) => [...show.topRoots].sort((a, b) => (b.mounts ?? 0) - (a.mounts ?? 0))[0]?.root === name;
 
 export const BUGS = {
@@ -86,6 +90,25 @@ export const BUGS = {
     files: ['features/issues/IssueTable.tsx', 'features/issues/IssuesPage.tsx', 'features/issues/IssuesToolbar.tsx'],
     named: ['IssueTable.tsx'],
     complaint: 'Ticking issues in the list feels sluggish, and the count in the toolbar trails the checkboxes.',
+  },
+  // A prop getter hands every option new handlers: the memoized options all render as the pointer moves.
+  'prop-getter': {
+    scenario: 'hover-menu',
+    root: 'Dropdown',
+    waste: cascadeOf('Dropdown'),
+    files: ['hooks/useListbox.ts', 'components/ui/Dropdown.tsx'],
+    named: ['useListbox.ts', 'Dropdown.tsx'],
+    complaint: 'Moving the pointer down the Assignee filter on the issue list feels sticky.',
+  },
+  // The composer's reference index built as useState's argument: rebuilt on every render and thrown away.
+  'eager-init': {
+    scenario: 'comment',
+    root: 'CommentComposer',
+    waste: msPerHit('CommentComposer'),
+    shown: slowAt('CommentComposer'),
+    files: ['features/issues/CommentComposer.tsx', 'lib/search.ts'],
+    named: ['CommentComposer.tsx'],
+    complaint: 'Writing a comment on a busy issue is choppy, while the rest of the page keeps up.',
   },
   // The chart's data rebuilt on every render, and the hover renders it.
   'chart-no-memo': {

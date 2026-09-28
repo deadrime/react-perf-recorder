@@ -30,3 +30,36 @@ export function matchesAllWords(query: string, text: string) {
     .filter(Boolean)
     .every((word) => t.includes(word));
 }
+
+export interface ReferenceIndex {
+  entries: Array<{ key: string; title: string }>;
+  grams: Map<string, Set<number>>;
+}
+
+/** Trigrams of every issue's key, title and description, for the `#` references in a comment. */
+export function buildReferenceIndex(issues: Array<{ key: string; title: string; description: string }>): ReferenceIndex {
+  const entries = issues.map(({ key, title }) => ({ key, title }));
+  const grams = new Map<string, Set<number>>();
+  issues.forEach((issue, n) => {
+    const text = ` ${issue.key} ${issue.title} ${issue.description} `.toLowerCase();
+    for (let at = 0; at + 3 <= text.length; at++) {
+      const gram = text.slice(at, at + 3);
+      let hits = grams.get(gram);
+      if (!hits) grams.set(gram, (hits = new Set()));
+      hits.add(n);
+    }
+  });
+  return { entries, grams };
+}
+
+/** The issues whose key, title or description holds every trigram of the query; a query under three letters matches key prefixes. */
+export function searchReferences({ entries, grams }: ReferenceIndex, query: string, limit = 5) {
+  const q = query.toLowerCase();
+  if (q.length < 3) return entries.filter((e) => e.key.toLowerCase().startsWith(q)).slice(0, limit);
+  let found = [...(grams.get(q.slice(0, 3)) ?? [])];
+  for (let at = 1; at + 3 <= q.length && found.length; at++) {
+    const hits = grams.get(q.slice(at, at + 3));
+    found = found.filter((n) => hits?.has(n));
+  }
+  return found.slice(0, limit).map((n) => entries[n]);
+}
