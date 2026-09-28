@@ -1,4 +1,4 @@
-import { useMemo, useCallback, useRef, memo, useContext, useState, createContext, useEffect, type ReactNode } from 'react';
+import { act, useMemo, useCallback, useRef, memo, useContext, useState, createContext, useEffect, Suspense, type ReactNode } from 'react';
 import { createStore, useStore } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
 import { flushSync } from 'react-dom';
@@ -256,6 +256,73 @@ describe('Recorder', () => {
     expect(engine.findComponents('Row')).toHaveLength(2);
   });
 
+  it('counts a memo with a compare function only when the compare lets it render', () => {
+    let pick!: Setter;
+    const Row = memo(
+      function PickRow({ n, on }: { n: number; on: boolean; onPick: () => void }) {
+        return <li>{on ? `[${n}]` : n}</li>;
+      },
+      (a, b) => a.n === b.n && a.on === b.on
+    );
+    const List = () => {
+      const [picked, setPicked] = useState(0);
+      pick = setPicked;
+      return (
+        <ul>
+          {[0, 1, 2, 3].map((n) => (
+            <Row key={n} n={n} on={n === picked} onPick={() => setPicked(n)} />
+          ))}
+        </ul>
+      );
+    };
+    mount(<List />);
+    const { recorder } = makeRecorder();
+    recorder.start();
+    flush(() => pick(1));
+    const rec = recorder.stop();
+    // The two rows whose `on` changed; the other two were skipped by the compare, though their wrapper took new props.
+    const row = rec.components.find((c) => c.name === 'PickRow')!;
+    expect(row).toMatchObject({ renders: 2, withoutDom: 0, memo: true });
+    expect(row.library).toBeUndefined();
+    expect(reasonsOf(rec, row)).toEqual(['parent: props on | new ref, same content: onPick']);
+  });
+
+  it('makes what renders again when a Suspense boundary retries a root of that commit', async () => {
+    let show!: Setter;
+    let resolve!: () => void;
+    let ready = false;
+    const wait = new Promise<void>((r) => (resolve = r)).then(() => {
+      ready = true;
+    });
+    const Panel = ({ n }: { n: number }) => {
+      if (n > 0 && !ready) throw wait;
+      return <p>panel {n}</p>;
+    };
+    const Tabs = () => {
+      const [n, setN] = useState(0);
+      show = setN;
+      return (
+        <section>
+          <Suspense fallback={<i>loading</i>}>
+            <Panel n={n} />
+          </Suspense>
+        </section>
+      );
+    };
+    mount(<Tabs />);
+    const { recorder } = makeRecorder();
+    recorder.start();
+    flush(() => show(1));
+    await act(async () => {
+      resolve();
+      await wait;
+    });
+    const rec = recorder.stop();
+    // The panel's second try is nobody's parent render: the data it waited for came.
+    expect(rec.roots.map((r) => r.name)).toEqual(['Tabs', 'Panel']);
+    expect(reasonsOf(rec, rec.roots.find((r) => r.name === 'Panel')!)).toEqual(['props: n']);
+  });
+
   it('keeps commit ids unique past the timeline limit, and points only at the commits it kept', () => {
     let set!: Setter;
     const Counter = () => {
@@ -399,6 +466,37 @@ describe('Recorder', () => {
     expect(commit.ms).toBeCloseTo(ownerMs, 2);
     expect(owner.self!).toBeLessThanOrEqual(owner.ms!);
     expect(owner.children[0].ms!).toBeLessThanOrEqual(owner.ms!);
+  });
+
+  it("takes a nested root's time out of the root it renders under", () => {
+    let set!: Setter;
+    const Ctx = createContext(0);
+    const Slow = () => {
+      const v = useContext(Ctx);
+      const until = performance.now() + 20;
+      while (performance.now() < until);
+      return <i>{v}</i>;
+    };
+    const MemoSlow = memo(Slow);
+    const Page = () => {
+      const [v, setV] = useState(0);
+      set = setV;
+      return (
+        <Ctx.Provider value={v}>
+          <MemoSlow />
+        </Ctx.Provider>
+      );
+    };
+    mount(<Page />);
+    const { recorder } = makeRecorder();
+    recorder.start();
+    flush(() => set(1));
+    const rec = recorder.stop();
+    const ms = (name: string) => rec.roots.find((root) => root.name === name)!.renderMs!;
+    // Slow is a root of its own through the context; its 20 ms are its, not the page's too.
+    expect(ms('Slow')).toBeGreaterThanOrEqual(19);
+    expect(ms('Page')).toBeLessThan(10);
+    expect(ms('Page') + ms('Slow')).toBeCloseTo(rec.commits.list[0].ms!, 0);
   });
 
   it('ranks a root by what it mounts too, and counts the mounts of each commit', () => {

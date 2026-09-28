@@ -3,13 +3,16 @@ import { useParams } from 'react-router-dom';
 import { BugStrip } from '../Demo';
 import { EffectChain } from './EffectChain';
 import { EmptyDefault } from './EmptyDefault';
+import { Fallback } from './Fallback';
 import { HeavyList } from './HeavyList';
 import { Leak } from './Leak';
 import { LibraryContext } from './LibraryContext';
 import { Measure } from './Measure';
+import { PropGetters } from './PropGetters';
 import { QueryFields } from './QueryFields';
 import { ReduxFavorites } from './ReduxFavorites';
 import { WholeCopy } from './WholeCopy';
+import { Windowed } from './Windowed';
 
 export interface AdvancedCase {
   title: string;
@@ -33,6 +36,16 @@ export const ADVANCED: Record<string, AdvancedCase> = {
     title: 'the field first, the list when there is time',
     what: 'Two thousand rows filtered with every letter make typing stutter; useDeferredValue keeps the field ahead of the list.',
     element: HeavyList,
+  },
+  window: {
+    title: 'ten thousand rows, a dozen on the screen',
+    what: 'A log with every line in the DOM renders all of them for one switch; windowed, it renders the twenty or so it shows.',
+    element: Windowed,
+  },
+  suspense: {
+    title: 'a tab that hides behind its spinner',
+    what: 'A tab set straight away swaps the panel for a spinner while its data comes; set in a transition, the old panel stays.',
+    element: Fallback,
   },
   query: {
     title: 'read only the fields you show',
@@ -59,6 +72,11 @@ export const ADVANCED: Record<string, AdvancedCase> = {
     title: 'every card reads the whole list',
     what: 'A Redux selector that returns the whole favourites array renders every card for a star on one.',
     element: ReduxFavorites,
+  },
+  getters: {
+    title: 'a prop getter makes every option new',
+    what: "A package's getItemProps builds new handlers on every call: every memo option renders for a move of the pointer.",
+    element: PropGetters,
   },
   leak: {
     title: 'what stays behind',

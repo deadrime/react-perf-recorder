@@ -7,9 +7,10 @@ import { hookOf, hookText, reasonsById, textOf, waysOf, wayText } from '../../sr
  * Every panel of a textbook case says what the recorder will say about it. These record the scenario and check the
  * words: a page that promises `parent: props new ref, same content: icon` and gets something else is teaching the wrong thing.
  */
-const record = async (page: Page, url: string, act: () => Promise<void>) => {
+const record = async (page: Page, url: string, act: () => Promise<void>, ready?: () => Promise<void>) => {
   await page.goto(url);
   await page.locator('[data-case]').first().waitFor();
+  await ready?.();
   await page.waitForTimeout(300);
   await page.evaluate(() => (window.__REACT_PERF_RECORDER__ as RecorderGlobal).engine.start({ source: 'e2e', highlight: false }));
   await act();
@@ -144,4 +145,118 @@ test('a Redux store: named after its declaration, with the action that changed i
   expect(rec.plugins.redux.highlights).toEqual(
     expect.arrayContaining(['wholeListStore: 1 change, most by favorites/toggle ×1', 'ownFlagStore: 1 change, most by favorites/toggle ×1'])
   );
+});
+
+/** Both tab sets fetch their first tab on the way in: a recording starts once it has come. */
+const tabsLoaded = (page: Page) => async () => {
+  for (const side of ['blocking', 'transition']) await expect(page.getByTestId(`tabs-${side}`).getByTestId('tab-panel')).toBeVisible();
+};
+
+const component = (rec: RecordingV2, name: string) => rec.components.find((c) => c.name === name);
+const causesOf = (rec: RecordingV2, name: string) => (rec.roots.find((r) => r.name === name)?.causes ?? []).map(([key]) => key);
+
+test('a child that tells its parent in an effect: a second commit, core:effect, the parent as its root', async ({ page }) => {
+  const effect = 'core:effect @ src/basics/Notify.tsx';
+  const broken = await record(page, '/basics/notify', async () => {
+    for (const tag of ['bug', 'docs']) await page.getByTestId(`tag-effect-${tag}`).click();
+    await page.waitForTimeout(200);
+  });
+  expect(broken.totals.commits).toBe(4);
+  expect(broken.causes.find((c) => c.key === effect)?.commits).toBe(2);
+  expect(causesOf(broken, 'FiltersByEffect')).toContain(effect);
+
+  const fixed = await record(page, '/basics/notify', async () => {
+    for (const tag of ['bug', 'docs']) await page.getByTestId(`tag-event-${tag}`).click();
+    await page.waitForTimeout(200);
+  });
+  expect(fixed.totals.commits).toBe(2);
+  expect(fixed.causes.map((c) => c.key)).not.toContain(effect);
+});
+
+test('an initial value passed as a call: the same renders, a much longer time', async ({ page }) => {
+  const rec = await record(page, '/basics/init', async () => {
+    for (let i = 0; i < 3; i++) await page.getByTestId('render').click();
+  });
+  const ms = (name: string) => rec.roots.find((r) => r.name === name)!.renderMs!;
+  expect(rec.roots.find((r) => r.name === 'NotesEager')!.hits).toBe(rec.roots.find((r) => r.name === 'NotesLazy')!.hits);
+  expect(ms('NotesEager')).toBeGreaterThan(ms('NotesLazy') * 2);
+});
+
+test('a draft restarted from an effect: two commits for a switch; set while rendering, one', async ({ page }) => {
+  const rec = await record(page, '/basics/init', async () => {
+    for (let i = 0; i < 2; i++) await page.getByTestId('next-user').click();
+    await page.waitForTimeout(200);
+  });
+  expect(rec.causes.find((c) => c.key === 'core:effect @ src/basics/Init.tsx')?.commits).toBe(2);
+  expect(rec.roots.find((r) => r.name === 'EditorByEffect')!.hits).toBe(4);
+  expect(rec.roots.find((r) => r.name === 'EditorWhileRendering')!.hits).toBe(2);
+});
+
+test('a tab set straight away: the spinner mounts, the panel is the root of a Retry commit', async ({ page }) => {
+  const rec = await record(
+    page,
+    '/advanced/suspense',
+    async () => {
+      await page.getByTestId('tab-blocking-activity').click();
+      await expect(page.getByTestId('tabs-blocking').getByTestId('tab-panel')).toHaveAttribute('data-tab', 'activity');
+      await page.waitForTimeout(100);
+    },
+    tabsLoaded(page)
+  );
+  // React 19 may render the suspended panel once more in a Retry lane of its own, before the data comes.
+  expect(rec.totals.lanes).toMatchObject({ Sync: 1, Retry: expect.any(Number) });
+  expect(component(rec, 'Spinner')?.mounts).toBe(1);
+  expect(said(rec, 'TabPanel')).toContain('props: tab');
+});
+
+test('a tab set in a transition: no spinner, the panel comes in a Transition commit', async ({ page }) => {
+  const rec = await record(
+    page,
+    '/advanced/suspense',
+    async () => {
+      await page.getByTestId('tab-transition-activity').click();
+      await expect(page.getByTestId('tabs-transition').getByTestId('tab-panel')).toHaveAttribute('data-tab', 'activity');
+      await page.waitForTimeout(100);
+    },
+    tabsLoaded(page)
+  );
+  expect(rec.totals.lanes.Transition).toBe(1);
+  expect(component(rec, 'Spinner')).toBeUndefined();
+  expect(said(rec, 'TabPanel')).toContain('parent: props tab');
+});
+
+test('a windowed log: twenty-odd renders for a switch, and a scroll is mounts, not renders', async ({ page }) => {
+  const whole = await record(page, '/advanced/window', () => page.getByTestId('time-whole').check());
+  expect(component(whole, 'Line')?.renders).toBe(10_000);
+
+  const windowed = await record(page, '/advanced/window', () => page.getByTestId('time-window').check());
+  expect(component(windowed, 'Line')?.renders).toBeLessThan(30);
+
+  const scrolled = await record(page, '/advanced/window', async () => {
+    await page.getByTestId('log-window').evaluate(async (el) => {
+      for (let i = 0; i < 4; i++) {
+        el.scrollTop += 200;
+        await new Promise((resolve) => setTimeout(resolve, 80));
+      }
+    });
+  });
+  expect(component(scrolled, 'Line')).toMatchObject({ renders: 0 });
+  expect(component(scrolled, 'Line')!.mounts).toBeGreaterThan(0);
+  expect(scrolled.totals.rendersWithoutDom).toBe(0);
+});
+
+test('options from a prop getter: parent: props new ref, same content: onMouseEnter, onClick; with a compare, highlighted', async ({ page }) => {
+  const move = (side: string) => async () => {
+    const options = page.getByTestId(`option-${side}`);
+    for (let i = 0; i < 4; i++) await options.nth(i).hover();
+  };
+  const props = await record(page, '/advanced/getters', move('props'));
+  expect(said(props, 'OptionByProps')).toContain('parent: props new ref, same content: onMouseEnter, onClick');
+  expect(component(props, 'OptionByProps')!.renders).toBe(48);
+
+  const compare = await record(page, '/advanced/getters', move('compare'));
+  // The memo with a compare function is one component, the app's own, counted when the compare lets it render.
+  expect(component(compare, 'OptionByCompare')).toMatchObject({ renders: 7, withoutDom: 0, memo: true });
+  expect(component(compare, 'OptionByCompare')!.library).toBeUndefined();
+  expect(said(compare, 'OptionByCompare').every((text) => text.startsWith('parent: props highlighted'))).toBe(true);
 });
