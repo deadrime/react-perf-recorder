@@ -293,6 +293,7 @@ details.fold[open] > summary::before { content: '▾'; }
 .growth-row .who { min-width: 72px; }
 .growth-origin { display: flex; align-items: baseline; gap: 6px; margin: 3px 0 3px 8px; min-width: 0; }
 .growth-origin code { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.growth-origin .badge { flex: none; white-space: nowrap; }
 .plugin { padding: 5px 0; border-top: 1px solid var(--rule-soft); }
 .plugin:first-child { border-top: 0; }
 .plugin-name { font-size: 11px; font-weight: 600; color: var(--label); margin-bottom: 2px; }
