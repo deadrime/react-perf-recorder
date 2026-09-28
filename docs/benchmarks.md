@@ -132,12 +132,14 @@ npm run build
 bash test/eval-plugin/run.sh --runs 2 -j 6 --keep-temp --output-dir .agent-artifacts/evals
 node test/eval-plugin/verify.mjs .agent-artifacts/evals/aggregate-result.json
 node test/eval-plugin/summarize.mjs .agent-artifacts/evals/aggregate-result.json
-node test/eval-plugin/transcripts.mjs .agent-artifacts/evals/aggregate-result.json
+node test/eval-plugin/transcripts.mjs .agent-artifacts/evals/aggregate-result.json --publish
 ```
 
 `run.sh` runs `claude plugin eval` on the cases in `test/eval-plugin/evals`, keeping each run's sandbox — or only
 some of them, `--cases decoys-rec,fallback-array-rec`;
 `verify.mjs` records what each agent left; `summarize.mjs` writes the tables above and the numbers the site draws
-them from, `docs/benchmarks.json`; `transcripts.mjs` keeps every run of it in
-[`docs/benchmarks/transcripts`](benchmarks/transcripts/README.md) — the prompt, the answer, the diff the agent left and
-its steps — so a wrong answer can be read after the sandboxes are gone.
+them from, `docs/benchmarks.json`; `transcripts.mjs` writes every run of it to `.agent-artifacts/transcripts` — the
+prompt, the answer, the diff the agent left and its steps — so a wrong answer can be read after the sandboxes are gone.
+With `--publish` it also commits them to the
+[`benchmarks`](https://github.com/deadrime/react-perf-recorder/tree/benchmarks) branch, a folder a run, which holds
+nothing else: about a megabyte a run, they stay out of `dev` and the package.

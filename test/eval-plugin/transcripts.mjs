@@ -1,8 +1,10 @@
 #!/usr/bin/env node
 // Every run of a `claude plugin eval` result as a transcript to read later: what the agent called and saw, its
 // answer, the verdicts, and the diff it left against the case's source. One markdown file per run and an index, in
-// docs/benchmarks/transcripts/ unless --out says otherwise; the folder is replaced, git keeps the older runs.
-//   node test/eval-plugin/transcripts.mjs .agent-artifacts/evals/aggregate-result.json [--out <dir>]
+// .agent-artifacts/transcripts/<run's start> unless --out says otherwise. --publish then commits that folder to the
+// `benchmarks` branch, which holds only transcripts, and pushes it; a folder written before can be published alone.
+//   node test/eval-plugin/transcripts.mjs .agent-artifacts/evals/aggregate-result.json [--out <dir>] [--publish]
+//   node test/eval-plugin/transcripts.mjs .agent-artifacts/transcripts/2026-09-28T00-08 --publish
 // Needs the sandboxes `run.sh --keep-temp` left; run it after verify.mjs to have its verdicts in.
 import { execFileSync, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -15,9 +17,65 @@ const repo = path.resolve(here, '../..');
 const args = process.argv.slice(2);
 const input = args.find((a) => !a.startsWith('--') && args[args.indexOf(a) - 1] !== '--out');
 const outIndex = args.indexOf('--out');
-const out = path.resolve(outIndex >= 0 ? args[outIndex + 1] : path.join(repo, 'docs/benchmarks/transcripts'));
-if (!input) throw new Error('usage: transcripts.mjs <aggregate-result.json> [--out <dir>]');
+if (!input) throw new Error('usage: transcripts.mjs <aggregate-result.json | transcripts dir> [--out <dir>] [--publish]');
+const BRANCH = 'benchmarks';
+const git = (cwd, ...a) => execFileSync('git', a, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'] }).trim();
+
+/** Commits a folder of transcripts to the transcripts branch as transcripts/<folder's name> and pushes it. */
+function publish(dir) {
+  const id = path.basename(dir);
+  const parent = spawnSync('git', ['fetch', '-q', 'origin', BRANCH], { cwd: repo }).status === 0 && git(repo, 'rev-parse', 'FETCH_HEAD');
+  const wt = fs.mkdtempSync(path.join(os.tmpdir(), 'rpr-benchmarks-'));
+  try {
+    // A branch of its own history: a worktree off it, or an empty one the first time, so dev's files never get in.
+    if (parent) git(repo, 'worktree', 'add', '-q', '--detach', wt, parent);
+    else {
+      git(repo, 'worktree', 'add', '-q', '--detach', '--no-checkout', wt);
+      git(wt, 'read-tree', '--empty');
+    }
+    const target = path.join(wt, 'transcripts', id);
+    fs.rmSync(target, { recursive: true, force: true });
+    fs.cpSync(dir, target, { recursive: true });
+    const runs = fs
+      .readdirSync(path.join(wt, 'transcripts'))
+      .sort()
+      .reverse()
+      .map((name) => {
+        const about = fs.readFileSync(path.join(wt, 'transcripts', name, 'README.md'), 'utf8').split('\n')[2] ?? '';
+        return `- [${name}](transcripts/${name}/README.md): ${about.split(':')[0]}`;
+      });
+    fs.writeFileSync(
+      path.join(wt, 'README.md'),
+      [
+        '# Benchmark transcripts',
+        '',
+        "Every run of the agent benchmark, one folder a run, newest first: each file is one agent's prompt, answer, the diff it left and its steps. Written by `test/eval-plugin/transcripts.mjs --publish`; the benchmark itself and its numbers are `docs/benchmarks.md` on `dev` and `main`.",
+        '',
+        ...runs,
+        '',
+      ].join('\n')
+    );
+    git(wt, 'add', '-A');
+    const tree = git(wt, 'write-tree');
+    const count = fs.readdirSync(target).filter((f) => f !== 'README.md').length;
+    const commit = git(wt, 'commit-tree', tree, ...(parent ? ['-p', parent] : []), '-m', `docs(benchmarks): transcripts of ${count} runs, ${id}`);
+    git(repo, 'push', '-q', 'origin', `${commit}:refs/heads/${BRANCH}`);
+    console.log(`published to ${BRANCH} as transcripts/${id}`);
+  } finally {
+    spawnSync('git', ['worktree', 'remove', '--force', wt], { cwd: repo });
+    fs.rmSync(wt, { recursive: true, force: true });
+  }
+}
+
+if (fs.statSync(input).isDirectory()) {
+  if (!args.includes('--publish')) throw new Error(`${input} is a folder of transcripts already: add --publish to publish it`);
+  publish(path.resolve(input));
+  process.exit(0);
+}
 const run = JSON.parse(fs.readFileSync(input, 'utf8'));
+const out = path.resolve(
+  outIndex >= 0 ? args[outIndex + 1] : path.join(repo, '.agent-artifacts/transcripts', run.startedAt.slice(0, 16).replace(':', '-'))
+);
 const verified = (() => {
   try {
     return JSON.parse(fs.readFileSync(path.join(path.dirname(input), 'verify.json'), 'utf8')).cases;
@@ -158,7 +216,7 @@ fs.writeFileSync(
     '',
     `${index.length} runs of ${run.cases.length} cases, ${run.startedAt.slice(0, 10)}, Claude Code ${run.claudeVersion}, ${
       Object.keys(run.cases[0]?.arms ?? {}).length > 1 ? 'with the plugin and without it' : 'with the plugin only'
-    }: each file is one run's prompt, answer, the diff it left and its steps, long tool answers cut. Written by \`test/eval-plugin/transcripts.mjs\` from the run's sandboxes; the benchmark's numbers are in [benchmarks.md](../../benchmarks.md).`,
+    }: each file is one run's prompt, answer, the diff it left and its steps, long tool answers cut. Written by \`test/eval-plugin/transcripts.mjs\` from the run's sandboxes; the benchmark's numbers are in \`docs/benchmarks.md\`.`,
     '',
     '| Run | Plugin | Recording after | Failed checks | Cost | Time | Turns |',
     '| --- | --- | --- | --- | --: | --: | --: |',
@@ -167,3 +225,4 @@ fs.writeFileSync(
   ].join('\n')
 );
 console.log(`${index.length} transcripts in ${path.relative(process.cwd(), out) || '.'}`);
+if (args.includes('--publish')) publish(out);
