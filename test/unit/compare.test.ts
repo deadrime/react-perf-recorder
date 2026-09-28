@@ -155,12 +155,62 @@ describe('partial recordings and comparison', () => {
     expect(result.comparable).toBe(true);
   });
 
+  it('sets what grew in each run side by side, and words the growing counts with who left them', () => {
+    const before = aggregateEvents(meta, events(3));
+    const after = aggregateEvents(meta, events(3));
+    const metric = (start: number, end: number, growing?: true) => ({
+      start,
+      end,
+      peak: end,
+      perMin: (end - start) * 60,
+      ...(growing ? { growing } : {}),
+    });
+    before.growth = {
+      samples: [],
+      metrics: { cssRules: metric(100, 700, true), listeners: metric(5, 9, true) },
+      listeners: [
+        {
+          target: 'window',
+          type: 'resize',
+          origin: '@ src/Popover.tsx',
+          site: 'src/Popover.tsx:45',
+          code: "addEventListener('resize', place)",
+          live: 4,
+        },
+      ],
+    };
+    after.growth = { samples: [], metrics: { cssRules: metric(100, 101), listeners: metric(5, 5) } };
+    expect(compareRecordings(before, after).growth).toEqual({
+      cssRules: { before: 600, after: 1, delta: -599, pct: -100 },
+      listeners: { before: 4, after: 0, delta: -4, pct: -100 },
+    });
+    expect(summarize(before).growth).toEqual([
+      'CSS rules: 100 → 700 (+36000/min)',
+      "window/document listeners: 5 → 9 (+240/min), most from window resize @ src/Popover.tsx:45 addEventListener('resize', place) ×4",
+    ]);
+    expect(summarize(after).growth).toEqual(['nothing kept growing']);
+  });
+
   it('warns when the runs were taken differently', () => {
     const before = aggregateEvents(meta, events(30));
     const after = aggregateEvents({ ...meta, page: { ...meta.page, viewport: '390×719' }, conditions: { viewport: '390×719' } }, events(30));
     const result = compareRecordings(before, after);
     expect(result.comparable).toBe(false);
     expect(result.warnings[0]).toMatch(/viewport differs/);
+  });
+
+  it('warns when the runs began on another hash route, or their actions ended on different pages', () => {
+    const on = (url: string, startUrl?: string) => {
+      const rec = aggregateEvents(meta, events(30));
+      rec.page = { ...rec.page, url, ...(startUrl ? { startUrl } : {}) };
+      return rec;
+    };
+    const base = 'http://localhost:5173/?tick=150';
+    expect(compareRecordings(on(`${base}#/issues`), on(`${base}#/board`)).warnings).toContainEqual(expect.stringMatching(/^page differs/));
+    const ended = compareRecordings(on(`${base}#/issues?q=s+lon`, `${base}#/issues`), on(`${base}#/issues?q=s+lonxxx`, `${base}#/issues`));
+    expect(ended.warnings).toContainEqual(expect.stringMatching(/^the actions ended on different pages/));
+    // The recorder's own flag is not the page.
+    expect(compareRecordings(on(`${base}&rpr=rec#/issues`), on(`${base}#/issues`)).warnings.join()).not.toMatch(/page|pages/);
   });
 
   it('warns when only one run drew the highlight', () => {

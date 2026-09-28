@@ -244,6 +244,7 @@ function CommitDetail({ rec, commit, more }: { rec: RecordingV2; commit: CommitR
             title="Renders after which nothing in the DOM of that component changed"
           >{`${commit.noDom} wasted`}</span>
         ) : null}
+        {commit.mounts ? <span class="badge">{`${commit.mounts} mounts`}</span> : null}
         {commit.ms ? <span class="badge">{`${commit.ms}ms`}</span> : null}
         {commit.lane ? <span class="badge">{commit.lane}</span> : null}
         {commit.event ? <span class="badge">{commit.event}</span> : null}
@@ -615,8 +616,13 @@ export function Timeline({
       // From where the pinch began, not step by step: the scale of the last render lags the fingers.
       const { spread, middle } = spreadOf();
       const next = clampZoom(pinched.zoom * (spread / pinched.spread) ** PINCH_SPEED);
-      scrollTo.current = pinched.heldMs * baseScale(rec.durationMs, fitPx) * next - middle;
-      setZoom(next);
+      const left = pinched.heldMs * baseScale(rec.durationMs, fitPx) * next - middle;
+      // At a zoom limit nothing renders again, so the fingers' slide is scrolled here.
+      if (next === zoom) el.scrollLeft = Math.max(0, left);
+      else {
+        scrollTo.current = left;
+        setZoom(next);
+      }
       return;
     }
     const held = drag.current;

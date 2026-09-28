@@ -33,7 +33,9 @@ REACT_PERF_RECORDER_DIR=<abs path of the first checkout>/.agent-artifacts/perf-r
 - Same viewport, throttling, data, account and area on both sides.
 - Compare renders, not milliseconds — timings move with the machine. ±1 render on an action is noise (a feed tick or
   a poll landing on a keystroke); a result is clear when it moves more, or the same way on a second run.
-- Read `warnings` first: a different page, area or a partial side makes it no comparison.
+- Read `warnings` first: a different page, area or a partial side makes it no comparison, and so do actions that
+  ended on different pages. A replay types placeholder text where the recording kept no typed values, and says so:
+  a search or a filter then shows other results — record both sides with a script that types the real text.
 - A script run twice takes a different time: per-second rates move with the length. Read `actions` (per action,
   per character) and the whole-run `totals.renders`; for one component, its own counts in `components` or `watch`.
 - Roots that appeared and those that are gone say whether the work went away or moved; `match: 'name'` finds a root

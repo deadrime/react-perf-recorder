@@ -23,6 +23,7 @@ interface RootAgg {
   outside: boolean;
   hits: number;
   cascade: number;
+  mounts: number;
   times: number[];
   reasons: Map<number, number>;
   causes: Map<string, number>;
@@ -45,6 +46,7 @@ export function aggregateEvents(meta: SessionMeta, events: SessionEvent[]): Reco
   const commits: CommitRecord[] = [];
   const lanes: Record<string, number> = {};
   let renders = 0;
+  let mounts = 0;
   let noDom = 0;
   let outside = 0;
   let end = 0;
@@ -60,6 +62,7 @@ export function aggregateEvents(meta: SessionMeta, events: SessionEvent[]): Reco
           outside: Boolean(e.outside),
           hits: 0,
           cascade: 0,
+          mounts: 0,
           times: [],
           reasons: new Map(),
           causes: new Map(),
@@ -72,6 +75,7 @@ export function aggregateEvents(meta: SessionMeta, events: SessionEvent[]): Reco
       case 'commit': {
         end = Math.max(end, e.t);
         renders += e.n;
+        mounts += e.mounts ?? 0;
         noDom += e.noDom ?? 0;
         if (e.lane) lanes[e.lane] = (lanes[e.lane] ?? 0) + 1;
         for (const key of e.causes ?? []) {
@@ -80,12 +84,13 @@ export function aggregateEvents(meta: SessionMeta, events: SessionEvent[]): Reco
           c.commits++;
           causes.set(key, c);
         }
-        for (const [i, cascade, reasonIds] of e.roots ?? []) {
+        for (const [i, cascade, reasonIds, mounted] of e.roots ?? []) {
           const r = roots.get(i);
           if (!r) continue;
           if (r.outside) outside += cascade;
           r.hits++;
           r.cascade += cascade;
+          r.mounts += mounted ?? 0;
           r.times.push(e.t);
           for (const id of reasonIds) r.reasons.set(id, (r.reasons.get(id) ?? 0) + 1);
           for (const key of e.causes ?? []) r.causes.set(key, (r.causes.get(key) ?? 0) + 1);
@@ -98,6 +103,7 @@ export function aggregateEvents(meta: SessionMeta, events: SessionEvent[]): Reco
             atMs: e.t,
             ...(previous ? { sinceMs: +(e.t - previous.atMs).toFixed(1) } : {}),
             renders: e.n,
+            ...(e.mounts ? { mounts: e.mounts } : {}),
             ...(e.ms ? { ms: e.ms } : {}),
             ...(e.lane ? { lane: e.lane } : {}),
             ...(e.event ? { event: e.event } : {}),
@@ -130,10 +136,8 @@ export function aggregateEvents(meta: SessionMeta, events: SessionEvent[]): Reco
     }
   }
   const all = [...roots.values()];
-  const ordered = [
-    ...all.filter((r) => !r.outside).sort((a, b) => b.cascade - a.cascade),
-    ...all.filter((r) => r.outside).sort((a, b) => b.cascade - a.cascade),
-  ];
+  const byWeight = (a: RootAgg, b: RootAgg) => b.cascade + b.mounts - (a.cascade + a.mounts);
+  const ordered = [...all.filter((r) => !r.outside).sort(byWeight), ...all.filter((r) => r.outside).sort(byWeight)];
   const remap = new Map(ordered.map((r, index) => [r.i, index]));
   const stat = (r: RootAgg): RootStat => {
     return {
@@ -152,6 +156,7 @@ export function aggregateEvents(meta: SessionMeta, events: SessionEvent[]): Reco
       causes: topEntries(r.causes, 8),
       lanes: topEntries(r.lanes, 5),
       noDomChange: 0,
+      ...(r.mounts ? { mounts: r.mounts } : {}),
       ...(r.outside ? { scopeRenders: r.cascade } : {}),
     };
   };
@@ -189,7 +194,7 @@ export function aggregateEvents(meta: SessionMeta, events: SessionEvent[]): Reco
       commits: total,
       commitsInScope: total,
       renders,
-      mounts: 0,
+      mounts,
       rendersPerCommit: total ? +(renders / total).toFixed(1) : 0,
       rendersPerScopeCommit: total ? +(renders / total).toFixed(1) : 0,
       rendersFromOutside: outside,

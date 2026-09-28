@@ -280,3 +280,25 @@ test('a picked commit shows its render time as a flame chart: each link as wide 
   const titles = await page.locator('.tl-lane .tl-bar').evaluateAll((els) => els.map((el) => el.getAttribute('title') ?? ''));
   expect(titles.some((title) => /Search [\d.]+ms of [\d.]+ms/.test(title))).toBe(true);
 });
+
+test('what kept growing opens by itself, with the line that left the listeners behind', async ({ page }) => {
+  await page.goto('/advanced/leak?rpr=panel');
+  await page.locator('[data-rpr="record"]').click();
+  await page.getByTestId('run').click();
+  // Stopped as the run ends: expect.poll backs off to a second, and a flat tail that long hides the growth.
+  await page.waitForFunction(() => (document.querySelector('[data-testid=bar-fixed]') as HTMLElement | null)?.style.width === '100%');
+  await page.locator('[data-rpr="stop"]').click();
+  await expect(page.locator('[data-rpr="result"]')).toContainText('saved');
+  const growth = page.locator('[data-fold="growth"]');
+  await expect(growth).toHaveAttribute('open', '');
+  await expect(growth.locator('[data-key="cssRules"] .badge')).toHaveAttribute('data-tone', 'warn');
+  // Findings first, each with where it came from and what to change.
+  const listener = growth.locator('.growth-find', { hasText: 'window resize listener never removed' });
+  await expect(listener.locator('.growth-where')).toHaveText(/src\/advanced\/Leak\.tsx:\d+$/);
+  await expect(listener.locator('.growth-code')).toContainText("addEventListener('resize'");
+  await expect(growth.locator('.growth-find').first()).toContainText('LeakyProgress: a new CSS class for every width');
+  // The <style> elements are the CSS rules' leak, not a row of their own; what did not change is one line.
+  await expect(growth.locator('[data-key="styleElements"]')).toHaveCount(0);
+  await expect(growth.locator('[data-key="cssRules"]')).toContainText('in 100 new <style>');
+  await expect(growth.locator('.growth-still')).toContainText('unchanged:');
+});

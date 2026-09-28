@@ -20,7 +20,7 @@ import {
   wayText,
   type HookMode,
 } from '../shared/summary';
-import type { RecordingV2 } from '../shared/schema';
+import { GROWTH_KEYS, type RecordingV2 } from '../shared/schema';
 import { listingOf } from '../shared/listing';
 import { planReplay } from '../shared/replay';
 import { recordPage, SETUP_FILE } from './record';
@@ -42,6 +42,7 @@ const SECTIONS = [
   'timeline',
   'segments',
   'frames',
+  'growth',
   'navigations',
   'conditions',
   'warnings',
@@ -141,6 +142,7 @@ export function section(rec: RecordingV2 & { id?: string; status?: string }, nam
             i: commit.i,
             atSec: +(commit.atMs / 1000).toFixed(2),
             renders: commit.renders,
+            ...(commit.mounts ? { mounts: commit.mounts } : {}),
             ...(commit.noDom ? { noDomChange: commit.noDom } : {}),
             ...(commit.ms ? { renderMs: commit.ms } : {}),
             ...(commit.sinceMs ? { sinceMs: commit.sinceMs } : {}),
@@ -171,6 +173,17 @@ export function section(rec: RecordingV2 & { id?: string; status?: string }, nam
       return page(rec.segments);
     case 'frames':
       return { longTasks: rec.frames.longTasks, ...page(rec.frames.loaf.slice().sort((a, b) => b.duration - a.duration)) };
+    case 'growth': {
+      if (!rec.growth) return { note: 'recorded without growth sampling (growth: false, or an older version)' };
+      const { samples, ...rest } = rec.growth;
+      // A sample a second is too many to read: every n-th one, the last always kept.
+      const step = Math.max(1, Math.ceil(samples.length / 40));
+      return {
+        ...rest,
+        columns: ['atMs', ...GROWTH_KEYS],
+        samples: samples.filter((_, i) => i % step === 0 || i === samples.length - 1),
+      };
+    }
     case 'navigations':
       return page(rec.navigations);
     case 'conditions':
@@ -284,7 +297,10 @@ export function createServer(dir: string) {
               'with the props each parent handed on. timeline: one line per commit — when, what rendered, the action and causes, each ' +
               'root with its reasons, and the commit\'s cascade as a tree — for "what happened at 2.4s". actions: the element each ' +
               'one landed on, its component and file, what it cost. memos: useMemo/useCallback that keep recomputing, the dependency ' +
-              'that moved and its line.'
+              'that moved and its line. growth: DOM nodes, CSS rules, <style> elements, live intervals, window/document listeners ' +
+              'JS heap, observers and open sockets from start to stop, with slope, what kept growing, where the intervals, listeners and ' +
+              'observers left behind were added, and the components unmounted but still in memory after a garbage collection ' +
+              '(record_page collects before Stop) — for a leak.'
           ),
         top: z.number().int().min(1).max(100).optional().describe('How many entries of a long section, 10 by default.'),
         offset: z.number().int().min(0).optional().describe('Where to start in a long section, to page through it.'),
@@ -397,13 +413,16 @@ export function createServer(dir: string) {
       if (!plan.steps.length) {
         const ms = args.ms ?? Math.min(60_000, Math.max(200, Math.round(rec.durationMs)));
         const result = await recordPage(
-          { ...args, url: args.url ?? rec.page.url, ms, ...(scope ? { scope } : {}), ...(setup ? { setup } : {}) },
+          { ...args, url: args.url ?? rec.page.startUrl ?? rec.page.url, ms, ...(scope ? { scope } : {}), ...(setup ? { setup } : {}) },
           dir
         );
         return json({ ...result, warnings: [`${replay} has no actions: recorded the page as it is for ${ms} ms instead`, ...result.warnings] });
       }
       return json(
-        await recordPage({ ...args, ...(scope ? { scope } : {}), ...(setup ? { setup } : {}), replay: { ...plan, url: rec.page.url } }, dir)
+        await recordPage(
+          { ...args, ...(scope ? { scope } : {}), ...(setup ? { setup } : {}), replay: { ...plan, url: rec.page.startUrl ?? rec.page.url } },
+          dir
+        )
       );
     }
   );

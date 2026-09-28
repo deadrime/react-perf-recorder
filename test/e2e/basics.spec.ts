@@ -256,6 +256,40 @@ test('an effect that copies props into state costs a second render', async ({ pa
   expect(broken[0]).toBe(fixed[0] + 4);
 });
 
+test('a picker that hands its picks up from an effect renders twice for a click; told in the click, once', async ({ page }) => {
+  await page.goto('/basics/notify');
+  const before = { broken: await countsOf(page, 'broken'), fixed: await countsOf(page, 'fixed') };
+  for (const tag of ['bug', 'docs']) {
+    await page.getByTestId(`tag-effect-${tag}`).click();
+    await page.getByTestId(`tag-event-${tag}`).click();
+  }
+  await expect(page.getByTestId('picked-effect')).toHaveText('2 picked: bug, docs');
+  await expect(page.getByTestId('picked-event')).toHaveText('2 picked: bug, docs');
+  const after = { broken: await countsOf(page, 'broken'), fixed: await countsOf(page, 'fixed') };
+  // [the line above, the picker]: the picker renders for its own click and again for the page's commit.
+  expect(after.broken.map((n, i) => n - before.broken[i])).toEqual([2, 4]);
+  expect(after.fixed.map((n, i) => n - before.fixed[i])).toEqual([2, 2]);
+});
+
+test('an initial value passed as a call is worked out on every render; as a function, once', async ({ page }) => {
+  await page.goto('/basics/init');
+  const parsed = async (side: string) => Number(await page.getByTestId(`parsed-${side}`).getAttribute('data-parsed'));
+  const before = { eager: await parsed('eager'), lazy: await parsed('lazy') };
+  for (let i = 0; i < 3; i++) await page.getByTestId('render').click();
+  await expect.poll(() => parsed('eager')).toBe(before.eager + 3);
+  expect(await parsed('lazy')).toBe(before.lazy);
+});
+
+test('a draft restarted from an effect renders twice for a new user; set while rendering, once', async ({ page }) => {
+  await page.goto('/basics/init');
+  const before = { broken: await countsIn(page, 'reset', 'broken'), fixed: await countsIn(page, 'reset', 'fixed') };
+  for (let i = 0; i < 2; i++) await page.getByTestId('next-user').click();
+  await expect(page.getByTestId('draft-effect')).toHaveValue('Cy Ortiz');
+  await expect(page.getByTestId('draft-render')).toHaveValue('Cy Ortiz');
+  expect((await countsIn(page, 'reset', 'broken'))[0]).toBe(before.broken[0] + 4);
+  expect((await countsIn(page, 'reset', 'fixed'))[0]).toBe(before.fixed[0] + 2);
+});
+
 test('a component declared inside a render is mounted again every time', async ({ page }) => {
   await page.goto('/basics/nested');
   await page.getByTestId('note-in-one').fill('mine');
@@ -337,6 +371,8 @@ test('every case can show the code behind it, with the line that matters marked'
     'selection',
     'deps',
     'dialog',
+    'notify',
+    'init',
   ]) {
     await page.goto(`/basics/${id}`);
     const folded = page.locator('.code');

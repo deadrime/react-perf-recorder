@@ -1,5 +1,6 @@
-import type { ActionRecord, RecordingV2, RootStat } from './schema';
+import { GROWTH_KEYS, type ActionRecord, type RecordingV2, type RootStat } from './schema';
 import { actionText, wastingRoots } from './summary';
+import { pageAddress } from './url';
 
 export interface Delta {
   before: number | null;
@@ -248,8 +249,11 @@ export function compareRecordings(a: RecordingV2, b: RecordingV2, options: Compa
   const notes: string[] = [];
   const ms = [a.durationMs, b.durationMs];
   if (a.page.viewport !== b.page.viewport) warnings.push(`viewport differs: ${a.page.viewport} vs ${b.page.viewport}`);
-  if (new URL(a.page.url || 'http://x').pathname !== new URL(b.page.url || 'http://x').pathname)
-    warnings.push(`page differs: ${a.page.url} vs ${b.page.url}`);
+  // A hash route or a query is as much the page as its path; where the two began comes first.
+  const [startA, startB] = [a.page.startUrl ?? a.page.url, b.page.startUrl ?? b.page.url];
+  if (pageAddress(startA) !== pageAddress(startB)) warnings.push(`page differs: ${startA} vs ${startB}`);
+  else if (pageAddress(a.page.url) !== pageAddress(b.page.url))
+    warnings.push(`the actions ended on different pages: ${a.page.url} vs ${b.page.url} — the runs did not show the same thing`);
   if ((a.scope?.name ?? null) !== (b.scope?.name ?? null))
     warnings.push(`area differs: ${a.scope?.name ?? 'whole app'} vs ${b.scope?.name ?? 'whole app'}`);
   if (Math.max(...ms) > 2 * Math.min(...ms)) warnings.push(`durations differ more than twice: ${ms[0]}ms vs ${ms[1]}ms`);
@@ -327,6 +331,23 @@ export function compareRecordings(a: RecordingV2, b: RecordingV2, options: Compa
       .sort((p, q) => Math.abs(q.commitsPerSec.delta ?? 0) - Math.abs(p.commitsPerSec.delta ?? 0))
       .slice(0, top),
     actions: compareDigests(digestOf(a), digestOf(b)).actions,
+    // How much each count grew over the run: a fixed leak grows by less for the same scenario.
+    ...(a.growth && b.growth
+      ? {
+          growth: {
+            ...Object.fromEntries(
+              GROWTH_KEYS.filter((key) => a.growth!.metrics[key] && b.growth!.metrics[key]).map((key) => {
+                const [x, y] = [a.growth!.metrics[key]!, b.growth!.metrics[key]!];
+                return [key, delta(x.end - x.start, y.end - y.start)];
+              })
+            ),
+            // Unmounted and still held: counted only where both runs collected garbage before Stop.
+            ...(a.growth.retained?.collected && b.growth.retained?.collected
+              ? { retained: delta(a.growth.retained.retained ?? 0, b.growth.retained.retained ?? 0) }
+              : {}),
+          },
+        }
+      : {}),
     plugins,
     // What the change left rendering for nothing: the next cause, unless its render works besides the DOM.
     wastingAfter,
