@@ -640,7 +640,9 @@ export class Recorder {
       let chain = currentChain;
       const prev = this.prevOf(f);
       const rendered = didRender(prev, f);
-      const name = nameOf(f);
+      // memo(C, areEqual) is a fiber of its own above C's, and it takes new props even when areEqual skips C: C's
+      // fiber is the one that tells whether it rendered.
+      const name = f.tag === Tag.MemoComponent ? null : nameOf(f);
       let key = currentKey;
       let nextPending = pending;
       const zone = isHost(f) && this.zoneNodes.size ? this.zoneNodes.get(f.stateNode) ?? zoneTag : zoneTag;
@@ -745,9 +747,12 @@ export class Recorder {
       const untouched = this.prune && f.alternate !== null && f.child === f.alternate.child;
       if (f.child && !untouched) {
         const childPath = name && !this.structural(name, f) ? { name, up: currentPath } : currentPath;
+        // A boundary renders again on its own when the data it waited for comes: what is under it was not rendered by
+        // a parent then, it is a root of that retry.
+        const through = f.tag === Tag.SuspenseComponent || f.tag === Tag.OffscreenComponent;
         stack.push([
           f.child,
-          rendered,
+          through ? parentDid : rendered,
           childPath,
           rendered ? key : currentKey,
           nextPending,
@@ -855,7 +860,7 @@ export class Recorder {
         wrapper: this.wrapperRe.test(name) || isProvider(name) || wrapsProvider(f),
         withoutDom: 0,
         byParent: 0,
-        memo: f.tag === Tag.MemoComponent || f.tag === Tag.SimpleMemoComponent,
+        memo: f.tag === Tag.SimpleMemoComponent || f.return?.tag === Tag.MemoComponent,
         reasons: new Map(),
         chains: new Map(),
       };
