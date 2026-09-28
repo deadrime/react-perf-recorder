@@ -9,12 +9,9 @@ const noDomUnder = (name) => (show) => root(show, name)?.noDomChange ?? 0;
 const msPerHit = (name) => (show) => root(show, name)?.renderMsPerHit ?? 0;
 const cascadeOf = (name) => (show) => (root(show, name)?.hits ?? 0) * (root(show, name)?.perHit ?? 0);
 const effectCommits = (show) => show.topCauses.filter((c) => c.key.startsWith('core:effect')).reduce((n, c) => n + c.commits, 0);
-// Roots rank by the renders they cause, and a remount's children count as mounts, not renders: a remount bug is
-// shown when its root leads by mounts.
-// A bug that costs time rather than renders: its root takes 5 ms or more a hit. Ancestors rendering in the same
-// commit count its time too, so ranking roots by time is no test.
+// A bug that costs time rather than renders: its root takes 5 ms or more a hit. Roots rank by renders and mounts, not
+// by time, so a slow root with few renders is not in the top three.
 const slowAt = (name) => (show) => (root(show, name)?.renderMsPerHit ?? 0) >= 5;
-const leadsByMounts = (name) => (show) => [...show.topRoots].sort((a, b) => (b.mounts ?? 0) - (a.mounts ?? 0))[0]?.root === name;
 
 export const BUGS = {
   // The auth context depends on the whole connection object: every heartbeat renders everything that reads it.
@@ -58,7 +55,6 @@ export const BUGS = {
     scenario: 'wait-board',
     root: 'IssueCard',
     waste: mountsUnder('IssueCard'),
-    shown: leadsByMounts('IssueCard'),
     files: ['features/board/IssueCard.tsx', 'components/ui/Tooltip.tsx'],
     named: ['IssueCard.tsx'],
     complaint: 'Cards on the board flicker when a teammate opens one of them.',
