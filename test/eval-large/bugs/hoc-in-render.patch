@@ -1,0 +1,19 @@
+--- a/src/features/issues/IssueDrawer.tsx
++++ b/src/features/issues/IssueDrawer.tsx
+@@ -15,8 +15,6 @@
+ import { IssueDescription } from './IssueDescription';
+ import { IssueProperties } from './IssueProperties';
+ 
+-const GuardedComposer = withPermission(CommentComposer, 'issue:comment', ReadOnlyComposer);
+-
+ export function IssueDrawer() {
+   const { key = '' } = useParams();
+   const issue = useAppSelector((s) => selectIssueByKey(s, key));
+@@ -25,6 +23,7 @@
+   const viewers = useViewers(key);
+   const navigate = useNavigate();
+   const { pathname, search } = useLocation();
++  const GuardedComposer = withPermission(CommentComposer, 'issue:comment', ReadOnlyComposer);
+   useDocumentTitle(issue ? `${issue.key} ${issue.title}` : key);
+ 
+   const close = useCallback(() => navigate({ pathname: pathname.replace(/\/[^/]+$/, ''), search }), [navigate, pathname, search]);

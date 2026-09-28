@@ -1,0 +1,28 @@
+import { createContext, useCallback, useContext, useMemo, type ReactNode } from 'react';
+import type { Member } from '../api/types';
+import { useMe } from '../queries/workspace';
+import { useAppStore } from '../store/app';
+
+export type Permission = 'issue:edit' | 'issue:comment' | 'project:view' | 'settings:edit';
+
+interface Auth {
+  user: Member | null;
+  can(permission: Permission): boolean;
+}
+
+const AuthContext = createContext<Auth>({ user: null, can: () => false });
+
+export function AuthProvider({ children }: { children: ReactNode }) {
+  const { data } = useMe();
+  // Edits made while the socket is reconnecting would be lost: nobody may edit until it is back.
+  const connected = useAppStore((s) => s.connection.status !== 'reconnecting');
+  const permissions = data?.permissions;
+  const can = useCallback(
+    (permission: Permission) => !!permissions?.includes(permission) && (connected || !permission.endsWith(':edit')),
+    [permissions, connected]
+  );
+  const value = useMemo(() => ({ user: data ?? null, can }), [data, can]);
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+}
+
+export const useAuth = () => useContext(AuthContext);

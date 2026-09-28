@@ -1,0 +1,16 @@
+--- a/src/queries/members.ts
++++ b/src/queries/members.ts
+@@ -15,7 +15,12 @@
+ export const useMembers = () => useQuery(membersQuery);
+ 
+ export function useMembersById() {
+-  const { data } = useQuery({ ...membersQuery, select: indexById });
++  const { data } = useQuery({
++    queryKey: ['members', 'by-id'],
++    queryFn: () => api.members().then(indexById),
++    refetchInterval: MEMBERS_POLL_MS,
++    staleTime: 0,
++  });
+   return data;
+ }
+ 
