@@ -63,7 +63,8 @@ test('a width kept in state renders on every frame of a resize; the number that 
 
 test('a deferred list ends where the synchronous one does', async ({ page }) => {
   await page.goto('/advanced/deferred');
-  await page.getByTestId('search-sync').pressSequentially('lima', { delay: 30 });
+  // Case differs on purpose: the search ignores it.
+  await page.getByTestId('search-sync').pressSequentially('Lima', { delay: 30 });
   await page.getByTestId('search-deferred').pressSequentially('lima', { delay: 30 });
   const found = (side: string) => page.getByTestId(`found-${side}`).getAttribute('data-found');
   await expect.poll(() => found('deferred')).toBe(await found('sync'));
