@@ -25,7 +25,8 @@ numbers belong in the answer.
 4. **Fix where the recording puts the waste.** A root that renders for nothing — subscribed to more than it shows,
    fed a value that changes for nothing — is fixed at that cause, and its own `hits` have to fall; `memo` on its
    children leaves it rendering. A root whose render is needed is fixed below it, and its renders per hit have to
-   fall. Whether it is needed is in `ownDomUnchanged`, not in `noDomChange`, which counts what changed anywhere under
+   fall — unless it comes more often than the actions behind it: more commits from a timer, an effect or a store
+   than there were clicks and keys is fixed at what schedules them (`topCauses`), and its `hits` have to fall. Whether it is needed is in `ownDomUnchanged`, not in `noDomChange`, which counts what changed anywhere under
    it: a root whose own elements stayed as they were in most of its hits — a form root whose only change is the
    letter in its child's input — renders for nothing, and the fix is in it. When its reason is a package's own state
    (`[package] useX › State`), the root reads more of what that hook returned than it shows — a getter, a proxied

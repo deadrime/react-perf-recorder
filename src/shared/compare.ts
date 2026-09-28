@@ -1,5 +1,6 @@
 import { GROWTH_KEYS, type ActionRecord, type RecordingV2, type RootStat } from './schema';
 import { actionText, wastingRoots } from './summary';
+import { pageAddress } from './url';
 
 export interface Delta {
   before: number | null;
@@ -248,8 +249,11 @@ export function compareRecordings(a: RecordingV2, b: RecordingV2, options: Compa
   const notes: string[] = [];
   const ms = [a.durationMs, b.durationMs];
   if (a.page.viewport !== b.page.viewport) warnings.push(`viewport differs: ${a.page.viewport} vs ${b.page.viewport}`);
-  if (new URL(a.page.url || 'http://x').pathname !== new URL(b.page.url || 'http://x').pathname)
-    warnings.push(`page differs: ${a.page.url} vs ${b.page.url}`);
+  // A hash route or a query is as much the page as its path; where the two began comes first.
+  const [startA, startB] = [a.page.startUrl ?? a.page.url, b.page.startUrl ?? b.page.url];
+  if (pageAddress(startA) !== pageAddress(startB)) warnings.push(`page differs: ${startA} vs ${startB}`);
+  else if (pageAddress(a.page.url) !== pageAddress(b.page.url))
+    warnings.push(`the actions ended on different pages: ${a.page.url} vs ${b.page.url} — the runs did not show the same thing`);
   if ((a.scope?.name ?? null) !== (b.scope?.name ?? null))
     warnings.push(`area differs: ${a.scope?.name ?? 'whole app'} vs ${b.scope?.name ?? 'whole app'}`);
   if (Math.max(...ms) > 2 * Math.min(...ms)) warnings.push(`durations differ more than twice: ${ms[0]}ms vs ${ms[1]}ms`);

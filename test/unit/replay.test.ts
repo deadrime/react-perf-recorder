@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { planReplay } from '../../src/shared/replay';
+import { placeholderTyping, planReplay } from '../../src/shared/replay';
 import type { ActionRecord } from '../../src/shared/schema';
 
 const at = (id: number, atMs: number, rest: Partial<ActionRecord>): ActionRecord => ({ id, kind: 'click', atMs, endMs: atMs, ...rest });
@@ -59,5 +59,16 @@ describe('planReplay', () => {
     expect(plan.steps).toEqual([]);
     expect(plan.skipped).toHaveLength(3);
     expect(plan.skipped[1]).toMatch(/chosen option was not recorded/);
+  });
+
+  it('says when it typed placeholder text, and not when it had the text', () => {
+    const field = { tag: 'input', selector: '[data-testid="q"]' };
+    const typing = (value?: string) =>
+      planReplay({
+        durationMs: 3000,
+        actions: [at(1, 100, { kind: 'typing', endMs: 900, chars: 3, length: 3, target: field, ...(value ? { value } : {}) })],
+      });
+    expect(placeholderTyping(typing())).toMatch(/^typed placeholder text for typing 3 chars? .*a script that types the real text/);
+    expect(placeholderTyping(typing('abc'))).toBeNull();
   });
 });

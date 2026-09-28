@@ -56,3 +56,15 @@ const maskLoose = (raw: string) =>
   raw
     .replace(/eyJ[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,}/g, MASK)
     .replace(new RegExp(`(${SECRET_NAME.source.slice(1, -1)})=[^&\\s]+`, 'gi'), `$1=${MASK}`);
+
+/** What page a url shows: its path, query and hash route, without the host or the recorder's own `rpr` flag. */
+export function pageAddress(raw: string): string {
+  try {
+    const url = new URL(raw || '/', 'http://localhost');
+    url.searchParams.delete('rpr');
+    url.searchParams.sort();
+    return `${url.pathname}${url.search}${url.hash}`;
+  } catch {
+    return raw;
+  }
+}

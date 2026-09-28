@@ -261,6 +261,7 @@ const medianGapMs = (times: number[]) => {
 export class Recorder {
   readonly t0 = performance.now();
   readonly startedAt = new Date();
+  private startUrl = '';
   private readonly config: EngineConfig;
   private readonly wrapperRe: RegExp;
   private readonly prune: boolean;
@@ -399,6 +400,7 @@ export class Recorder {
   }
 
   start() {
+    this.startUrl = safeUrl(location.href);
     this.roots = this.scope ? [hostRootOf(this.scope.target)].filter((r): r is FiberRoot => Boolean(r)) : findRoots();
     if (!this.roots.length) throw new RecorderError('NO_ROOT', 'React 18 dev root not found on the page');
     for (const root of this.roots) {
@@ -1395,6 +1397,7 @@ export class Recorder {
       tool: { version: this.config.version, source: this.options.source ?? 'panel', plugins: this.deps.plugins.info() },
       page: {
         url: safeUrl(location.href),
+        ...(this.startUrl && this.startUrl !== safeUrl(location.href) ? { startUrl: this.startUrl } : {}),
         title: document.title,
         viewport: `${innerWidth}×${innerHeight}`,
         dpr: devicePixelRatio,
