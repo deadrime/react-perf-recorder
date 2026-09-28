@@ -108,6 +108,8 @@ describe('eval cases', () => {
       expect(fixed.pattern.test(bug)).toBe(true);
       expect(fixed.pattern.test(bug.replace('void trigger();', ''))).toBe(false);
       expect(fixed.pattern.test(bug.replace(/fieldState/g, 'state'))).toBe(false);
+      const split = bug.replace('const { field, fieldState } = useController', '// not fieldState here\n  const { field } = useController');
+      expect(fixed.pattern.test(split)).toBe(false);
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }
