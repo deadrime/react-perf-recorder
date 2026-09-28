@@ -74,7 +74,14 @@ const Countries = () => {
   return (
     <>
       {Object.keys(CITIES).map((name) => (
-        <button key={name} type="button" data-testid={`country-${name}`} disabled={name === current} onClick={() => country.set(name)}>
+        <button
+          key={name}
+          type="button"
+          data-testid={`country-${name}`}
+          aria-pressed={name === current}
+          disabled={name === current}
+          onClick={() => country.set(name)}
+        >
           {name}
         </button>
       ))}

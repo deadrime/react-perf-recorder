@@ -389,6 +389,17 @@ input {
   color: var(--text);
 }
 
+/* A row of choices marks the picked one with aria-pressed, not by being first. */
+.bar button[aria-pressed] {
+  background: #2a2a33;
+  color: var(--text);
+}
+
+.bar button[aria-pressed='true'] {
+  background: var(--accent);
+  color: #fff;
+}
+
 .muted {
   color: var(--muted);
 }
