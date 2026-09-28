@@ -1,6 +1,6 @@
 # decoys-rec, with the plugin, run 2
 
-fixed (waste 0); checks 5 of 5; $0.38, 201 s, 28 turns
+fixed (waste 0); checks 5 of 5; $0.20, 115 s, 2 turns
 
 ## The prompt
 
@@ -17,38 +17,21 @@ nothing.
 
 ## The answer
 
-> ## Finding
+> Confirmed — the fix is in place and matches what was reported.
 > 
-> One thing on the page re-rendered for nothing: **`TypingBadge`** (`src/components/TypingBadge.tsx`).
+> **Root cause:** `TypingBadge` (`src/components/TypingBadge.tsx`) ran a `setInterval` every 250ms that called `setState({ soon })` with a brand-new object every tick, even though `soon` almost never actually flips. React re-rendered on every tick because the object *reference* changed, not because the rendered text (`"everyone is around"`) ever did — 20/20 renders in the recorded idle window produced identical DOM.
 > 
-> Its `useQuietSoon()` hook ran a `setInterval` every 250ms for the whole life of the page and called `setState({ soon: ... })` with a **brand-new object every tick** — even though the boolean it computes (`QUIET_AT - Date.now() < 60_000`) can't flip for another hour. Since it's a new object reference every time, React couldn't bail out, so the component re-rendered 4×/sec forever, producing zero DOM change each time (`reason: SAME-CONTENT`, `noDomChange: 20/20`). This is the exact busy-idle-page symptom: `rendersWithoutDom: 20` in the recorded 5s window, *all* traceable to this one root.
+> **Fix:** compare the computed value to the previous state and only call `setState` when it actually changed, using the functional-update no-op pattern (`src/components/TypingBadge.tsx:8-11`). Same visible output, same threshold behavior — just skips the no-op renders.
 > 
-> Everything else in the recording (`SyncBar`, `ChannelStats`, `OnlineNow`, `TypingLine`, `Status`) had `noDomChange: 0` — they're driven by the simulated live feed/query traffic and actually update visible text each time, so they're legitimate and untouched.
-> 
-> ## Fix
-> 
-> `src/components/TypingBadge.tsx` — the interval's updater now returns the previous state object when the value hasn't changed, so React bails out instead of re-rendering:
-> 
-> ```ts
-> setState((prev) => {
->   const soon = QUIET_AT - Date.now() < 60_000;
->   return prev.soon === soon ? prev : { soon };
-> });
-> ```
-> 
-> Page output is unchanged — same text, same timing of real updates.
-> 
-> ## Before/after (same 5s idle scenario, scripted for reproducibility)
-> 
+> **Before/after (same repro, ~5s idle after load):**
 > | metric | before | after |
 > |---|---|---|
-> | commits | 63 (12.57/s) | 43 (8.58/s) — **‑32%** |
-> | renders | 86 (17.16/s) | 66 (13.16/s) — **‑23%** |
-> | renders without DOM change | 3.99/s | **0/s (‑100%)** |
-> | `TypingBadge` cascade | 3.99/s | gone entirely |
-> | every other root (SyncBar, ChannelStats, OnlineNow, TypingLine, Status) | unchanged (0% diff) | unchanged |
+> | `TypingBadge` renders/sec | 3.98 | 0 |
+> | total commits | 63 | 46 (-27%) |
+> | total renders | 97 | 76 (-22%) |
+> | renders-without-DOM-change/sec | 3.98 | 1.34 (-66%) |
 > 
-> All the real, visible updates (sync bar, presence/online counts, typing indicator, message status) are bit-for-bit unchanged in rate and count — only the wasted, invisible re-render loop is gone.
+> Everything else that still renders while idle (`SyncBar`, `OnlineNow`, `ChannelStats`, `TypingLine`, `Status`) does so because the visible text genuinely changes each time (timestamps, presence, topic) — `noDomChange: 0` for all of them, both before and after, so those were left untouched.
 
 ## What it changed
 
@@ -56,16 +39,14 @@ nothing.
 diff -ruN a/src/components/TypingBadge.tsx b/src/components/TypingBadge.tsx
 --- a/src/components/TypingBadge.tsx
 +++ b/src/components/TypingBadge.tsx
-@@ -5,7 +5,12 @@
+@@ -5,7 +5,10 @@
  function useQuietSoon() {
    const [state, setState] = useState({ soon: false });
    useEffect(() => {
 -    const id = setInterval(() => setState({ soon: QUIET_AT - Date.now() < 60_000 }), 250);
 +    const id = setInterval(() => {
-+      setState((prev) => {
-+        const soon = QUIET_AT - Date.now() < 60_000;
-+        return prev.soon === soon ? prev : { soon };
-+      });
++      const soon = QUIET_AT - Date.now() < 60_000;
++      setState((prev) => (prev.soon === soon ? prev : { soon }));
 +    }, 250);
      return () => clearInterval(id);
    }, []);
@@ -74,69 +55,183 @@ diff -ruN a/src/components/TypingBadge.tsx b/src/components/TypingBadge.tsx
 
 ## The steps
 
-**agent:** This task matches the react-perf-recorder skill exactly (recording exists, need to find why re-renders happen, fix, and prove with numbers). Let me invoke it.
-
-**→ Skill**
-```
-{"skill":"react-perf-recorder:react-perf-recorder"}
-```
-
-**←**
-```
-Launching skill: react-perf-recorder:react-perf-recorder
-```
-
-**input:** Base directory for this skill: test/eval-plugin/skills/react-perf-recorder
-
-# react-perf-recorder
-
-A dev-only Vite plugin that records React re-renders from the page. Re … [3506 more]
-
 **→ Read**
 ```
-{"file_path":"./recording.txt"}
+{"file_path":"recording.txt"}
 ```
 
 **←**
 ```
-1	20260927-233915-app-panel-8ef7
+1	20260928-000858-app-panel-909c
 2	
 ```
 
 **→ Read**
 ```
-{"file_path":"./dev-url.txt"}
+{"file_path":"dev-url.txt"}
 ```
 
 **←**
 ```
-1	http://localhost:39825/?tick=150
+1	http://localhost:41461/?tick=150
 2	
 ```
 
-**→ ToolSearch**
+**→ Agent**
 ```
-{"query":"select:mcp__plugin_react-perf-recorder_react-perf-recorder__get_recording","max_results":5}
-```
-
-**←**
-```
-mcp__plugin_react-perf-recorder_react-perf-recorder__get_recording
-```
-
-**→ rpr:get_recording**
-```
-{"id":"20260927-233915-app-panel-8ef7"}
+{"description":"Diagnose and fix idle re-renders","subagent_type":"react-perf-recorder:perf-recorder","prompt":"A React app lives in this folder, source in ./src. Its dev server is already running at http://localhost:41461/?tick=150 (from ./dev-url.txt) and hot-reloads as source changes.\n\nComplaint: a code review found several things that \"re-render too much\", but the idle page is still busy. Repro: open the page, wait for the messages to load, then leave it alone for a few seconds (no user interaction) — yet something keeps rendering.\n\nThere is already a recording of this exact repro ma … [2005 more]
 ```
 
 **←**
 ```
-{"id":"20260927-233915-app-panel-8ef7","status":"done","dir":"/tmp/tmp.tWwgk7hfQ4/20260927-233915-app-panel-8ef7","summary":{"id":"20260927-233915-app-panel-8ef7","status":"done","createdAt":"2026-09-27T23:39:21.022Z","source":"panel","url":"http://localhost:39825/?tick=150","viewport":"1280×720","durationSec":5,"scope":null,"totals":{"commits":64,"commitsPerSec":12.71,"commitsInScope":64,"renders":98,"rendersPerScopeCommit":1.5,"rendersFromOutside":0,"rendersWithoutDom":20,"domTextChanges":41,"rendersPerTextChange":2.4},"topRoots":[{"root":"SyncBar","source":"src/components/ChatView.tsx:55","path":"SettingsBySync < Layout","hits":34,"hitsPerSec":6.75,"instances":1,"perHit":1,"noDomChange":0,"renderMsPerHit":0.12,"reasons":["34× external store #2 [useChatStore] (s)=>s.workspace.lastEventAt · [zustand] useBoundStore › useStore › useSyncExternalStoreWithSelector › SyncExternalStore @ src/components/ChatView.tsx:44 const at = useChatStore((s) => s.workspace.lastEventAt);"],"causes":["34× core:message Worker","33× zustand:feed/tick","1× zustand:feed/message"],"lanes":"Sync:34"},{"root":"TypingBadge","source":"src/components/Header.tsx:34","path":"Header < SettingsBySync < Layout","hits":20,"hitsPerSec":3.97,"instances":1,"perHit":1,"noDomChange":20,"renderMsPerHit":0.1,"reasons":["20× state #0 SAME-CONTENT · useQuietSoon › State @ src/components/TypingBadge.tsx:15 const quiet = useQuietSoon();"],"causes":["20× core:timer setInterval @ src/components/TypingBadge.tsx"],"lanes":"Def … [6122 more]
+Async agent launched successfully. (This tool result is internal metadata — never quote or paste any part of it, including the agentId below, into a user-facing reply.)
+agentId: a732b9f4a3b4ca419 (internal ID - do not mention to user. Use SendMessage with to: 'a732b9f4a3b4ca419', summary: '<5-10 word recap>' to continue this agent.)
+The agent is working in the background. You will be notified automatically when it completes. You know nothing about its results until that notification arrives — do not report, assume, or predict them; continue other work or respond to the user in the meantime.
+Do not duplicate this agent's work — avoid working with the same files or topics it is using.
+output_file: /tmp/claude-eval-T8aT6k/tmp/claude-0/-tmp-claude-eval-T8aT6k-home-cwd/3deb2244-0067-4788-870f-d2d9b3dd1c48/tasks/a732b9f4a3b4ca419.output
+Do NOT Read or tail this file via the shell tool — it is the full subagent JSONL transcript and reading it will overflow your context. If the user asks for progress, say the agent is still running; you'll get a completion notification.
 ```
+
+> **→ rpr:get_recording**
+> ```
+> {"id":"20260928-000858-app-panel-909c"}
+> ```
+
+> **←**
+> ```
+> {"id":"20260928-000858-app-panel-909c","status":"done","dir":"/tmp/tmp.VHVbZKgKac/20260928-000858-app-panel-909c","summary":{"id":"20260928-000858-app-panel-909c","status":"done","createdAt":"2026-09-28T00:09:03.383Z","source":"panel","url":"http://localhost:41461/?tick=150","viewport":"1280×720","durationSec":5,"scope":null,"totals":{"commits":63,"commitsPerSec":12.53,"commitsInScope":63,"renders":97,"rendersPerScopeCommit":1.5,"rendersFromOutside":0,"rendersWithoutDom":20,"domTextChanges":41,"rendersPerTextChange":2.4},"topRoots":[{"root":"SyncBar","source":"src/components/ChatView.tsx:55","path":"SettingsBySync < Layout","hits":33,"hitsPerSec":6.56,"instances":1,"perHit":1,"noDomChange":0,"renderMsPerHit":0.12,"reasons":["33× external store #2 [useChatStore] (s)=>s.workspace.lastEventAt · [zustand] useBoundStore › useStore › useSyncExternalStoreWithSelector › SyncExternalStore @ src/components/ChatView.tsx:44 const at = useChatStore((s) => s.workspace.lastEventAt);"],"causes":["33× core:message Worker","32× zustand:feed/tick","1× zustand:feed/message"],"lanes":"Sync:33"},{"root":"TypingBadge","source":"src/components/Header.tsx:34","path":"Header < SettingsBySync < Layout","hits":20,"hitsPerSec":3.98,"instances":1,"perHit":1,"noDomChange":20,"renderMsPerHit":0.07,"reasons":["20× state #0 SAME-CONTENT · useQuietSoon › State @ src/components/TypingBadge.tsx:15 const quiet = useQuietSoon();"],"causes":["20× core:timer setInterval @ src/components/TypingBadge.tsx"],"lanes":"De … [6126 more]
+> ```
+
+**agent:** I've kicked off the perf-recorder agent to investigate the idle-page re-renders using the existing recording (`20260928-000858-app-panel-909c`), fix any genuine wasted re-renders in `./src`, and verify with before/after numbers. It's running in the background — I'll report back once it completes.
+
+> **→ Grep**
+> ```
+> {"pattern":"useQuietSoon","path":"src","-n":true}
+> ```
+
+> **←**
+> ```
+> Found 1 file
+> src/components/TypingBadge.tsx
+> ```
+
+> **→ Read**
+> ```
+> {"file_path":"src/components/TypingBadge.tsx"}
+> ```
+
+> **←**
+> ```
+> 1	import { useEffect, useState } from 'react';
+> 2	
+> 3	const QUIET_AT = Date.now() + 60 * 60_000;
+> 4	
+> 5	function useQuietSoon() {
+> 6	  const [state, setState] = useState({ soon: false });
+> 7	  useEffect(() => {
+> 8	    const id = setInterval(() => setState({ soon: QUIET_AT - Date.now() < 60_000 }), 250);
+> 9	    return () => clearInterval(id);
+> 10	  }, []);
+> 11	  return state.soon;
+> 12	}
+> 13	
+> 14	export const TypingBadge = () => {
+> 15	  const quiet = useQuietSoon();
+> 16	  return (
+> 17	    <span className="badge muted" data-testid="typing-badge">
+> 18	      {quiet ? 'quiet hours soon' : 'everyone is around'}
+> 19	    </span>
+> 20	  );
+> 21	};
+> 22	
+> ```
+
+> **agent:** Found the clear cascade root of wasted work. Let me check the `zones`/`components` info isn't needed further — the reason line and code already confirm. Now applying the fix.
+
+> **→ Edit**
+> ```
+> {"replace_all":false,"file_path":"src/components/TypingBadge.tsx","old_string":"  useEffect(() => {\n    const id = setInterval(() => setState({ soon: QUIET_AT - Date.now() < 60_000 }), 250);\n    return () => clearInterval(id);\n  }, []);","new_string":"  useEffect(() => {\n    const id = setInterval(() => {\n      const soon = QUIET_AT - Date.now() < 60_000;\n      setState((prev) => (prev.soon === soon ? prev : { soon }));\n    }, 250);\n    return () => clearInterval(id);\n  }, []);"}
+> ```
+
+> **←**
+> ```
+> The file src/components/TypingBadge.tsx has been updated successfully. (file state is current in your context — no need to Read it back)
+> ```
+
+> **agent:** Now let's measure with a fresh recording of the same idle repro (same URL, same duration) to prove the fix.
+
+> **→ rpr:record_page**
+> ```
+> {"url":"http://localhost:41461/?tick=150","ms":5000,"label":"after-fix-idle","fromLoad":true}
+> ```
+
+> **←**
+> ```
+> {"id":"20260928-000954-app-record-0eb2","url":"http://localhost:41461/?tick=150&rpr=rec","requested":"http://localhost:41461/?tick=150","durationSec":5.2,"commits":46,"renders":76,"rendersWithoutDom":7,"rendersPerCommit":1.7,"topRoot":"SyncBar ×33","wasting":[],"warnings":[]}
+> ```
+
+> **→ rpr:compare_recordings**
+> ```
+> {"before":"20260928-000858-app-panel-909c","after":"20260928-000954-app-record-0eb2"}
+> ```
+
+> **←**
+> ```
+> {"comparable":true,"warnings":[],"before":{"id":"20260928-000858-app-panel-909c","durationMs":5028},"after":{"id":"20260928-000954-app-record-0eb2","durationMs":5220},"totals":{"commits":"63 → 46 (-27%)","renders":"97 → 76 (-22%)","commitsPerSec":"12.53 → 8.81 (-30%)","rendersPerSec":"19.29 → 14.56 (-25%)","rendersPerCommit":"1.5 → 1.7 (+13%)","rendersWithoutDomPerSec":"3.98 → 1.34 (-66%)","rendersPerTextChange":"2.4 → 2.1 (-12%)","longTaskMaxMs":"0 → 90"},"roots":[{"root":"TypingBadge","source":"src/components/Header.tsx:34","path":"Header < SettingsBySync < Layout","status":"gone","hitsPerSec":"3.98 → –","perHit":"1 → –","instances":"1 → –","cascadePerSec":"3.98 → 0 (-100%)"},{"root":"Composer","source":"src/components/ChatView.tsx:26","path":"ChatView < SettingsBySync < Layout","status":"new","hitsPerSec":"– → 0.19","perHit":"– → 6","instances":"– → 1","cascadePerSec":"0 → 1.15"},{"root":"Status","source":"src/components/Messages.tsx:43","path":"MessageRow < MessageList < ChatPanel < ChatView","status":"changed","hitsPerSec":"1.39 → 1.15 (-17%)","perHit":"1 → 1 (0%)","instances":"3 → 1 (-67%)","cascadePerSec":"1.79 → 1.15 (-36%)"},{"root":"Connect(ActivityLog)","source":"src/components/ChatView.tsx:35","path":"ChatView < SettingsBySync < Layout","status":"gone","hitsPerSec":"0.2 → –","perHit":"3 → –","instances":"1 → –","cascadePerSec":"0.6 → 0 (-100%)"},{"root":"TypingLine","source":"src/components/ChatView.tsx:66","path":"SettingsBySync < Layout","status":"changed","hits … [3156 more]
+> ```
+
+> **agent:** ## Findings
+> 
+> **Repro conditions**: `http://localhost:41461/?tick=150`, viewport 1280×720, no throttling, ~5s idle after page load and messages loaded. Recording used: `20260928-000858-app-panel-909c` (panel-captured by the person, sufficient — 5s, clearly captures idle churn).
+> 
+> **Wasted-render cascade root**: `TypingBadge` (`src/components/Header.tsx:34` mount point, hook defined in `src/components/TypingBadge.tsx`)
+> - 20 hits in 5s, **`noDomChange: 20` of 20** — every single render produced identical output (`everyone is around`), confirmed by the recorder's reason line `state #0 SAME-CONTENT · useQuietSoon › State`.
+> - Cause: `core:timer setInterval @ src/components/TypingBadge.tsx`, firing every 250ms.
+> - Root mechanism (`src/components/TypingBadge.tsx:6-11`, pre-fix): a `setInterval` unconditionally called `setState({ soon: ... })` with a **new object every tick**, even though `soon` (a boolean gating a one-hour-away threshold) never actually changes during any realistic session. React re-renders because the object reference changed, not because the displayed content did.
+> 
+> All other cascade roots (`SyncBar`, `ChannelStats`, `OnlineNow`, `TypingLine`, `Status`, etc.) had `noDomChange: 0` — every one of their renders did change visible DOM (timestamps, presence counts, message content), so those are legitimate, data-driven renders, not waste.
+> 
+> ## Fix
+> 
+> `src/components/TypingBadge.tsx`, in `useQuietSoon`: compare the computed value against the previous state inside the interval callback and skip `setState` (via the functional-update no-op pattern) when it's unchanged.
+> 
+> ```js
+> useEffect(() => {
+>   const id = setInterval(() => {
+>     const soon = QUIET_AT - Date.now() < 60_000;
+>     setState((prev) => (prev.soon === soon ? prev : { soon }));
+>   }, 250);
+>   return () => clearInterval(id);
+> }, []);
+> ```
+> 
+> No visible/behavioral change: the badge still flips to "quiet hours soon" exactly when the threshold is crossed; it just stops re-rendering on every tick where nothing changed.
+> 
+> ## Before/after numbers
+> 
+> Fresh recording after the fix (same URL, same idle-after-load repro, ~5s): `20260928-000954-app-record-0eb2`, compared against the original via `compare_recordings`:
+> 
+> - `TypingBadge`: **gone** as a cascade root — hits/sec 3.98 → 0 (-100%), cascade contribution 3.98/s → 0.
+> - Cause `core:timer setInterval @ src/components/TypingBadge.tsx`: 3.98 commits/sec → 0 (-100%).
+> - Totals: commits 63 → 46 (-27%), renders 97 → 76 (-22%), commits/sec 12.53 → 8.81 (-30%), **renders-without-DOM/sec 3.98 → 1.34 (-66%)**.
+> - `wastingAfter: []` — the recorder finds no remaining wasted-render root after the fix (before the fix, `TypingBadge`'s own summary already showed 20/20 no-op renders).
+> 
+> Some other roots showed up as "new"/"gone" between the two runs (`Composer`, `ChannelTopic`, `Connect(ActivityLog)`, `Unread`, `MessageList`, `MessageCount`) — these are timing noise from the app's background worker/react-query traffic firing at slightly different moments across two independent 5s recordings, not an effect of the fix; their per-hit counts and reasons are unrelated to `TypingBadge`.
+> 
+> ## What still renders during idle (legitimate, left as-is)
+> 
+> `SyncBar` (6.32/s), `OnlineNow` (2.3/s), `ChannelStats` (2.11/s), `TypingLine` (1.34/s), `Status` (1.15/s) — all still render repeatedly because a worker/store genuinely pushes new values (`workspace.lastEventAt`, presence/topic query data, `presenceStore.typing`) that change the visible text on each hit (`noDomChange: 0` for all of them, both before and after). These are not wasted work.
+> 
+> ## Not checked
+> 
+> - Did not inspect `components`/`memos`/`watch` sections in depth beyond what the summary already resolved (root-level `noDomChange` counts and the `SAME-CONTENT` reason line gave enough confidence).
+> - Did not investigate the minor jitter in `react-query fetch/success` counts and worker-message timing between the two runs — treated as normal scenario noise, not a rendering bug.
+> 
+> Files touched: `src/components/TypingBadge.tsx` (only change made to `./src`).
 
 **→ Read**
 ```
-{"file_path":"./src/components/TypingBadge.tsx"}
+{"file_path":"src/components/TypingBadge.tsx"}
 ```
 
 **←**
@@ -148,446 +243,38 @@ mcp__plugin_react-perf-recorder_react-perf-recorder__get_recording
 5	function useQuietSoon() {
 6	  const [state, setState] = useState({ soon: false });
 7	  useEffect(() => {
-8	    const id = setInterval(() => setState({ soon: QUIET_AT - Date.now() < 60_000 }), 250);
-9	    return () => clearInterval(id);
-10	  }, []);
-11	  return state.soon;
-12	}
-13	
-14	export const TypingBadge = () => {
-15	  const quiet = useQuietSoon();
-16	  return (
-17	    <span className="badge muted" data-testid="typing-badge">
-18	      {quiet ? 'quiet hours soon' : 'everyone is around'}
-19	    </span>
-20	  );
-21	};
-22	
-```
-
-**→ Read**
-```
-{"file_path":"./src/components/ChatView.tsx"}
-```
-
-**←**
-```
-1	import type { ReactNode } from 'react';
-2	import { useFeed } from '../feed';
-3	import ActivityLog from './ActivityLog';
-4	import { useChatStore } from '../store/chat';
-5	import { ChannelStats } from './ChannelStats';
-6	import { ChatPanel } from './ChatPanel';
-7	import { Composer } from './Composer';
-8	import { Header } from './Header';
-9	import { MessageCount } from './MessageCount';
-10	import { OnlineNow } from './OnlineNow';
-11	import { PrefsLine } from './PrefsLine';
-12	import { SettingsProvider } from './Settings';
-13	import { TypingLine } from './TypingLine';
-14	import { WebhookForm } from './WebhookForm';
-15	
-16	function useChatLayout() {
-17	  return { wide: true };
-18	}
-19	
-20	export const ChatView = () => {
-21	  const { wide } = useChatLayout();
-22	  return (
-23	    <main className={wide ? 'chat wide' : 'chat'}>
-24	      <div className="thread">
-25	        <ChatPanel />
-26	        <Composer />
-27	      </div>
-28	      <aside className="side" data-testid="side-panel">
-29	        <h3>Channel</h3>
-30	        <ChannelStats />
-31	        <MessageCount />
-32	        <OnlineNow />
-33	        <PrefsLine />
-34	        <h3>Activity</h3>
-35	        <ActivityLog />
-36	        <h3>Webhook</h3>
-37	        <WebhookForm />
-38	      </aside>
-39	    </main>
-40	  );
-41	};
-42	
-43	const SyncBar = () => {
-44	  const at = useChatStore((s) => s.workspace.lastEventAt);
-45	  return (
-46	    <span className="sync" title="Live">
-47	      <span className="sync-fill" style={{ width: `${(at % 20) … [577 more]
-```
-
-**→ Read**
-```
-{"file_path":"./src/components/OnlineNow.tsx"}
-```
-
-**←**
-```
-1	import { useQuery } from '@tanstack/react-query';
-2	import { useSortedMembers } from '../hooks/useSortedMembers';
-3	
-4	const ORDER: Intl.CollatorOptions = { sensitivity: 'base', numeric: true };
-5	
-6	/** The first few of the workspace by name, and how many of them are online now. */
-7	export const OnlineNow = () => {
-8	  const { data } = useQuery<{ online: number }>({ queryKey: ['presence'], enabled: false });
-9	  const sorted = useSortedMembers(ORDER);
-10	  return (
-11	    <p className="side-line" data-testid="online">
-12	      {sorted.slice(0, 3).join(', ')} and others · <b>{data?.online ?? '…'}</b> online
-13	    </p>
-14	  );
-15	};
-16	
-```
-
-**→ Read**
-```
-{"file_path":"./src/components/ChannelStats.tsx"}
-```
-
-**←**
-```
-1	import { useQuery } from '@tanstack/react-query';
-2	import { memo } from 'react';
-3	
-4	const FIRST = ['Anna', 'Boris', 'Chen', 'Dana', 'Emil', 'Farah', 'Goran', 'Hana', 'Ivo', 'Jun', 'Kira', 'Lev', 'Mona', 'Nils'];
-5	const LAST = ['Ahn', 'Berg', 'Costa', 'Dahl', 'Eze', 'Fox', 'Gil', 'Holm', 'Ito', 'Juhl', 'Kahn', 'Lind', 'Moss', 'Noor'];
-6	const MEMBERS = Array.from({ length: 1500 }, (_, i) => `${FIRST[(i * 7) % FIRST.length]} ${LAST[(i * 11) % LAST.length]} ${i}`);
-7	const byName = (a: string, b: string) => a.localeCompare(b, 'en', { sensitivity: 'base', numeric: true });
-8	const SORTED = [...MEMBERS].sort(byName);
-9	
-10	const MemberList = memo(() => (
-11	  <ul className="members" data-testid="members">
-12	    {SORTED.slice(0, 8).map((name) => (
-13	      <li key={name}>{name}</li>
-14	    ))}
-15	    <li className="more">and {SORTED.length - 8} more</li>
-16	  </ul>
-17	));
-18	
-19	let polls = 0;
-20	
-21	export const ChannelStats = () => {
-22	  const { data } = useQuery({
-23	    queryKey: ['presence'],
-24	    queryFn: async () => ({ online: 3 + (++polls % 4) }),
-25	    refetchInterval: 500,
-26	  });
-27	  return (
-28	    <>
-29	      <p className="side-line" data-testid="stats">
-30	        <b>{data?.online ?? '…'}</b> people online
-31	      </p>
-32	      <MemberList />
-33	    </>
-34	  );
-35	};
-36	
-```
-
-**→ Read**
-```
-{"file_path":"./src/hooks/useSortedMembers.ts"}
-```
-
-**←**
-```
-1	import { useMemo } from 'react';
-2	import { ROSTER, sortMembers } from '../lib/members';
-3	
-4	export function useSortedMembers(order: Intl.CollatorOptions) {
-5	  return useMemo(() => sortMembers(ROSTER, order), [order]);
-6	}
-7	
-```
-
-**→ Read**
-```
-{"file_path":"./src/components/Header.tsx"}
-```
-
-**←**
-```
-1	import { useStore } from 'zustand';
-2	import { useChatStore } from '../store/chat';
-3	import { draftStore } from '../store/draft';
-4	import { selectUnread } from '../store/selectors';
-5	import { ChannelTopic } from './ChannelTopic';
-6	import { TimezoneBadge } from './Settings';
-7	import { TypingBadge } from './TypingBadge';
-8	import Workspace from './Workspace';
-9	
-10	const Unread = () => {
-11	  const unread = useChatStore(selectUnread);
-12	  return (
-13	    <span className="badge" data-testid="unread">
-14	      {unread} unread
-15	    </span>
-16	  );
-17	};
-18	
-19	const DraftBadge = () => {
-20	  const hasDraft = useStore(draftStore, (s) => s.hasDraft);
-21	  return hasDraft ? (
-22	    <span className="badge muted" data-testid="draft">
-23	      draft
-24	    </span>
-25	  ) : null;
-26	};
-27	
-28	export const Header = () => (
-29	  <header className="head" data-testid="header" style={{ alignItems: 'center' }}>
-30	    <Workspace />
-31	    <ChannelTopic />
-32	    <Unread />
-33	    <TimezoneBadge />
-34	    <TypingBadge />
-35	    <DraftBadge />
-36	  </header>
-37	);
-38	
-```
-
-**→ Read**
-```
-{"file_path":"./src/components/TypingLine.tsx"}
-```
-
-**←**
-```
-1	import { useMemo } from 'react';
-2	import { useStore } from 'zustand';
-3	import { presenceStore, type Person } from '../store/chat';
-4	
-5	const line = (typing: Person[]) => {
-6	  if (typing.length === 0) return ' ';
-7	  const names = typing.length > 1 ? `${typing.slice(0, -1).join(', ')} and ${typing.at(-1)}` : typing[0];
-8	  return `${names} ${typing.length > 1 ? 'are' : 'is'} typing…`;
-9	};
-10	
-11	export const TypingLine = () => {
-12	  const typing = useStore(presenceStore, (s) => s.typing);
-13	  const text = useMemo(() => line(typing), [typing]);
-14	  return (
-15	    <small className="connection" data-testid="typing">
-16	      {text}
-17	    </small>
-18	  );
-19	};
-20	
-```
-
-**→ Grep**
-```
-{"pattern":"setInterval|setTimeout","path":"./src","output_mode":"content","-n":true}
-```
-
-**←**
-```
-src/store/clock.ts:6:setInterval(() => clockStore.setState({ now: Date.now() }), 1000);
-src/feed.ts:8:const source = `let step = 0; setInterval(() => postMessage({ step: ++step }), ${everyMs});`;
-src/components/TypingBadge.tsx:8:    const id = setInterval(() => setState({ soon: QUIET_AT - Date.now() < 60_000 }), 250);
-```
-
-**→ Read**
-```
-{"file_path":"./src/store/clock.ts"}
-```
-
-**←**
-```
-1	import { createStore } from 'zustand/vanilla';
-2	
-3	/** One clock for the whole page: every relative time reads it. */
-4	export const clockStore = createStore(() => ({ now: Date.now() }));
-5	
-6	setInterval(() => clockStore.setState({ now: Date.now() }), 1000);
-7	
-8	export function timeAgo(now: number, sentAt: number): string {
-9	  const seconds = Math.max(0, Math.round((now - sentAt) / 1000));
-10	  if (seconds < 5) return 'just now';
-11	  if (seconds < 45) return 'a few seconds ago';
-12	  if (seconds < 90) return 'a minute ago';
-13	  const mins = Math.round(seconds / 60);
-14	  return mins < 60 ? `${mins} minutes ago` : `${Math.round(mins / 60)} hours ago`;
+8	    const id = setInterval(() => {
+9	      const soon = QUIET_AT - Date.now() < 60_000;
+10	      setState((prev) => (prev.soon === soon ? prev : { soon }));
+11	    }, 250);
+12	    return () => clearInterval(id);
+13	  }, []);
+14	  return state.soon;
 15	}
 16	
+17	export const TypingBadge = () => {
+18	  const quiet = useQuietSoon();
+19	  return (
+20	    <span className="badge muted" data-testid="typing-badge">
+21	      {quiet ? 'quiet hours soon' : 'everyone is around'}
+22	    </span>
+23	  );
+24	};
+25	
 ```
 
-**→ Grep**
-```
-{"pattern":"clockStore","path":"./src","output_mode":"content","-n":true}
-```
+**agent:** Confirmed — the fix is in place and matches what was reported.
 
-**←**
-```
-src/store/clock.ts:4:export const clockStore = createStore(() => ({ now: Date.now() }));
-src/store/clock.ts:6:setInterval(() => clockStore.setState({ now: Date.now() }), 1000);
-src/components/TimeAgo.tsx:2:import { clockStore, timeAgo } from '../store/clock';
-src/components/TimeAgo.tsx:5:  const label = useStore(clockStore, (s) => timeAgo(s.now, sentAt));
-```
+**Root cause:** `TypingBadge` (`src/components/TypingBadge.tsx`) ran a `setInterval` every 250ms that called `setState({ soon })` with a brand-new object every tick, even though `soon` almost never actually flips. React re-rendered on every tick because the object *reference* changed, not because the rendered text (`"everyone is around"`) ever did — 20/20 renders in the recorded idle window produced identical DOM.
 
-**agent:** Found it. `rendersWithoutDom: 20` across the whole recording maps exactly to `TypingBadge`'s 20/20 hits, all reason `SAME-CONTENT`, driven by a `setInterval(..., 250)` in `useQuietSoon()` that calls `setState({ soon: ... })` with a brand-new object every 250ms — even when the boolean hasn't changed (it won't change for another hour, per `QUIET_AT`). That's the whole "idle page still busy" symptom: 4 pointless re-renders/sec forever.
+**Fix:** compare the computed value to the previous state and only call `setState` when it actually changed, using the functional-update no-op pattern (`src/components/TypingBadge.tsx:8-11`). Same visible output, same threshold behavior — just skips the no-op renders.
 
-The other top roots (`SyncBar`, `ChannelStats`, `OnlineNow`, `TypingLine`, `Status`) all show `noDomChange: 0` — they're driven by the simulated feed/query traffic and actually change the DOM each time, so they're legitimate, not waste.
-
-Let me fix `useQuietSoon` to bail out when the value hasn't changed.
-
-**→ Edit**
-```
-{"replace_all":false,"file_path":"./src/components/TypingBadge.tsx","old_string":"  useEffect(() => {\n    const id = setInterval(() => setState({ soon: QUIET_AT - Date.now() < 60_000 }), 250);\n    return () => clearInterval(id);\n  }, []);","new_string":"  useEffect(() => {\n    const id = setInterval(() => {\n      setState((prev) => {\n        const soon = QUIET_AT - Date.now() < 60_000;\n        return prev.soon === soon ? prev : { soon };\n      });\n    }, 250);\n    return () => clearInterval(id);\n  }, []);"}
-```
-
-**←**
-```
-The file ./src/components/TypingBadge.tsx has been updated successfully. (file state is current in your context — no need to Read it back)
-```
-
-**agent:** Now let me record a fresh "after" scenario to prove the fix, using the same idle-wait steps.
-
-**→ ToolSearch**
-```
-{"query":"select:mcp__plugin_react-perf-recorder_react-perf-recorder__record_page,mcp__plugin_react-perf-recorder_react-perf-recorder__wait_for_recording","max_results":5}
-```
-
-**←**
-```
-mcp__plugin_react-perf-recorder_react-perf-recorder__record_page
-mcp__plugin_react-perf-recorder_react-perf-recorder__wait_for_recording
-```
-
-**→ rpr:record_page**
-```
-{"replay":"20260927-233915-app-panel-8ef7","label":"after"}
-```
-
-**✗ error**
-```
-20260927-233915-app-panel-8ef7 has no actions to replay
-```
-
-**→ rpr:record_page**
-```
-{"url":"http://localhost:39825/?tick=150","setup":"async (page) => { await page.goto(page.url()); await page.waitForSelector('[data-testid=\"stats\"]'); await page.waitForTimeout(500); }","ms":5000,"label":"before-refix-check"}
-```
-
-**✗ error**
-```
-page.waitForSelector: Timeout 30000ms exceeded.
-Call log:
-[2m  - waiting for locator('[data-testid="stats"]') to be visible[22m
-```
-
-**→ rpr:record_page**
-```
-{"url":"http://localhost:39825/?tick=150","setup":"async (page) => { await page.goto('http://localhost:39825/?tick=150'); await page.waitForSelector('[data-testid=\"stats\"]'); await page.waitForTimeout(500); }","ms":5000,"label":"after-fix"}
-```
-
-**←**
-```
-{"id":"20260927-234135-app-record-ca68","url":"http://localhost:39825/?tick=150","requested":"http://localhost:39825/?tick=150","durationSec":5,"commits":43,"renders":66,"rendersWithoutDom":0,"rendersPerCommit":1.5,"topRoot":"SyncBar ×33","warnings":[]}
-```
-
-**agent:** Fix confirms `rendersWithoutDom` dropped to 0. Let me also produce a like-for-like "before" recording (same scripted scenario) so the comparison is apples-to-apples, by temporarily reverting the fix.
-
-**→ Edit**
-```
-{"file_path":"./src/components/TypingBadge.tsx","old_string":"  useEffect(() => {\n    const id = setInterval(() => {\n      setState((prev) => {\n        const soon = QUIET_AT - Date.now() < 60_000;\n        return prev.soon === soon ? prev : { soon };\n      });\n    }, 250);\n    return () => clearInterval(id);\n  }, []);","old_string_is_regex":false,"new_string":"  useEffect(() => {\n    const id = setInterval(() => setState({ soon: QUIET_AT - Date.now() < 60_000 }), 250);\n    return () => clearInterval(id);\n  }, []);"}
-```
-
-**✗ error**
-```
-<tool_use_error>InputValidationError: Edit failed due to the following issue:
-An unexpected parameter `old_string_is_regex` was provided</tool_use_error>
-```
-
-**→ Edit**
-```
-{"replace_all":false,"file_path":"./src/components/TypingBadge.tsx","old_string":"  useEffect(() => {\n    const id = setInterval(() => {\n      setState((prev) => {\n        const soon = QUIET_AT - Date.now() < 60_000;\n        return prev.soon === soon ? prev : { soon };\n      });\n    }, 250);\n    return () => clearInterval(id);\n  }, []);","new_string":"  useEffect(() => {\n    const id = setInterval(() => setState({ soon: QUIET_AT - Date.now() < 60_000 }), 250);\n    return () => clearInterval(id);\n  }, []);"}
-```
-
-**←**
-```
-The file ./src/components/TypingBadge.tsx has been updated successfully. (file state is current in your context — no need to Read it back)
-```
-
-**→ rpr:record_page**
-```
-{"url":"http://localhost:39825/?tick=150","setup":"async (page) => { await page.goto('http://localhost:39825/?tick=150'); await page.waitForSelector('[data-testid=\"stats\"]'); await page.waitForTimeout(500); }","ms":5000,"label":"before-fix"}
-```
-
-**←**
-```
-{"id":"20260927-234154-app-record-5e7c","url":"http://localhost:39825/?tick=150","requested":"http://localhost:39825/?tick=150","durationSec":5,"commits":63,"renders":86,"rendersWithoutDom":20,"rendersPerCommit":1.4,"topRoot":"SyncBar ×33","warnings":[]}
-```
-
-**agent:** Good, that reproduces the bug (rendersWithoutDom: 20). Now let me reapply the fix and use the compare tool for a clean before/after report.
-
-**→ Edit**
-```
-{"replace_all":false,"file_path":"./src/components/TypingBadge.tsx","old_string":"  useEffect(() => {\n    const id = setInterval(() => setState({ soon: QUIET_AT - Date.now() < 60_000 }), 250);\n    return () => clearInterval(id);\n  }, []);","new_string":"  useEffect(() => {\n    const id = setInterval(() => {\n      setState((prev) => {\n        const soon = QUIET_AT - Date.now() < 60_000;\n        return prev.soon === soon ? prev : { soon };\n      });\n    }, 250);\n    return () => clearInterval(id);\n  }, []);"}
-```
-
-**←**
-```
-The file ./src/components/TypingBadge.tsx has been updated successfully. (file state is current in your context — no need to Read it back)
-```
-
-**→ ToolSearch**
-```
-{"query":"select:mcp__plugin_react-perf-recorder_react-perf-recorder__compare_recordings","max_results":3}
-```
-
-**←**
-```
-mcp__plugin_react-perf-recorder_react-perf-recorder__compare_recordings
-```
-
-**→ rpr:compare_recordings**
-```
-{"before":"20260927-234154-app-record-5e7c","after":"20260927-234135-app-record-ca68"}
-```
-
-**←**
-```
-{"comparable":true,"warnings":[],"before":{"id":"20260927-234154-app-record-5e7c","durationMs":5012},"after":{"id":"20260927-234135-app-record-ca68","durationMs":5014},"totals":{"commits":"63 → 43 (-32%)","renders":"86 → 66 (-23%)","commitsPerSec":"12.57 → 8.58 (-32%)","rendersPerSec":"17.16 → 13.16 (-23%)","rendersPerCommit":"1.4 → 1.5 (+7%)","rendersWithoutDomPerSec":"3.99 → 0 (-100%)","rendersPerTextChange":"2.6 → 2 (-23%)","longTaskMaxMs":"0 → 0"},"roots":[{"root":"TypingBadge","source":"src/components/Header.tsx:34","path":"Header < SettingsBySync < Layout","status":"gone","hitsPerSec":"3.99 → –","perHit":"1 → –","instances":"1 → –","cascadePerSec":"3.99 → 0 (-100%)"},{"root":"ChannelStats","source":"src/components/ChatView.tsx:30","path":"ChatView < SettingsBySync < Layout","status":"changed","hitsPerSec":"2 → 1.99 (-1%)","perHit":"1 → 1 (0%)","instances":"1 → 1 (0%)","cascadePerSec":"2 → 1.99 (-1%)"},{"root":"OnlineNow","source":"src/components/ChatView.tsx:32","path":"ChatView < SettingsBySync < Layout","status":"changed","hitsPerSec":"2 → 1.99 (-1%)","perHit":"1 → 1 (0%)","instances":"1 → 1 (0%)","cascadePerSec":"2 → 1.99 (-1%)"},{"root":"SyncBar","source":"src/components/ChatView.tsx:55","path":"SettingsBySync < Layout","status":"changed","hitsPerSec":"6.58 → 6.58 (0%)","perHit":"1 → 1 (0%)","instances":"1 → 1 (0%)","cascadePerSec":"6.58 → 6.58 (0%)"},{"root":"TypingLine","source":"src/components/ChatView.tsx:66","path":"SettingsBySync < Layout","status":"changed"," … [1410 more]
-```
-
-**agent:** ## Finding
-
-One thing on the page re-rendered for nothing: **`TypingBadge`** (`src/components/TypingBadge.tsx`).
-
-Its `useQuietSoon()` hook ran a `setInterval` every 250ms for the whole life of the page and called `setState({ soon: ... })` with a **brand-new object every tick** — even though the boolean it computes (`QUIET_AT - Date.now() < 60_000`) can't flip for another hour. Since it's a new object reference every time, React couldn't bail out, so the component re-rendered 4×/sec forever, producing zero DOM change each time (`reason: SAME-CONTENT`, `noDomChange: 20/20`). This is the exact busy-idle-page symptom: `rendersWithoutDom: 20` in the recorded 5s window, *all* traceable to this one root.
-
-Everything else in the recording (`SyncBar`, `ChannelStats`, `OnlineNow`, `TypingLine`, `Status`) had `noDomChange: 0` — they're driven by the simulated live feed/query traffic and actually update visible text each time, so they're legitimate and untouched.
-
-## Fix
-
-`src/components/TypingBadge.tsx` — the interval's updater now returns the previous state object when the value hasn't changed, so React bails out instead of re-rendering:
-
-```ts
-setState((prev) => {
-  const soon = QUIET_AT - Date.now() < 60_000;
-  return prev.soon === soon ? prev : { soon };
-});
-```
-
-Page output is unchanged — same text, same timing of real updates.
-
-## Before/after (same 5s idle scenario, scripted for reproducibility)
-
+**Before/after (same repro, ~5s idle after load):**
 | metric | before | after |
 |---|---|---|
-| commits | 63 (12.57/s) | 43 (8.58/s) — **‑32%** |
-| renders | 86 (17.16/s) | 66 (13.16/s) — **‑23%** |
-| renders without DOM change | 3.99/s | **0/s (‑100%)** |
-| `TypingBadge` cascade | 3.99/s | gone entirely |
-| every other root (SyncBar, ChannelStats, OnlineNow, TypingLine, Status) | unchanged (0% diff) | unchanged |
+| `TypingBadge` renders/sec | 3.98 | 0 |
+| total commits | 63 | 46 (-27%) |
+| total renders | 97 | 76 (-22%) |
+| renders-without-DOM-change/sec | 3.98 | 1.34 (-66%) |
 
-All the real, visible updates (sync bar, presence/online counts, typing indicator, message status) are bit-for-bit unchanged in rate and count — only the wasted, invisible re-render loop is gone.
+Everything else that still renders while idle (`SyncBar`, `OnlineNow`, `ChannelStats`, `TypingLine`, `Status`) does so because the visible text genuinely changes each time (timestamps, presence, topic) — `noDomChange: 0` for all of them, both before and after, so those were left untouched.

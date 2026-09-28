@@ -1,6 +1,6 @@
 # inline-context-rec, with the plugin, run 2
 
-fixed (waste 0); checks 5 of 5; $0.35, 155 s, 20 turns
+fixed (waste 0); checks 5 of 5; $0.21, 71 s, 14 turns
 
 ## The prompt
 
@@ -17,22 +17,41 @@ nothing.
 
 ## The answer
 
-> Found it, and the numbers confirm the fix.
+> ## What was wrong
 > 
-> **Root cause:** `SettingsProvider` in `src/components/Settings.tsx` created a brand-new context value object (`{ dense, timezone: 'UTC' }`) on every render. It's rendered by `SettingsBySync` (`src/components/ChatView.tsx:50-58`), which re-renders ~6.3 times/sec because it subscribes to `useChatStore(s => s.workspace.lastEventAt)` — bumped by every incoming worker message (reactions/read receipts land here). That re-render is legitimate (it drives the visible `SyncBar` progress fill), but each time it fired, it handed `SettingsContext` a new object identity with *identical* content, forcing every consumer — `MessageRow` (all 3 message rows) and `TimezoneBadge` — to re-render for nothing. The recording confirmed 100% of those renders left the DOM unchanged (`ownDomUnchanged: 102/102` for `MessageRow`, `noDomChange: 34/34` for `TimezoneBadge`).
+> `SettingsProvider` (`src/components/Settings.tsx`) built its context value as a fresh object literal on every render:
 > 
-> **Fix:** memoized the context value in `SettingsProvider` with `useMemo(() => ({ dense, timezone: 'UTC' }), [dense])`, so its identity only changes when the content actually does.
+> ```tsx
+> <SettingsContext.Provider value={{ dense, timezone: 'UTC' }}>
+> ```
 > 
-> **Before/after, same 5-second idle scenario:**
+> It's rendered by `SettingsBySync` (`src/components/ChatView.tsx:50`), which re-renders on every `workspace.lastEventAt` update — i.e. every worker message (reactions, read receipts) ticking in over the socket, ~7×/sec even with nobody touching the page. Since `dense`/`timezone` never actually change, the *content* was always identical, but the object identity was new each time, so React re-rendered every consumer of `SettingsContext`: all `MessageRow`s and `TimezoneBadge`, on every single tick, for a page that visually didn't change.
+> 
+> The recording confirmed it directly — both roots' reasons were `context SettingsContext SAME-CONTENT`, with `ownDomUnchanged` matching 100% of their renders.
+> 
+> ## Fix
+> 
+> `src/components/Settings.tsx` — memoize the context value on `dense` (the only thing that varies):
+> 
+> ```tsx
+> const value = useMemo(() => ({ dense, timezone: 'UTC' }), [dense]);
+> return <SettingsContext.Provider value={value}>{children}</SettingsContext.Provider>;
+> ```
+> 
+> Nothing shown on the page changes — `dense` and `timezone` are exactly the same values as before, just with a stable reference when they don't change.
+> 
+> ## Before / after (same recorded scenario replayed)
+> 
 > | | before | after |
 > |---|---|---|
-> | total renders | 406 | 175 (**-57%**) |
-> | renders with no DOM change | 232 | 7 (**-97%**) |
-> | `MessageRow` re-renders | 34 hits × 3 instances | 0 — root gone entirely |
-> | `TimezoneBadge` re-renders | 34 | 0 — root gone entirely |
-> | commits, causes, every other root's render rate | — | unchanged (0%) |
+> | renders | 418 | 165 (**-61%**) |
+> | renders/sec | 83.4 | 32.7 (**-61%**) |
+> | renders with no DOM change /sec | 45.7 | 0 (**-100%**) |
+> | renders per commit | 9.5 | 3.8 (**-60%**) |
 > 
-> Commits and all other roots' cascade rates stayed exactly the same, confirming nothing visible on the page changed — only the wasted re-renders were eliminated.
+> `MessageRow` (3 instances, was re-rendering 6.78×/sec for nothing) and `TimezoneBadge` (was re-rendering 6.78×/sec for nothing) no longer show up as cascade roots at all — they simply stop re-rendering on ticks that don't touch what they display. The comparison's `wastingAfter` list is empty: no root left rendering-for-nothing after the fix.
+> 
+> The remaining renders (`SettingsBySync` for the live sync bar, `Status`/`TypingLine`/`ChannelStats`/`OnlineNow` for their own live data) are legitimate — they change the DOM and are driven by data that's actually updating.
 
 ## What it changed
 
@@ -60,11 +79,9 @@ diff -ruN a/src/components/Settings.tsx b/src/components/Settings.tsx
 
 ## The steps
 
-**agent:** This is exactly what the react-perf-recorder skill is built for — I'll invoke it to analyze the recording and drive the fix.
-
 **→ Skill**
 ```
-{"skill":"react-perf-recorder:react-perf-recorder"}
+{"skill":"react-perf-recorder:react-perf-recorder","args":"recording id from ./recording.txt; investigate chat page re-rendering for reactions/read receipts arriving while idle; fix in ./src without changing page output; show before/after numbers"}
 ```
 
 **←**
@@ -76,7 +93,7 @@ Launching skill: react-perf-recorder:react-perf-recorder
 
 # react-perf-recorder
 
-A dev-only Vite plugin that records React re-renders from the page. Re … [3506 more]
+A dev-only Vite plugin that records React re-renders from the page. Re … [4152 more]
 
 **→ Read**
 ```
@@ -85,40 +102,32 @@ A dev-only Vite plugin that records React re-renders from the page. Re … [3506
 
 **←**
 ```
-1	20260927-235006-app-panel-4e9c
-2	
-```
-
-**→ Read**
-```
-{"file_path":"dev-url.txt"}
-```
-
-**←**
-```
-1	http://localhost:40721/?tick=150
+1	20260928-002106-app-panel-2ddb
 2	
 ```
 
 **→ ToolSearch**
 ```
-{"query":"select:mcp__plugin_react-perf-recorder_react-perf-recorder__get_recording,mcp__plugin_react-perf-recorder_react-perf-recorder__list_recordings","max_results":5}
+{"query":"select:mcp__plugin_react-perf-recorder_react-perf-recorder__get_recording,mcp__plugin_react-perf-recorder_react-perf-recorder__compare_recordings,mcp__plugin_react-perf-recorder_react-perf-recorder__list_recordings,mcp__plugin_react-perf-recorder_react-perf-recorder__record_page,mcp__plugin_react-perf-recorder_react-perf-recorder__wait_for_recording","max_results":5}
 ```
 
 **←**
 ```
 mcp__plugin_react-perf-recorder_react-perf-recorder__get_recording
+mcp__plugin_react-perf-recorder_react-perf-recorder__compare_recordings
 mcp__plugin_react-perf-recorder_react-perf-recorder__list_recordings
+mcp__plugin_react-perf-recorder_react-perf-recorder__record_page
+mcp__plugin_react-perf-recorder_react-perf-recorder__wait_for_recording
 ```
 
 **→ rpr:get_recording**
 ```
-{"id":"20260927-235006-app-panel-4e9c"}
+{"id":"20260928-002106-app-panel-2ddb"}
 ```
 
 **←**
 ```
-{"id":"20260927-235006-app-panel-4e9c","status":"done","dir":"/tmp/tmp.tWwgk7hfQ4/20260927-235006-app-panel-4e9c","summary":{"id":"20260927-235006-app-panel-4e9c","status":"done","createdAt":"2026-09-27T23:50:11.210Z","source":"panel","url":"http://localhost:40721/?tick=150","viewport":"1280×720","durationSec":5,"scope":null,"totals":{"commits":44,"commitsPerSec":8.78,"commitsInScope":44,"renders":418,"rendersPerScopeCommit":9.5,"rendersFromOutside":0,"rendersWithoutDom":229,"domTextChanges":41,"rendersPerTextChange":10.2},"topRoots":[{"root":"MessageRow","source":"src/components/Messages.tsx:57","path":"MessageList < ChatPanel < ChatView < SettingsBySync","hits":34,"hitsPerSec":6.78,"instances":3,"perHit":6,"noDomChange":93,"ownDomUnchanged":102,"renderMsPerHit":0.25,"reasons":["102× context SettingsContext SAME-CONTENT · useSettings › Context @ src/components/Messages.tsx:32 const { dense } = useSettings();"],"causes":["34× core:message Worker"],"lanes":"Sync:34"},{"root":"SettingsBySync","source":"src/components/ChatView.tsx:63","path":"Layout","hits":34,"hitsPerSec":6.78,"instances":1,"perHit":4,"noDomChange":0,"renderMsPerHit":0.46,"reasons":["34× external store #2 [useChatStore] (s)=>s.workspace.lastEventAt · [zustand] useBoundStore › useStore › useSyncExternalStoreWithSelector › SyncExternalStore @ src/components/ChatView.tsx:51 const lastEventAt = useChatStore((s) => s.workspace.lastEventAt);"],"causes":["34× core:message Worker","33× zustand:feed/tick","1× zustand:fe … [6485 more]
+{"id":"20260928-002106-app-panel-2ddb","status":"done","dir":"/tmp/tmp.VHVbZKgKac/20260928-002106-app-panel-2ddb","summary":{"id":"20260928-002106-app-panel-2ddb","status":"done","createdAt":"2026-09-28T00:21:11.213Z","source":"panel","url":"http://localhost:33197/?tick=150","viewport":"1280×720","durationSec":5,"scope":null,"totals":{"commits":44,"commitsPerSec":8.77,"commitsInScope":44,"renders":418,"rendersPerScopeCommit":9.5,"rendersFromOutside":0,"rendersWithoutDom":229,"domTextChanges":41,"rendersPerTextChange":10.2},"topRoots":[{"root":"MessageRow","source":"src/components/Messages.tsx:57","path":"MessageList < ChatPanel < ChatView < SettingsBySync","hits":34,"hitsPerSec":6.78,"instances":3,"perHit":6,"noDomChange":93,"ownDomUnchanged":102,"renderMsPerHit":0.31,"reasons":["102× context SettingsContext SAME-CONTENT · useSettings › Context @ src/components/Messages.tsx:32 const { dense } = useSettings();"],"causes":["34× core:message Worker"],"lanes":"Sync:34"},{"root":"SettingsBySync","source":"src/components/ChatView.tsx:63","path":"Layout","hits":34,"hitsPerSec":6.78,"instances":1,"perHit":4,"noDomChange":0,"renderMsPerHit":0.55,"reasons":["34× external store #2 [useChatStore] (s)=>s.workspace.lastEventAt · [zustand] useBoundStore › useStore › useSyncExternalStoreWithSelector › SyncExternalStore @ src/components/ChatView.tsx:51 const lastEventAt = useChatStore((s) => s.workspace.lastEventAt);"],"causes":["34× core:message Worker","33× zustand:feed/tick","1× zustand:fe … [6513 more]
 ```
 
 **→ Read**
@@ -260,112 +269,26 @@ mcp__plugin_react-perf-recorder_react-perf-recorder__list_recordings
 24	
 ```
 
-**→ Read**
-```
-{"file_path":"src/components/Header.tsx"}
-```
-
-**←**
-```
-1	import { useStore } from 'zustand';
-2	import { useChatStore } from '../store/chat';
-3	import { draftStore } from '../store/draft';
-4	import { selectUnread } from '../store/selectors';
-5	import { ChannelTopic } from './ChannelTopic';
-6	import { TimezoneBadge } from './Settings';
-7	import { TypingBadge } from './TypingBadge';
-8	import Workspace from './Workspace';
-9	
-10	const Unread = () => {
-11	  const unread = useChatStore(selectUnread);
-12	  return (
-13	    <span className="badge" data-testid="unread">
-14	      {unread} unread
-15	    </span>
-16	  );
-17	};
-18	
-19	const DraftBadge = () => {
-20	  const hasDraft = useStore(draftStore, (s) => s.hasDraft);
-21	  return hasDraft ? (
-22	    <span className="badge muted" data-testid="draft">
-23	      draft
-24	    </span>
-25	  ) : null;
-26	};
-27	
-28	export const Header = () => (
-29	  <header className="head" data-testid="header">
-30	    <Workspace />
-31	    <ChannelTopic />
-32	    <Unread />
-33	    <TimezoneBadge />
-34	    <TypingBadge />
-35	    <DraftBadge />
-36	  </header>
-37	);
-38	
-```
-
 **→ Grep**
 ```
-{"pattern":"SAME-CONTENT","path":"test/eval-plugin/skills/react-perf-recorder","output_mode":"content","-C":8}
-```
-
-**✗ error**
-```
-Permission to use Grep has been denied because Claude Code is running in don't ask mode. IMPORTANT: You *may* attempt to accomplish this action using other tools that might naturally be used to accomplish this goal, e.g. using head instead of cat. But you *should not* attempt to work around this denial in malicious ways, e.g. do not use your ability to run tests to execute non-test actions. You should only try to work around this restriction in reasonable ways that do not attempt to bypass the intent behind this denial. If you believe this capability is essential to complete the user's request, STOP and explain to the user what you were trying to do and why you need this permission. Let the user decide how to proceed.
-```
-
-**→ Read**
-```
-{"file_path":"test/eval-plugin/skills/react-perf-recorder/references/reading-a-recording.md"}
-```
-
-**✗ error**
-```
-Permission to use Read has been denied because Claude Code is running in don't ask mode. IMPORTANT: You *may* attempt to accomplish this action using other tools that might naturally be used to accomplish this goal, e.g. using head instead of cat. But you *should not* attempt to work around this denial in malicious ways, e.g. do not use your ability to run tests to execute non-test actions. You should only try to work around this restriction in reasonable ways that do not attempt to bypass the intent behind this denial. If you believe this capability is essential to complete the user's request, STOP and explain to the user what you were trying to do and why you need this permission. Let the user decide how to proceed.
-```
-
-**→ ToolSearch**
-```
-{"query":"select:mcp__plugin_react-perf-recorder_react-perf-recorder__record_page,mcp__plugin_react-perf-recorder_react-perf-recorder__wait_for_recording,mcp__plugin_react-perf-recorder_react-perf-recorder__compare_recordings","max_results":5}
+{"pattern":"SettingsProvider|useSettings","output_mode":"content","-n":true}
 ```
 
 **←**
 ```
-mcp__plugin_react-perf-recorder_react-perf-recorder__record_page
-mcp__plugin_react-perf-recorder_react-perf-recorder__wait_for_recording
-mcp__plugin_react-perf-recorder_react-perf-recorder__compare_recordings
+src/components/ChatView.tsx:12:import { SettingsProvider } from './Settings';
+src/components/ChatView.tsx:53:    <SettingsProvider dense={false}>
+src/components/ChatView.tsx:56:    </SettingsProvider>
+src/components/Messages.tsx:5:import { useSettings } from './Settings';
+src/components/Messages.tsx:32:  const { dense } = useSettings();
+src/components/Settings.tsx:10:export const useSettings = () => useContext(SettingsContext);
+src/components/Settings.tsx:12:export const SettingsProvider = ({ dense, children }: { dense: boolean; children: ReactNode }) => {
+src/components/Settings.tsx:17:  const { timezone } = useSettings();
 ```
-
-**agent:** I'll get a clean baseline replay of this scenario before touching code, then apply the fix and replay again to compare.
-
-**→ rpr:record_page**
-```
-{"replay":"20260927-235006-app-panel-4e9c","label":"before"}
-```
-
-**✗ error**
-```
-20260927-235006-app-panel-4e9c has no actions to replay
-```
-
-**→ rpr:record_page**
-```
-{"url":"http://localhost:40721/?tick=150","ms":5000,"fromLoad":true,"label":"before"}
-```
-
-**←**
-```
-{"id":"20260927-235146-app-record-d445","url":"http://localhost:40721/?tick=150&rpr=rec","requested":"http://localhost:40721/?tick=150","durationSec":5.2,"commits":46,"renders":406,"rendersWithoutDom":232,"rendersPerCommit":8.8,"topRoot":"MessageRow ×33","warnings":[]}
-```
-
-**agent:** Baseline confirmed (46 commits, 406 renders, 232 without DOM change). Now applying the fix: memoizing the `SettingsContext` value in `Settings.tsx` so it keeps a stable identity when its content hasn't actually changed.
 
 **→ Edit**
 ```
-{"replace_all":false,"file_path":"src/components/Settings.tsx","old_string":"import { createContext, useContext, type ReactNode } from 'react';\n\ninterface Settings {\n  dense: boolean;\n  timezone: string;\n}\n\nconst SettingsContext = createContext<Settings>({ dense: false, timezone: 'UTC' });\n\nexport const useSettings = () => useContext(SettingsContext);\n\nexport const SettingsProvider = ({ dense, children }: { dense: boolean; children: ReactNode }) => {\n  return <SettingsContext.Provider value={{ dense, timezone: 'UTC' }}>{children}</SettingsContext.Pr … [591 more]
+{"replace_all":false,"file_path":"src/components/Settings.tsx","old_string":"import { createContext, useContext, type ReactNode } from 'react';","new_string":"import { createContext, useContext, useMemo, type ReactNode } from 'react';"}
 ```
 
 **←**
@@ -373,53 +296,70 @@ mcp__plugin_react-perf-recorder_react-perf-recorder__compare_recordings
 The file src/components/Settings.tsx has been updated successfully. (file state is current in your context — no need to Read it back)
 ```
 
-**agent:** Now recording the same scenario after the fix.
+**→ Edit**
+```
+{"replace_all":false,"file_path":"src/components/Settings.tsx","old_string":"export const SettingsProvider = ({ dense, children }: { dense: boolean; children: ReactNode }) => {\n  return <SettingsContext.Provider value={{ dense, timezone: 'UTC' }}>{children}</SettingsContext.Provider>;\n};","new_string":"export const SettingsProvider = ({ dense, children }: { dense: boolean; children: ReactNode }) => {\n  const value = useMemo(() => ({ dense, timezone: 'UTC' }), [dense]);\n  return <SettingsContext.Provider value={value}>{children}</SettingsContext.Provider>;\n … [4 more]
+```
+
+**←**
+```
+The file src/components/Settings.tsx has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+
+**agent:** Now let's measure the fix by replaying the same recording against the updated code.
 
 **→ rpr:record_page**
 ```
-{"url":"http://localhost:40721/?tick=150","ms":5000,"fromLoad":true,"label":"after"}
+{"replay":"20260928-002106-app-panel-2ddb","label":"after"}
 ```
 
 **←**
 ```
-{"id":"20260927-235200-app-record-a4b8","url":"http://localhost:40721/?tick=150&rpr=rec","requested":"http://localhost:40721/?tick=150","durationSec":5.2,"commits":46,"renders":175,"rendersWithoutDom":7,"rendersPerCommit":3.8,"topRoot":"SettingsBySync ×33","warnings":[]}
+{"id":"20260928-002146-app-record-cef4","url":"http://localhost:33197/?tick=150","requested":"http://localhost:33197/?tick=150","durationSec":5,"commits":43,"renders":165,"rendersWithoutDom":0,"rendersPerCommit":3.8,"topRoot":"SettingsBySync ×33","wasting":[],"warnings":["20260928-002106-app-panel-2ddb has no actions: recorded the page as it is for 5015 ms instead"]}
 ```
-
-**agent:** Renders without DOM change dropped from 232 to 7. Let's get the full comparison.
 
 **→ rpr:compare_recordings**
 ```
-{"before":"20260927-235146-app-record-d445","after":"20260927-235200-app-record-a4b8"}
+{"before":"20260928-002106-app-panel-2ddb","after":"20260928-002146-app-record-cef4"}
 ```
 
 **←**
 ```
-{"comparable":true,"warnings":[],"before":{"id":"20260927-235146-app-record-d445","durationMs":5202},"after":{"id":"20260927-235200-app-record-a4b8","durationMs":5200},"totals":{"commits":"46 → 46 (0%)","renders":"406 → 175 (-57%)","commitsPerSec":"8.84 → 8.85 (0%)","rendersPerSec":"78.05 → 33.65 (-57%)","rendersPerCommit":"8.8 → 3.8 (-57%)","rendersWithoutDomPerSec":"44.6 → 1.35 (-97%)","rendersPerTextChange":"11.3 → 4.9 (-57%)","longTaskMaxMs":"77 → 83 (+8%)"},"roots":[{"root":"MessageRow","source":"src/components/Messages.tsx:57","path":"MessageList < ChatPanel < ChatView < SettingsBySync","status":"gone","hitsPerSec":"6.34 → –","perHit":"6 → –","instances":"3 → –","cascadePerSec":"38.06 → 0 (-100%)"},{"root":"TimezoneBadge","source":"src/components/Header.tsx:33","path":"Header < SettingsBySync < Layout","status":"gone","hitsPerSec":"6.34 → –","perHit":"1 → –","instances":"1 → –","cascadePerSec":"6.34 → 0 (-100%)"},{"root":"SettingsBySync","source":"src/components/ChatView.tsx:63","path":"Layout","status":"changed","hitsPerSec":"6.34 → 6.35 (0%)","perHit":"4 → 4 (0%)","instances":"1 → 1 (0%)","cascadePerSec":"25.37 → 25.38 (0%)"},{"root":"ChannelStats","source":"src/components/ChatView.tsx:30","path":"ChatView < SettingsBySync < Layout","status":"changed","hitsPerSec":"2.11 → 2.12 (0%)","perHit":"1 → 1 (0%)","instances":"1 → 1 (0%)","cascadePerSec":"2.11 → 2.12 (0%)"},{"root":"OnlineNow","source":"src/components/ChatView.tsx:32","path":"ChatView < SettingsBySync < Layout" … [2167 more]
+{"comparable":true,"warnings":[],"before":{"id":"20260928-002106-app-panel-2ddb","durationMs":5015},"after":{"id":"20260928-002146-app-record-cef4","durationMs":5050},"totals":{"commits":"44 → 43 (-2%)","renders":"418 → 165 (-61%)","commitsPerSec":"8.77 → 8.51 (-3%)","rendersPerSec":"83.35 → 32.67 (-61%)","rendersPerCommit":"9.5 → 3.8 (-60%)","rendersWithoutDomPerSec":"45.66 → 0 (-100%)","rendersPerTextChange":"10.2 → 5 (-51%)","longTaskMaxMs":"0 → 0"},"roots":[{"root":"MessageRow","source":"src/components/Messages.tsx:57","path":"MessageList < ChatPanel < ChatView < SettingsBySync","status":"gone","hitsPerSec":"6.78 → –","perHit":"6 → –","instances":"3 → –","cascadePerSec":"40.68 → 0 (-100%)"},{"root":"TimezoneBadge","source":"src/components/Header.tsx:33","path":"Header < SettingsBySync < Layout","status":"gone","hitsPerSec":"6.78 → –","perHit":"1 → –","instances":"1 → –","cascadePerSec":"6.78 → 0 (-100%)"},{"root":"SettingsBySync","source":"src/components/ChatView.tsx:63","path":"Layout","status":"changed","hitsPerSec":"6.78 → 6.53 (-4%)","perHit":"4 → 4 (0%)","instances":"1 → 1 (0%)","cascadePerSec":"27.12 → 26.14 (-4%)"},{"root":"Status","source":"src/components/Messages.tsx:43","path":"MessageRow < MessageList < ChatPanel < ChatView","status":"changed","hitsPerSec":"1.4 → 1.19 (-15%)","perHit":"1 → 1 (0%)","instances":"3 → 1 (-67%)","cascadePerSec":"1.79 → 1.19 (-34%)"},{"root":"Connect(ActivityLog)","source":"src/components/ChatView.tsx:35","path":"ChatView < SettingsB … [2649 more]
 ```
 
-**→ rpr:get_recording**
-```
-{"id":"20260927-235200-app-record-a4b8"}
-```
+**agent:** ## What was wrong
 
-**←**
-```
-{"id":"20260927-235200-app-record-a4b8","status":"done","dir":"/tmp/tmp.tWwgk7hfQ4/20260927-235200-app-record-a4b8","summary":{"id":"20260927-235200-app-record-a4b8","status":"done","createdAt":"2026-09-27T23:52:05.553Z","label":"after","source":"script:record","url":"http://localhost:40721/?tick=150&rpr=rec","viewport":"1280×720","durationSec":5.2,"scope":null,"totals":{"commits":47,"commitsPerSec":9.04,"commitsInScope":46,"renders":175,"rendersPerScopeCommit":3.8,"rendersFromOutside":0,"rendersWithoutDom":7,"domTextChanges":36,"rendersPerTextChange":4.9},"topRoots":[{"root":"SettingsBySync","source":"src/components/ChatView.tsx:63","path":"Layout","hits":33,"hitsPerSec":6.35,"instances":1,"perHit":4,"noDomChange":0,"renderMsPerHit":0.23,"reasons":["33× external store #2 [useChatStore] (s)=>s.workspace.lastEventAt · [zustand] useBoundStore › useStore › useSyncExternalStoreWithSelector › SyncExternalStore @ src/components/ChatView.tsx:51 const lastEventAt = useChatStore((s) => s.workspace.lastEventAt);"],"causes":["33× redux:connection/beat","33× core:message Worker"],"lanes":"Sync:33"},{"root":"OnlineNow","source":"src/components/ChatView.tsx:32","path":"ChatView < SettingsBySync < Layout","hits":12,"hitsPerSec":2.31,"instances":1,"perHit":1,"noDomChange":1,"renderMsPerHit":0.59,"reasons":["12× external store #3 · [@tanstack/react-query] useQuery › useBaseQuery › SyncExternalStore @ src/components/OnlineNow.tsx:8 const { data } = useQuery<{ online: number }>({ queryKey: ['pr … [4402 more]
+`SettingsProvider` (`src/components/Settings.tsx`) built its context value as a fresh object literal on every render:
+
+```tsx
+<SettingsContext.Provider value={{ dense, timezone: 'UTC' }}>
 ```
 
-**agent:** Found it, and the numbers confirm the fix.
+It's rendered by `SettingsBySync` (`src/components/ChatView.tsx:50`), which re-renders on every `workspace.lastEventAt` update — i.e. every worker message (reactions, read receipts) ticking in over the socket, ~7×/sec even with nobody touching the page. Since `dense`/`timezone` never actually change, the *content* was always identical, but the object identity was new each time, so React re-rendered every consumer of `SettingsContext`: all `MessageRow`s and `TimezoneBadge`, on every single tick, for a page that visually didn't change.
 
-**Root cause:** `SettingsProvider` in `src/components/Settings.tsx` created a brand-new context value object (`{ dense, timezone: 'UTC' }`) on every render. It's rendered by `SettingsBySync` (`src/components/ChatView.tsx:50-58`), which re-renders ~6.3 times/sec because it subscribes to `useChatStore(s => s.workspace.lastEventAt)` — bumped by every incoming worker message (reactions/read receipts land here). That re-render is legitimate (it drives the visible `SyncBar` progress fill), but each time it fired, it handed `SettingsContext` a new object identity with *identical* content, forcing every consumer — `MessageRow` (all 3 message rows) and `TimezoneBadge` — to re-render for nothing. The recording confirmed 100% of those renders left the DOM unchanged (`ownDomUnchanged: 102/102` for `MessageRow`, `noDomChange: 34/34` for `TimezoneBadge`).
+The recording confirmed it directly — both roots' reasons were `context SettingsContext SAME-CONTENT`, with `ownDomUnchanged` matching 100% of their renders.
 
-**Fix:** memoized the context value in `SettingsProvider` with `useMemo(() => ({ dense, timezone: 'UTC' }), [dense])`, so its identity only changes when the content actually does.
+## Fix
 
-**Before/after, same 5-second idle scenario:**
+`src/components/Settings.tsx` — memoize the context value on `dense` (the only thing that varies):
+
+```tsx
+const value = useMemo(() => ({ dense, timezone: 'UTC' }), [dense]);
+return <SettingsContext.Provider value={value}>{children}</SettingsContext.Provider>;
+```
+
+Nothing shown on the page changes — `dense` and `timezone` are exactly the same values as before, just with a stable reference when they don't change.
+
+## Before / after (same recorded scenario replayed)
+
 | | before | after |
 |---|---|---|
-| total renders | 406 | 175 (**-57%**) |
-| renders with no DOM change | 232 | 7 (**-97%**) |
-| `MessageRow` re-renders | 34 hits × 3 instances | 0 — root gone entirely |
-| `TimezoneBadge` re-renders | 34 | 0 — root gone entirely |
-| commits, causes, every other root's render rate | — | unchanged (0%) |
+| renders | 418 | 165 (**-61%**) |
+| renders/sec | 83.4 | 32.7 (**-61%**) |
+| renders with no DOM change /sec | 45.7 | 0 (**-100%**) |
+| renders per commit | 9.5 | 3.8 (**-60%**) |
 
-Commits and all other roots' cascade rates stayed exactly the same, confirming nothing visible on the page changed — only the wasted re-renders were eliminated.
+`MessageRow` (3 instances, was re-rendering 6.78×/sec for nothing) and `TimezoneBadge` (was re-rendering 6.78×/sec for nothing) no longer show up as cascade roots at all — they simply stop re-rendering on ticks that don't touch what they display. The comparison's `wastingAfter` list is empty: no root left rendering-for-nothing after the fix.
+
+The remaining renders (`SettingsBySync` for the live sync bar, `Status`/`TypingLine`/`ChannelStats`/`OnlineNow` for their own live data) are legitimate — they change the DOM and are driven by data that's actually updating.

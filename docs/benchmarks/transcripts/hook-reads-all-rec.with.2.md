@@ -1,6 +1,6 @@
 # hook-reads-all-rec, with the plugin, run 2
 
-fixed (waste 1); checks 5 of 5; $0.26, 102 s, 20 turns
+fixed (waste 1); checks 5 of 5; $0.22, 91 s, 16 turns
 
 ## The prompt
 
@@ -17,37 +17,43 @@ nothing.
 
 ## The answer
 
-> Confirmed and fixed. Summary:
+> ## Found it
 > 
-> **What was wasteful:** `MessageCount` (`src/components/MessageCount.tsx`) re-rendered on **every** store update — 34 times in the 5s recording — even though the message count itself only changes once every 40 ticks. 33 of those 34 renders produced no DOM change at all.
-> 
-> **Root cause** (`src/lib/channel.ts`): `useChannel` called `useChatStore()` with no selector, subscribing to the *entire* store, then computed the derived value in plain JS afterward:
+> `useChannel` (`src/lib/channel.ts`) called `useChatStore()` with **no selector**, which subscribes to the *entire* store instead of just the slice it needs:
 > 
 > ```ts
-> const chat = useChatStore();
-> return select(chat);
+> // before
+> export function useChannel<T>(select: (chat: Chat) => T): T {
+>   const chat = useChatStore();      // subscribes to all of it
+>   return select(chat);
+> }
 > ```
 > 
-> Since zustand's `useSyncExternalStoreWithSelector` never saw the selector, it couldn't skip re-renders when the selected slice was unchanged — any store write (clock ticks, typing, reactions, workspace sync) forced a re-render.
+> `useMessageCount` (the only caller) uses this to compute the message count. Because the subscription wasn't selector-based, `MessageCount` re-rendered on **every** store write — including the background `tick` action that fires every 150ms and only touches `workspace`/`reactionsById`, never `messageById`. The count never actually changes on a tick, so every one of those renders painted nothing new: exactly the "does more work while idle, nothing new shows" symptom.
 > 
-> **Fix** — pass the selector into `useChatStore` so zustand does the equality check itself:
+> The recording confirmed it: `MessageCount` was a top cascade root, hit 34 times in 5s, with 33/34 producing **no DOM change**.
+> 
+> ## Fix
 > 
 > ```ts
+> // after
 > export function useChannel<T>(select: (chat: Chat) => T): T {
 >   return useChatStore(select);
 > }
 > ```
 > 
-> No change to what's rendered — `count` is still the same number, computed the same way.
+> This uses zustand's real selector subscription (`useSyncExternalStoreWithSelector`), so the component only re-renders when the *selected* value (the count) actually changes. Nothing about what's rendered changes — same JSX, same props, same displayed count.
 > 
-> **Before → after** (same 5s idle window, same URL/viewport):
-> - `MessageCount` root: **gone** from the cascade entirely (was 34 hits/6.78 per sec, all but one wasted)
-> - Renders without any DOM change: **6.58/s → 0/s** (-100%)
-> - Total renders: **111 → 66** (-41%)
-> - Renders per commit: **2.5 → 1.5** (-40%)
-> - Every other root (`SyncBar`, `ChannelStats`, `OnlineNow`, `TypingLine`, `Status`) is unchanged or only varies with normal timing jitter — nothing that produces visible output was touched.
+> ## Before/after (same idle scenario replayed, 5s each)
 > 
-> The idle-tab waste is gone; the page shows exactly the same content.
+> | metric | before | after |
+> |---|---|---|
+> | total renders | 111 | 66 (**-41%**) |
+> | renders producing no DOM change | 33 (6.58/s) | **0** |
+> | `MessageCount` re-renders/sec | 6.78 | **0** — no longer a cascade root at all |
+> | renders per commit | 2.5 | 1.5 |
+> 
+> `wastingAfter` (roots whose renders still change nothing) is now empty — no other component on the page was doing needless work.
 
 ## What it changed
 
@@ -67,24 +73,6 @@ diff -ruN a/src/lib/channel.ts b/src/lib/channel.ts
 
 ## The steps
 
-**agent:** This is exactly the kind of task the react-perf-recorder skill covers — finding a re-render cascade and proving a fix with numbers.
-
-**→ Skill**
-```
-{"skill":"react-perf-recorder:react-perf-recorder"}
-```
-
-**←**
-```
-Launching skill: react-perf-recorder:react-perf-recorder
-```
-
-**input:** Base directory for this skill: test/eval-plugin/skills/react-perf-recorder
-
-# react-perf-recorder
-
-A dev-only Vite plugin that records React re-renders from the page. Re … [3506 more]
-
 **→ Read**
 ```
 {"file_path":"recording.txt"}
@@ -92,7 +80,7 @@ A dev-only Vite plugin that records React re-renders from the page. Re … [3506
 
 **←**
 ```
-1	20260927-234920-app-panel-d5f4
+1	20260928-002019-app-panel-57d8
 2	
 ```
 
@@ -103,28 +91,85 @@ A dev-only Vite plugin that records React re-renders from the page. Re … [3506
 
 **←**
 ```
-1	http://localhost:41801/?tick=150
+1	http://localhost:36461/?tick=150
 2	
+```
+
+**→ Glob**
+```
+{"pattern":"src/**/*.{ts,tsx,js,jsx}"}
+```
+
+**←**
+```
+src/components/TypingLine.tsx
+src/components/ActivityLog.tsx
+src/components/PrefsLine.tsx
+src/components/ChannelStats.tsx
+src/components/Composer/useFieldError.ts
+src/components/Composer/index.tsx
+src/components/WebhookForm.tsx
+src/components/Header.tsx
+src/components/ChannelTopic.tsx
+src/components/TypingBadge.tsx
+src/components/Settings.tsx
+src/components/Messages.tsx
+src/components/MessageCount.tsx
+src/components/ChatView.tsx
+src/components/Workspace.tsx
+src/components/ChatPanel.tsx
+src/components/OnlineNow.tsx
+src/components/TimeAgo.tsx
+src/hooks/useSortedMembers.ts
+src/hooks/useMessageCount.ts
+src/feed.ts
+src/vite-env.d.ts
+src/main.tsx
+src/store/clock.ts
+src/store/activity.ts
+src/store/chat.ts
+src/store/selectors.ts
+src/store/draft.ts
+src/lib/members.ts
+src/lib/channel.ts
 ```
 
 **→ ToolSearch**
 ```
-{"query":"select:mcp__plugin_react-perf-recorder_react-perf-recorder__get_recording","max_results":5}
+{"query":"select:mcp__plugin_react-perf-recorder_react-perf-recorder__get_recording,mcp__plugin_react-perf-recorder_react-perf-recorder__list_recordings","max_results":5}
 ```
 
 **←**
 ```
 mcp__plugin_react-perf-recorder_react-perf-recorder__get_recording
+mcp__plugin_react-perf-recorder_react-perf-recorder__list_recordings
 ```
 
 **→ rpr:get_recording**
 ```
-{"id":"20260927-234920-app-panel-d5f4"}
+{"id":"20260928-002019-app-panel-57d8"}
 ```
 
 **←**
 ```
-{"id":"20260927-234920-app-panel-d5f4","status":"done","dir":"/tmp/tmp.tWwgk7hfQ4/20260927-234920-app-panel-d5f4","summary":{"id":"20260927-234920-app-panel-d5f4","status":"done","createdAt":"2026-09-27T23:49:25.217Z","source":"panel","url":"http://localhost:41801/?tick=150","viewport":"1280×720","durationSec":5,"scope":null,"totals":{"commits":44,"commitsPerSec":8.77,"commitsInScope":44,"renders":111,"rendersPerScopeCommit":2.5,"rendersFromOutside":0,"rendersWithoutDom":33,"domTextChanges":41,"rendersPerTextChange":2.7},"topRoots":[{"root":"SyncBar","source":"src/components/ChatView.tsx:55","path":"SettingsBySync < Layout","hits":34,"hitsPerSec":6.78,"instances":1,"perHit":1,"noDomChange":0,"renderMsPerHit":0.12,"reasons":["34× external store #2 [useChatStore] (s)=>s.workspace.lastEventAt · [zustand] useBoundStore › useStore › useSyncExternalStoreWithSelector › SyncExternalStore @ src/components/ChatView.tsx:44 const at = useChatStore((s) => s.workspace.lastEventAt);"],"causes":["34× core:message Worker","33× zustand:feed/tick","1× zustand:feed/message"],"lanes":"Sync:34"},{"root":"MessageCount","source":"src/components/ChatView.tsx:31","path":"ChatView < SettingsBySync < Layout","hits":34,"hitsPerSec":6.78,"instances":1,"perHit":1,"noDomChange":33,"renderMsPerHit":0.04,"reasons":["34× external store #2 [useChatStore] identity · useMessageCount › useChannel › [zustand] useBoundStore › useStore › useSyncExternalStoreWithSelector › SyncExternalStore @ src/components/MessageCou … [5559 more]
+{"id":"20260928-002019-app-panel-57d8","status":"done","dir":"/tmp/tmp.VHVbZKgKac/20260928-002019-app-panel-57d8","summary":{"id":"20260928-002019-app-panel-57d8","status":"done","createdAt":"2026-09-28T00:20:24.232Z","source":"panel","url":"http://localhost:36461/?tick=150","viewport":"1280×720","durationSec":5,"scope":null,"totals":{"commits":44,"commitsPerSec":8.77,"commitsInScope":44,"renders":111,"rendersPerScopeCommit":2.5,"rendersFromOutside":0,"rendersWithoutDom":33,"domTextChanges":41,"rendersPerTextChange":2.7},"topRoots":[{"root":"SyncBar","source":"src/components/ChatView.tsx:55","path":"SettingsBySync < Layout","hits":34,"hitsPerSec":6.78,"instances":1,"perHit":1,"noDomChange":0,"renderMsPerHit":0.11,"reasons":["34× external store #2 [useChatStore] (s)=>s.workspace.lastEventAt · [zustand] useBoundStore › useStore › useSyncExternalStoreWithSelector › SyncExternalStore @ src/components/ChatView.tsx:44 const at = useChatStore((s) => s.workspace.lastEventAt);"],"causes":["34× core:message Worker","33× zustand:feed/tick","1× zustand:feed/message"],"lanes":"Sync:34"},{"root":"MessageCount","source":"src/components/ChatView.tsx:31","path":"ChatView < SettingsBySync < Layout","hits":34,"hitsPerSec":6.78,"instances":1,"perHit":1,"noDomChange":33,"renderMsPerHit":0.06,"reasons":["34× external store #2 [useChatStore] identity · useMessageCount › useChannel › [zustand] useBoundStore › useStore › useSyncExternalStoreWithSelector › SyncExternalStore @ src/components/MessageCou … [5537 more]
+```
+
+**→ Read**
+```
+{"file_path":"src/hooks/useMessageCount.ts"}
+```
+
+**←**
+```
+1	import { useChannel } from '../lib/channel';
+2	
+3	const countOf = (byId: Record<string, unknown>) => Object.keys(byId).length;
+4	
+5	export function useMessageCount() {
+6	  return useChannel((chat) => countOf(chat.messageById));
+7	}
+8	
 ```
 
 **→ Read**
@@ -145,106 +190,6 @@ mcp__plugin_react-perf-recorder_react-perf-recorder__get_recording
 9	  );
 10	};
 11	
-```
-
-**→ Read**
-```
-{"file_path":"src/components/ChatView.tsx"}
-```
-
-**←**
-```
-1	import type { ReactNode } from 'react';
-2	import { useFeed } from '../feed';
-3	import ActivityLog from './ActivityLog';
-4	import { useChatStore } from '../store/chat';
-5	import { ChannelStats } from './ChannelStats';
-6	import { ChatPanel } from './ChatPanel';
-7	import { Composer } from './Composer';
-8	import { Header } from './Header';
-9	import { MessageCount } from './MessageCount';
-10	import { OnlineNow } from './OnlineNow';
-11	import { PrefsLine } from './PrefsLine';
-12	import { SettingsProvider } from './Settings';
-13	import { TypingLine } from './TypingLine';
-14	import { WebhookForm } from './WebhookForm';
-15	
-16	function useChatLayout() {
-17	  return { wide: true };
-18	}
-19	
-20	export const ChatView = () => {
-21	  const { wide } = useChatLayout();
-22	  return (
-23	    <main className={wide ? 'chat wide' : 'chat'}>
-24	      <div className="thread">
-25	        <ChatPanel />
-26	        <Composer />
-27	      </div>
-28	      <aside className="side" data-testid="side-panel">
-29	        <h3>Channel</h3>
-30	        <ChannelStats />
-31	        <MessageCount />
-32	        <OnlineNow />
-33	        <PrefsLine />
-34	        <h3>Activity</h3>
-35	        <ActivityLog />
-36	        <h3>Webhook</h3>
-37	        <WebhookForm />
-38	      </aside>
-39	    </main>
-40	  );
-41	};
-42	
-43	const SyncBar = () => {
-44	  const at = useChatStore((s) => s.workspace.lastEventAt);
-45	  return (
-46	    <span className="sync" title="Live">
-47	      <span className="sync-fill" style={{ width: `${(at % 20) … [577 more]
-```
-
-**→ Read**
-```
-{"file_path":"src/hooks/useMessageCount.ts"}
-```
-
-**←**
-```
-1	import { useChannel } from '../lib/channel';
-2	
-3	const countOf = (byId: Record<string, unknown>) => Object.keys(byId).length;
-4	
-5	export function useMessageCount() {
-6	  return useChannel((chat) => countOf(chat.messageById));
-7	}
-8	
-```
-
-**→ Glob**
-```
-{"pattern":"**/useChannel*"}
-```
-
-**←**
-```
-No files found
-```
-
-**→ Read**
-```
-{"file_path":"src/lib/channel.ts"}
-```
-
-**←**
-```
-1	import { useChatStore, type Chat } from '../store/chat';
-2	
-3	/** The channel's state as components read it. */
-4	export function useChannel<T>(select: (chat: Chat) => T): T {
-5	  const chat = useChatStore();
-6	  return select(chat);
-7	}
-8	
 ```
 
 **→ Read**
@@ -305,6 +250,44 @@ No files found
 49	  /**  … [3483 more]
 ```
 
+**→ Read**
+```
+{"file_path":"src/store/selectors.ts"}
+```
+
+**←**
+```
+1	import { memoize } from 'proxy-memoize';
+2	import type { Chat } from './chat';
+3	
+4	export const selectWorkspace = (s: Chat) => s.workspace;
+5	export const selectUnread = (s: Chat) => s.workspace.unread;
+6	
+7	export const selectMessageIds = memoize((s: Chat) => Object.keys(s.messageById));
+8	
+9	export const messageInfo = (s: Chat, id: string) => ({ ...s.messageById[id], reactions: s.reactionsById[id] ?? 0 });
+10	
+11	export const selectSeen = (s: Chat) => s.workspace.unread < 13;
+12	
+```
+
+**→ Read**
+```
+{"file_path":"src/lib/channel.ts"}
+```
+
+**←**
+```
+1	import { useChatStore, type Chat } from '../store/chat';
+2	
+3	/** The channel's state as components read it. */
+4	export function useChannel<T>(select: (chat: Chat) => T): T {
+5	  const chat = useChatStore();
+6	  return select(chat);
+7	}
+8	
+```
+
 **→ Grep**
 ```
 {"pattern":"useChannel","path":"src","output_mode":"content","-n":true}
@@ -317,7 +300,19 @@ src/hooks/useMessageCount.ts:1:import { useChannel } from '../lib/channel';
 src/hooks/useMessageCount.ts:6:  return useChannel((chat) => countOf(chat.messageById));
 ```
 
-**agent:** MessageCount is the culprit: `useChannel` subscribes to the *entire* Chat store with no selector, then computes the count manually — so it re-renders on every store tick (34 of 34 hits), even though the count only actually changes once (33 of those renders touch no DOM). Fixing this at the source in `src/lib/channel.ts`.
+**→ ToolSearch**
+```
+{"query":"select:mcp__plugin_react-perf-recorder_react-perf-recorder__record_page,mcp__plugin_react-perf-recorder_react-perf-recorder__compare_recordings,mcp__plugin_react-perf-recorder_react-perf-recorder__wait_for_recording","max_results":5}
+```
+
+**←**
+```
+mcp__plugin_react-perf-recorder_react-perf-recorder__record_page
+mcp__plugin_react-perf-recorder_react-perf-recorder__compare_recordings
+mcp__plugin_react-perf-recorder_react-perf-recorder__wait_for_recording
+```
+
+**agent:** Found it — `useChannel` (src/lib/channel.ts:4-7) calls `useChatStore()` with no selector, which subscribes the whole store instead of just the sliced value, so every store update (including background `tick`s) forces a re-render. `MessageCount` is the only user of it, and the recording shows it re-rendering 34 times in 5s with 33 of those producing no DOM change. I'll fix it and then record the same idle scenario again to compare.
 
 **→ Edit**
 ```
@@ -329,87 +324,60 @@ src/hooks/useMessageCount.ts:6:  return useChannel((chat) => countOf(chat.messag
 The file src/lib/channel.ts has been updated successfully. (file state is current in your context — no need to Read it back)
 ```
 
-**agent:** Now let's record the same scenario again to get after-numbers.
-
-**→ ToolSearch**
-```
-{"query":"select:mcp__plugin_react-perf-recorder_react-perf-recorder__record_page,mcp__plugin_react-perf-recorder_react-perf-recorder__wait_for_recording","max_results":5}
-```
-
-**←**
-```
-mcp__plugin_react-perf-recorder_react-perf-recorder__record_page
-mcp__plugin_react-perf-recorder_react-perf-recorder__wait_for_recording
-```
-
 **→ rpr:record_page**
 ```
-{"replay":"20260927-234920-app-panel-d5f4","label":"after"}
-```
-
-**✗ error**
-```
-20260927-234920-app-panel-d5f4 has no actions to replay
-```
-
-**→ rpr:record_page**
-```
-{"url":"http://localhost:41801/?tick=150","viewport":"1280x720","ms":5000,"label":"after"}
+{"replay":"20260928-002019-app-panel-57d8","label":"after"}
 ```
 
 **←**
 ```
-{"id":"20260927-235025-app-record-397f","url":"http://localhost:41801/?tick=150","requested":"http://localhost:41801/?tick=150","durationSec":5,"commits":43,"renders":66,"rendersWithoutDom":0,"rendersPerCommit":1.5,"topRoot":"SyncBar ×33","warnings":[]}
-```
-
-**→ ToolSearch**
-```
-{"query":"select:mcp__plugin_react-perf-recorder_react-perf-recorder__compare_recordings","max_results":3}
-```
-
-**←**
-```
-mcp__plugin_react-perf-recorder_react-perf-recorder__compare_recordings
+{"id":"20260928-002117-app-record-8de4","url":"http://localhost:36461/?tick=150","requested":"http://localhost:36461/?tick=150","durationSec":5,"commits":43,"renders":66,"rendersWithoutDom":0,"rendersPerCommit":1.5,"topRoot":"SyncBar ×33","wasting":[],"warnings":["20260928-002019-app-panel-57d8 has no actions: recorded the page as it is for 5017 ms instead"]}
 ```
 
 **→ rpr:compare_recordings**
 ```
-{"before":"20260927-234920-app-panel-d5f4","after":"20260927-235025-app-record-397f"}
+{"before":"20260928-002019-app-panel-57d8","after":"20260928-002117-app-record-8de4"}
 ```
 
 **←**
 ```
-{"comparable":true,"warnings":[],"before":{"id":"20260927-234920-app-panel-d5f4","durationMs":5015},"after":{"id":"20260927-235025-app-record-397f","durationMs":5017},"totals":{"commits":"44 → 43 (-2%)","renders":"111 → 66 (-41%)","commitsPerSec":"8.77 → 8.57 (-2%)","rendersPerSec":"22.13 → 13.16 (-41%)","rendersPerCommit":"2.5 → 1.5 (-40%)","rendersWithoutDomPerSec":"6.58 → 0 (-100%)","rendersPerTextChange":"2.7 → 2 (-26%)","longTaskMaxMs":"0 → 0"},"roots":[{"root":"MessageCount","source":"src/components/ChatView.tsx:31","path":"ChatView < SettingsBySync < Layout","status":"gone","hitsPerSec":"6.78 → –","perHit":"1 → –","instances":"1 → –","cascadePerSec":"6.78 → 0 (-100%)"},{"root":"Connect(ActivityLog)","source":"src/components/ChatView.tsx:35","path":"ChatView < SettingsBySync < Layout","status":"gone","hitsPerSec":"0.2 → –","perHit":"3 → –","instances":"1 → –","cascadePerSec":"0.6 → 0 (-100%)"},{"root":"Status","source":"src/components/Messages.tsx:43","path":"MessageRow < MessageList < ChatPanel < ChatView","status":"changed","hitsPerSec":"1.4 → 1.2 (-14%)","perHit":"1 → 1 (0%)","instances":"3 → 1 (-67%)","cascadePerSec":"1.79 → 1.2 (-33%)"},{"root":"TypingLine","source":"src/components/ChatView.tsx:66","path":"SettingsBySync < Layout","status":"changed","hitsPerSec":"1.79 → 1.4 (-22%)","perHit":"1 → 1 (0%)","instances":"1 → 1 (0%)","cascadePerSec":"1.79 → 1.4 (-22%)"},{"root":"SyncBar","source":"src/components/ChatView.tsx:55","path":"SettingsBySync < Layout","status": … [2164 more]
+{"comparable":true,"warnings":[],"before":{"id":"20260928-002019-app-panel-57d8","durationMs":5017},"after":{"id":"20260928-002117-app-record-8de4","durationMs":5033},"totals":{"commits":"44 → 43 (-2%)","renders":"111 → 66 (-41%)","commitsPerSec":"8.77 → 8.54 (-3%)","rendersPerSec":"22.12 → 13.11 (-41%)","rendersPerCommit":"2.5 → 1.5 (-40%)","rendersWithoutDomPerSec":"6.58 → 0 (-100%)","rendersPerTextChange":"2.7 → 2 (-26%)","longTaskMaxMs":"0 → 0"},"roots":[{"root":"MessageCount","source":"src/components/ChatView.tsx:31","path":"ChatView < SettingsBySync < Layout","status":"gone","hitsPerSec":"6.78 → –","perHit":"1 → –","instances":"1 → –","cascadePerSec":"6.78 → 0 (-100%)"},{"root":"Status","source":"src/components/Messages.tsx:43","path":"MessageRow < MessageList < ChatPanel < ChatView","status":"changed","hitsPerSec":"1.4 → 1.19 (-15%)","perHit":"1 → 1 (0%)","instances":"3 → 1 (-67%)","cascadePerSec":"1.79 → 1.19 (-34%)"},{"root":"Connect(ActivityLog)","source":"src/components/ChatView.tsx:35","path":"ChatView < SettingsBySync < Layout","status":"gone","hitsPerSec":"0.2 → –","perHit":"3 → –","instances":"1 → –","cascadePerSec":"0.6 → 0 (-100%)"},{"root":"TypingLine","source":"src/components/ChatView.tsx:66","path":"SettingsBySync < Layout","status":"changed","hitsPerSec":"1.79 → 1.39 (-22%)","perHit":"1 → 1 (0%)","instances":"1 → 1 (0%)","cascadePerSec":"1.79 → 1.39 (-22%)"},{"root":"SyncBar","source":"src/components/ChatView.tsx:55","path":"SettingsBySync < Layout","stat … [2194 more]
 ```
 
-**agent:** Confirmed and fixed. Summary:
+**agent:** ## Found it
 
-**What was wasteful:** `MessageCount` (`src/components/MessageCount.tsx`) re-rendered on **every** store update — 34 times in the 5s recording — even though the message count itself only changes once every 40 ticks. 33 of those 34 renders produced no DOM change at all.
-
-**Root cause** (`src/lib/channel.ts`): `useChannel` called `useChatStore()` with no selector, subscribing to the *entire* store, then computed the derived value in plain JS afterward:
+`useChannel` (`src/lib/channel.ts`) called `useChatStore()` with **no selector**, which subscribes to the *entire* store instead of just the slice it needs:
 
 ```ts
-const chat = useChatStore();
-return select(chat);
+// before
+export function useChannel<T>(select: (chat: Chat) => T): T {
+  const chat = useChatStore();      // subscribes to all of it
+  return select(chat);
+}
 ```
 
-Since zustand's `useSyncExternalStoreWithSelector` never saw the selector, it couldn't skip re-renders when the selected slice was unchanged — any store write (clock ticks, typing, reactions, workspace sync) forced a re-render.
+`useMessageCount` (the only caller) uses this to compute the message count. Because the subscription wasn't selector-based, `MessageCount` re-rendered on **every** store write — including the background `tick` action that fires every 150ms and only touches `workspace`/`reactionsById`, never `messageById`. The count never actually changes on a tick, so every one of those renders painted nothing new: exactly the "does more work while idle, nothing new shows" symptom.
 
-**Fix** — pass the selector into `useChatStore` so zustand does the equality check itself:
+The recording confirmed it: `MessageCount` was a top cascade root, hit 34 times in 5s, with 33/34 producing **no DOM change**.
+
+## Fix
 
 ```ts
+// after
 export function useChannel<T>(select: (chat: Chat) => T): T {
   return useChatStore(select);
 }
 ```
 
-No change to what's rendered — `count` is still the same number, computed the same way.
+This uses zustand's real selector subscription (`useSyncExternalStoreWithSelector`), so the component only re-renders when the *selected* value (the count) actually changes. Nothing about what's rendered changes — same JSX, same props, same displayed count.
 
-**Before → after** (same 5s idle window, same URL/viewport):
-- `MessageCount` root: **gone** from the cascade entirely (was 34 hits/6.78 per sec, all but one wasted)
-- Renders without any DOM change: **6.58/s → 0/s** (-100%)
-- Total renders: **111 → 66** (-41%)
-- Renders per commit: **2.5 → 1.5** (-40%)
-- Every other root (`SyncBar`, `ChannelStats`, `OnlineNow`, `TypingLine`, `Status`) is unchanged or only varies with normal timing jitter — nothing that produces visible output was touched.
+## Before/after (same idle scenario replayed, 5s each)
 
-The idle-tab waste is gone; the page shows exactly the same content.
+| metric | before | after |
+|---|---|---|
+| total renders | 111 | 66 (**-41%**) |
+| renders producing no DOM change | 33 (6.58/s) | **0** |
+| `MessageCount` re-renders/sec | 6.78 | **0** — no longer a cascade root at all |
+| renders per commit | 2.5 | 1.5 |
+
+`wastingAfter` (roots whose renders still change nothing) is now empty — no other component on the page was doing needless work.

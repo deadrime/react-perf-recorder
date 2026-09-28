@@ -1,6 +1,6 @@
 # cost-over-count-rec, with the plugin, run 2
 
-fixed (waste 0.47); checks 5 of 5; $0.37, 202 s, 2 turns
+fixed (waste 0.46); checks 5 of 5; $0.46, 175 s, 27 turns
 
 ## The prompt
 
@@ -17,44 +17,87 @@ nothing.
 
 ## The answer
 
-> Found and fixed it. Summary:
+> ## Findings
 > 
-> **Root cause:** `OnlineNow` (src/components/OnlineNow.tsx) re-renders ~2×/sec because it shares a react-query cache key with other components that tick frequently. Each render called `useSortedMembers({ sensitivity: 'base', numeric: true })` with a brand-new object literal, so the hook's `useMemo` saw a changed dependency every time and re-sorted the full 1500-member roster on every render — a real `localeCompare` sort, ~41.5ms each, occasionally blocking a frame for 78ms. That matches "stutters twice a second."
+> Two components were re-rendering for nothing, both confirmed with the recorder (id `20260928-000858-app-panel-28d3`) and reproduced/fixed against a fresh replay.
 > 
-> **Fix:** hoisted the options object to a module-level constant (`MEMBER_ORDER`) so its identity is stable across renders, letting the existing `useMemo` actually memoize. No change to render count, DOM output, or `useSortedMembers.ts` — purely removes the wasted recompute.
+> **1. The stutter (twice a second) — `OnlineNow.tsx:7`**
 > 
-> **Before → after** (5s idle recordings, same URL):
-> - `OnlineNow` render cost: 41.5ms → 0.72ms per render
-> - Long tasks: 1 (77ms) → 0
-> - Worst frame time: 78ms → 0ms
-> - Render cadence/output: unchanged (1.99 hits/sec, identical DOM) — confirms visuals didn't change
+> `OnlineNow` re-renders ~2×/sec (`hitsPerSec: 1.99`) whenever the shared `presence` react-query cache updates (polled every 500ms by `ChannelStats`, `src/components/ChannelStats.tsx:25`). That render itself is legitimate — the online count changes. But each render also re-sorted the 1500-member roster with `localeCompare`, because `useSortedMembers({ sensitivity: 'base', numeric: true })` passed a **new object literal every render**, busting the internal `useMemo`'s dependency check even though the sort order never actually changes.
 > 
-> Also noted but left alone (out of scope, not the cause of the visible stutter): `Unread` in `src/components/Header.tsx` re-renders every ~150ms tick via `selectWorkspace` with no DOM change, but costs only ~0.05ms/hit — negligible, so no fix applied there per the "minimal, targeted" ask.
+> - Before: `OnlineNow renderMsPerHit: 35.81ms`, recomputed 10/10 times (`memos` flagged it explicitly)
+> - After (hoisted the options object to a module-level constant `SORT_ORDER`): `renderMsPerHit: 0.62ms`, memo warning gone
+> - That's a 35ms main-thread block, twice a second — enough to visibly stutter and stall a scroll in progress. Matches the reported symptom exactly.
+> 
+> **2. A smaller, unrelated waste — `Header.tsx` `Unread`**
+> 
+> `Unread` subscribed to `useChatStore(selectWorkspace)` — the whole `workspace` object — but only displays `workspace.unread`. Since `workspace` gets a new reference on almost every store tick (from the socket-driven `lastEventAt` field), `Unread` re-rendered 6.58×/sec with the DOM unchanged 32-33 times out of 33. A `selectUnread` selector already existed in `src/store/selectors.ts` unused; switched to it.
+> 
+> - Before: `Unread hitsPerSec: 6.58`, `noDomChange: 32/33`
+> - After: root disappears from the recording entirely (doesn't re-render when `unread` doesn't change)
+> 
+> Cost here was negligible per-render (~0.03ms) so it wasn't the cause of the visible stutter, but it was pure waste and the fix was zero-risk (pre-existing selector, identical output), so I applied it too.
+> 
+> ## Overall before/after (5s idle recording, same scenario replayed)
+> 
+> | | before | after |
+> |---|---|---|
+> | total renders | 109 | 66 (-39%) |
+> | renders that changed nothing in the DOM | 32 (6.38/s) | 0 |
+> | `OnlineNow` cost per render | 35.81ms | 0.62ms |
+> | `wasting` roots left | 2 | **0** |
+> 
+> Nothing shown on the page changed — verified same DOM text/counts in both recordings, only render cost and count dropped. No other root in the final recording renders without changing the DOM, so there's nothing further to fix.
 
 ## What it changed
 
 ```
+diff -ruN a/src/components/Header.tsx b/src/components/Header.tsx
+--- a/src/components/Header.tsx
++++ b/src/components/Header.tsx
+@@ -1,17 +1,17 @@
+ import { useStore } from 'zustand';
+ import { useChatStore } from '../store/chat';
+ import { draftStore } from '../store/draft';
+-import { selectWorkspace } from '../store/selectors';
++import { selectUnread } from '../store/selectors';
+ import { ChannelTopic } from './ChannelTopic';
+ import { TimezoneBadge } from './Settings';
+ import { TypingBadge } from './TypingBadge';
+ import Workspace from './Workspace';
+ 
+ const Unread = () => {
+-  const workspace = useChatStore(selectWorkspace);
++  const unread = useChatStore(selectUnread);
+   return (
+     <span className="badge" data-testid="unread">
+-      {workspace.unread} unread
++      {unread} unread
+     </span>
+   );
+ };
 diff -ruN a/src/components/OnlineNow.tsx b/src/components/OnlineNow.tsx
 --- a/src/components/OnlineNow.tsx
 +++ b/src/components/OnlineNow.tsx
-@@ -1,10 +1,13 @@
+@@ -1,10 +1,12 @@
  import { useQuery } from '@tanstack/react-query';
  import { useSortedMembers } from '../hooks/useSortedMembers';
  
-+// Stable identity so useSortedMembers' useMemo doesn't re-sort on every render for the same options.
-+const MEMBER_ORDER: Intl.CollatorOptions = { sensitivity: 'base', numeric: true };
++const SORT_ORDER: Intl.CollatorOptions = { sensitivity: 'base', numeric: true };
 +
  /** The first few of the workspace by name, and how many of them are online now. */
  export const OnlineNow = () => {
    const { data } = useQuery<{ online: number }>({ queryKey: ['presence'], enabled: false });
 -  const sorted = useSortedMembers({ sensitivity: 'base', numeric: true });
-+  const sorted = useSortedMembers(MEMBER_ORDER);
++  const sorted = useSortedMembers(SORT_ORDER);
    return (
      <p className="side-line" data-testid="online">
        {sorted.slice(0, 3).join(', ')} and others · <b>{data?.online ?? '…'}</b> online
 ```
 
 ## The steps
+
+**agent:** I'll start by checking the recording ID and dev URL, then use the react-perf-recorder skill to analyze why the page re-renders.
 
 **→ Read**
 ```
@@ -63,7 +106,7 @@ diff -ruN a/src/components/OnlineNow.tsx b/src/components/OnlineNow.tsx
 
 **←**
 ```
-1	20260927-233915-app-panel-f7cd
+1	20260928-000858-app-panel-28d3
 2	
 ```
 
@@ -74,404 +117,49 @@ diff -ruN a/src/components/OnlineNow.tsx b/src/components/OnlineNow.tsx
 
 **←**
 ```
-1	http://localhost:38443/?tick=150
+1	http://localhost:40641/?tick=150
 2	
 ```
 
-**→ Agent**
+**→ Skill**
 ```
-{"description":"Diagnose and fix idle-page re-render stutter","subagent_type":"react-perf-recorder:perf-recorder","run_in_background":false,"prompt":"A React app's source is in ./src (cwd is .). The dev server is running at http://localhost:38443/?tick=150 and hot-reloads on source changes.\n\nComplaint: the idle page stutters about twice a second, and scrolling the messages list catches on it. Repro: open the page, wait for messages to load, then leave it alone for a few seconds (no user interaction) — the stutter happens on its own while idle.\n\nThere is an ex … [1357 more]
+{"skill":"react-perf-recorder:react-perf-recorder","args":"recording id: 20260928-000858-app-panel-28d3. The complaint: idle page stutters about twice a second, and scrolling messages catches on it. Find out whether anything re-renders for nothing and why, fix it in ./src without changing what the page shows, and show before/after numbers. If nothing does, say so and change nothing."}
 ```
-
-> **input:** A React app's source is in ./src (cwd is .). The dev server is running at http://localhost:38443/?tick=150 and hot-reloads on source changes.
-> 
-> Complaint: the idle page s … [1587 more]
-
-> **→ rpr:get_recording**
-> ```
-> {"id":"20260927-233915-app-panel-f7cd"}
-> ```
-
-> **←**
-> ```
-> {"id":"20260927-233915-app-panel-f7cd","status":"done","dir":"/tmp/tmp.tWwgk7hfQ4/20260927-233915-app-panel-f7cd","summary":{"id":"20260927-233915-app-panel-f7cd","status":"done","createdAt":"2026-09-27T23:39:20.836Z","source":"panel","url":"http://localhost:38443/?tick=150","viewport":"1280×720","durationSec":5,"scope":null,"totals":{"commits":43,"commitsPerSec":8.58,"commitsInScope":43,"renders":109,"rendersPerScopeCommit":2.5,"rendersFromOutside":0,"rendersWithoutDom":32,"domTextChanges":41,"rendersPerTextChange":2.7},"topRoots":[{"root":"SyncBar","source":"src/components/ChatView.tsx:55","path":"SettingsBySync < Layout","hits":33,"hitsPerSec":6.58,"instances":1,"perHit":1,"noDomChange":0,"renderMsPerHit":0.14,"reasons":["33× external store #2 [useChatStore] (s)=>s.workspace.lastEventAt · [zustand] useBoundStore › useStore › useSyncExternalStoreWithSelector › SyncExternalStore @ src/components/ChatView.tsx:44 const at = useChatStore((s) => s.workspace.lastEventAt);"],"causes":["33× core:message Worker","32× zustand:feed/tick","1× zustand:feed/message"],"lanes":"Sync:33"},{"root":"Unread","source":"src/components/Header.tsx:32","path":"Header < SettingsBySync < Layout","hits":33,"hitsPerSec":6.58,"instances":1,"perHit":1,"noDomChange":32,"renderMsPerHit":0.03,"reasons":["33× external store #2 [useChatStore] selectWorkspace · [zustand] useBoundStore › useStore › useSyncExternalStoreWithSelector › SyncExternalStore @ src/components/Header.tsx:11 const workspace = useChatStore … [5811 more]
-> ```
-
-> **→ Read**
-> ```
-> {"file_path":"src/components/Header.tsx"}
-> ```
-
-> **←**
-> ```
-> 1	import { useStore } from 'zustand';
-> 2	import { useChatStore } from '../store/chat';
-> 3	import { draftStore } from '../store/draft';
-> 4	import { selectWorkspace } from '../store/selectors';
-> 5	import { ChannelTopic } from './ChannelTopic';
-> 6	import { TimezoneBadge } from './Settings';
-> 7	import { TypingBadge } from './TypingBadge';
-> 8	import Workspace from './Workspace';
-> 9	
-> 10	const Unread = () => {
-> 11	  const workspace = useChatStore(selectWorkspace);
-> 12	  return (
-> 13	    <span className="badge" data-testid="unread">
-> 14	      {workspace.unread} unread
-> 15	    </span>
-> 16	  );
-> 17	};
-> 18	
-> 19	const DraftBadge = () => {
-> 20	  const hasDraft = useStore(draftStore, (s) => s.hasDraft);
-> 21	  return hasDraft ? (
-> 22	    <span className="badge muted" data-testid="draft">
-> 23	      draft
-> 24	    </span>
-> 25	  ) : null;
-> 26	};
-> 27	
-> 28	export const Header = () => (
-> 29	  <header className="head" data-testid="header">
-> 30	    <Workspace />
-> 31	    <ChannelTopic />
-> 32	    <Unread />
-> 33	    <TimezoneBadge />
-> 34	    <TypingBadge />
-> 35	    <DraftBadge />
-> 36	  </header>
-> 37	);
-> 38	
-> ```
-
-> **→ Grep**
-> ```
-> {"pattern":"selectWorkspace|workspace","path":"src/store","-n":true}
-> ```
-
-> **←**
-> ```
-> Found 2 files
-> src/store/chat.ts
-> src/store/selectors.ts
-> ```
-
-> **→ Read**
-> ```
-> {"file_path":"src/store/selectors.ts"}
-> ```
-
-> **←**
-> ```
-> 1	import { memoize } from 'proxy-memoize';
-> 2	import type { Chat } from './chat';
-> 3	
-> 4	export const selectWorkspace = (s: Chat) => s.workspace;
-> 5	export const selectUnread = (s: Chat) => s.workspace.unread;
-> 6	
-> 7	export const selectMessageIds = memoize((s: Chat) => Object.keys(s.messageById));
-> 8	
-> 9	export const messageInfo = (s: Chat, id: string) => ({ ...s.messageById[id], reactions: s.reactionsById[id] ?? 0 });
-> 10	
-> 11	export const selectSeen = (s: Chat) => s.workspace.unread < 13;
-> 12	
-> ```
-
-> **→ Read**
-> ```
-> {"file_path":"src/store/chat.ts"}
-> ```
-
-> **←**
-> ```
-> 1	import { create, type StateCreator } from 'zustand';
-> 2	import { devtools } from 'zustand/middleware';
-> 3	import { createStore } from 'zustand/vanilla';
-> 4	
-> 5	export type Person = 'Anna' | 'Boris' | 'Chen';
-> 6	
-> 7	export interface Message {
-> 8	  id: string;
-> 9	  from: Person;
-> 10	  text: string;
-> 11	  sentAt: number;
-> 12	}
-> 13	
-> 14	/** The chat runs on a compressed clock: a message every 40 ticks, a reaction every 5, typing three ticks ahead. */
-> 15	export const ARRIVAL_EVERY = 40;
-> 16	export const TYPING_LEAD = 3;
-> 17	const REACTION_EVERY = 5;
-> 18	
-> 19	const PEOPLE: Person[] = ['Anna', 'Boris', 'Chen'];
-> 20	const ARRIVALS = [
-> 21	  'One more thing before I forget — the picker keeps the scroll now',
-> 22	  'Anyone else seeing the countdown flicker?',
-> 23	  'Merged. The release notes are in the channel topic',
-> 24	  'I moved the standup to 10:30 tomorrow',
-> 25	];
-> 26	
-> 27	export const senderAt = (step: number): Person => PEOPLE[Math.floor(step / ARRIVAL_EVERY) % PEOPLE.length];
-> 28	
-> 29	interface FeedSlice {
-> 30	  reactionsById: Record<string, number>;
-> 31	  tick(step: number): void;
-> 32	}
-> 33	
-> 34	export interface Prefs {
-> 35	  timeFormat: '12h' | '24h';
-> 36	  compact: boolean;
-> 37	}
-> 38	
-> 39	export const DEFAULT_PREFS: Prefs = { timeFormat: '24h', compact: false };
-> 40	
-> 41	interface WorkspaceSlice {
-> 42	  workspace: { id: string; name: string; unread: number; lastEventAt: number };
-> 43	  prefs: Prefs;
-> 44	  markRead(): void;
-> 45	}
-> 46	
-> 47	interface MessagesSlice {
-> 48	  messageById: Record<string, Message>;
-> 49	  /**  … [3483 more]
-> ```
-
-> **→ Read**
-> ```
-> {"file_path":"src/components/OnlineNow.tsx"}
-> ```
-
-> **←**
-> ```
-> 1	import { useQuery } from '@tanstack/react-query';
-> 2	import { useSortedMembers } from '../hooks/useSortedMembers';
-> 3	
-> 4	/** The first few of the workspace by name, and how many of them are online now. */
-> 5	export const OnlineNow = () => {
-> 6	  const { data } = useQuery<{ online: number }>({ queryKey: ['presence'], enabled: false });
-> 7	  const sorted = useSortedMembers({ sensitivity: 'base', numeric: true });
-> 8	  return (
-> 9	    <p className="side-line" data-testid="online">
-> 10	      {sorted.slice(0, 3).join(', ')} and others · <b>{data?.online ?? '…'}</b> online
-> 11	    </p>
-> 12	  );
-> 13	};
-> 14	
-> ```
-
-> **→ Grep**
-> ```
-> {"pattern":"useSortedMembers","path":"src","-n":true}
-> ```
-
-> **←**
-> ```
-> Found 2 files
-> src/components/OnlineNow.tsx
-> src/hooks/useSortedMembers.ts
-> ```
-
-> **→ Read**
-> ```
-> {"file_path":"src/hooks/useSortedMembers.ts"}
-> ```
-
-> **←**
-> ```
-> 1	import { useMemo } from 'react';
-> 2	import { ROSTER, sortMembers } from '../lib/members';
-> 3	
-> 4	export function useSortedMembers(order: Intl.CollatorOptions) {
-> 5	  return useMemo(() => sortMembers(ROSTER, order), [order]);
-> 6	}
-> 7	
-> ```
-
-> **→ Grep**
-> ```
-> {"pattern":"tick=|setInterval|useSearchParams|tickMs|ARRIVAL_EVERY|worker\" ; core:message","path":"src","-n":true}
-> ```
-
-> **←**
-> ```
-> Found 5 files
-> src/components/ChatPanel.tsx
-> src/components/TypingBadge.tsx
-> src/feed.ts
-> src/store/chat.ts
-> src/store/clock.ts
-> ```
-
-> **→ Read**
-> ```
-> {"file_path":"src/feed.ts"}
-> ```
-
-> **←**
-> ```
-> 1	import { useEffect } from 'react';
-> 2	import { addActivity, beat, store } from './store/activity';
-> 3	import { ARRIVAL_EVERY, TYPING_LEAD, presenceStore, senderAt, useChatStore, type Person } from './store/chat';
-> 4	
-> 5	const everyMs = Number(new URLSearchParams(location.search).get('tick') ?? 200);
-> 6	
-> 7	// A worker stands in for the chat socket: its messages reach the page as `message` events, like a WebSocket's.
-> 8	const source = `let step = 0; setInterval(() => postMessage({ step: ++step }), ${everyMs});`;
-> 9	
-> 10	const IDLE: Person[][] = [[], ['Anna'], [], ['Boris', 'Chen'], []];
-> 11	
-> 12	/** Who is typing: whoever is about to send something, and otherwise whatever the room is doing. */
-> 13	function typingAt(step: number): Person[] {
-> 14	  const untilArrival = ARRIVAL_EVERY - (step % ARRIVAL_EVERY);
-> 15	  if (untilArrival <= TYPING_LEAD) return [senderAt(step + untilArrival)];
-> 16	  return IDLE[Math.floor(step / 4) % IDLE.length];
-> 17	}
-> 18	
-> 19	export function useFeed() {
-> 20	  useEffect(() => {
-> 21	    const socket = connectFeed();
-> 22	    return () => socket.terminate();
-> 23	  }, []);
-> 24	}
-> 25	
-> 26	function connectFeed() {
-> 27	  const socket = new Worker(URL.createObjectURL(new Blob([source], { type: 'text/javascript' })));
-> 28	  socket.addEventListener('message', (event: MessageEvent<{ step: number }>) => {
-> 29	    const { step } = event.data;
-> 30	    useChatStore.getState().tick(step);
-> 31	    store.dispatch(beat(step));
-> 32	    if (step % ARRIVAL_EVERY === 0) store.dispatch(addActivity({ tex … [229 more]
-> ```
-
-> **→ Read**
-> ```
-> {"file_path":"src/lib/members.ts"}
-> ```
-
-> **←**
-> ```
-> 1	const FIRST = ['Ada', 'Bo', 'Cy', 'Dee', 'Eli', 'Fay', 'Gus', 'Hal', 'Ida', 'Jo', 'Kai', 'Liv', 'Max', 'Nia'];
-> 2	const LAST = ['Ames', 'Bell', 'Cole', 'Dunn', 'Enns', 'Ford', 'Gray', 'Hart', 'Ives', 'Jett', 'Kerr', 'Lowe', 'Mace', 'Nash'];
-> 3	
-> 4	/** Everyone in the workspace. */
-> 5	export const ROSTER = Array.from({ length: 1500 }, (_, i) => `${FIRST[(i * 5) % FIRST.length]} ${LAST[(i * 3) % LAST.length]} ${i}`);
-> 6	
-> 7	export function sortMembers(names: string[], order: Intl.CollatorOptions): string[] {
-> 8	  return [...names].sort((a, b) => a.localeCompare(b, 'en', order));
-> 9	}
-> 10	
-> ```
-
-> **→ Edit**
-> ```
-> {"replace_all":false,"file_path":"src/components/OnlineNow.tsx","old_string":"import { useQuery } from '@tanstack/react-query';\nimport { useSortedMembers } from '../hooks/useSortedMembers';\n\n/** The first few of the workspace by name, and how many of them are online now. */\nexport const OnlineNow = () => {\n  const { data } = useQuery<{ online: number }>({ queryKey: ['presence'], enabled: false });\n  const sorted = useSortedMembers({ sensitivity: 'base', numeric: true });","new_string":"import { useQuery } from '@tanstack/react-query';\nimport { useSortedM … [498 more]
-> ```
-
-> **←**
-> ```
-> The file src/components/OnlineNow.tsx has been updated successfully. (file state is current in your context — no need to Read it back)
-> ```
-
-> **→ rpr:record_page**
-> ```
-> {"replay":"20260927-233915-app-panel-f7cd","label":"after-fix"}
-> ```
-
-> **✗ error**
-> ```
-> 20260927-233915-app-panel-f7cd has no actions to replay
-> ```
-
-> **→ rpr:record_page**
-> ```
-> {"url":"http://localhost:38443/?tick=150","viewport":"1280x720","ms":5000,"label":"after-fix"}
-> ```
 
 **←**
 ```
-Async agent launched successfully. (This tool result is internal metadata — never quote or paste any part of it, including the agentId below, into a user-facing reply.)
-agentId: a9013d6119a770280 (internal ID - do not mention to user. Use SendMessage with to: 'a9013d6119a770280', summary: '<5-10 word recap>' to continue this agent.)
-The agent is working in the background. You will be notified automatically when it completes. You know nothing about its results until that notification arrives — do not report, assume, or predict them; continue other work or respond to the user in the meantime.
-Do not duplicate this agent's work — avoid working with the same files or topics it is using.
-output_file: /tmp/claude-eval-XqMHCP/tmp/claude-0/-tmp-claude-eval-XqMHCP-home-cwd/cb97a0b1-8549-4582-a3aa-9db8cec0c5de/tasks/a9013d6119a770280.output
-Do NOT Read or tail this file via the shell tool — it is the full subagent JSONL transcript and reading it will overflow your context. If the user asks for progress, say the agent is still running; you'll get a completion notification.
+Launching skill: react-perf-recorder:react-perf-recorder
 ```
 
-> **←**
-> ```
-> {"id":"20260927-234133-app-record-3622","url":"http://localhost:38443/?tick=150","requested":"http://localhost:38443/?tick=150","durationSec":5,"commits":43,"renders":99,"rendersWithoutDom":33,"rendersPerCommit":2.3,"topRoot":"SyncBar ×33","warnings":[]}
-> ```
+**input:** Base directory for this skill: test/eval-plugin/skills/react-perf-recorder
 
-**agent:** I've kicked off the perf-recorder agent to analyze the existing recording (`20260927-233915-app-panel-f7cd`), find the root cause of the idle stutter, apply a minimal fix in `./src` if warranted, and validate with before/after numbers. It's running in the background — I'll report back once it finishes.
+# react-perf-recorder
 
-> **→ rpr:compare_recordings**
-> ```
-> {"before":"20260927-233915-app-panel-f7cd","after":"20260927-234133-app-record-3622"}
-> ```
+A dev-only Vite plugin that records React re-renders from the page. Re … [4291 more]
 
-> **←**
-> ```
-> {"comparable":true,"warnings":[],"before":{"id":"20260927-233915-app-panel-f7cd","durationMs":5013},"after":{"id":"20260927-234133-app-record-3622","durationMs":5016},"totals":{"commits":"43 → 43 (0%)","renders":"109 → 99 (-9%)","commitsPerSec":"8.58 → 8.57 (0%)","rendersPerSec":"21.74 → 19.74 (-9%)","rendersPerCommit":"2.5 → 2.3 (-8%)","rendersWithoutDomPerSec":"6.38 → 6.58 (+3%)","rendersPerTextChange":"2.7 → 3 (+11%)","longTaskMaxMs":"77 → 0 (-100%)"},"roots":[{"root":"Status","source":"src/components/Messages.tsx:43","path":"MessageRow < MessageList < ChatPanel < ChatView","status":"changed","hitsPerSec":"1.4 → 1.2 (-14%)","perHit":"1 → 1 (0%)","instances":"3 → 1 (-67%)","cascadePerSec":"1.8 → 1.2 (-33%)"},{"root":"Connect(ActivityLog)","source":"src/components/ChatView.tsx:35","path":"ChatView < SettingsBySync < Layout","status":"gone","hitsPerSec":"0.2 → –","perHit":"3 → –","instances":"1 → –","cascadePerSec":"0.6 → 0 (-100%)"},{"root":"TypingLine","source":"src/components/ChatView.tsx:66","path":"SettingsBySync < Layout","status":"changed","hitsPerSec":"1.8 → 1.4 (-22%)","perHit":"1 → 1 (0%)","instances":"1 → 1 (0%)","cascadePerSec":"1.8 → 1.4 (-22%)"},{"root":"MessageList","source":"src/components/ChatPanel.tsx:27","path":"ChatPanel < ChatView < SettingsBySync < Layout","status":"gone","hitsPerSec":"0.2 → –","perHit":"1 → –","instances":"1 → –","cascadePerSec":"0.2 → 0 (-100%)"},{"root":"MessageCount","source":"src/components/ChatView.tsx:31","path":"ChatView < Settin … [2178 more]
-> ```
+**→ ToolSearch**
+```
+{"query":"select:mcp__plugin_react-perf-recorder_react-perf-recorder__get_recording,mcp__plugin_react-perf-recorder_react-perf-recorder__list_recordings,mcp__plugin_react-perf-recorder_react-perf-recorder__compare_recordings,mcp__plugin_react-perf-recorder_react-perf-recorder__record_page,mcp__plugin_react-perf-recorder_react-perf-recorder__wait_for_recording","max_results":5}
+```
 
-> **→ rpr:get_recording**
-> ```
-> {"id":"20260927-234133-app-record-3622"}
-> ```
+**←**
+```
+mcp__plugin_react-perf-recorder_react-perf-recorder__get_recording
+mcp__plugin_react-perf-recorder_react-perf-recorder__list_recordings
+mcp__plugin_react-perf-recorder_react-perf-recorder__compare_recordings
+mcp__plugin_react-perf-recorder_react-perf-recorder__record_page
+mcp__plugin_react-perf-recorder_react-perf-recorder__wait_for_recording
+```
 
-> **←**
-> ```
-> {"id":"20260927-234133-app-record-3622","status":"done","dir":"/tmp/tmp.tWwgk7hfQ4/20260927-234133-app-record-3622","summary":{"id":"20260927-234133-app-record-3622","status":"done","createdAt":"2026-09-27T23:41:38.377Z","label":"after-fix","source":"script:record","url":"http://localhost:38443/?tick=150","viewport":"1280×720","durationSec":5,"scope":null,"totals":{"commits":43,"commitsPerSec":8.57,"commitsInScope":43,"renders":99,"rendersPerScopeCommit":2.3,"rendersFromOutside":0,"rendersWithoutDom":33,"domTextChanges":33,"rendersPerTextChange":3},"topRoots":[{"root":"SyncBar","source":"src/components/ChatView.tsx:55","path":"SettingsBySync < Layout","hits":33,"hitsPerSec":6.58,"instances":1,"perHit":1,"noDomChange":0,"renderMsPerHit":0.15,"reasons":["33× external store #2 [useChatStore] (s)=>s.workspace.lastEventAt · [zustand] useBoundStore › useStore › useSyncExternalStoreWithSelector › SyncExternalStore @ src/components/ChatView.tsx:44 const at = useChatStore((s) => s.workspace.lastEventAt);"],"causes":["33× zustand:feed/tick","33× core:message Worker"],"lanes":"Sync:33"},{"root":"Unread","source":"src/components/Header.tsx:32","path":"Header < SettingsBySync < Layout","hits":33,"hitsPerSec":6.58,"instances":1,"perHit":1,"noDomChange":33,"renderMsPerHit":0.05,"reasons":["33× external store #2 [useChatStore] selectWorkspace · [zustand] useBoundStore › useStore › useSyncExternalStoreWithSelector › SyncExternalStore @ src/components/Header.tsx:11 const workspace = useChatSto … [3875 more]
-> ```
+**→ rpr:get_recording**
+```
+{"id":"20260928-000858-app-panel-28d3"}
+```
 
-> **agent:** ## Root cause
-> 
-> `OnlineNow` (src/components/ChatView.tsx:32) re-renders ~2×/sec because it shares the `["presence"]`/`["topic"]` react-query cache with `ChannelStats`. Each of those renders called:
-> 
-> ```
-> src/components/OnlineNow.tsx:7 (before fix)
-> const sorted = useSortedMembers({ sensitivity: 'base', numeric: true });
-> ```
-> 
-> `useSortedMembers` (src/hooks/useSortedMembers.ts:4-6) does `useMemo(() => sortMembers(ROSTER, order), [order])`. Since `order` was a fresh object literal on every render, the memo's dependency changed every time, so `sortMembers` re-ran a `localeCompare` sort over the full 1500-entry roster on every one of those ~2/sec renders — even though the sorted result is always identical. That's exactly what the recording flagged: `"OnlineNow · useMemo #6 · recomputed 10 of 10 renders — order is a new object with the same content every time"` (src/components/OnlineNow.tsx:7), and it lined up with the frame data: `frames.longTasks: 1, worstFrameMs: 78` in the original recording, at ~41.5ms per OnlineNow render — a per-second-ish, frame-blocking cost, which matches the "stutters about twice a second" complaint.
-> 
-> (Separately, `Unread` in src/components/Header.tsx:11 subscribes to the whole `workspace` object via `selectWorkspace`, so it re-renders every ~150ms tick with `noDomChange` on 32/33 hits — genuinely wasted, but each render costs ~0.03-0.05ms, far too cheap to be the perceptible stutter, so I left it alone per "minimal, targeted fix.")
-> 
-> ## The fix
-> 
-> `src/components/OnlineNow.tsx`: hoisted the collator-options object to a module-level constant so its identity is stable across renders, instead of passing a new literal each render:
-> 
-> ```ts
-> const MEMBER_ORDER: Intl.CollatorOptions = { sensitivity: 'base', numeric: true };
-> ...
-> const sorted = useSortedMembers(MEMBER_ORDER);
-> ```
-> 
-> No change to `useSortedMembers.ts` or output — same sorted array, same JSX.
-> 
-> ## Conditions
-> 
-> - Page: `http://localhost:38443/?tick=150`, viewport 1280×720, no throttle.
-> - Original recording: panel capture, 5.01s idle (no interaction), id `20260927-233915-app-panel-f7cd`.
-> - After-fix recording: fresh 5.0s idle capture at the same URL/viewport, id `20260927-234133-app-record-3622`, compared via `compare_recordings`.
-> 
-> ## Before / after (same idle scenario, ~5s each)
-> 
-> | metric | before | after |
-> |---|---|---|
-> | `OnlineNow` renderMsPerHit | 41.5 ms | 0.72 ms |
-> | `OnlineNow` useMemo recompute flag | "recomputed 10 of 10 renders" (in memos list) | gone from memos list |
-> | `frames.longTasks` / `maxLongTaskMs` | 1 / 77 ms | 0 / 0 ms |
-> | `frames.worstFrameMs` | 78 ms | 0 ms |
-> | `OnlineNow` hits/sec, DOM changes | 1.99/sec, unchanged output | 1.99/sec, unchanged output (same render count/DOM — visuals identical) |
-> | total commits/sec | 8.58 | 8.57 (unchanged) |
-> 
-> The render count and cadence for `OnlineNow` are unchanged (still driven by the shared query cache, correctly), confirming the fix removed only the wasted recompute/cost, not the legitimate re-render — and the long task / worst-frame numbers that correspond to the perceived stutter dropped to zero.
-> 
-> ## Not checked / left as-is
-> 
-> - `Unread` (src/components/Header.tsx:11, `selectWorkspace`) still re-renders 33/33 times with no DOM change on 32-33 of them (cheap, ~0.05ms/hit) — a real but low-cost waste; not touched since it isn't the stutter's cause and the task asked for a minimal, targeted fix. Swapping to the already-defined `selectUnread` selector (src/store/selectors.ts:5) would eliminate it if desired.
-> - Did not investigate `SyncBar`'s `useMemo` re-run flag (also "recomputed 33 of 33" per zustand's own note) — the recording itself notes this only matters if the argument does heavy work, and it doesn't here (0.14-0.15ms/hit).
-> - Did not dig into `Connect(ActivityLog)` / `MessageList` / `MessageCount` appearing/disappearing between the two recordings — that's timing variance from the underlying worker's message-arrival schedule (every 40 ticks), not related to the fix.
+**←**
+```
+{"id":"20260928-000858-app-panel-28d3","status":"done","dir":"/tmp/tmp.VHVbZKgKac/20260928-000858-app-panel-28d3","summary":{"id":"20260928-000858-app-panel-28d3","status":"done","createdAt":"2026-09-28T00:09:03.695Z","source":"panel","url":"http://localhost:40641/?tick=150","viewport":"1280×720","durationSec":5,"scope":null,"totals":{"commits":43,"commitsPerSec":8.58,"commitsInScope":43,"renders":109,"rendersPerScopeCommit":2.5,"rendersFromOutside":0,"rendersWithoutDom":32,"domTextChanges":41,"rendersPerTextChange":2.7},"topRoots":[{"root":"SyncBar","source":"src/components/ChatView.tsx:55","path":"SettingsBySync < Layout","hits":33,"hitsPerSec":6.58,"instances":1,"perHit":1,"noDomChange":0,"renderMsPerHit":0.11,"reasons":["33× external store #2 [useChatStore] (s)=>s.workspace.lastEventAt · [zustand] useBoundStore › useStore › useSyncExternalStoreWithSelector › SyncExternalStore @ src/components/ChatView.tsx:44 const at = useChatStore((s) => s.workspace.lastEventAt);"],"causes":["33× core:message Worker","32× zustand:feed/tick","1× zustand:feed/message"],"lanes":"Sync:33"},{"root":"Unread","source":"src/components/Header.tsx:32","path":"Header < SettingsBySync < Layout","hits":33,"hitsPerSec":6.58,"instances":1,"perHit":1,"noDomChange":32,"renderMsPerHit":0.03,"reasons":["33× external store #2 [useChatStore] selectWorkspace · [zustand] useBoundStore › useStore › useSyncExternalStoreWithSelector › SyncExternalStore @ src/components/Header.tsx:11 const workspace = useChatStore … [5793 more]
+```
 
 **→ Read**
 ```
@@ -483,32 +171,394 @@ Do NOT Read or tail this file via the shell tool — it is the full subagent JSO
 1	import { useQuery } from '@tanstack/react-query';
 2	import { useSortedMembers } from '../hooks/useSortedMembers';
 3	
-4	// Stable identity so useSortedMembers' useMemo doesn't re-sort on every render for the same options.
-5	const MEMBER_ORDER: Intl.CollatorOptions = { sensitivity: 'base', numeric: true };
-6	
-7	/** The first few of the workspace by name, and how many of them are online now. */
-8	export const OnlineNow = () => {
-9	  const { data } = useQuery<{ online: number }>({ queryKey: ['presence'], enabled: false });
-10	  const sorted = useSortedMembers(MEMBER_ORDER);
-11	  return (
-12	    <p className="side-line" data-testid="online">
-13	      {sorted.slice(0, 3).join(', ')} and others · <b>{data?.online ?? '…'}</b> online
-14	    </p>
-15	  );
-16	};
-17	
+4	/** The first few of the workspace by name, and how many of them are online now. */
+5	export const OnlineNow = () => {
+6	  const { data } = useQuery<{ online: number }>({ queryKey: ['presence'], enabled: false });
+7	  const sorted = useSortedMembers({ sensitivity: 'base', numeric: true });
+8	  return (
+9	    <p className="side-line" data-testid="online">
+10	      {sorted.slice(0, 3).join(', ')} and others · <b>{data?.online ?? '…'}</b> online
+11	    </p>
+12	  );
+13	};
+14	
 ```
 
-**agent:** Found and fixed it. Summary:
+**→ Read**
+```
+{"file_path":"src/hooks/useSortedMembers.ts"}
+```
 
-**Root cause:** `OnlineNow` (src/components/OnlineNow.tsx) re-renders ~2×/sec because it shares a react-query cache key with other components that tick frequently. Each render called `useSortedMembers({ sensitivity: 'base', numeric: true })` with a brand-new object literal, so the hook's `useMemo` saw a changed dependency every time and re-sorted the full 1500-member roster on every render — a real `localeCompare` sort, ~41.5ms each, occasionally blocking a frame for 78ms. That matches "stutters twice a second."
+**←**
+```
+1	import { useMemo } from 'react';
+2	import { ROSTER, sortMembers } from '../lib/members';
+3	
+4	export function useSortedMembers(order: Intl.CollatorOptions) {
+5	  return useMemo(() => sortMembers(ROSTER, order), [order]);
+6	}
+7	
+```
 
-**Fix:** hoisted the options object to a module-level constant (`MEMBER_ORDER`) so its identity is stable across renders, letting the existing `useMemo` actually memoize. No change to render count, DOM output, or `useSortedMembers.ts` — purely removes the wasted recompute.
+**→ Read**
+```
+{"file_path":"src/lib/members.ts"}
+```
 
-**Before → after** (5s idle recordings, same URL):
-- `OnlineNow` render cost: 41.5ms → 0.72ms per render
-- Long tasks: 1 (77ms) → 0
-- Worst frame time: 78ms → 0ms
-- Render cadence/output: unchanged (1.99 hits/sec, identical DOM) — confirms visuals didn't change
+**←**
+```
+1	const FIRST = ['Ada', 'Bo', 'Cy', 'Dee', 'Eli', 'Fay', 'Gus', 'Hal', 'Ida', 'Jo', 'Kai', 'Liv', 'Max', 'Nia'];
+2	const LAST = ['Ames', 'Bell', 'Cole', 'Dunn', 'Enns', 'Ford', 'Gray', 'Hart', 'Ives', 'Jett', 'Kerr', 'Lowe', 'Mace', 'Nash'];
+3	
+4	/** Everyone in the workspace. */
+5	export const ROSTER = Array.from({ length: 1500 }, (_, i) => `${FIRST[(i * 5) % FIRST.length]} ${LAST[(i * 3) % LAST.length]} ${i}`);
+6	
+7	export function sortMembers(names: string[], order: Intl.CollatorOptions): string[] {
+8	  return [...names].sort((a, b) => a.localeCompare(b, 'en', order));
+9	}
+10	
+```
 
-Also noted but left alone (out of scope, not the cause of the visible stutter): `Unread` in `src/components/Header.tsx` re-renders every ~150ms tick via `selectWorkspace` with no DOM change, but costs only ~0.05ms/hit — negligible, so no fix applied there per the "minimal, targeted" ask.
+**→ Read**
+```
+{"file_path":"src/components/ChatView.tsx"}
+```
+
+**←**
+```
+1	import type { ReactNode } from 'react';
+2	import { useFeed } from '../feed';
+3	import ActivityLog from './ActivityLog';
+4	import { useChatStore } from '../store/chat';
+5	import { ChannelStats } from './ChannelStats';
+6	import { ChatPanel } from './ChatPanel';
+7	import { Composer } from './Composer';
+8	import { Header } from './Header';
+9	import { MessageCount } from './MessageCount';
+10	import { OnlineNow } from './OnlineNow';
+11	import { PrefsLine } from './PrefsLine';
+12	import { SettingsProvider } from './Settings';
+13	import { TypingLine } from './TypingLine';
+14	import { WebhookForm } from './WebhookForm';
+15	
+16	function useChatLayout() {
+17	  return { wide: true };
+18	}
+19	
+20	export const ChatView = () => {
+21	  const { wide } = useChatLayout();
+22	  return (
+23	    <main className={wide ? 'chat wide' : 'chat'}>
+24	      <div className="thread">
+25	        <ChatPanel />
+26	        <Composer />
+27	      </div>
+28	      <aside className="side" data-testid="side-panel">
+29	        <h3>Channel</h3>
+30	        <ChannelStats />
+31	        <MessageCount />
+32	        <OnlineNow />
+33	        <PrefsLine />
+34	        <h3>Activity</h3>
+35	        <ActivityLog />
+36	        <h3>Webhook</h3>
+37	        <WebhookForm />
+38	      </aside>
+39	    </main>
+40	  );
+41	};
+42	
+43	const SyncBar = () => {
+44	  const at = useChatStore((s) => s.workspace.lastEventAt);
+45	  return (
+46	    <span className="sync" title="Live">
+47	      <span className="sync-fill" style={{ width: `${(at % 20) … [577 more]
+```
+
+**→ Read**
+```
+{"file_path":"src/components/ChannelStats.tsx"}
+```
+
+**←**
+```
+1	import { useQuery } from '@tanstack/react-query';
+2	import { memo } from 'react';
+3	
+4	const FIRST = ['Anna', 'Boris', 'Chen', 'Dana', 'Emil', 'Farah', 'Goran', 'Hana', 'Ivo', 'Jun', 'Kira', 'Lev', 'Mona', 'Nils'];
+5	const LAST = ['Ahn', 'Berg', 'Costa', 'Dahl', 'Eze', 'Fox', 'Gil', 'Holm', 'Ito', 'Juhl', 'Kahn', 'Lind', 'Moss', 'Noor'];
+6	const MEMBERS = Array.from({ length: 1500 }, (_, i) => `${FIRST[(i * 7) % FIRST.length]} ${LAST[(i * 11) % LAST.length]} ${i}`);
+7	const byName = (a: string, b: string) => a.localeCompare(b, 'en', { sensitivity: 'base', numeric: true });
+8	const SORTED = [...MEMBERS].sort(byName);
+9	
+10	const MemberList = memo(() => (
+11	  <ul className="members" data-testid="members">
+12	    {SORTED.slice(0, 8).map((name) => (
+13	      <li key={name}>{name}</li>
+14	    ))}
+15	    <li className="more">and {SORTED.length - 8} more</li>
+16	  </ul>
+17	));
+18	
+19	let polls = 0;
+20	
+21	export const ChannelStats = () => {
+22	  const { data } = useQuery({
+23	    queryKey: ['presence'],
+24	    queryFn: async () => ({ online: 3 + (++polls % 4) }),
+25	    refetchInterval: 500,
+26	  });
+27	  return (
+28	    <>
+29	      <p className="side-line" data-testid="stats">
+30	        <b>{data?.online ?? '…'}</b> people online
+31	      </p>
+32	      <MemberList />
+33	    </>
+34	  );
+35	};
+36	
+```
+
+**→ Grep**
+```
+{"pattern":"useSortedMembers","output_mode":"content","-n":true}
+```
+
+**←**
+```
+src/hooks/useSortedMembers.ts:4:export function useSortedMembers(order: Intl.CollatorOptions) {
+src/components/OnlineNow.tsx:2:import { useSortedMembers } from '../hooks/useSortedMembers';
+src/components/OnlineNow.tsx:7:  const sorted = useSortedMembers({ sensitivity: 'base', numeric: true });
+```
+
+**agent:** Only one call site. I'll fix it by hoisting the collator options to a stable module-level constant so the `useMemo` dependency doesn't change identity every render.
+
+**→ Edit**
+```
+{"replace_all":false,"file_path":"src/components/OnlineNow.tsx","old_string":"import { useQuery } from '@tanstack/react-query';\nimport { useSortedMembers } from '../hooks/useSortedMembers';\n\n/** The first few of the workspace by name, and how many of them are online now. */\nexport const OnlineNow = () => {\n  const { data } = useQuery<{ online: number }>({ queryKey: ['presence'], enabled: false });\n  const sorted = useSortedMembers({ sensitivity: 'base', numeric: true });","new_string":"import { useQuery } from '@tanstack/react-query';\nimport { useSortedM … [391 more]
+```
+
+**←**
+```
+The file src/components/OnlineNow.tsx has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+
+**agent:** Now let's record the page again with the same scenario (idle, page left alone) to measure the effect, then compare.
+
+**→ rpr:record_page**
+```
+{"replay":"20260928-000858-app-panel-28d3","label":"after"}
+```
+
+**←**
+```
+{"id":"20260928-001006-app-record-adc8","url":"http://localhost:40641/?tick=150","requested":"http://localhost:40641/?tick=150","durationSec":5,"commits":43,"renders":99,"rendersWithoutDom":33,"rendersPerCommit":2.3,"topRoot":"SyncBar ×33","wasting":[{"root":"Unread","source":"src/components/Header.tsx:32","hits":33,"instances":1,"noDomChange":33}],"warnings":["20260928-000858-app-panel-28d3 has no actions: recorded the page as it is for 5013 ms instead"]}
+```
+
+**→ rpr:compare_recordings**
+```
+{"before":"20260928-000858-app-panel-28d3","after":"20260928-001006-app-record-adc8"}
+```
+
+**←**
+```
+{"comparable":true,"warnings":[],"before":{"id":"20260928-000858-app-panel-28d3","durationMs":5013},"after":{"id":"20260928-001006-app-record-adc8","durationMs":5031},"totals":{"commits":"43 → 43 (0%)","renders":"109 → 99 (-9%)","commitsPerSec":"8.58 → 8.55 (0%)","rendersPerSec":"21.74 → 19.68 (-9%)","rendersPerCommit":"2.5 → 2.3 (-8%)","rendersWithoutDomPerSec":"6.38 → 6.56 (+3%)","rendersPerTextChange":"2.7 → 3 (+11%)","longTaskMaxMs":"0 → 0"},"roots":[{"root":"Status","source":"src/components/Messages.tsx:43","path":"MessageRow < MessageList < ChatPanel < ChatView","status":"changed","hitsPerSec":"1.4 → 1.19 (-15%)","perHit":"1 → 1 (0%)","instances":"3 → 1 (-67%)","cascadePerSec":"1.8 → 1.19 (-34%)"},{"root":"Connect(ActivityLog)","source":"src/components/ChatView.tsx:35","path":"ChatView < SettingsBySync < Layout","status":"gone","hitsPerSec":"0.2 → –","perHit":"3 → –","instances":"1 → –","cascadePerSec":"0.6 → 0 (-100%)"},{"root":"TypingLine","source":"src/components/ChatView.tsx:66","path":"SettingsBySync < Layout","status":"changed","hitsPerSec":"1.8 → 1.39 (-23%)","perHit":"1 → 1 (0%)","instances":"1 → 1 (0%)","cascadePerSec":"1.8 → 1.39 (-23%)"},{"root":"MessageList","source":"src/components/ChatPanel.tsx:27","path":"ChatPanel < ChatView < SettingsBySync < Layout","status":"gone","hitsPerSec":"0.2 → –","perHit":"1 → –","instances":"1 → –","cascadePerSec":"0.2 → 0 (-100%)"},{"root":"MessageCount","source":"src/components/ChatView.tsx:31","path":"ChatView < SettingsByS … [2297 more]
+```
+
+**→ rpr:get_recording**
+```
+{"id":"20260928-001006-app-record-adc8"}
+```
+
+**←**
+```
+{"id":"20260928-001006-app-record-adc8","status":"done","dir":"/tmp/tmp.VHVbZKgKac/20260928-001006-app-record-adc8","summary":{"id":"20260928-001006-app-record-adc8","status":"done","createdAt":"2026-09-28T00:10:11.939Z","label":"after","source":"script:record","url":"http://localhost:40641/?tick=150","viewport":"1280×720","durationSec":5,"scope":null,"totals":{"commits":43,"commitsPerSec":8.55,"commitsInScope":43,"renders":99,"rendersPerScopeCommit":2.3,"rendersFromOutside":0,"rendersWithoutDom":33,"domTextChanges":33,"rendersPerTextChange":3},"topRoots":[{"root":"SyncBar","source":"src/components/ChatView.tsx:55","path":"SettingsBySync < Layout","hits":33,"hitsPerSec":6.56,"instances":1,"perHit":1,"noDomChange":0,"renderMsPerHit":0.14,"reasons":["33× external store #2 [useChatStore] (s)=>s.workspace.lastEventAt · [zustand] useBoundStore › useStore › useSyncExternalStoreWithSelector › SyncExternalStore @ src/components/ChatView.tsx:44 const at = useChatStore((s) => s.workspace.lastEventAt);"],"causes":["33× zustand:feed/tick","33× core:message Worker"],"lanes":"Sync:33"},{"root":"Unread","source":"src/components/Header.tsx:32","path":"Header < SettingsBySync < Layout","hits":33,"hitsPerSec":6.56,"instances":1,"perHit":1,"noDomChange":33,"renderMsPerHit":0.05,"reasons":["33× external store #2 [useChatStore] selectWorkspace · [zustand] useBoundStore › useStore › useSyncExternalStoreWithSelector › SyncExternalStore @ src/components/Header.tsx:11 const workspace = useChatStore(s … [3873 more]
+```
+
+**→ Read**
+```
+{"file_path":"src/components/Header.tsx"}
+```
+
+**←**
+```
+1	import { useStore } from 'zustand';
+2	import { useChatStore } from '../store/chat';
+3	import { draftStore } from '../store/draft';
+4	import { selectWorkspace } from '../store/selectors';
+5	import { ChannelTopic } from './ChannelTopic';
+6	import { TimezoneBadge } from './Settings';
+7	import { TypingBadge } from './TypingBadge';
+8	import Workspace from './Workspace';
+9	
+10	const Unread = () => {
+11	  const workspace = useChatStore(selectWorkspace);
+12	  return (
+13	    <span className="badge" data-testid="unread">
+14	      {workspace.unread} unread
+15	    </span>
+16	  );
+17	};
+18	
+19	const DraftBadge = () => {
+20	  const hasDraft = useStore(draftStore, (s) => s.hasDraft);
+21	  return hasDraft ? (
+22	    <span className="badge muted" data-testid="draft">
+23	      draft
+24	    </span>
+25	  ) : null;
+26	};
+27	
+28	export const Header = () => (
+29	  <header className="head" data-testid="header">
+30	    <Workspace />
+31	    <ChannelTopic />
+32	    <Unread />
+33	    <TimezoneBadge />
+34	    <TypingBadge />
+35	    <DraftBadge />
+36	  </header>
+37	);
+38	
+```
+
+**→ Read**
+```
+{"file_path":"src/store/selectors.ts"}
+```
+
+**←**
+```
+1	import { memoize } from 'proxy-memoize';
+2	import type { Chat } from './chat';
+3	
+4	export const selectWorkspace = (s: Chat) => s.workspace;
+5	export const selectUnread = (s: Chat) => s.workspace.unread;
+6	
+7	export const selectMessageIds = memoize((s: Chat) => Object.keys(s.messageById));
+8	
+9	export const messageInfo = (s: Chat, id: string) => ({ ...s.messageById[id], reactions: s.reactionsById[id] ?? 0 });
+10	
+11	export const selectSeen = (s: Chat) => s.workspace.unread < 13;
+12	
+```
+
+**agent:** This is a second, smaller case of the same pattern — `selectUnread` already exists in the selectors file but isn't used. I'll apply it since it's a zero-risk, no-behavior-change fix.
+
+**→ Edit**
+```
+{"replace_all":false,"file_path":"src/components/Header.tsx","old_string":"import { selectWorkspace } from '../store/selectors';","new_string":"import { selectUnread } from '../store/selectors';"}
+```
+
+**←**
+```
+The file src/components/Header.tsx has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+
+**→ Edit**
+```
+{"replace_all":false,"file_path":"src/components/Header.tsx","old_string":"const Unread = () => {\n  const workspace = useChatStore(selectWorkspace);\n  return (\n    <span className=\"badge\" data-testid=\"unread\">\n      {workspace.unread} unread\n    </span>\n  );\n};","new_string":"const Unread = () => {\n  const unread = useChatStore(selectUnread);\n  return (\n    <span className=\"badge\" data-testid=\"unread\">\n      {unread} unread\n    </span>\n  );\n};"}
+```
+
+**←**
+```
+The file src/components/Header.tsx has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+
+**agent:** Now let's record again to confirm both fixes and compare against the original baseline.
+
+**→ rpr:record_page**
+```
+{"replay":"20260928-000858-app-panel-28d3","label":"after-both-fixes"}
+```
+
+**←**
+```
+{"id":"20260928-001059-app-record-815a","url":"http://localhost:40641/?tick=150","requested":"http://localhost:40641/?tick=150","durationSec":5,"commits":43,"renders":66,"rendersWithoutDom":0,"rendersPerCommit":1.5,"topRoot":"SyncBar ×33","wasting":[],"warnings":["20260928-000858-app-panel-28d3 has no actions: recorded the page as it is for 5013 ms instead"]}
+```
+
+**agent:** `wasting: []` now — nothing left renders for nothing. Let's compare against the original baseline for full numbers.
+
+**→ rpr:compare_recordings**
+```
+{"before":"20260928-000858-app-panel-28d3","after":"20260928-001059-app-record-815a"}
+```
+
+**←**
+```
+{"comparable":true,"warnings":[],"before":{"id":"20260928-000858-app-panel-28d3","durationMs":5013},"after":{"id":"20260928-001059-app-record-815a","durationMs":5038},"totals":{"commits":"43 → 43 (0%)","renders":"109 → 66 (-39%)","commitsPerSec":"8.58 → 8.54 (0%)","rendersPerSec":"21.74 → 13.1 (-40%)","rendersPerCommit":"2.5 → 1.5 (-40%)","rendersWithoutDomPerSec":"6.38 → 0 (-100%)","rendersPerTextChange":"2.7 → 2 (-26%)","longTaskMaxMs":"0 → 0"},"roots":[{"root":"Unread","source":"src/components/Header.tsx:32","path":"Header < SettingsBySync < Layout","status":"gone","hitsPerSec":"6.58 → –","perHit":"1 → –","instances":"1 → –","cascadePerSec":"6.58 → 0 (-100%)"},{"root":"Status","source":"src/components/Messages.tsx:43","path":"MessageRow < MessageList < ChatPanel < ChatView","status":"changed","hitsPerSec":"1.4 → 1.19 (-15%)","perHit":"1 → 1 (0%)","instances":"3 → 1 (-67%)","cascadePerSec":"1.8 → 1.19 (-34%)"},{"root":"Connect(ActivityLog)","source":"src/components/ChatView.tsx:35","path":"ChatView < SettingsBySync < Layout","status":"gone","hitsPerSec":"0.2 → –","perHit":"3 → –","instances":"1 → –","cascadePerSec":"0.6 → 0 (-100%)"},{"root":"TypingLine","source":"src/components/ChatView.tsx:66","path":"SettingsBySync < Layout","status":"changed","hitsPerSec":"1.8 → 1.39 (-23%)","perHit":"1 → 1 (0%)","instances":"1 → 1 (0%)","cascadePerSec":"1.8 → 1.39 (-23%)"},{"root":"MessageList","source":"src/components/ChatPanel.tsx:27","path":"ChatPanel < ChatView < SettingsBySync < L … [2185 more]
+```
+
+**→ rpr:get_recording**
+```
+{"id":"20260928-001059-app-record-815a","section":"summary"}
+```
+
+**←**
+```
+{"id":"20260928-001059-app-record-815a","status":"done","dir":"/tmp/tmp.VHVbZKgKac/20260928-001059-app-record-815a","summary":{"id":"20260928-001059-app-record-815a","status":"done","createdAt":"2026-09-28T00:11:04.040Z","label":"after-both-fixes","source":"script:record","url":"http://localhost:40641/?tick=150","viewport":"1280×720","durationSec":5,"scope":null,"totals":{"commits":43,"commitsPerSec":8.54,"commitsInScope":43,"renders":66,"rendersPerScopeCommit":1.5,"rendersFromOutside":0,"rendersWithoutDom":0,"domTextChanges":33,"rendersPerTextChange":2},"topRoots":[{"root":"SyncBar","source":"src/components/ChatView.tsx:55","path":"SettingsBySync < Layout","hits":33,"hitsPerSec":6.55,"instances":1,"perHit":1,"noDomChange":0,"renderMsPerHit":0.13,"reasons":["33× external store #2 [useChatStore] (s)=>s.workspace.lastEventAt · [zustand] useBoundStore › useStore › useSyncExternalStoreWithSelector › SyncExternalStore @ src/components/ChatView.tsx:44 const at = useChatStore((s) => s.workspace.lastEventAt);"],"causes":["33× zustand:feed/tick","33× core:message Worker"],"lanes":"Sync:33"},{"root":"ChannelStats","source":"src/components/ChatView.tsx:30","path":"ChatView < SettingsBySync < Layout","hits":10,"hitsPerSec":1.98,"instances":1,"perHit":1,"noDomChange":0,"renderMsPerHit":0.18,"reasons":["10× external store #3 · [@tanstack/react-query] useQuery › useBaseQuery › SyncExternalStore @ src/components/ChannelStats.tsx:22 const { data } = useQuery({"],"causes":["10× react-query:fet … [3373 more]
+```
+
+**→ Grep**
+```
+{"pattern":"selectWorkspace","output_mode":"content","-n":true}
+```
+
+**←**
+```
+src/store/selectors.ts:4:export const selectWorkspace = (s: Chat) => s.workspace;
+```
+
+**→ Grep**
+```
+{"pattern":"selectWorkspace","path":".","output_mode":"files_with_matches"}
+```
+
+**←**
+```
+Found 1 file
+src/store/selectors.ts
+```
+
+**→ Glob**
+```
+{"pattern":"**/*.test.*"}
+```
+
+**←**
+```
+No files found
+```
+
+**agent:** ## Findings
+
+Two components were re-rendering for nothing, both confirmed with the recorder (id `20260928-000858-app-panel-28d3`) and reproduced/fixed against a fresh replay.
+
+**1. The stutter (twice a second) — `OnlineNow.tsx:7`**
+
+`OnlineNow` re-renders ~2×/sec (`hitsPerSec: 1.99`) whenever the shared `presence` react-query cache updates (polled every 500ms by `ChannelStats`, `src/components/ChannelStats.tsx:25`). That render itself is legitimate — the online count changes. But each render also re-sorted the 1500-member roster with `localeCompare`, because `useSortedMembers({ sensitivity: 'base', numeric: true })` passed a **new object literal every render**, busting the internal `useMemo`'s dependency check even though the sort order never actually changes.
+
+- Before: `OnlineNow renderMsPerHit: 35.81ms`, recomputed 10/10 times (`memos` flagged it explicitly)
+- After (hoisted the options object to a module-level constant `SORT_ORDER`): `renderMsPerHit: 0.62ms`, memo warning gone
+- That's a 35ms main-thread block, twice a second — enough to visibly stutter and stall a scroll in progress. Matches the reported symptom exactly.
+
+**2. A smaller, unrelated waste — `Header.tsx` `Unread`**
+
+`Unread` subscribed to `useChatStore(selectWorkspace)` — the whole `workspace` object — but only displays `workspace.unread`. Since `workspace` gets a new reference on almost every store tick (from the socket-driven `lastEventAt` field), `Unread` re-rendered 6.58×/sec with the DOM unchanged 32-33 times out of 33. A `selectUnread` selector already existed in `src/store/selectors.ts` unused; switched to it.
+
+- Before: `Unread hitsPerSec: 6.58`, `noDomChange: 32/33`
+- After: root disappears from the recording entirely (doesn't re-render when `unread` doesn't change)
+
+Cost here was negligible per-render (~0.03ms) so it wasn't the cause of the visible stutter, but it was pure waste and the fix was zero-risk (pre-existing selector, identical output), so I applied it too.
+
+## Overall before/after (5s idle recording, same scenario replayed)
+
+| | before | after |
+|---|---|---|
+| total renders | 109 | 66 (-39%) |
+| renders that changed nothing in the DOM | 32 (6.38/s) | 0 |
+| `OnlineNow` cost per render | 35.81ms | 0.62ms |
+| `wasting` roots left | 2 | **0** |
+
+Nothing shown on the page changed — verified same DOM text/counts in both recordings, only render cost and count dropped. No other root in the final recording renders without changing the DOM, so there's nothing further to fix.

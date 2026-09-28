@@ -1,6 +1,6 @@
 # new-array-selector-rec, with the plugin, run 1
 
-fixed (waste 0); checks 5 of 5; $0.32, 130 s, 20 turns
+fixed (waste 0); checks 5 of 5; $0.41, 161 s, 29 turns
 
 ## The prompt
 
@@ -17,41 +17,38 @@ nothing.
 
 ## The answer
 
-> `MessageList` no longer renders at all during the idle window — it dropped out of the components list entirely (it only mounts once at load now), confirming the fix eliminated its wasted re-renders rather than just hiding them.
-> 
 > ## What was wrong
 > 
-> `MessageList` (src/components/Messages.tsx:53) selected from the zustand store like this:
+> `MessageList` (`src/components/Messages.tsx`) subscribed to the chat store with:
 > 
-> ```js
+> ```tsx
 > const ids = useChatStore((s) => Object.keys(s.messageById));
 > ```
 > 
-> `Object.keys(...)` allocates a **new array** every time it runs. Zustand's default equality check is `Object.is`, so even when `messageById` itself hadn't changed, the selector's return value was never `===` to the last one — the component re-rendered on every store notification, not just when messages actually changed.
+> `Object.keys(...)` allocates a brand-new array every time the selector runs. Zustand compares selector output by reference, so even though `messageById` itself only changes when a message is actually sent/removed/arrives, the *array wrapping it* looked new on every store update — including the ones that only touch `reactionsById` or `workspace.lastEventAt` (i.e. every reaction, read-receipt, and worker tick). That made `MessageList` a cascade root re-rendering ~7×/sec for no visible reason: the recording flagged it as `external store #2 (33 of them same content)`, with `ownDomUnchanged: 33/34` and `noDomChange: 27/34`.
 > 
-> The chat store's `tick()` (src/store/chat.ts:69) fires ~5×/sec from a worker (reactions, presence, a live "sync" clock) and updates `workspace`/`reactionsById` far more often than `messageById` (only every 40 ticks, on a real arrival). The recording showed this directly: `MessageList` hit 34 times in 5s, but 33 of them had identical content (`ownDomUnchanged: 33`, `noDomChange: 27`) — i.e. re-rendering for nothing almost every tick.
+> ## Fix
 > 
-> Everything else in the recording (`SyncBar`, `TypingLine`, `ChannelStats`, `OnlineNow`, `Status`) changed its own DOM on every hit, so those are real work, not waste — left untouched.
+> Subscribe to the stable `messageById` object instead, and derive the id list with `useMemo` keyed on that reference, so it's only recomputed when the message set actually changes:
 > 
-> ## The fix
-> 
-> ```js
+> ```tsx
 > const messageById = useChatStore((s) => s.messageById);
 > const ids = useMemo(() => Object.keys(messageById), [messageById]);
 > ```
 > 
-> Now the selector returns the store's own object reference (stable unless messages truly change), and the array is only recomputed when that reference changes. Output is identical — same ids, same order, same DOM.
+> No change to what's rendered — same ids, same order, same conditions for updates.
 > 
-> ## Before / after (5s idle recording, same scenario, same url)
+> ## Before / after (same idle scenario, replayed)
 > 
-> | | before | after | Δ |
-> |---|---|---|---|
-> | total renders | 111 | 66 | **-41%** |
-> | renders/sec | 22.09 | 13.16 | **-40%** |
-> | renders with no DOM change/sec | 5.37 | 0 | **-100%** |
-> | `MessageList` renders/sec | 6.77 | 0 | **-100%** |
+> | | before | after |
+> |---|---|---|
+> | total renders | 111 | 66 (**-41%**) |
+> | renders/sec | 22.14 | 13.12 (**-41%**) |
+> | renders that changed no DOM (per sec) | 5.39 | 0 (**-100%**) |
+> | renders per commit | 2.5 | 1.5 (**-40%**) |
+> | `MessageList` cascade | 6.78 hits/sec, 33/34 same-content | gone — no longer a cascade root |
 > 
-> `MessageList` dropped out of the cascade entirely — it no longer appears in the component list for the after-run, meaning it now only renders when a message actually arrives/is removed, not on every background tick.
+> `wastingAfter` (roots still rendering mostly for nothing) is now empty. The remaining renders (`SyncBar`, `TypingLine`, `Status`, `ChannelStats`, `OnlineNow`) all changed their own DOM on (nearly) every hit — they're doing real, visible work (live sync bar, typing indicator, reaction/read-receipt display), so I left them alone.
 
 ## What it changed
 
@@ -73,11 +70,9 @@ diff -ruN a/src/components/Messages.tsx b/src/components/Messages.tsx
 
 ## The steps
 
-**agent:** This task matches the react-perf-recorder skill exactly — finding unnecessary re-renders and proving a fix with numbers. Let me invoke it.
-
 **→ Skill**
 ```
-{"skill":"react-perf-recorder:react-perf-recorder"}
+{"skill":"react-perf-recorder:react-perf-recorder","args":"recording id from ./recording.txt; investigate chat page re-rendering for nothing (reactions/read receipts arriving while idle), fix in ./src without changing rendered output, prove with before/after numbers"}
 ```
 
 **←**
@@ -89,7 +84,7 @@ Launching skill: react-perf-recorder:react-perf-recorder
 
 # react-perf-recorder
 
-A dev-only Vite plugin that records React re-renders from the page. Re … [3506 more]
+A dev-only Vite plugin that records React re-renders from the page. Re … [4172 more]
 
 **→ Read**
 ```
@@ -98,7 +93,7 @@ A dev-only Vite plugin that records React re-renders from the page. Re … [3506
 
 **←**
 ```
-1	20260927-235324-app-panel-85dd
+1	20260928-002325-app-panel-7280
 2	
 ```
 
@@ -107,9 +102,28 @@ A dev-only Vite plugin that records React re-renders from the page. Re … [3506
 {"file_path":"test/eval-plugin/skills/react-perf-recorder/references/reading-a-recording.md"}
 ```
 
-**✗ error**
+**←**
 ```
-Permission to use Read has been denied because Claude Code is running in don't ask mode. IMPORTANT: You *may* attempt to accomplish this action using other tools that might naturally be used to accomplish this goal, e.g. using head instead of cat. But you *should not* attempt to work around this denial in malicious ways, e.g. do not use your ability to run tests to execute non-test actions. You should only try to work around this restriction in reasonable ways that do not attempt to bypass the intent behind this denial. If you believe this capability is essential to complete the user's request, STOP and explain to the user what you were trying to do and why you need this permission. Let the user decide how to proceed.
+1	# Reading a recording
+2	
+3	In the order a diagnosis needs: who started the cascade, why it rendered, how it reached the component, and how much
+4	of it was wasted. What scheduled the commit: `causes-and-actions.md`.
+5	
+6	## Roots
+7	
+8	A **cascade root** is a component that rendered while its parent did not — where a render started. `hits` is how
+9	many commits it started, `cascade` the renders it pulled, `perHit` the renders per commit, `instances` how many
+10	copies fired at once. `outsideRoots` are roots above the recorded area that reached into it.
+11	
+12	`noDomChange` (per root) and `rendersWithoutDom` (in totals) count renders after which the DOM did not change —
+13	waste with no argument attached. `ownDomUnchanged`, when a root has it, counts its hits that changed none of the elements it
+14	renders itself nor anything a child drew from a value the root passed it in props: what changed was in children that
+15	render on their own anyway, so the root's own render was spent handing them what they had. `mounts` other than zero on a page that only changes text means remounting: a
+16	component declared inside a render, or an unstable `key`.
+17	
+18	A `warnings` line starting `React warned:` is React's own dev warning, caught since the page loaded: a list without
+19	keys, two children with one key, a component setting another's state while it renders, an update loop. It names the
+20	component; ", before the recording" means React printed it at load and prints it once, so it ho … [3287 more]
 ```
 
 **→ Read**
@@ -117,33 +131,46 @@ Permission to use Read has been denied because Claude Code is running in don't a
 {"file_path":"test/eval-plugin/skills/react-perf-recorder/references/causes-and-actions.md"}
 ```
 
-**✗ error**
+**←**
 ```
-Permission to use Read has been denied because Claude Code is running in don't ask mode. IMPORTANT: You *may* attempt to accomplish this action using other tools that might naturally be used to accomplish this goal, e.g. using head instead of cat. But you *should not* attempt to work around this denial in malicious ways, e.g. do not use your ability to run tests to execute non-test actions. You should only try to work around this restriction in reasonable ways that do not attempt to bypass the intent behind this denial. If you believe this capability is essential to complete the user's request, STOP and explain to the user what you were trying to do and why you need this permission. Let the user decide how to proceed.
+1	# Causes, actions, plugins, traps
+2	
+3	## Causes
+4	
+5	What scheduled each commit, aimed at the components it actually updated:
+6	
+7	| Cause                                 | Means                                                                            |
+8	| ------------------------------------- | -------------------------------------------------------------------------------- |
+9	| `zustand:<action>`                    | a store write, with the keys it changed and a `SAME-CONTENT` mark                |
+10	| `redux:<action type>`                 | a Redux action that changed the store, with the slices it changed                |
+11	| `react-query:fetch → success <key>`   | a query's events, one cause per query and commit, on its subscribers' commit     |
+12	| `core:input <event>`                  | the person's click, keystroke, scroll                                            |
+13	| `core:message WebSocket` / `Worker`   | a frame arrived                                                                  |
+14	| `core:timer setInterval <fn> @ src/…` | a timer, with the place it was started                                           |
+15	| `core:navigation push`                | a navigation                                                                     |
+16	| `core:effect @ src/hooks/useX.ts`     | a setState from an effect                                                        |
+17	| `core:update <fn> @ src/…`            | a plain call in the app's code; `(<package>)`  … [1888 more]
 ```
 
 **→ ToolSearch**
 ```
-{"query":"select:mcp__plugin_react-perf-recorder_react-perf-recorder__get_recording,mcp__plugin_react-perf-recorder_react-perf-recorder__list_recordings,mcp__plugin_react-perf-recorder_react-perf-recorder__compare_recordings,mcp__plugin_react-perf-recorder_react-perf-recorder__record_page,mcp__plugin_react-perf-recorder_react-perf-recorder__wait_for_recording","max_results":5}
+{"query":"select:mcp__plugin_react-perf-recorder_react-perf-recorder__get_recording,mcp__plugin_react-perf-recorder_react-perf-recorder__compare_recordings","max_results":5}
 ```
 
 **←**
 ```
 mcp__plugin_react-perf-recorder_react-perf-recorder__get_recording
-mcp__plugin_react-perf-recorder_react-perf-recorder__list_recordings
 mcp__plugin_react-perf-recorder_react-perf-recorder__compare_recordings
-mcp__plugin_react-perf-recorder_react-perf-recorder__record_page
-mcp__plugin_react-perf-recorder_react-perf-recorder__wait_for_recording
 ```
 
 **→ rpr:get_recording**
 ```
-{"id":"20260927-235324-app-panel-85dd"}
+{"id":"20260928-002325-app-panel-7280"}
 ```
 
 **←**
 ```
-{"id":"20260927-235324-app-panel-85dd","status":"done","dir":"/tmp/tmp.tWwgk7hfQ4/20260927-235324-app-panel-85dd","summary":{"id":"20260927-235324-app-panel-85dd","status":"done","createdAt":"2026-09-27T23:53:29.978Z","source":"panel","url":"http://localhost:40283/?tick=150","viewport":"1280×720","durationSec":5,"scope":null,"totals":{"commits":44,"commitsPerSec":8.76,"commitsInScope":44,"renders":111,"rendersPerScopeCommit":2.5,"rendersFromOutside":0,"rendersWithoutDom":27,"domTextChanges":41,"rendersPerTextChange":2.7},"topRoots":[{"root":"SyncBar","source":"src/components/ChatView.tsx:55","path":"SettingsBySync < Layout","hits":34,"hitsPerSec":6.77,"instances":1,"perHit":1,"noDomChange":0,"renderMsPerHit":0.14,"reasons":["34× external store #2 [useChatStore] (s)=>s.workspace.lastEventAt · [zustand] useBoundStore › useStore › useSyncExternalStoreWithSelector › SyncExternalStore @ src/components/ChatView.tsx:44 const at = useChatStore((s) => s.workspace.lastEventAt);"],"causes":["34× core:message Worker","33× zustand:feed/tick","1× zustand:feed/message"],"lanes":"Sync:34"},{"root":"MessageList","source":"src/components/ChatPanel.tsx:27","path":"ChatPanel < ChatView < SettingsBySync < Layout","hits":34,"hitsPerSec":6.77,"instances":1,"perHit":1,"noDomChange":27,"ownDomUnchanged":33,"mounts":4,"renderMsPerHit":0.2,"reasons":["34× external store #2 (33 of them same content) [useChatStore] (s)=>Object.keys(s.messageById) · [zustand] useBoundStore › useStore › useSyncExternalStor … [5917 more]
+{"id":"20260928-002325-app-panel-7280","status":"done","dir":"/tmp/tmp.VHVbZKgKac/20260928-002325-app-panel-7280","summary":{"id":"20260928-002325-app-panel-7280","status":"done","createdAt":"2026-09-28T00:23:30.950Z","source":"panel","url":"http://localhost:36341/?tick=150","viewport":"1280×720","durationSec":5,"scope":null,"totals":{"commits":44,"commitsPerSec":8.78,"commitsInScope":44,"renders":111,"rendersPerScopeCommit":2.5,"rendersFromOutside":0,"rendersWithoutDom":27,"domTextChanges":41,"rendersPerTextChange":2.7},"topRoots":[{"root":"SyncBar","source":"src/components/ChatView.tsx:55","path":"SettingsBySync < Layout","hits":34,"hitsPerSec":6.78,"instances":1,"perHit":1,"noDomChange":0,"renderMsPerHit":0.12,"reasons":["34× external store #2 [useChatStore] (s)=>s.workspace.lastEventAt · [zustand] useBoundStore › useStore › useSyncExternalStoreWithSelector › SyncExternalStore @ src/components/ChatView.tsx:44 const at = useChatStore((s) => s.workspace.lastEventAt);"],"causes":["34× core:message Worker","33× zustand:feed/tick","1× zustand:feed/message"],"lanes":"Sync:34"},{"root":"MessageList","source":"src/components/ChatPanel.tsx:27","path":"ChatPanel < ChatView < SettingsBySync < Layout","hits":34,"hitsPerSec":6.78,"instances":1,"perHit":1,"noDomChange":27,"ownDomUnchanged":33,"mounts":4,"renderMsPerHit":0.1,"reasons":["34× external store #2 (33 of them same content) [useChatStore] (s)=>Object.keys(s.messageById) · [zustand] useBoundStore › useStore › useSyncExternalStor … [5957 more]
 ```
 
 **→ Read**
@@ -348,6 +375,110 @@ mcp__plugin_react-perf-recorder_react-perf-recorder__wait_for_recording
 49	  /**  … [3483 more]
 ```
 
+**→ Grep**
+```
+{"pattern":"\"zustand\"","path":"package.json","output_mode":"content"}
+```
+
+**✗ error**
+```
+Path does not exist: package.json. Note: your current working directory is ..
+```
+
+**→ Glob**
+```
+{"pattern":"package.json"}
+```
+
+**←**
+```
+No files found
+```
+
+**→ Glob**
+```
+{"pattern":"**/package.json"}
+```
+
+**←**
+```
+No files found
+```
+
+**→ Grep**
+```
+{"pattern":"\"version\"","path":"node_modules/zustand/package.json","output_mode":"content"}
+```
+
+**✗ error**
+```
+Permission to use Grep has been denied because Claude Code is running in don't ask mode. IMPORTANT: You *may* attempt to accomplish this action using other tools that might naturally be used to accomplish this goal, e.g. using head instead of cat. But you *should not* attempt to work around this denial in malicious ways, e.g. do not use your ability to run tests to execute non-test actions. You should only try to work around this restriction in reasonable ways that do not attempt to bypass the intent behind this denial. If you believe this capability is essential to complete the user's request, STOP and explain to the user what you were trying to do and why you need this permission. Let the user decide how to proceed.
+```
+
+**→ Glob**
+```
+{"pattern":"node_modules/zustand/react/shallow*"}
+```
+
+**←**
+```
+No files found
+```
+
+**→ Glob**
+```
+{"pattern":"*"}
+```
+
+**←**
+```
+src/app.css
+src/components/TypingLine.tsx
+src/components/ActivityLog.tsx
+src/components/PrefsLine.tsx
+src/components/ChannelStats.tsx
+src/components/Composer/useFieldError.ts
+src/components/Composer/index.tsx
+src/components/WebhookForm.tsx
+src/components/Header.tsx
+src/components/ChannelTopic.tsx
+src/components/TypingBadge.tsx
+src/components/Settings.tsx
+src/components/MessageCount.tsx
+src/components/ChatView.tsx
+src/components/Workspace.tsx
+src/components/ChatPanel.tsx
+src/components/OnlineNow.tsx
+src/components/TimeAgo.tsx
+src/hooks/useSortedMembers.ts
+src/hooks/useMessageCount.ts
+src/feed.ts
+src/vite-env.d.ts
+src/main.tsx
+src/store/clock.ts
+src/store/activity.ts
+src/store/chat.ts
+src/store/draft.ts
+src/lib/members.ts
+src/lib/channel.ts
+index.html
+src/components/Messages.tsx
+src/store/selectors.ts
+recording.txt
+recording.json
+dev-url.txt
+```
+
+**→ Glob**
+```
+{"pattern":"node_modules/zustand/*"}
+```
+
+**←**
+```
+No files found
+```
+
 **→ Read**
 ```
 {"file_path":"src/store/selectors.ts"}
@@ -366,48 +497,47 @@ mcp__plugin_react-perf-recorder_react-perf-recorder__wait_for_recording
 9	
 ```
 
-**→ Read**
+**→ Grep**
 ```
-{"file_path":"src/feed.ts"}
+{"pattern":"shallow","path":"src","output_mode":"files_with_matches"}
 ```
 
 **←**
 ```
-1	import { useEffect } from 'react';
-2	import { addActivity, beat, store } from './store/activity';
-3	import { ARRIVAL_EVERY, TYPING_LEAD, presenceStore, senderAt, useChatStore, type Person } from './store/chat';
-4	
-5	const everyMs = Number(new URLSearchParams(location.search).get('tick') ?? 200);
-6	
-7	// A worker stands in for the chat socket: its messages reach the page as `message` events, like a WebSocket's.
-8	const source = `let step = 0; setInterval(() => postMessage({ step: ++step }), ${everyMs});`;
-9	
-10	const IDLE: Person[][] = [[], ['Anna'], [], ['Boris', 'Chen'], []];
-11	
-12	/** Who is typing: whoever is about to send something, and otherwise whatever the room is doing. */
-13	function typingAt(step: number): Person[] {
-14	  const untilArrival = ARRIVAL_EVERY - (step % ARRIVAL_EVERY);
-15	  if (untilArrival <= TYPING_LEAD) return [senderAt(step + untilArrival)];
-16	  return IDLE[Math.floor(step / 4) % IDLE.length];
-17	}
-18	
-19	export function useFeed() {
-20	  useEffect(() => {
-21	    const socket = connectFeed();
-22	    return () => socket.terminate();
-23	  }, []);
-24	}
-25	
-26	function connectFeed() {
-27	  const socket = new Worker(URL.createObjectURL(new Blob([source], { type: 'text/javascript' })));
-28	  socket.addEventListener('message', (event: MessageEvent<{ step: number }>) => {
-29	    const { step } = event.data;
-30	    useChatStore.getState().tick(step);
-31	    store.dispatch(beat(step));
-32	    if (step % ARRIVAL_EVERY === 0) store.dispatch(addActivity({ tex … [229 more]
+No files found
 ```
 
-**agent:** Found it: `MessageList` (src/components/Messages.tsx:53) selects `Object.keys(s.messageById)`, which allocates a brand-new array on every store notification. The tick worker fires ~5×/sec and touches `workspace` (and occasionally `reactionsById`) far more often than `messageById` actually changes, but because the selector's *return value* is a fresh array reference each time, zustand's default `Object.is` check never bails out — so `MessageList` re-renders on nearly every tick even though its own DOM never changes (33 of 34 hits had identical content, `ownDomUnchanged: 33`). Let me fix this by selecting the stable object and deriving the ids with `useMemo`.
+**→ Read**
+```
+{"file_path":"node_modules/zustand/package.json"}
+```
+
+**✗ error**
+```
+Permission to use Read has been denied because Claude Code is running in don't ask mode. IMPORTANT: You *may* attempt to accomplish this action using other tools that might naturally be used to accomplish this goal, e.g. using head instead of cat. But you *should not* attempt to work around this denial in malicious ways, e.g. do not use your ability to run tests to execute non-test actions. You should only try to work around this restriction in reasonable ways that do not attempt to bypass the intent behind this denial. If you believe this capability is essential to complete the user's request, STOP and explain to the user what you were trying to do and why you need this permission. Let the user decide how to proceed.
+```
+
+**→ Glob**
+```
+{"pattern":"**/*.lock*"}
+```
+
+**←**
+```
+No files found
+```
+
+**→ Glob**
+```
+{"pattern":"**/vite.config.*"}
+```
+
+**←**
+```
+No files found
+```
+
+**agent:** Found it: `MessageList` (src/components/Messages.tsx:52-61) re-renders on almost every store tick even though the message list itself is unchanged.
 
 **→ Edit**
 ```
@@ -419,91 +549,105 @@ mcp__plugin_react-perf-recorder_react-perf-recorder__wait_for_recording
 The file src/components/Messages.tsx has been updated successfully. (file state is current in your context — no need to Read it back)
 ```
 
-**agent:** Now measure before/after by replaying the exact recorded scenario against the fixed code.
-
-**→ rpr:record_page**
-```
-{"replay":"20260927-235324-app-panel-85dd","label":"after"}
-```
-
-**✗ error**
-```
-20260927-235324-app-panel-85dd has no actions to replay
-```
-
 **→ Read**
 ```
-{"file_path":"dev-url.txt"}
+{"file_path":"test/eval-plugin/skills/react-perf-recorder/references/measuring-a-fix.md"}
+```
+
+**←**
+````
+1	# Measuring a fix
+2	
+3	Two recordings of one scenario — the code as it was, and the change — then `compare_recordings`. Do it when the cause
+4	is a guess or numbers were asked for; a recording that names the root, reason and `file:line` is an answer already.
+5	
+6	## Route
+7	
+8	1. The recording with the problem — the person's, or `record_page`. Keep its id.
+9	2. The change, in a git worktree when there is git (below); otherwise in place, and put back afterwards.
+10	3. The same scenario on the change — `compare_recordings`' description says how to record it.
+11	4. `compare_recordings` with `before: <id>`, `after: <new id>`.
+12	5. A change that is not kept leaves nothing behind: `git worktree remove`, or the file as it was.
+13	
+14	## Worktree
+15	
+16	The working tree may hold someone else's changes; do not edit it for a measurement.
+17	
+18	```sh
+19	git worktree add --detach ../<app>-fix && cd ../<app>-fix && npm ci
+20	REACT_PERF_RECORDER_DIR=<abs path of the first checkout>/.agent-artifacts/perf-recorder npm run dev -- --port <other port>
+21	```
+22	
+23	- `--detach`: no branch is made, and none is switched to.
+24	- The worktree is the last commit, without uncommitted changes. When `git status` shows changes to files the page
+25	  uses, record "before" in the worktree as well, before editing, so the sides differ by the fix alone.
+26	- The variable puts both servers' sessions in the folder the MCP server reads; an `outDir` in the project's config
+27	  overrides it — then set the s … [1124 more]
+````
+
+**→ ToolSearch**
+```
+{"query":"select:mcp__plugin_react-perf-recorder_react-perf-recorder__record_page","max_results":3}
 ```
 
 **←**
 ```
-1	http://localhost:40283/?tick=150
-2	
+mcp__plugin_react-perf-recorder_react-perf-recorder__record_page
 ```
+
+**agent:** The original recording had no user actions (page left idle), so I can replay it directly against the now-fixed dev server.
 
 **→ rpr:record_page**
 ```
-{"url":"http://localhost:40283/?tick=150","setup":"async (page) => { await page.goto('http://localhost:40283/?tick=150'); await page.locator('[data-testid=\\\"messages\\\"] li').first().waitFor(); }","ms":5000,"viewport":"1280x720","label":"after"}
+{"replay":"20260928-002325-app-panel-7280","label":"after"}
 ```
 
 **←**
 ```
-{"id":"20260927-235454-app-record-896a","url":"http://localhost:40283/?tick=150","requested":"http://localhost:40283/?tick=150","durationSec":5,"commits":43,"renders":66,"rendersWithoutDom":0,"rendersPerCommit":1.5,"topRoot":"SyncBar ×33","warnings":[]}
+{"id":"20260928-002533-app-record-2c9b","url":"http://localhost:36341/?tick=150","requested":"http://localhost:36341/?tick=150","durationSec":5,"commits":43,"renders":66,"rendersWithoutDom":0,"rendersPerCommit":1.5,"topRoot":"SyncBar ×33","wasting":[],"warnings":["20260928-002325-app-panel-7280 has no actions: recorded the page as it is for 5013 ms instead"]}
 ```
+
+**agent:** No `wasting` roots left, and `rendersWithoutDom` dropped to 0. Let me get the full comparison numbers.
 
 **→ rpr:compare_recordings**
 ```
-{"before":"20260927-235324-app-panel-85dd","after":"20260927-235454-app-record-896a"}
+{"before":"20260928-002325-app-panel-7280","after":"20260928-002533-app-record-2c9b"}
 ```
 
 **←**
 ```
-{"comparable":true,"warnings":[],"before":{"id":"20260927-235324-app-panel-85dd","durationMs":5025},"after":{"id":"20260927-235454-app-record-896a","durationMs":5015},"totals":{"commits":"44 → 43 (-2%)","renders":"111 → 66 (-41%)","commitsPerSec":"8.76 → 8.57 (-2%)","rendersPerSec":"22.09 → 13.16 (-40%)","rendersPerCommit":"2.5 → 1.5 (-40%)","rendersWithoutDomPerSec":"5.37 → 0 (-100%)","rendersPerTextChange":"2.7 → 2 (-26%)","longTaskMaxMs":"0 → 0"},"roots":[{"root":"MessageList","source":"src/components/ChatPanel.tsx:27","path":"ChatPanel < ChatView < SettingsBySync < Layout","status":"gone","hitsPerSec":"6.77 → –","perHit":"1 → –","instances":"1 → –","cascadePerSec":"6.77 → 0 (-100%)"},{"root":"Connect(ActivityLog)","source":"src/components/ChatView.tsx:35","path":"ChatView < SettingsBySync < Layout","status":"gone","hitsPerSec":"0.2 → –","perHit":"3 → –","instances":"1 → –","cascadePerSec":"0.6 → 0 (-100%)"},{"root":"Status","source":"src/components/Messages.tsx:43","path":"MessageRow < MessageList < ChatPanel < ChatView","status":"changed","hitsPerSec":"1.39 → 1.2 (-14%)","perHit":"1 → 1 (0%)","instances":"3 → 1 (-67%)","cascadePerSec":"1.79 → 1.2 (-33%)"},{"root":"TypingLine","source":"src/components/ChatView.tsx:66","path":"SettingsBySync < Layout","status":"changed","hitsPerSec":"1.79 → 1.4 (-22%)","perHit":"1 → 1 (0%)","instances":"1 → 1 (0%)","cascadePerSec":"1.79 → 1.4 (-22%)"},{"root":"Unread","source":"src/components/Header.tsx:32","path":"Header < SettingsBySync  … [2074 more]
+{"comparable":true,"warnings":[],"before":{"id":"20260928-002325-app-panel-7280","durationMs":5013},"after":{"id":"20260928-002533-app-record-2c9b","durationMs":5031},"totals":{"commits":"44 → 43 (-2%)","renders":"111 → 66 (-41%)","commitsPerSec":"8.78 → 8.55 (-3%)","rendersPerSec":"22.14 → 13.12 (-41%)","rendersPerCommit":"2.5 → 1.5 (-40%)","rendersWithoutDomPerSec":"5.39 → 0 (-100%)","rendersPerTextChange":"2.7 → 2 (-26%)","longTaskMaxMs":"0 → 0"},"roots":[{"root":"MessageList","source":"src/components/ChatPanel.tsx:27","path":"ChatPanel < ChatView < SettingsBySync < Layout","status":"gone","hitsPerSec":"6.78 → –","perHit":"1 → –","instances":"1 → –","cascadePerSec":"6.78 → 0 (-100%)"},{"root":"Status","source":"src/components/Messages.tsx:43","path":"MessageRow < MessageList < ChatPanel < ChatView","status":"changed","hitsPerSec":"1.4 → 1.19 (-15%)","perHit":"1 → 1 (0%)","instances":"3 → 1 (-67%)","cascadePerSec":"1.8 → 1.19 (-34%)"},{"root":"Connect(ActivityLog)","source":"src/components/ChatView.tsx:35","path":"ChatView < SettingsBySync < Layout","status":"gone","hitsPerSec":"0.2 → –","perHit":"3 → –","instances":"1 → –","cascadePerSec":"0.6 → 0 (-100%)"},{"root":"TypingLine","source":"src/components/ChatView.tsx:66","path":"SettingsBySync < Layout","status":"changed","hitsPerSec":"1.8 → 1.39 (-23%)","perHit":"1 → 1 (0%)","instances":"1 → 1 (0%)","cascadePerSec":"1.8 → 1.39 (-23%)"},{"root":"SyncBar","source":"src/components/ChatView.tsx:55","path":"SettingsBySync < Layo … [2097 more]
 ```
 
-**→ rpr:get_recording**
-```
-{"id":"20260927-235454-app-record-896a","section":"components"}
-```
+**agent:** ## What was wrong
 
-**←**
-```
-{"id":"20260927-235454-app-record-896a","status":"done","dir":"/tmp/tmp.tWwgk7hfQ4/20260927-235454-app-record-896a","components":{"total":5,"offset":0,"items":[{"name":"SyncBar","renders":33,"withoutDom":0,"byParent":0,"reasons":[{"i":0,"n":33,"reason":"external store #2 [useChatStore] (s)=>s.workspace.lastEventAt"}]},{"name":"ChannelStats","renders":10,"withoutDom":0,"byParent":0,"reasons":[{"i":1,"n":10,"reason":"external store #3"}]},{"name":"OnlineNow","renders":10,"withoutDom":0,"byParent":0,"reasons":[{"i":1,"n":10,"reason":"external store #3"}]},{"name":"TypingLine","renders":7,"withoutDom":0,"byParent":0,"reasons":[{"i":2,"n":7,"reason":"external store #2 [presenceStore] (s)=>s.typing"}]},{"name":"Status","renders":6,"withoutDom":0,"byParent":0,"memo":true,"reasons":[{"i":3,"n":6,"reason":"external store #3 [useChatStore] outer"}]}]}}
-```
+`MessageList` (`src/components/Messages.tsx`) subscribed to the chat store with:
 
-**agent:** `MessageList` no longer renders at all during the idle window — it dropped out of the components list entirely (it only mounts once at load now), confirming the fix eliminated its wasted re-renders rather than just hiding them.
-
-## What was wrong
-
-`MessageList` (src/components/Messages.tsx:53) selected from the zustand store like this:
-
-```js
+```tsx
 const ids = useChatStore((s) => Object.keys(s.messageById));
 ```
 
-`Object.keys(...)` allocates a **new array** every time it runs. Zustand's default equality check is `Object.is`, so even when `messageById` itself hadn't changed, the selector's return value was never `===` to the last one — the component re-rendered on every store notification, not just when messages actually changed.
+`Object.keys(...)` allocates a brand-new array every time the selector runs. Zustand compares selector output by reference, so even though `messageById` itself only changes when a message is actually sent/removed/arrives, the *array wrapping it* looked new on every store update — including the ones that only touch `reactionsById` or `workspace.lastEventAt` (i.e. every reaction, read-receipt, and worker tick). That made `MessageList` a cascade root re-rendering ~7×/sec for no visible reason: the recording flagged it as `external store #2 (33 of them same content)`, with `ownDomUnchanged: 33/34` and `noDomChange: 27/34`.
 
-The chat store's `tick()` (src/store/chat.ts:69) fires ~5×/sec from a worker (reactions, presence, a live "sync" clock) and updates `workspace`/`reactionsById` far more often than `messageById` (only every 40 ticks, on a real arrival). The recording showed this directly: `MessageList` hit 34 times in 5s, but 33 of them had identical content (`ownDomUnchanged: 33`, `noDomChange: 27`) — i.e. re-rendering for nothing almost every tick.
+## Fix
 
-Everything else in the recording (`SyncBar`, `TypingLine`, `ChannelStats`, `OnlineNow`, `Status`) changed its own DOM on every hit, so those are real work, not waste — left untouched.
+Subscribe to the stable `messageById` object instead, and derive the id list with `useMemo` keyed on that reference, so it's only recomputed when the message set actually changes:
 
-## The fix
-
-```js
+```tsx
 const messageById = useChatStore((s) => s.messageById);
 const ids = useMemo(() => Object.keys(messageById), [messageById]);
 ```
 
-Now the selector returns the store's own object reference (stable unless messages truly change), and the array is only recomputed when that reference changes. Output is identical — same ids, same order, same DOM.
+No change to what's rendered — same ids, same order, same conditions for updates.
 
-## Before / after (5s idle recording, same scenario, same url)
+## Before / after (same idle scenario, replayed)
 
-| | before | after | Δ |
-|---|---|---|---|
-| total renders | 111 | 66 | **-41%** |
-| renders/sec | 22.09 | 13.16 | **-40%** |
-| renders with no DOM change/sec | 5.37 | 0 | **-100%** |
-| `MessageList` renders/sec | 6.77 | 0 | **-100%** |
+| | before | after |
+|---|---|---|
+| total renders | 111 | 66 (**-41%**) |
+| renders/sec | 22.14 | 13.12 (**-41%**) |
+| renders that changed no DOM (per sec) | 5.39 | 0 (**-100%**) |
+| renders per commit | 2.5 | 1.5 (**-40%**) |
+| `MessageList` cascade | 6.78 hits/sec, 33/34 same-content | gone — no longer a cascade root |
 
-`MessageList` dropped out of the cascade entirely — it no longer appears in the component list for the after-run, meaning it now only renders when a message actually arrives/is removed, not on every background tick.
+`wastingAfter` (roots still rendering mostly for nothing) is now empty. The remaining renders (`SyncBar`, `TypingLine`, `Status`, `ChannelStats`, `OnlineNow`) all changed their own DOM on (nearly) every hit — they're doing real, visible work (live sync bar, typing indicator, reaction/read-receipt display), so I left them alone.

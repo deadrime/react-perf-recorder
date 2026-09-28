@@ -1,6 +1,6 @@
 # form-watch-rec, with the plugin, run 2
 
-fixed (waste 1); checks 5 of 5; $0.48, 232 s, 17 turns
+fixed (waste 0); checks 5 of 5; $0.52, 233 s, 29 turns
 
 ## The prompt
 
@@ -17,22 +17,36 @@ nothing.
 
 ## The answer
 
-> This looks correct and unchanged in output — `data-filled` still reflects the same derived count, just computed via a subscription callback instead of an unconditional `watch()` call during render.
+> Numbers match, and no warnings (no HMR full-refresh, no React dev warnings). The fix is confirmed and stable.
 > 
-> ## Summary
+> ## What was found
 > 
-> **Yes, something was re-rendering for nothing.** `Composer` (`src/components/Composer/index.tsx:89`, formerly) called react-hook-form's `watch()` with no field name during render. That call subscribes the component to *every* field change, so `Composer` re-rendered on every keystroke — even though the value it derived (`filled`, a count of non-empty fields) only ever changes once while typing a message (0→1 on the first character). Its own DOM (`data-filled`) was unchanged on 14 of 15 keystroke-triggered renders, and the wasted render cascaded down to `MessageInput`, `SendButton`, and both `MetaInput`s each time — none of which needed to update.
+> `Composer` (`src/components/Composer/index.tsx`) called react-hook-form's `watch()` with no argument during render, just to compute a `data-filled` count:
 > 
-> **Fix** (`src/components/Composer/index.tsx`): replaced the render-time `watch()` call with `watch`'s subscription form inside a `useEffect`, storing the result in `useState`. React's built-in bail-out (no re-render when `setState` gets an unchanged value) means `Composer` now only re-renders when `filled` actually changes, not on every keystroke. Output is identical — same `data-filled` value at every point in time.
+> ```tsx
+> const filled = Object.values(watch()).filter(Boolean).length;
+> ```
 > 
-> **Before → after**, replaying the exact same recorded keystrokes:
-> - Total renders: 173 → 101 (**-42%**)
-> - Renders with no DOM change: -82% per second
-> - Renders per character typed: 10.1 → 4.3 (**-57%**)
-> - `Composer`'s cascade rate: **-92%**
-> - `MessageInput` render rate: -68%, `SendButton`: -32%
+> `watch()` called this way subscribes the *whole component* to every field change. So typing one character re-rendered all of `Composer` — and everything below it (`MessageInput`, `SendButton`, both `MetaInput`s, `ComposerHints`) — even though `data-filled` only actually changes value at the empty↔non-empty transition, not on every keystroke. The recording showed `Composer`'s own output unchanged in 15 of 16 hits (`ownDomUnchanged: 15`) — pure waste.
 > 
-> Nothing else in `./src` was changed.
+> ## Fix
+> 
+> Moved the `watch` subscription into a small leaf component (`FilledAttribute`) that renders nothing (`return null`) and imperatively sets the `data-filled` attribute on the form via a ref, instead of running inside `Composer` itself. `Composer` no longer subscribes to form state at all, so it stops re-rendering per keystroke. The page's DOM output is identical — same attribute, same values, updated at the same points.
+> 
+> ## Before → after (same recorded scenario, replayed against both versions)
+> 
+> | Metric | Before | After | Change |
+> |---|---|---|---|
+> | Renders (typing "see you at five") | 187 | 113 | **-40%** |
+> | Commits | 65 | 50 | -23% |
+> | Renders without any DOM change /s | 41.65 | 16.17 | **-61%** |
+> | Renders per character typed | 10.1 | 5.1 | **-50%** |
+> | `Composer` re-renders /s | 6.94 | 0.44 | **-94%** |
+> | `MessageInput` re-renders /s | 13.02 | 6.56 | -50% (collateral: no longer double-rendered by its wasteful parent) |
+> 
+> `Composer` effectively stopped re-rendering on every keystroke, and the actual typing box (`MessageInput`) — the thing that was lagging — now renders half as often per character, since it's no longer forced to re-render both from its own field subscription and again from its parent's needless cascade.
+> 
+> One thing left unfixed on purpose: `SendButton` still re-renders on nearly every keystroke (`useFormState({ control })` for `isValid`) with no visible change most of the time. That's react-hook-form recomputing validity per keystroke because `mode: 'onChange'` validates on every change — it's tied to real behavior (the Send button's disabled state), not a subscription mistake, so fixing it would mean changing when validation runs. I left it as-is per your ask not to change what the page shows/does.
 
 ## What it changed
 
@@ -42,29 +56,55 @@ diff -ruN a/src/components/Composer/index.tsx b/src/components/Composer/index.ts
 +++ b/src/components/Composer/index.tsx
 @@ -1,4 +1,4 @@
 -import { memo, type ReactNode } from 'react';
-+import { memo, useEffect, useState, type ReactNode } from 'react';
++import { memo, useEffect, useRef, type ReactNode, type RefObject } from 'react';
  import { useController, useForm, useFormState, useWatch, type Control } from 'react-hook-form';
  import { presenceStore, useChatStore } from '../../store/chat';
  import { draftStore } from '../../store/draft';
-@@ -86,7 +86,14 @@
+@@ -81,23 +81,36 @@
+   );
+ };
+ 
++// Keeps the form's own data-filled attribute in sync without subscribing Composer itself to every
++// keystroke: watch() during render would re-render the whole composer tree on each field change.
++const FilledAttribute = ({ control, formRef }: { control: FormControl; formRef: RefObject<HTMLFormElement> }) => {
++  const values = useWatch({ control });
++  const filled = Object.values(values).filter(Boolean).length;
++  useEffect(() => {
++    formRef.current?.setAttribute('data-filled', String(filled));
++  }, [filled, formRef]);
++  return null;
++};
++
+ export const Composer = () => {
+-  const { control, handleSubmit, trigger, watch, reset } = useForm<ComposerValues>({
++  const { control, handleSubmit, trigger, reset } = useForm<ComposerValues>({
      mode: 'onChange',
      defaultValues: { text: '', replyTo: '', remindIn: '' },
    });
 -  const filled = Object.values(watch()).filter(Boolean).length;
-+  // watch() with no field name subscribes to every field, so this only reacts to the
-+  // derived count itself (React skips the re-render when setState gets the same value),
-+  // instead of re-rendering Composer — and everything under it — on every keystroke.
-+  const [filled, setFilled] = useState(0);
-+  useEffect(() => {
-+    const subscription = watch((values) => setFilled(Object.values(values).filter(Boolean).length));
-+    return () => subscription.unsubscribe();
-+  }, [watch]);
++  const formRef = useRef<HTMLFormElement>(null);
    return (
      <form
++      ref={formRef}
        className="composer"
+       data-testid="composer"
+-      data-filled={filled}
++      data-filled={0}
+       onSubmit={handleSubmit((values) => {
+         useChatStore.getState().send(values.text);
+         draftStore.setState({ hasDraft: false });
+         reset();
+       })}
+     >
++      <FilledAttribute control={control} formRef={formRef} />
+       <div className="row">
+         <MessageInput control={control} trigger={() => trigger()} />
+         <SendButton control={control} />
 ```
 
 ## The steps
+
+**agent:** This is exactly what the react-perf-recorder skill is for — I'll use it to analyze the recording and find the re-render cause.
 
 **→ Skill**
 ```
@@ -80,7 +120,7 @@ Launching skill: react-perf-recorder:react-perf-recorder
 
 # react-perf-recorder
 
-A dev-only Vite plugin that records React re-renders from the page. Re … [3506 more]
+A dev-only Vite plugin that records React re-renders from the page. Re … [3952 more]
 
 **→ Read**
 ```
@@ -89,43 +129,28 @@ A dev-only Vite plugin that records React re-renders from the page. Re … [3506
 
 **←**
 ```
-1	20260927-234613-app-panel-a020
-2	
-```
-
-**→ Read**
-```
-{"file_path":"dev-url.txt"}
-```
-
-**←**
-```
-1	http://localhost:41195/?tick=150
+1	20260928-001748-app-panel-4d38
 2	
 ```
 
 **→ ToolSearch**
 ```
-{"query":"select:mcp__plugin_react-perf-recorder_react-perf-recorder__get_recording,mcp__plugin_react-perf-recorder_react-perf-recorder__list_recordings,mcp__plugin_react-perf-recorder_react-perf-recorder__wait_for_recording,mcp__plugin_react-perf-recorder_react-perf-recorder__compare_recordings,mcp__plugin_react-perf-recorder_react-perf-recorder__record_page","max_results":5}
+{"query":"select:mcp__plugin_react-perf-recorder_react-perf-recorder__get_recording","max_results":3}
 ```
 
 **←**
 ```
 mcp__plugin_react-perf-recorder_react-perf-recorder__get_recording
-mcp__plugin_react-perf-recorder_react-perf-recorder__list_recordings
-mcp__plugin_react-perf-recorder_react-perf-recorder__wait_for_recording
-mcp__plugin_react-perf-recorder_react-perf-recorder__compare_recordings
-mcp__plugin_react-perf-recorder_react-perf-recorder__record_page
 ```
 
 **→ rpr:get_recording**
 ```
-{"id":"20260927-234613-app-panel-a020"}
+{"id":"20260928-001748-app-panel-4d38"}
 ```
 
 **←**
 ```
-{"id":"20260927-234613-app-panel-a020","status":"done","dir":"/tmp/tmp.tWwgk7hfQ4/20260927-234613-app-panel-a020","summary":{"id":"20260927-234613-app-panel-a020","status":"done","createdAt":"2026-09-27T23:46:15.268Z","source":"panel","url":"http://localhost:41195/?tick=150","viewport":"1280×720","durationSec":1.5,"scope":null,"totals":{"commits":59,"commitsPerSec":38.26,"commitsInScope":59,"renders":173,"rendersPerScopeCommit":2.9,"rendersFromOutside":0,"rendersWithoutDom":89,"domTextChanges":26,"rendersPerTextChange":6.7},"topRoots":[{"root":"Composer","source":"src/components/ChatView.tsx:26","path":"ChatView < SettingsBySync < Layout","hits":15,"hitsPerSec":9.73,"instances":1,"perHit":7,"noDomChange":0,"ownDomUnchanged":14,"renderMsPerHit":0.81,"reasons":["15× state #2 · [react-hook-form] useForm › State @ src/components/Composer/index.tsx:85 const { control, handleSubmit, trigger, watch, reset } = useForm<ComposerValues>({"],"causes":["15× zustand:draftStore.setState","15× core:input input"],"lanes":"Sync:15"},{"root":"MessageInput","source":"src/components/Composer/index.tsx:102","path":"Composer < ChatView < SettingsBySync < Layout","hits":30,"hitsPerSec":19.46,"instances":1,"perHit":1,"noDomChange":30,"renderMsPerHit":0.15,"reasons":["30× state #12 (15 of them same content) · [react-hook-form] useController › useFormState › State @ src/components/Composer/index.tsx:16 const { field } = useController({ control, name: 'text', rules: { validate: (v) => v.trim().length >  … [6968 more]
+{"id":"20260928-001748-app-panel-4d38","status":"done","dir":"/tmp/tmp.VHVbZKgKac/20260928-001748-app-panel-4d38","summary":{"id":"20260928-001748-app-panel-4d38","status":"done","createdAt":"2026-09-28T00:17:49.968Z","source":"panel","url":"http://localhost:34425/?tick=150","viewport":"1280×720","durationSec":1.5,"scope":null,"totals":{"commits":59,"commitsPerSec":38.41,"commitsInScope":59,"renders":173,"rendersPerScopeCommit":2.9,"rendersFromOutside":0,"rendersWithoutDom":89,"domTextChanges":26,"rendersPerTextChange":6.7},"topRoots":[{"root":"Composer","source":"src/components/ChatView.tsx:26","path":"ChatView < SettingsBySync < Layout","hits":15,"hitsPerSec":9.77,"instances":1,"perHit":7,"noDomChange":0,"ownDomUnchanged":14,"renderMsPerHit":0.61,"reasons":["15× state #2 · [react-hook-form] useForm › State @ src/components/Composer/index.tsx:85 const { control, handleSubmit, trigger, watch, reset } = useForm<ComposerValues>({"],"causes":["15× zustand:draftStore.setState","15× core:input input"],"lanes":"Sync:15"},{"root":"MessageInput","source":"src/components/Composer/index.tsx:102","path":"Composer < ChatView < SettingsBySync < Layout","hits":30,"hitsPerSec":19.53,"instances":1,"perHit":1,"noDomChange":30,"renderMsPerHit":0.14,"reasons":["30× state #12 (15 of them same content) · [react-hook-form] useController › useFormState › State @ src/components/Composer/index.tsx:16 const { field } = useController({ control, name: 'text', rules: { validate: (v) => v.trim().length >  … [6948 more]
 ```
 
 **→ Read**
@@ -175,182 +200,351 @@ mcp__plugin_react-perf-recorder_react-perf-recorder__record_page
 38	function useMetaField(control: FormControl, name: 'replyTo' | 'remindIn') { … [2620 more]
 ```
 
+**→ Grep**
+```
+{"pattern":"data-filled|filled","path":"src","-n":true}
+```
+
+**←**
+```
+Found 1 file
+src/components/Composer/index.tsx
+```
+
+**→ Grep**
+```
+{"pattern":"data-filled|composer","path":".","-n":true,"-i":true}
+```
+
+**←**
+```
+Found 3 files
+src/components/Composer/index.tsx
+src/app.css
+src/components/ChatView.tsx
+```
+
+**→ Grep**
+```
+{"pattern":"filled","path":"src/app.css","-n":true,"-C":2}
+```
+
+**←**
+```
+No files found
+```
+
+**→ Grep**
+```
+{"pattern":"composer|Composer","path":"src/components/ChatView.tsx","-n":true,"-C":2}
+```
+
+**←**
+```
+Found 1 file
+src/components/ChatView.tsx
+```
+
+**→ Grep**
+```
+{"pattern":"composer","path":"src/app.css","-n":true,"-i":true,"-C":2}
+```
+
+**←**
+```
+Found 1 file
+src/app.css
+```
+
+**→ Grep**
+```
+{"pattern":"Composer","path":"src/components/ChatView.tsx","-n":true}
+```
+
+**←**
+```
+Found 1 file
+src/components/ChatView.tsx
+```
+
+**→ Grep**
+```
+{"pattern":"composer|Composer","path":"src/app.css","output_mode":"content","-n":true}
+```
+
+**←**
+```
+91:.composer {
+217:/* Composer */
+218:.composer {
+223:.composer .row {
+229:.composer .row.meta {
+291:.composer button[type='submit'],
+301:.composer button[type='submit']:disabled,
+```
+
+**→ Grep**
+```
+{"pattern":"Composer","path":"src/components/ChatView.tsx","output_mode":"content","-n":true}
+```
+
+**←**
+```
+7:import { Composer } from './Composer';
+26:        <Composer />
+```
+
+**→ Grep**
+```
+{"pattern":"data-filled","path":".","-n":true,"output_mode":"content"}
+```
+
+**←**
+```
+src/components/Composer/index.tsx:94:      data-filled={filled}
+```
+
+**agent:** Found it. `Composer` (src/components/Composer/index.tsx:85-89) calls react-hook-form's `watch()` directly during render with no field name — this subscribes the whole `Composer` component to every keystroke in the form, just to compute a `data-filled` count. The recording shows `Composer` re-rendering 15 times while typing "see you at five" (once per keystroke), with `ownDomUnchanged: 14` — 14 of those 15 renders produce no change to what `Composer` itself puts on the page (the `filled` count only flips when a field goes from empty ↔ non-empty).
+
+Let me check the dev-url and confirm the baseline reproduction, then fix it by moving the `watch` subscription into a leaf component that doesn't re-render the rest of the composer tree.
+
 **→ Read**
 ```
-{"file_path":"src/components/ChatView.tsx"}
+{"file_path":"dev-url.txt"}
 ```
 
 **←**
 ```
-1	import type { ReactNode } from 'react';
-2	import { useFeed } from '../feed';
-3	import ActivityLog from './ActivityLog';
-4	import { useChatStore } from '../store/chat';
-5	import { ChannelStats } from './ChannelStats';
-6	import { ChatPanel } from './ChatPanel';
-7	import { Composer } from './Composer';
-8	import { Header } from './Header';
-9	import { MessageCount } from './MessageCount';
-10	import { OnlineNow } from './OnlineNow';
-11	import { PrefsLine } from './PrefsLine';
-12	import { SettingsProvider } from './Settings';
-13	import { TypingLine } from './TypingLine';
-14	import { WebhookForm } from './WebhookForm';
-15	
-16	function useChatLayout() {
-17	  return { wide: true };
-18	}
-19	
-20	export const ChatView = () => {
-21	  const { wide } = useChatLayout();
-22	  return (
-23	    <main className={wide ? 'chat wide' : 'chat'}>
-24	      <div className="thread">
-25	        <ChatPanel />
-26	        <Composer />
-27	      </div>
-28	      <aside className="side" data-testid="side-panel">
-29	        <h3>Channel</h3>
-30	        <ChannelStats />
-31	        <MessageCount />
-32	        <OnlineNow />
-33	        <PrefsLine />
-34	        <h3>Activity</h3>
-35	        <ActivityLog />
-36	        <h3>Webhook</h3>
-37	        <WebhookForm />
-38	      </aside>
-39	    </main>
-40	  );
-41	};
-42	
-43	const SyncBar = () => {
-44	  const at = useChatStore((s) => s.workspace.lastEventAt);
-45	  return (
-46	    <span className="sync" title="Live">
-47	      <span className="sync-fill" style={{ width: `${(at % 20) … [577 more]
+1	http://localhost:34425/?tick=150
+2	
 ```
 
-**→ rpr:get_recording**
+**→ ToolSearch**
 ```
-{"id":"20260927-234613-app-panel-a020","section":"components"}
+{"query":"select:mcp__plugin_react-perf-recorder_react-perf-recorder__record_page,mcp__plugin_react-perf-recorder_react-perf-recorder__compare_recordings","max_results":5}
 ```
 
 **←**
 ```
-{"id":"20260927-234613-app-panel-a020","status":"done","dir":"/tmp/tmp.tWwgk7hfQ4/20260927-234613-app-panel-a020","components":{"total":12,"offset":0,"items":[{"name":"MessageInput","renders":45,"withoutDom":30,"byParent":15,"reasons":[{"i":3,"n":15,"reason":"parent: props new ref, same content: trigger"},{"i":6,"n":15,"reason":"state #12 SAME-CONTENT"},{"i":7,"n":15,"reason":"state #12"}],"chains":[{"n":15,"way":"zustand:draftStore.setState › Composer · state useForm › MessageInput · new ref, same content trigger"}]},{"name":"SendButton","renders":30,"withoutDom":29,"byParent":15,"reasons":[{"i":4,"n":15,"reason":"parent: same props, memo would skip it"},{"i":9,"n":14,"reason":"state #0 SAME-CONTENT"},{"i":8,"n":1,"reason":"state #0"}],"chains":[{"n":15,"way":"zustand:draftStore.setState › Composer · state useForm › SendButton · props equal"}]},{"name":"MetaInput","renders":30,"withoutDom":30,"byParent":30,"reasons":[{"i":4,"n":30,"reason":"parent: same props, memo would skip it"}],"chains":[{"n":30,"way":"zustand:draftStore.setState › Composer · state useForm › MetaInput · props equal"}]},{"name":"Composer","renders":15,"withoutDom":0,"byParent":0,"reasons":[{"i":2,"n":15,"reason":"state #2"}]},{"name":"ComposerHints","renders":15,"withoutDom":0,"byParent":15,"reasons":[{"i":4,"n":15,"reason":"parent: same props, memo would skip it"}],"chains":[{"n":15,"way":"zustand:draftStore.setState › Composer · state useForm › ComposerHints · props equal"}]},{"name":"StatRow","renders" … [787 more]
+mcp__plugin_react-perf-recorder_react-perf-recorder__record_page
+mcp__plugin_react-perf-recorder_react-perf-recorder__compare_recordings
 ```
-
-**agent:** Found it. `Composer` (src/components/Composer/index.tsx:89) calls `watch()` from react-hook-form with no arguments during render. That subscribes it to *every* field change, so it re-renders on every keystroke even though the value it derives (`filled`, the count of non-empty fields) almost never changes while typing — its own `data-filled` attribute is unchanged in 14 of 15 hits. That re-render cascades to `MessageInput`, `SendButton`, and both `MetaInput`s, which get new element trees each time (the recorder even flags "parent: same props, memo would skip it" for three of them). Let me look closer to confirm and design the minimal fix.
-
-**→ rpr:get_recording**
-```
-{"id":"20260927-234613-app-panel-a020","section":"memos"}
-```
-
-**←**
-```
-{"id":"20260927-234613-app-panel-a020","status":"done","dir":"/tmp/tmp.tWwgk7hfQ4/20260927-234613-app-panel-a020","memos":{"total":7,"offset":0,"items":[{"component":"MessageInput","source":"src/components/Composer/index.tsx:102","hook":16,"kind":"useMemo","renders":45,"recomputed":45,"deps":[{"index":0,"changed":45,"sameContent":15}],"info":{"type":"useMemo","path":["useController","useFormState","Memo"],"library":"react-hook-form","libraryAt":0,"site":"src/components/Composer/index.tsx:16","code":"const { field } = useController({ control, name: 'text', rules: { validate: (v) => v.trim().length > 0 || 'say something' } });"},"line":"MessageInput · useMemo #16 · recomputed 45 of 45 renders — inside react-hook-form's useController: what the call passes is new on every render, which costs the library a recompute, not a render — it matters only if that argument does heavy work · src/components/Composer/index.tsx:16 const { field } = useController({ control, name: 'text', rules: { validate: (v) => v.trim().length > 0 || 'say something' } });"},{"component":"MessageInput","source":"src/components/Composer/index.tsx:102","hook":19,"kind":"useMemo","renders":45,"recomputed":45,"deps":[{"index":0,"changed":45,"sameContent":45}],"info":{"type":"useMemo","path":["useController","Memo"],"library":"react-hook-form","libraryAt":0,"site":"src/components/Composer/index.tsx:16","code":"const { field } = useController({ control, name: 'text', rules: { validate: (v) => v.trim().length > 0 ||  … [4385 more]
-```
-
-**agent:** This confirms the cause: `Composer` calling `watch()` with no arguments subscribes it to every field change, forcing 15 re-renders (one per keystroke) even though the value it derives changes essentially once. Let me apply the fix — subscribe via `watch`'s callback form in an effect and store the derived count in state, so React's built-in bail-out (no re-render when state is set to the same value) does the work.
-
-**→ Read**
-```
-{"file_path":"src/components/Composer/index.tsx","offset":1,"limit":1}
-```
-
-**←**
-```
-1	import { memo, type ReactNode } from 'react';
-```
-
-**→ Edit**
-```
-{"replace_all":false,"file_path":"src/components/Composer/index.tsx","old_string":"import { memo, type ReactNode } from 'react';","new_string":"import { memo, useEffect, useState, type ReactNode } from 'react';"}
-```
-
-**←**
-```
-The file src/components/Composer/index.tsx has been updated successfully.
-```
-
-**→ Edit**
-```
-{"replace_all":false,"file_path":"src/components/Composer/index.tsx","old_string":"  const { control, handleSubmit, trigger, watch, reset } = useForm<ComposerValues>({\n    mode: 'onChange',\n    defaultValues: { text: '', replyTo: '', remindIn: '' },\n  });\n  const filled = Object.values(watch()).filter(Boolean).length;","new_string":"  const { control, handleSubmit, trigger, watch, reset } = useForm<ComposerValues>({\n    mode: 'onChange',\n    defaultValues: { text: '', replyTo: '', remindIn: '' },\n  });\n  // watch() with no field name subscribes to every … [442 more]
-```
-
-**←**
-```
-The file src/components/Composer/index.tsx has been updated successfully.
-```
-
-**agent:** Now let's measure. I'll replay the original recording's actions against the fixed code and compare.
 
 **→ rpr:record_page**
 ```
-{"replay":"20260927-234613-app-panel-a020","label":"after"}
+{"replay":"20260928-001748-app-panel-4d38","label":"before"}
 ```
 
 **←**
 ```
-{"id":"20260927-234936-app-record-6958","url":"http://localhost:41195/?tick=150&rpr=rec","requested":"http://localhost:41195/?tick=150","durationSec":2.3,"commits":50,"renders":101,"rendersWithoutDom":24,"rendersPerCommit":2,"topRoot":"ComposerHints ×14","warnings":[]}
-```
-
-**agent:** Renders dropped from 173 to 101 and the cascade root is no longer `Composer`. Let's get the full before/after comparison.
-
-**→ rpr:compare_recordings**
-```
-{"before":"20260927-234613-app-panel-a020","after":"20260927-234936-app-record-6958"}
-```
-
-**←**
-```
-{"comparable":true,"warnings":["durations differ (1542ms vs 2278ms): rates per second move with the length too — a scenario run twice compares by its actions and by the whole-run totals"],"before":{"id":"20260927-234613-app-panel-a020","durationMs":1542},"after":{"id":"20260927-234936-app-record-6958","durationMs":2278},"totals":{"commits":"59 → 50 (-15%)","renders":"173 → 101 (-42%)","commitsPerSec":"38.26 → 21.95 (-43%)","rendersPerSec":"112.19 → 44.34 (-60%)","rendersPerCommit":"2.9 → 2 (-31%)","rendersWithoutDomPerSec":"57.72 → 10.54 (-82%)","rendersPerTextChange":"6.7 → 3.3 (-51%)","longTaskMaxMs":"0 → 98"},"roots":[{"root":"Composer","source":"src/components/ChatView.tsx:26","path":"ChatView < SettingsBySync < Layout","status":"changed","hitsPerSec":"9.73 → 0.88 (-91%)","perHit":"7 → 7 (0%)","instances":"1 → 1 (0%)","cascadePerSec":"68.09 → 5.71 (-92%)"},{"root":"MessageInput","source":"src/components/Composer/index.tsx:109","path":"Composer < ChatView < SettingsBySync < Layout","status":"changed","hitsPerSec":"19.46 → 6.15 (-68%)","perHit":"1 → 1 (0%)","instances":"1 → 1 (0%)","cascadePerSec":"19.46 → 6.15 (-68%)"},{"root":"ComposerHints","source":"src/components/Composer/index.tsx:115","path":"Composer < ChatView < SettingsBySync < Layout","status":"new","hitsPerSec":"– → 6.15","perHit":"– → 2","instances":"– → 1","cascadePerSec":"0 → 12.29"},{"root":"SendButton","source":"src/components/Composer/index.tsx:110","path":"Composer < ChatView < SettingsBySync < Layout","s … [3390 more]
+{"id":"20260928-001934-app-record-db53","url":"http://localhost:34425/?tick=150&rpr=rec","requested":"http://localhost:34425/?tick=150","durationSec":2.3,"commits":65,"renders":187,"rendersWithoutDom":96,"rendersPerCommit":2.9,"topRoot":"Composer ×16","wasting":[{"root":"MessageInput","source":"src/components/Composer/index.tsx:102","hits":30,"instances":1,"noDomChange":30},{"root":"Composer","source":"src/components/ChatView.tsx:26","hits":16,"instances":1,"noDomChange":1,"ownDomUnchanged":15},{"root":"SendButton","source":"src/components/Composer/index.tsx:103","hits":15,"instances":1,"noDomChange":14}],"warnings":[]}
 ```
 
 **→ Read**
 ```
-{"file_path":"src/components/Composer/index.tsx","offset":83,"limit":20}
+{"file_path":"test/eval-plugin/skills/react-perf-recorder/references/causes-and-actions.md"}
 ```
 
 **←**
 ```
-83	
-84	export const Composer = () => {
-85	  const { control, handleSubmit, trigger, watch, reset } = useForm<ComposerValues>({
-86	    mode: 'onChange',
-87	    defaultValues: { text: '', replyTo: '', remindIn: '' },
-88	  });
-89	  // watch() with no field name subscribes to every field, so this only reacts to the
-90	  // derived count itself (React skips the re-render when setState gets the same value),
-91	  // instead of re-rendering Composer — and everything under it — on every keystroke.
-92	  const [filled, setFilled] = useState(0);
-93	  useEffect(() => {
-94	    const subscription = watch((values) => setFilled(Object.values(values).filter(Boolean).length));
-95	    return () => subscription.unsubscribe();
-96	  }, [watch]);
-97	  return (
-98	    <form
-99	      className="composer"
-100	      data-testid="composer"
-101	      data-filled={filled}
-102	      onSubmit={handleSubmit((values) => {
+1	# Causes, actions, plugins, traps
+2	
+3	## Causes
+4	
+5	What scheduled each commit, aimed at the components it actually updated:
+6	
+7	| Cause                                 | Means                                                                            |
+8	| ------------------------------------- | -------------------------------------------------------------------------------- |
+9	| `zustand:<action>`                    | a store write, with the keys it changed and a `SAME-CONTENT` mark                |
+10	| `redux:<action type>`                 | a Redux action that changed the store, with the slices it changed                |
+11	| `react-query:fetch → success <key>`   | a query's events, one cause per query and commit, on its subscribers' commit     |
+12	| `core:input <event>`                  | the person's click, keystroke, scroll                                            |
+13	| `core:message WebSocket` / `Worker`   | a frame arrived                                                                  |
+14	| `core:timer setInterval <fn> @ src/…` | a timer, with the place it was started                                           |
+15	| `core:navigation push`                | a navigation                                                                     |
+16	| `core:effect @ src/hooks/useX.ts`     | a setState from an effect                                                        |
+17	| `core:update <fn> @ src/…`            | a plain call in the app's code; `(<package>)`  … [1888 more]
 ```
 
-**agent:** This looks correct and unchanged in output — `data-filled` still reflects the same derived count, just computed via a subscription callback instead of an unconditional `watch()` call during render.
+**→ Read**
+```
+{"file_path":"test/eval-plugin/skills/react-perf-recorder/references/reading-a-recording.md"}
+```
 
-## Summary
+**←**
+```
+1	# Reading a recording
+2	
+3	In the order a diagnosis needs: who started the cascade, why it rendered, how it reached the component, and how much
+4	of it was wasted. What scheduled the commit: `causes-and-actions.md`.
+5	
+6	## Roots
+7	
+8	A **cascade root** is a component that rendered while its parent did not — where a render started. `hits` is how
+9	many commits it started, `cascade` the renders it pulled, `perHit` the renders per commit, `instances` how many
+10	copies fired at once. `outsideRoots` are roots above the recorded area that reached into it.
+11	
+12	`noDomChange` (per root) and `rendersWithoutDom` (in totals) count renders after which the DOM did not change —
+13	waste with no argument attached. `ownDomUnchanged`, when a root has it, counts its hits that changed none of the elements it
+14	renders itself nor anything a child drew from a value the root passed it in props: what changed was in children that
+15	render on their own anyway, so the root's own render was spent handing them what they had. `mounts` other than zero on a page that only changes text means remounting: a
+16	component declared inside a render, or an unstable `key`.
+17	
+18	A `warnings` line starting `React warned:` is React's own dev warning, caught since the page loaded: a list without
+19	keys, two children with one key, a component setting another's state while it renders, an update loop. It names the
+20	component; ", before the recording" means React printed it at load and prints it once, so it ho … [3287 more]
+```
 
-**Yes, something was re-rendering for nothing.** `Composer` (`src/components/Composer/index.tsx:89`, formerly) called react-hook-form's `watch()` with no field name during render. That call subscribes the component to *every* field change, so `Composer` re-rendered on every keystroke — even though the value it derived (`filled`, a count of non-empty fields) only ever changes once while typing a message (0→1 on the first character). Its own DOM (`data-filled`) was unchanged on 14 of 15 keystroke-triggered renders, and the wasted render cascaded down to `MessageInput`, `SendButton`, and both `MetaInput`s each time — none of which needed to update.
+**→ Edit**
+```
+{"replace_all":false,"file_path":"src/components/Composer/index.tsx","old_string":"import { memo, type ReactNode } from 'react';\nimport { useController, useForm, useFormState, useWatch, type Control } from 'react-hook-form';","new_string":"import { memo, useEffect, useRef, type ReactNode } from 'react';\nimport { useController, useForm, useFormState, useWatch, type Control } from 'react-hook-form';"}
+```
 
-**Fix** (`src/components/Composer/index.tsx`): replaced the render-time `watch()` call with `watch`'s subscription form inside a `useEffect`, storing the result in `useState`. React's built-in bail-out (no re-render when `setState` gets an unchanged value) means `Composer` now only re-renders when `filled` actually changes, not on every keystroke. Output is identical — same `data-filled` value at every point in time.
+**←**
+```
+The file src/components/Composer/index.tsx has been updated successfully. (file state is current in your context — no need to Read it back)
+```
 
-**Before → after**, replaying the exact same recorded keystrokes:
-- Total renders: 173 → 101 (**-42%**)
-- Renders with no DOM change: -82% per second
-- Renders per character typed: 10.1 → 4.3 (**-57%**)
-- `Composer`'s cascade rate: **-92%**
-- `MessageInput` render rate: -68%, `SendButton`: -32%
+**→ Edit**
+```
+{"replace_all":false,"file_path":"src/components/Composer/index.tsx","old_string":"export const Composer = () => {\n  const { control, handleSubmit, trigger, watch, reset } = useForm<ComposerValues>({\n    mode: 'onChange',\n    defaultValues: { text: '', replyTo: '', remindIn: '' },\n  });\n  const filled = Object.values(watch()).filter(Boolean).length;\n  return (\n    <form\n      className=\"composer\"\n      data-testid=\"composer\"\n      data-filled={filled}\n      onSubmit={handleSubmit((values) => {\n        useChatStore.getState().send(values.text);\n … [2075 more]
+```
 
-Nothing else in `./src` was changed.
+**←**
+```
+The file src/components/Composer/index.tsx has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+
+**→ Read**
+```
+{"file_path":"src/components/Composer/index.tsx"}
+```
+
+**←**
+```
+1	import { memo, useEffect, useRef, type ReactNode } from 'react';
+2	import { useController, useForm, useFormState, useWatch, type Control } from 'react-hook-form';
+3	import { presenceStore, useChatStore } from '../../store/chat';
+4	import { draftStore } from '../../store/draft';
+5	import { useFieldError } from './useFieldError';
+6	
+7	export interface ComposerValues {
+8	  text: string;
+9	  replyTo: string;
+10	  remindIn: string;
+11	}
+12	
+13	type FormControl = Control<ComposerValues>;
+14	
+15	export const MessageInput = ({ control, trigger }: { control: FormControl; trigger: () => Promise<boolean> }) => {
+16	  const { field } = useController({ control, name: 'text', rules: { validate: (v) => v.trim().length > 0 || 'say something' } });
+17	  return (
+18	    <label className="field grow">
+19	      <input
+20	        {...field}
+21	        data-testid="message"
+22	        placeholder="Write a message"
+23	        onChange={(e) => {
+24	          field.onChange(e);
+25	          draftStore.setState({ hasDraft: e.target.value.length > 0 });
+26	          // The other fields are validated against the text.
+27	          void trigger();
+28	        }}
+29	        onKeyDown={(e) => {
+30	          // Enter waits while someone is typing a reply, so the two messages do not cross.
+31	          if (e.key === 'Enter' && presenceStore.getState().typing.length > 0) e.preventDefault();
+32	        }}
+33	      />
+34	    </label>
+35	  );
+36	};
+37	
+38	function useMetaField(control: FormControl, name: 'reply … [3297 more]
+```
+
+**agent:** Looks correct. Now let's replay the same recording against the fixed code to measure after-numbers, then compare directly against the "before" baseline.
+
+**→ rpr:record_page**
+```
+{"replay":"20260928-001748-app-panel-4d38","label":"after"}
+```
+
+**←**
+```
+{"id":"20260928-002049-app-record-3959","url":"http://localhost:34425/?tick=150&rpr=rec","requested":"http://localhost:34425/?tick=150","durationSec":2.3,"commits":50,"renders":113,"rendersWithoutDom":37,"rendersPerCommit":2.3,"topRoot":"ComposerHints ×15","wasting":[{"root":"FilledAttribute","source":"src/components/Composer/index.tsx:113","hits":15,"instances":1,"noDomChange":15},{"root":"SendButton","source":"src/components/Composer/index.tsx:116","hits":15,"instances":1,"noDomChange":14}],"warnings":[]}
+```
+
+**→ rpr:compare_recordings**
+```
+{"before":"20260928-001934-app-record-db53","after":"20260928-002049-app-record-3959"}
+```
+
+**←**
+```
+{"comparable":true,"warnings":[],"before":{"id":"20260928-001934-app-record-db53","durationMs":2305},"after":{"id":"20260928-002049-app-record-3959","durationMs":2288},"totals":{"commits":"65 → 50 (-23%)","renders":"187 → 113 (-40%)","commitsPerSec":"28.2 → 21.85 (-23%)","rendersPerSec":"81.13 → 49.39 (-39%)","rendersPerCommit":"2.9 → 2.3 (-21%)","rendersWithoutDomPerSec":"41.65 → 16.17 (-61%)","rendersPerTextChange":"6 → 3.6 (-40%)","longTaskMaxMs":"104 → 92 (-12%)"},"roots":[{"root":"Composer","source":"src/components/ChatView.tsx:26","path":"ChatView < SettingsBySync < Layout","status":"changed","hitsPerSec":"6.94 → 0.44 (-94%)","perHit":"7 → 7 (0%)","instances":"1 → 1 (0%)","cascadePerSec":"48.16 → 3.06 (-94%)"},{"root":"ComposerHints","source":"src/components/Composer/index.tsx:121","path":"Composer < ChatView < SettingsBySync < Layout","status":"new","hitsPerSec":"– → 6.56","perHit":"– → 2","instances":"– → 1","cascadePerSec":"0 → 13.11"},{"root":"FilledAttribute","source":"src/components/Composer/index.tsx:113","path":"Composer < ChatView < SettingsBySync < Layout","status":"new","hitsPerSec":"– → 6.56","perHit":"– → 1","instances":"– → 1","cascadePerSec":"0 → 6.56"},{"root":"MessageInput","source":"src/components/Composer/index.tsx:115","path":"Composer < ChatView < SettingsBySync < Layout","status":"changed","hitsPerSec":"13.02 → 6.56 (-50%)","perHit":"1 → 1 (0%)","instances":"1 → 1 (0%)","cascadePerSec":"13.02 → 6.56 (-50%)"},{"root":"SendButton","source":"src/compo … [3654 more]
+```
+
+**agent:** I should double check the `React.RefObject` type reference — the file only imports named exports from `react`, not the `React` namespace, which could break type-checking.
+
+**→ Edit**
+```
+{"replace_all":false,"file_path":"src/components/Composer/index.tsx","old_string":"import { memo, useEffect, useRef, type ReactNode } from 'react';","new_string":"import { memo, useEffect, useRef, type ReactNode, type RefObject } from 'react';"}
+```
+
+**←**
+```
+The file src/components/Composer/index.tsx has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+
+**→ Edit**
+```
+{"replace_all":false,"file_path":"src/components/Composer/index.tsx","old_string":"const FilledAttribute = ({ control, formRef }: { control: FormControl; formRef: React.RefObject<HTMLFormElement> }) => {","new_string":"const FilledAttribute = ({ control, formRef }: { control: FormControl; formRef: RefObject<HTMLFormElement> }) => {"}
+```
+
+**←**
+```
+The file src/components/Composer/index.tsx has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+
+**agent:** Since the dev server has HMR, let me re-record after this touch-up to confirm the numbers still hold with the corrected types.
+
+**→ rpr:record_page**
+```
+{"replay":"20260928-001748-app-panel-4d38","label":"after-fixed-types"}
+```
+
+**←**
+```
+{"id":"20260928-002120-app-record-1cc5","url":"http://localhost:34425/?tick=150&rpr=rec","requested":"http://localhost:34425/?tick=150","durationSec":2.2,"commits":50,"renders":113,"rendersWithoutDom":37,"rendersPerCommit":2.3,"topRoot":"ComposerHints ×15","wasting":[{"root":"FilledAttribute","source":"src/components/Composer/index.tsx:113","hits":15,"instances":1,"noDomChange":15},{"root":"SendButton","source":"src/components/Composer/index.tsx:116","hits":15,"instances":1,"noDomChange":14}],"warnings":[]}
+```
+
+**agent:** Numbers match, and no warnings (no HMR full-refresh, no React dev warnings). The fix is confirmed and stable.
+
+## What was found
+
+`Composer` (`src/components/Composer/index.tsx`) called react-hook-form's `watch()` with no argument during render, just to compute a `data-filled` count:
+
+```tsx
+const filled = Object.values(watch()).filter(Boolean).length;
+```
+
+`watch()` called this way subscribes the *whole component* to every field change. So typing one character re-rendered all of `Composer` — and everything below it (`MessageInput`, `SendButton`, both `MetaInput`s, `ComposerHints`) — even though `data-filled` only actually changes value at the empty↔non-empty transition, not on every keystroke. The recording showed `Composer`'s own output unchanged in 15 of 16 hits (`ownDomUnchanged: 15`) — pure waste.
+
+## Fix
+
+Moved the `watch` subscription into a small leaf component (`FilledAttribute`) that renders nothing (`return null`) and imperatively sets the `data-filled` attribute on the form via a ref, instead of running inside `Composer` itself. `Composer` no longer subscribes to form state at all, so it stops re-rendering per keystroke. The page's DOM output is identical — same attribute, same values, updated at the same points.
+
+## Before → after (same recorded scenario, replayed against both versions)
+
+| Metric | Before | After | Change |
+|---|---|---|---|
+| Renders (typing "see you at five") | 187 | 113 | **-40%** |
+| Commits | 65 | 50 | -23% |
+| Renders without any DOM change /s | 41.65 | 16.17 | **-61%** |
+| Renders per character typed | 10.1 | 5.1 | **-50%** |
+| `Composer` re-renders /s | 6.94 | 0.44 | **-94%** |
+| `MessageInput` re-renders /s | 13.02 | 6.56 | -50% (collateral: no longer double-rendered by its wasteful parent) |
+
+`Composer` effectively stopped re-rendering on every keystroke, and the actual typing box (`MessageInput`) — the thing that was lagging — now renders half as often per character, since it's no longer forced to re-render both from its own field subscription and again from its parent's needless cascade.
+
+One thing left unfixed on purpose: `SendButton` still re-renders on nearly every keystroke (`useFormState({ control })` for `isValid`) with no visible change most of the time. That's react-hook-form recomputing validity per keystroke because `mode: 'onChange'` validates on every change — it's tied to real behavior (the Send button's disabled state), not a subscription mistake, so fixing it would mean changing when validation runs. I left it as-is per your ask not to change what the page shows/does.
