@@ -100,7 +100,7 @@ export const BASICS: Record<string, BasicsCase> = {
     element: Notify,
   },
   init: {
-    title: 'the value state starts with',
+    title: 'useState: an expensive initial value, a reset from an effect',
     what: 'useState(parse(text)) parses on every render; a draft reset from an effect shows the old user for a commit, a key starts it fresh.',
     element: Init,
   },

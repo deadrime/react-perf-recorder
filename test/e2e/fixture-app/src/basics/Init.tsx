@@ -183,7 +183,7 @@ const Lesson = ({ id, title, intro, action, children }: { id: string; title: str
 
 export const Init = () => (
   <Case
-    title="the value state starts with"
+    title="useState: an expensive initial value, a reset from an effect"
     what={<>Two mistakes with the first value of useState. Each has its own button: press it and compare the counters in the two panels.</>}
   >
     <Lesson
