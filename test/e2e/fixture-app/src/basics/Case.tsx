@@ -64,7 +64,9 @@ const Code = ({ source }: { source: string }) => {
   if (html === undefined) colored.set(source, (html = highlight(source)));
   return (
     <details className="code" open={wide()}>
-      <summary>the code</summary>
+      <summary>
+        the code<span className="meta">{source.trim().split('\n').length} lines · tsx</span>
+      </summary>
       <pre dangerouslySetInnerHTML={{ __html: html }} />
     </details>
   );
