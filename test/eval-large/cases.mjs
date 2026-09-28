@@ -141,7 +141,7 @@ export const BUGS = {
   'hover-state': {
     scenario: 'hover-rows',
     root: 'IssueTable',
-    waste: hitsOf('IssueTable'),
+    waste: cascadeOf('IssueTable'),
     files: ['features/issues/IssueTable.tsx', 'features/issues/IssueRow.tsx', 'app.css'],
     named: ['IssueTable.tsx', 'IssueRow.tsx'],
     complaint: 'Moving the pointer down the issue list feels laggy.',
