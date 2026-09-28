@@ -1,5 +1,5 @@
 import type { ActionRecord, RecordingV2, RootStat } from './schema';
-import { actionText } from './summary';
+import { actionText, wastingRoots } from './summary';
 
 export interface Delta {
   before: number | null;
@@ -272,6 +272,18 @@ export function compareRecordings(a: RecordingV2, b: RecordingV2, options: Compa
     );
   if (a.partial || b.partial) notes.push('a partial recording is compared: hook names, components and plugin sections may be missing');
   const text = (r: RecordingV2) => r.totals.domTextChanges;
+  const wastingAfter = wastingRoots(b);
+  // Counts, not rates: a replay does the same actions, and a longer after-run only adds to them.
+  const waste = (r: { noDomChange: number; ownDomUnchanged?: number }) => Math.max(r.noDomChange, r.ownDomUnchanged ?? 0);
+  for (const w of wastingAfter) {
+    const was = a.roots.find((r) => r.name === w.root && r.source === w.source);
+    if (was && waste(w) >= 0.8 * waste(was))
+      notes.push(
+        `${w.root} (${w.source}) still renders for nothing, ${waste(was)} of ${was.hits} hits before and ${waste(w)} of ${
+          w.hits
+        } after: the change did not reach its cause`
+      );
+  }
   const totals = {
     // The whole run: what a script done twice compares by, whatever the time the page took to do it.
     commits: delta(a.totals.commitsInScope, b.totals.commitsInScope),
@@ -316,5 +328,7 @@ export function compareRecordings(a: RecordingV2, b: RecordingV2, options: Compa
       .slice(0, top),
     actions: compareDigests(digestOf(a), digestOf(b)).actions,
     plugins,
+    // What the change left rendering for nothing: the next cause, unless its render works besides the DOM.
+    wastingAfter,
   };
 }
