@@ -399,6 +399,37 @@ describe('Recorder', () => {
     expect(owner.children[0].ms!).toBeLessThanOrEqual(owner.ms!);
   });
 
+  it("takes a nested root's time out of the root it renders under", () => {
+    let set!: Setter;
+    const Ctx = createContext(0);
+    const Slow = () => {
+      const v = useContext(Ctx);
+      const until = performance.now() + 20;
+      while (performance.now() < until);
+      return <i>{v}</i>;
+    };
+    const MemoSlow = memo(Slow);
+    const Page = () => {
+      const [v, setV] = useState(0);
+      set = setV;
+      return (
+        <Ctx.Provider value={v}>
+          <MemoSlow />
+        </Ctx.Provider>
+      );
+    };
+    mount(<Page />);
+    const { recorder } = makeRecorder();
+    recorder.start();
+    flush(() => set(1));
+    const rec = recorder.stop();
+    const ms = (name: string) => rec.roots.find((root) => root.name === name)!.renderMs!;
+    // Slow is a root of its own through the context; its 20 ms are its, not the page's too.
+    expect(ms('Slow')).toBeGreaterThanOrEqual(19);
+    expect(ms('Page')).toBeLessThan(10);
+    expect(ms('Page') + ms('Slow')).toBeCloseTo(rec.commits.list[0].ms!, 0);
+  });
+
   it('keeps a way of twenty links whole, folds a longer one, and keeps none when recording fast', () => {
     let set!: Setter;
     let lastRec!: ReturnType<ReturnType<typeof makeRecorder>['recorder']['stop']>;

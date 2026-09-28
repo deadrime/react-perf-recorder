@@ -678,10 +678,14 @@ export class Recorder {
           (prev.props === f.memoizedProps ||
             ((f.tag === Tag.MemoComponent || f.tag === Tag.SimpleMemoComponent) && shallowEqual(prev.props, f.memoizedProps)));
         let rootAgg: RootAgg | null = null;
-        // A root inside another root's cascade: its time is already in that root's, and its link hangs under it.
+        // A root inside another root's cascade: its link hangs under that root, and its time comes out of that root's.
         const nested = currentKey !== null;
         if (!parentDid || ownWork) {
           const hit = this.hitRoot(f, name, pathText(currentPath, base), prev!, c, false, nested);
+          const outer = nested ? this.rootsByKey.get(currentKey!) : undefined;
+          // The outer root's actualDuration holds this one's: left in, a page above a slow component reads as slow
+          // as the component in the roots. A commit's tree keeps it, nested under the outer root there.
+          if (outer && hasProfileTimings(f)) outer.renderMs -= f.actualDuration!;
           key = hit.agg.key;
           reasons = hit.reasons;
           rootAgg = hit.agg;
@@ -864,7 +868,7 @@ export class Recorder {
     return comp;
   }
 
-  /** `nested`: inside another root's cascade in this commit, whose time already holds this one's. */
+  /** `nested`: inside another root's cascade in this commit, whose time the commit's already holds. */
   private hitRoot(
     f: Fiber,
     name: string,
