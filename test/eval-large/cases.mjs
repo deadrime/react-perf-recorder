@@ -7,6 +7,7 @@ const hitsOf = (name) => (show) => root(show, name)?.hits ?? 0;
 const mountsUnder = (name) => (show) => root(show, name)?.mounts ?? 0;
 const noDomUnder = (name) => (show) => root(show, name)?.noDomChange ?? 0;
 const msPerHit = (name) => (show) => root(show, name)?.renderMsPerHit ?? 0;
+const effectCommits = (show) => show.topCauses.filter((c) => c.key.startsWith('core:effect')).reduce((n, c) => n + c.commits, 0);
 // Roots rank by the renders they cause, and a remount's children count as mounts, not renders: a remount bug is
 // shown when its root leads by mounts.
 const leadsByMounts = (name) => (show) => [...show.topRoots].sort((a, b) => (b.mounts ?? 0) - (a.mounts ?? 0))[0]?.root === name;
@@ -76,6 +77,15 @@ export const BUGS = {
     files: ['features/issues/IssuesPage.tsx'],
     named: ['IssuesPage.tsx'],
     complaint: 'The issue list flashes "No issues match" when it opens, and feels heavier than it should when issues change.',
+  },
+  // The table hands its selection up from an effect: every tick of a checkbox is a second commit, from the page.
+  'selection-effect': {
+    scenario: 'select-rows',
+    root: 'IssuesPage',
+    waste: effectCommits,
+    files: ['features/issues/IssueTable.tsx', 'features/issues/IssuesPage.tsx', 'features/issues/IssuesToolbar.tsx'],
+    named: ['IssueTable.tsx'],
+    complaint: 'Ticking issues in the list feels sluggish, and the count in the toolbar trails the checkboxes.',
   },
   // The chart's data rebuilt on every render, and the hover renders it.
   'chart-no-memo': {

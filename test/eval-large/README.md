@@ -49,6 +49,7 @@ copy names the bug or holds the other version.
 | `conditional-tooltip` | A card is wrapped in a tooltip only while someone views it, so it remounts as viewers come and go         | `wait-board`  |
 | `hoc-in-render`       | `withPermission()` is called in the drawer's render: the comment box remounts and loses the text          | `comment`     |
 | `effect-filter`       | An effect copies the filtered issues into state: a second commit after every change                       | `wait-issues` |
+| `selection-effect`    | The table hands its selection up to the page from an effect: every ticked box is a second commit          | `select-rows` |
 | `chart-no-memo`       | The chart's 90-day series is rebuilt on every render, and hovering a bar renders it                       | `hover-chart` |
 | `store-whole`         | The sidebar reads the whole zustand store, heartbeat included                                             | `wait-issues` |
 | `query-index`         | The members are indexed into a `Map` inside the query function, which structural sharing cannot keep      | `wait-issues` |

@@ -49,6 +49,20 @@ export const SCENARIOS = {
       await settle(page);
     },
   },
+  /** Ticking issues in the list one after another, as before a bulk change. */
+  'select-rows': {
+    route: '/issues',
+    ready: 'issue-row',
+    steps: 'open the issue list and tick the checkboxes of the first eight issues, one after another.',
+    run: async (page) => {
+      const rows = page.getByTestId('issue-row');
+      for (let i = 0; i < 8; i++) {
+        await rows.nth(i).getByRole('checkbox').click();
+        await page.waitForTimeout(150);
+      }
+      await settle(page);
+    },
+  },
   /** Writing a comment on an issue other people have open too. */
   comment: {
     route: '/issues/WEB-2',
