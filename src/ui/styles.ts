@@ -291,9 +291,14 @@ details.fold[open] > summary::before { content: '▾'; }
 .watched { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px; margin: 3px 0; }
 .growth-row { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; margin: 3px 0; }
 .growth-row .who { min-width: 72px; }
-.growth-origin { display: flex; align-items: baseline; gap: 6px; margin: 3px 0 3px 8px; min-width: 0; }
-.growth-origin code { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
-.growth-origin .badge { flex: none; white-space: nowrap; }
+.growth-find { display: flex; align-items: baseline; gap: 8px; padding: 5px 0; border-bottom: 1px solid var(--rule-soft); }
+.growth-find:last-of-type { margin-bottom: 4px; }
+.growth-find .badge { flex: none; white-space: nowrap; }
+.growth-what { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.growth-title { color: var(--text); }
+/* Wrapped, not cut: the end of a path or a call is the part that says where. */
+.growth-where, .growth-code { color: var(--muted); overflow-wrap: anywhere; white-space: pre-wrap; }
+.growth-still { margin: 3px 0; }
 .plugin { padding: 5px 0; border-top: 1px solid var(--rule-soft); }
 .plugin:first-child { border-top: 0; }
 .plugin-name { font-size: 11px; font-weight: 600; color: var(--label); margin-bottom: 2px; }

@@ -291,6 +291,13 @@ test('what kept growing opens by itself, with the line that left the listeners b
   const growth = page.locator('[data-fold="growth"]');
   await expect(growth).toHaveAttribute('open', '');
   await expect(growth.locator('[data-key="cssRules"] .badge')).toHaveAttribute('data-tone', 'warn');
-  await expect(growth.locator('.growth-origin code', { hasText: 'window' })).toContainText(/window resize @ src\/advanced\/Leak\.tsx:\d+/);
-  await expect(growth.locator('.growth-origin code', { hasText: 'css' })).toContainText('LeakyProgress (style[data-emotion]) varying width');
+  // Findings first, each with where it came from and what to change.
+  const listener = growth.locator('.growth-find', { hasText: 'window resize listener never removed' });
+  await expect(listener.locator('.growth-where')).toHaveText(/src\/advanced\/Leak\.tsx:\d+$/);
+  await expect(listener.locator('.growth-code')).toContainText("addEventListener('resize'");
+  await expect(growth.locator('.growth-find').first()).toContainText('LeakyProgress: a new CSS class for every width');
+  // The <style> elements are the CSS rules' leak, not a row of their own; what did not change is one line.
+  await expect(growth.locator('[data-key="styleElements"]')).toHaveCount(0);
+  await expect(growth.locator('[data-key="cssRules"]')).toContainText('in 100 new <style>');
+  await expect(growth.locator('.growth-still')).toContainText('unchanged:');
 });
