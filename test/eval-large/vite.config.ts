@@ -12,11 +12,25 @@ import { aliases } from '../e2e/fixture-app/vite.config';
 
 // The large app, or a copy of it with a bug patched in (RPR_WORKSPACE), served with the recorder.
 //   npx vite --config test/eval-large/vite.config.ts      → http://localhost:5394/?tick=150
+// `vite build` makes the clean app a page of the site, under orbit/ (npm run build:pages).
 const workspace = process.env.RPR_WORKSPACE ?? path.join(__dirname, 'app');
 const repo = path.resolve(__dirname, '../..');
 
-export default defineConfig({
+const outDir = path.join(repo, 'dist-pages/orbit');
+
+export default defineConfig(({ command }) => ({
   root: workspace,
+  base: command === 'build' ? `${process.env.PAGES_BASE ?? '/react-perf-recorder/'}orbit/` : '/',
+  mode: 'development',
+  // React's development build: the recorder reads what only it keeps (component files, hook types).
+  define: command === 'build' ? { 'process.env.NODE_ENV': JSON.stringify('development') } : {},
+  // One module a file, unminified: Rollup would rename clashing component names, and a name is what the report shows.
+  build: {
+    outDir,
+    emptyOutDir: true,
+    minify: false,
+    rollupOptions: { preserveEntrySignatures: 'strict', output: { preserveModules: true } },
+  },
   cacheDir: path.join(os.tmpdir(), 'rpr-eval-large-vite', createHash('sha1').update(workspace).digest('hex').slice(0, 12)),
   resolve: { alias: aliases },
   // Shared by many workspaces (check.mjs), the dependencies are bundled up front: one found later reloads every page.
@@ -64,4 +78,4 @@ export default defineConfig({
       plugins: [zustand(), proxyMemoize({ functions: ['memoize'] }), reactQuery(), redux()],
     }),
   ],
-});
+}));

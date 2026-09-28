@@ -1106,3 +1106,263 @@ code {
 .toast-error {
   border-left: 3px solid var(--danger);
 }
+
+/* Phone */
+@media (max-width: 700px) {
+  /* dvh: 100vh on phones includes the space under the browser toolbar */
+  .shell {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+    height: 100dvh;
+  }
+
+  /* The sidebar becomes a nav strip that scrolls sideways */
+  .sidebar,
+  .sidebar-collapsed {
+    width: auto;
+    flex-direction: row;
+    align-items: center;
+    gap: 2px;
+    padding: 6px 8px;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .sidebar-head,
+  .sidebar > div.nav-group,
+  .sidebar > .grow {
+    display: none;
+  }
+  .sidebar .nav-group {
+    flex-direction: row;
+    gap: 2px;
+  }
+  .sidebar .nav-item {
+    flex: none;
+    padding: 6px 10px;
+    white-space: nowrap;
+  }
+
+  .topbar {
+    gap: 8px;
+    height: 44px;
+    padding: 0 12px;
+  }
+  .crumbs {
+    flex: none;
+  }
+  .search-btn {
+    flex: 1;
+    width: auto;
+    min-width: 0;
+  }
+  .search-btn .grow {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  .search-btn .kbd,
+  .topbar > .grow,
+  .presence {
+    display: none;
+  }
+  /* Only the colored icon is kept */
+  .sync {
+    min-width: 0;
+    font-size: 0;
+  }
+  .notif-panel {
+    position: fixed;
+    top: 92px;
+    left: 8px;
+    right: 8px;
+    width: auto;
+    min-width: 0;
+    max-height: calc(100dvh - 110px);
+  }
+  .crumbs > :not(:first-child) {
+    display: none;
+  }
+
+  .page {
+    padding: 12px 12px 32px;
+  }
+
+  /* Issue list */
+  .searchbox {
+    flex: 1 1 100%;
+    width: auto;
+    padding: 5px 8px;
+  }
+  /* Menus open under the whole toolbar: a trigger near the right edge would push them off screen */
+  .toolbar {
+    position: relative;
+  }
+  .toolbar .dropdown {
+    position: static;
+  }
+  .toolbar .menu {
+    max-width: 100%;
+  }
+  .row-issue {
+    flex-wrap: wrap;
+    column-gap: 8px;
+    row-gap: 2px;
+    height: auto;
+    min-height: var(--row);
+    padding: 7px 12px;
+  }
+  .row-issue .chips,
+  .row-issue .estimate,
+  .row-issue .cell-updated,
+  .row-issue .row-actions {
+    display: none;
+  }
+  .cell-check {
+    opacity: 1;
+  }
+  .cell-key {
+    width: auto;
+  }
+  /* The status icon; pushes due, comments and assignee to the right */
+  .row-issue > svg {
+    margin-right: auto;
+  }
+  .cell-title {
+    order: 1;
+    flex-basis: 100%;
+  }
+  /* clip, not hidden: hidden makes the table the scroller and the sticky bulk bar never sticks */
+  .table {
+    overflow: clip;
+  }
+  .bulk .menu {
+    top: auto;
+    bottom: calc(100% + 4px);
+  }
+
+  /* Board */
+  .board {
+    grid-template-columns: repeat(5, min(280px, 80vw));
+    margin: 0 -12px;
+    padding: 0 12px 4px;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    scroll-padding: 0 12px;
+  }
+  .column {
+    scroll-snap-align: start;
+    max-height: calc(100dvh - 200px);
+  }
+
+  /* Drawer: full screen, properties between the description and the comments */
+  .drawer {
+    top: 0;
+    left: 0;
+    width: auto;
+    border-left: 0;
+    box-shadow: none;
+  }
+  .drawer-body {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    padding: 14px 16px 24px;
+    overflow: auto;
+  }
+  .drawer-main {
+    display: contents;
+  }
+  .drawer-main > :not(:first-child) {
+    order: 2;
+  }
+  .props {
+    order: 1;
+    padding: 8px 0;
+    border-left: 0;
+    border-top: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
+    overflow: visible;
+  }
+  .prop {
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 4px;
+  }
+  .prop-label {
+    flex: none;
+    width: 80px;
+  }
+
+  /* Dashboard */
+  .stats,
+  .columns-2 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .stats {
+    gap: 6px;
+  }
+  .stat {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 14px;
+  }
+  .stat strong {
+    font-size: 18px;
+  }
+  .chart-box svg {
+    display: block;
+    height: auto;
+  }
+  /* Under the chart instead of over it: a floating tip runs off a narrow chart */
+  .chart-tip {
+    position: static;
+    margin-top: 6px;
+  }
+  .grid .wide {
+    width: 30%;
+  }
+  .grid .progress {
+    min-width: 30px;
+  }
+  .grid td:first-child {
+    white-space: nowrap;
+  }
+  .grid td,
+  .grid th {
+    padding: 5px 4px;
+  }
+
+  /* Projects, inbox, settings */
+  .grid-cards {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .notif {
+    align-items: flex-start;
+  }
+  .page-settings {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 14px;
+  }
+  .settings-nav {
+    flex-direction: row;
+    overflow-x: auto;
+  }
+  .settings-nav .nav-item {
+    flex: none;
+  }
+  .form-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .toaster {
+    left: 12px;
+    right: 12px;
+  }
+  .toast {
+    width: auto;
+  }
+}
