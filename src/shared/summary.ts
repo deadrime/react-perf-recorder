@@ -392,6 +392,35 @@ export function rootLine(root: RootStat, durationMs: number, reasons: Map<number
   };
 }
 
+export interface WastingRoot {
+  root: string;
+  source: string;
+  hits: number;
+  instances: number;
+  noDomChange: number;
+  ownDomUnchanged?: number;
+}
+
+/**
+ * Roots that mostly render for nothing: a quarter of their renders or more left their own DOM as it was. After a fix,
+ * what is still here is the next thing to look at — or a root whose render is needed, which its own file shows.
+ */
+export function wastingRoots(rec: Pick<RecordingV2, 'roots'>, top = 5): WastingRoot[] {
+  const waste = (r: RootStat) => Math.max(r.noDomChange, r.ownDomUnchanged ?? 0);
+  return rec.roots
+    .filter((r) => waste(r) >= 2 && waste(r) >= 0.25 * r.hits * Math.max(1, r.instances))
+    .sort((a, b) => waste(b) - waste(a))
+    .slice(0, top)
+    .map((r) => ({
+      root: r.name,
+      source: r.source,
+      hits: r.hits,
+      instances: r.instances,
+      noDomChange: r.noDomChange,
+      ...(r.ownDomUnchanged ? { ownDomUnchanged: r.ownDomUnchanged } : {}),
+    }));
+}
+
 /** Why a memo hook remembers nothing, in words: which dependency moves, and whether only its reference does. */
 export function memoWhy(m: MemoHookStat): string {
   // A package's own memo, e.g. zustand's around an inline selector: a recompute, not a render, and the app's to

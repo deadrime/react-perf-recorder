@@ -1,5 +1,5 @@
 import type { ActionRecord, RecordingV2, RootStat } from './schema';
-import { actionText } from './summary';
+import { actionText, wastingRoots } from './summary';
 
 export interface Delta {
   before: number | null;
@@ -316,5 +316,7 @@ export function compareRecordings(a: RecordingV2, b: RecordingV2, options: Compa
       .slice(0, top),
     actions: compareDigests(digestOf(a), digestOf(b)).actions,
     plugins,
+    // What the change left rendering for nothing: the next cause, or a render the page needs.
+    wastingAfter: wastingRoots(b),
   };
 }
