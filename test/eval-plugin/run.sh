@@ -49,8 +49,10 @@ stop_servers() {
 trap stop_servers EXIT
 
 cd "$repo"
+# The skill's references sit outside the workspace, where a run may not read unless let: an installed skill can.
 claude plugin eval "$plugin" \
   --scaffold --trust-plugin --allow-real-servers \
   --allow-tools Edit Write "mcp__plugin_react-perf-recorder_react-perf-recorder__*" \
+  "Read(/$plugin/skills/**)" "Read(/$repo/claude/skills/**)" \
   --model claude-sonnet-5 --no-publish ${args[@]+"${args[@]}"}
 echo "recordings and dev server logs: $sessions"

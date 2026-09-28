@@ -5,6 +5,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import type { RecordingV2 } from '../shared/schema';
 import type { ReplayPlan } from '../shared/replay';
+import { wastingRoots, type WastingRoot } from '../shared/summary';
 import { safeUrl } from '../shared/url';
 import { ON_LOAD_KEY } from '../ui/storage';
 
@@ -55,6 +56,8 @@ export interface RecordPageResult {
   rendersWithoutDom: number;
   rendersPerCommit: number;
   topRoot: string | null;
+  /** Roots whose renders mostly changed nothing: after a fix, what is left to look at. */
+  wasting: WastingRoot[];
   warnings: string[];
 }
 
@@ -404,6 +407,7 @@ export async function recordPage(options: RecordPageOptions, sessionsDir: string
       rendersWithoutDom: rec.totals.rendersWithoutDom,
       rendersPerCommit: rec.totals.rendersPerScopeCommit,
       topRoot: rec.roots[0] ? `${rec.roots[0].name} ×${rec.roots[0].hits}` : null,
+      wasting: wastingRoots(rec),
       warnings: [...warnings, ...rec.warnings],
     };
   } finally {
