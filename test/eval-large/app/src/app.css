@@ -1366,3 +1366,11 @@ code {
     width: auto;
   }
 }
+
+/* A long press lifts a card on a touch screen (lib/touchDrag.ts): no text selection or callout under it. */
+@media (hover: none) {
+  [draggable='true'] {
+    -webkit-touch-callout: none;
+    user-select: none;
+  }
+}
