@@ -272,3 +272,26 @@ describe('observers and connections', () => {
     channel.close();
   });
 });
+
+describe('removed DOM', () => {
+  v8.setFlagsFromString('--expose-gc');
+  const gc = vm.runInNewContext('gc') as () => void;
+
+  it('counts plain elements a module still holds, with no component unmounted', async () => {
+    const kept: Element[] = [];
+    const List = ({ n }: { n: number }) => (
+      <ul>
+        {Array.from({ length: n }, (_, i) => (
+          <li key={i} ref={(el) => void (el && kept.push(el))} />
+        ))}
+      </ul>
+    );
+    const { rerender } = mount(<List n={3} />);
+    const { recorder } = makeRecorder();
+    recorder.start();
+    rerender(<List n={1} />);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    gc();
+    expect(recorder.stop(true).growth?.retained).toMatchObject({ unmounted: 0, detached: { roots: 2, nodes: 2 } });
+  });
+});

@@ -117,7 +117,8 @@ export class RetainWatcher {
 
   /** `collected`: a garbage collection ran just before; without one, only what was unmounted is told. */
   stop(collected: boolean): RetainedStats | null {
-    if (!this.unmounted) return null;
+    // Plain elements removed with no component among them still count as removed DOM.
+    if (!this.unmounted && !this.nodes.length) return null;
     const retained = new Map<string, number>();
     let total = 0;
     if (collected)

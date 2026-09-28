@@ -35,8 +35,9 @@ function isLive(e: Entry): boolean {
   const object = e.ref.deref() as { readyState?: number } | undefined;
   if (!object || e.closed) return false;
   if (e.targets) return e.targets.some((t) => t.deref());
-  // WebSocket CLOSED is 3, EventSource CLOSED is 2; a BroadcastChannel says nothing and is closed by close().
-  if (e.kind === 'WebSocket') return object.readyState !== 3;
+  // A WebSocket from CLOSING (2) on: close() was called, and its handshake may never finish. EventSource CLOSED is 2;
+  // a BroadcastChannel says nothing and is closed by close().
+  if (e.kind === 'WebSocket') return (object.readyState ?? 0) < 2;
   if (e.kind === 'EventSource') return object.readyState !== 2;
   return true;
 }

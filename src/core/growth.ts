@@ -144,7 +144,7 @@ export class GrowthWatcher {
   private sample() {
     this.samples.push([Math.round(this.now()), ...measure()]);
     if (this.samples.length >= MAX_SAMPLES) {
-      this.samples = this.samples.filter((_, i) => i % 2 === 0);
+      this.samples = this.samples.filter((_, i, all) => i % 2 === 0 || i === all.length - 1);
       this.every *= 2;
     }
   }
