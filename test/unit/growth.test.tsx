@@ -258,6 +258,9 @@ describe('observers and connections', () => {
     const tidy = new MutationObserver(() => {});
     tidy.observe(document.body, { childList: true });
     tidy.disconnect();
+    // An observe that throws observes nothing, and is not left counted.
+    const failed = new MutationObserver(() => {});
+    expect(() => failed.observe(document.body)).toThrow();
     const channel = new BroadcastChannel('sync');
     const closed = new BroadcastChannel('other');
     closed.close();

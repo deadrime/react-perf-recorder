@@ -23,7 +23,14 @@ let installed = false;
 
 /** `origin` is made by the wrapper itself: its caller, one frame up, is the page's line. */
 function add(object: object, kind: string, origin: Error, url?: string): Entry | null {
-  if (entries.size >= MAX_ENTRIES) for (const e of entries) if (!isLive(e)) entries.delete(e);
+  if (entries.size >= MAX_ENTRIES)
+    for (const e of entries)
+      if (!isLive(e)) {
+        entries.delete(e);
+        // Or a disconnected observer observing again would update an entry no longer counted.
+        const dropped = e.ref.deref();
+        if (dropped && byObject.get(dropped) === e) byObject.delete(dropped);
+      }
   if (entries.size >= MAX_ENTRIES) return null;
   const entry: Entry = { kind, ref: new WeakRef(object), origin, atMs: performance.now(), ...(url ? { url } : {}) };
   entries.add(entry);
@@ -90,16 +97,19 @@ function wrapObserver(kind: string) {
   const proto = Native.prototype;
   const { observe, unobserve, disconnect } = proto;
   proto.observe = function (this: object, target: object, ...rest: unknown[]) {
+    const origin = new Error();
+    // First: an observe that throws observes nothing.
+    const result = observe.call(this, target, ...rest);
     // Where the first observe was called is the line to look at: the constructor is often a module away.
     let entry = byObject.get(this);
     if (!entry) {
-      entry = add(this, kind, new Error()) ?? undefined;
+      entry = add(this, kind, origin) ?? undefined;
       if (entry) entry.targets = [];
     }
     const targets = entry?.targets;
     if (targets && target && typeof target === 'object' && targets.length < MAX_TARGETS && !targets.some((t) => t.deref() === target))
       targets.push(new WeakRef(target));
-    return observe.call(this, target, ...rest);
+    return result;
   };
   if (typeof unobserve === 'function')
     proto.unobserve = function (this: object, target: object) {
