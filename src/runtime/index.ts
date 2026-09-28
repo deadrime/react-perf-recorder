@@ -53,6 +53,11 @@ export interface RuntimePlugin<Data = unknown> {
   setup?(ctx: PluginContext): void;
   /** Label for a store selector or a store (by its getSnapshot); `null` when the function is not the plugin's. */
   describe?(fn: Function, kind: DescribeKind, next: (fn: Function) => string): string | null;
+  /**
+   * Label for a store hook whose library hands useSyncExternalStore a `useCallback` subscribe of its own
+   * (react-query): `deps` are that callback's dependencies, where the library keeps its observer.
+   */
+  describeHook?(deps: readonly unknown[], next: (fn: Function) => string): { store: string; selector?: string } | null;
   start?(session: SessionContext): void;
   /** After each commit of a recording, for what mounts late (a lazy provider); keep it cheap. */
   commit?(session: SessionContext): void;

@@ -2,6 +2,7 @@ import { sameContent } from '../shared/same-content';
 import type { ReasonKind } from '../shared/schema';
 import { hasHooks, isComposite, nameOf, Tag, type ContextDependency, type Fiber, type Hook } from './fiber';
 import { contextOf, hookCells, isProviderTag } from './react-compat';
+import type { StoreCheck } from './store-checks';
 
 export interface Snapshot {
   props: unknown;
@@ -30,6 +31,10 @@ export interface Reason {
   /** Every prop was equal: `memo` would have skipped this render. */
   equal?: true;
   sameContent?: true;
+  /** A store hook that changed without its store notifying: it rode along on a render something else caused. */
+  silent?: true;
+  /** React found the store changed when it re-checked it after a commit, and scheduled this render itself. */
+  resync?: true;
 }
 
 const MAX_PROPS = 10;
@@ -38,6 +43,14 @@ export interface Describer {
   selector(fn: Function): string;
   store(getSnapshot: Function): string | null;
   snapshot(getSnapshot: Function): string | null;
+  /** A store hook named by the dependencies of the memo or callback right before it (react-query's observer). */
+  hook?(deps: readonly unknown[]): { store: string; selector?: string } | null;
+}
+
+/** Which store hooks got their component scheduled; only when the recorder could see React's checks. */
+export interface StoreCheckLog {
+  watches(inst: unknown): boolean;
+  check(inst: unknown): StoreCheck | undefined;
 }
 
 const same = (a: unknown, b: unknown) => sameContent(a, b, 20_000) === true;
@@ -99,7 +112,7 @@ function contextLabel(context: { displayName?: string }, f: Fiber): string {
 }
 
 /** Why a rendered fiber rendered, compared with its snapshot from the previous commit it was seen in. */
-export function reasonsOf(prev: Snapshot, f: Fiber, describe: Describer): Reason[] {
+export function reasonsOf(prev: Snapshot, f: Fiber, describe: Describer, checks?: StoreCheckLog | null): Reason[] {
   if (prev.props !== f.memoizedProps) return [propsReason(prev.props, f.memoizedProps)];
   const out: Reason[] = [];
   if (hasHooks(f)) {
@@ -116,9 +129,19 @@ export function reasonsOf(prev: Snapshot, f: Fiber, describe: Describer): Reason
           const withSelector = Array.isArray(deps) && typeof deps[0] === 'function' && typeof deps[2] === 'function';
           // Otherwise the library passed a getSnapshot of its own, which its plugin may know (zustand 5, `connect`).
           const getSnapshot = b.queue.getSnapshot as Function;
-          const selector = withSelector ? describe.selector(deps[2] as Function) : describe.snapshot(getSnapshot) ?? '';
-          const store = describe.store(withSelector ? (deps[0] as Function) : getSnapshot);
-          out.push({ kind: 'store', hook: i, ...(store ? { store } : {}), ...(selector ? { selector } : {}), ...mark });
+          let selector = withSelector ? describe.selector(deps[2] as Function) : describe.snapshot(getSnapshot) ?? '';
+          let store = describe.store(withSelector ? (deps[0] as Function) : getSnapshot);
+          const named = !withSelector && !store && Array.isArray(deps) ? describe.hook?.(deps) : null;
+          if (named) [store, selector] = [named.store, named.selector ?? selector];
+          const how = checks?.watches(b.queue) ? checks.check(b.queue) ?? 'silent' : undefined;
+          out.push({
+            kind: 'store',
+            hook: i,
+            ...(store ? { store } : {}),
+            ...(selector ? { selector } : {}),
+            ...mark,
+            ...(how === 'silent' ? { silent: true } : how === 'resync' ? { resync: true } : {}),
+          });
         } else if (b.queue.lastRenderedReducer) {
           out.push({ kind: 'state', hook: i, ...mark });
         }
@@ -147,6 +170,8 @@ export function reasonsOf(prev: Snapshot, f: Fiber, describe: Describer): Reason
   // The function ran (new hook list) yet no state, store value, prop or context differs: React rendered it for an
   // update that set a value it already had, then bailed out.
   if (!out.length && hasHooks(f) && prev.state !== f.memoizedState) return [{ kind: 'bailout' }];
+  // What scheduled the render leads; a store that changed silently follows.
+  if (out.some((r) => r.silent)) return [...out.filter((r) => !r.silent), ...out.filter((r) => r.silent)];
   return out.length ? out : [{ kind: 'unknown' }];
 }
 
@@ -154,8 +179,8 @@ export function reasonsOf(prev: Snapshot, f: Fiber, describe: Describer): Reason
  * Why a component rendered together with its parent: which props really changed, which are new references with the
  * same content (inline objects and callbacks), or none at all — then `memo` would have skipped the render.
  */
-export function parentReason(prev: Snapshot, f: Fiber, describe: Describer): Reason[] {
-  if (prev.props === f.memoizedProps) return reasonsOf(prev, f, describe);
+export function parentReason(prev: Snapshot, f: Fiber, describe: Describer, checks?: StoreCheckLog | null): Reason[] {
+  if (prev.props === f.memoizedProps) return reasonsOf(prev, f, describe, checks);
   const a = (prev.props || {}) as Record<string, unknown>;
   const b = (f.memoizedProps || {}) as Record<string, unknown>;
   const changed: string[] = [];

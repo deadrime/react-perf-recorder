@@ -53,6 +53,7 @@ import { inspectHooks, type InspectedHooks } from './hook-names';
 import type { CauseEvent, PluginHost } from './plugins';
 import { didRender, hookTypeAt, parentReason, reasonsOf, snapshotOf, type Reason, type Snapshot } from './reasons';
 import { ScopeTracker, type ScopeHandle, type ScopeResolution } from './scope';
+import { StoreChecks } from './store-checks';
 import { updateOrigin, type UpdateOrigin } from './env/origin';
 import { reactWarningLines } from './env/react-warnings';
 import { runningTimer, runningTimerLibrary, setTimerSink } from './env/timers';
@@ -300,6 +301,12 @@ export class Recorder {
   private updaters: Map<Fiber, number> | null = null;
   /** Lanes that already had an update since the last commit: an origin is taken once a lane, as before. */
   private notedLanes = 0;
+  /** Which store hook scheduled each update; null when React's updater sets do not say which fiber an update is for. */
+  private storeChecks: StoreChecks | null = null;
+  /** Fibers React scheduled itself this window, having found a store changed with no notification. */
+  private resyncs = new Set<Fiber>();
+  /** Whether anything but a resync scheduled work this window. */
+  private othersUpdated = false;
   /** Where updates of this commit window came from, used only for the components no other event explains. */
   private origins: Array<UpdateOrigin & { fibers: Set<Fiber>; event: string | undefined }> = [];
   private frameCount = 0;
@@ -381,19 +388,30 @@ export class Recorder {
       if (owner) throw new RecorderError('BUSY', `root.current is already hooked by ${owner}: wait for it to finish or call its stop()`, owner);
     }
     this.resolveZones();
+    this.storeChecks = new StoreChecks();
     for (const root of this.roots) this.seed(root.current);
     this.conditions = this.readConditions();
     this.deps.plugins.start(this.pluginSession(), this.t0);
     if (this.scope) this.dom.setScopeHosts(this.scopeHosts());
     this.dom.start();
-    this.hook = hookCommits(
-      this.roots,
-      this.options.source ?? 'panel',
-      (info) => this.onCommit(info),
-      (fiber, lane) => this.noteUpdate(fiber, lane),
-      devtoolsHookAtLoad()
-    );
+    try {
+      this.hook = hookCommits(
+        this.roots,
+        this.options.source ?? 'panel',
+        (info) => this.onCommit(info),
+        (fiber, lane) => this.noteUpdate(fiber, lane),
+        devtoolsHookAtLoad()
+      );
+    } catch (error) {
+      this.storeChecks.stop();
+      this.storeChecks = null;
+      throw error;
+    }
     this.updaters = this.hook.updaters ? new Map() : null;
+    if (!this.updaters) {
+      this.storeChecks.stop();
+      this.storeChecks = null;
+    }
     // A store or query notifies its subscribers before the recorder hears about it, so the fibers React just
     // marked are the ones this event updated.
     this.deps.plugins.targets = () => this.freshUpdates();
@@ -469,6 +487,7 @@ export class Recorder {
     setTimerSink(null);
     this.deps.plugins.targets = null;
     const hookErrors = this.hook?.stop() ?? [];
+    this.storeChecks?.stop();
     this.errors.push(...hookErrors);
     this.dom.stop();
     this.frames.stop();
@@ -504,7 +523,12 @@ export class Recorder {
       }
     const origins = this.origins;
     this.origins = [];
-    const timer = runningTimer();
+    // Work React scheduled itself on finding a store changed: the event or timer around it did not ask for it.
+    const resyncOnly = this.resyncs.size > 0 && !this.othersUpdated;
+    if (this.resyncs.size) origins.push({ text: 'store resync', kind: 'effect', fibers: this.resyncs, event: undefined });
+    this.resyncs = new Set();
+    this.othersUpdated = false;
+    const timer = resyncOnly ? undefined : runningTimer();
     // A commit inside a library's timer (a legacy root): its waiting events are the cause, the timer is how they came.
     if (timer && !(this.deps.plugins.hasWaiting && this.deps.plugins.deliver(runningTimerLibrary(), () => null)))
       this.deps.plugins.emit('core', { type: timer });
@@ -536,7 +560,8 @@ export class Recorder {
     } else {
       this.scan(fiber, false, '', null, c, false);
     }
-    this.finishCommit(c, causes, lane, event, source, origins);
+    this.storeChecks?.commit();
+    this.finishCommit(c, causes, lane, event, source, origins, resyncOnly);
   }
 
   private visitChain(f: Fiber, prevs: Array<Snapshot | undefined>) {
@@ -544,6 +569,7 @@ export class Recorder {
     prevs.push(prev);
     const rendered = didRender(prev, f);
     this.remember(f);
+    if (!prev) this.storeChecks?.watch(f);
     return { rendered };
   }
 
@@ -648,7 +674,7 @@ export class Recorder {
           const sampled = c.sampledParents?.get(comp) ?? 0;
           if (sampled < SAMPLED_PARENTS) {
             c.sampledParents?.set(comp, sampled + 1);
-            reasons = parentReason(prev!, f, this.deps.plugins);
+            reasons = parentReason(prev!, f, this.deps.plugins, this.storeChecks);
           } else comp.sampled = true;
         }
         let firstId = -1;
@@ -695,6 +721,8 @@ export class Recorder {
       }
       // A fiber that did not render has the snapshot it had: nothing to write.
       if (rendered || !prev) this.remember(f);
+      // Hooks are made at mount and kept: a fiber's store hooks are watched once.
+      if (!prev) this.storeChecks?.watch(f);
       if (!(isolate && f === start) && f.sibling)
         stack.push([f.sibling, parentDid, currentPath, currentKey, pending, zoneTag, currentChain, linkAbove]);
       const untouched = this.prune && f.alternate !== null && f.child === f.alternate.child;
@@ -886,7 +914,7 @@ export class Recorder {
     agg.inCommit++;
     agg.instances = Math.max(agg.instances, agg.inCommit);
     const ids = c.reasons.get(agg) ?? new Set<number>();
-    const reasons = reasonsOf(prev, f, this.deps.plugins);
+    const reasons = reasonsOf(prev, f, this.deps.plugins, this.storeChecks);
     for (const reason of reasons) {
       const id = this.reasonId(reason);
       agg.reasons.set(id, (agg.reasons.get(id) ?? 0) + 1);
@@ -913,7 +941,8 @@ export class Recorder {
     lane: string | undefined,
     event: string | undefined,
     source: string | undefined,
-    origins: Array<UpdateOrigin & { fibers: Set<Fiber>; event: string | undefined }>
+    origins: Array<UpdateOrigin & { fibers: Set<Fiber>; event: string | undefined }>,
+    resyncOnly = false
   ) {
     if (lane) this.totals.lanes[lane] = (this.totals.lanes[lane] ?? 0) + 1;
     if (!c.renders) {
@@ -937,7 +966,9 @@ export class Recorder {
       keys.add(key);
       if (cause.fibers?.size) targets.set(key, new Set([...(targets.get(key) ?? []), ...bothHalves(cause.fibers)]));
     }
-    if (event && USER_EVENTS.has(event)) keys.add(this.attachCause({ plugin: 'core', type: `input ${eventName(event)}`, atMs: c.t }));
+    if (resyncOnly) {
+      // The event around it is where the chain began, not what scheduled this commit: the resync origin says that.
+    } else if (event && USER_EVENTS.has(event)) keys.add(this.attachCause({ plugin: 'core', type: `input ${eventName(event)}`, atMs: c.t }));
     else if (source) keys.add(this.attachCause({ plugin: 'core', type: `message ${source}`, atMs: c.t }));
     // Where the update came from, for the components no store, query or timer event claimed. An update made while
     // the person's event was being handled is already told by `input`; an effect flushed in the same window is not.
@@ -1043,9 +1074,16 @@ export class Recorder {
    * event yet. The stack still holds the code that asked for it, so the cause names that code.
    */
   private noteUpdate(fiber?: Fiber, lane = 0) {
+    const resync = fiber !== undefined && this.storeChecks?.noteUpdate(fiber) === 'resync';
+    if (resync) {
+      // React's own re-check, not whatever event is on the stack: no event gets to claim it.
+      this.resyncs.add(fiber);
+      this.claimed.add(fiber);
+      if (fiber.alternate) this.claimed.add(fiber.alternate);
+    } else this.othersUpdated = true;
     if (fiber && this.updaters) {
       this.updaters.set(fiber, (this.updaters.get(fiber) ?? 0) | lane);
-      if (this.notedLanes & lane) return;
+      if (resync || this.notedLanes & lane) return;
       this.notedLanes |= lane;
     }
     if (this.origins.length >= MAX_UPDATE_NOTES || runningTimer()) return;
@@ -1123,6 +1161,7 @@ export class Recorder {
     while (stack.length) {
       const [f, zoneTag] = stack.pop()!;
       this.remember(f);
+      this.storeChecks?.watch(f);
       const name = nameOf(f);
       const w = name ? this.watch.get(name) : undefined;
       if (w) w.mounted++;

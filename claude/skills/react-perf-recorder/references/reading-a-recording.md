@@ -27,6 +27,11 @@ the steps repeated it.
 - `SAME-CONTENT` — a new reference with the same content: almost always a subscription that asks for more than it
   shows, not new data;
 - `bailout: state set to the same value` — React called the component and threw the result away.
+- `SILENT` on an `external store` — the store's value changed without the store telling React (a query refetched
+  and brought equal data, so only its status fields moved); the component was rendered by the other reason next to
+  it, not by this one. `RESYNC` — React re-checked the store after a commit, found such a change, and rendered the
+  component once more itself, under the cause `core:store resync`; look where the store changes without
+  notifying (a refetch on mount, a write in an effect), not at the component.
 - `#17` in `state #17` or `external store #17` is the hook's place in that component's own list: the same number
   in two components is two unrelated hooks.
 

@@ -177,6 +177,19 @@ export class PluginHost implements Describer {
     return this.describe(getSnapshot, 'snapshot', 0);
   }
 
+  hook(deps: readonly unknown[]): { store: string; selector?: string } | null {
+    for (const entry of this.loaded) {
+      if (entry.error || !entry.plugin.describeHook) continue;
+      try {
+        const label = entry.plugin.describeHook(deps, (inner) => this.selector(inner, 1));
+        if (label) return label;
+      } catch {
+        // A plugin that fails to label must not break the reason.
+      }
+    }
+    return null;
+  }
+
   private describe(fn: Function, kind: DescribeKind, depth: number): string | null {
     for (const entry of this.loaded) {
       if (entry.error || !entry.plugin.describe) continue;

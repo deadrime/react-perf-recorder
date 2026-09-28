@@ -6,6 +6,10 @@
 - **Reasons**
   - `state now`, `store useChatStore selectPrice`, `context Theme`, `props: value | new ref, same content: style, onClick`;
   - `SAME-CONTENT` — a new reference with the same content, almost always a subscription bug rather than new data;
+  - `SILENT` — a store hook whose value changed without its store notifying React: it was read anew on a render
+    something else caused, and is not why the component rendered. `RESYNC` — React re-checked the store after a
+    commit, found it changed, and rendered the component again itself; such a commit's cause is `core:store resync`.
+    Both need React's updater sets (a DevTools hook present when react-dom loads, as with the Vite plugin);
   - hook chains, with `[package]` where the app's hooks hand over to a library:
     `useOrderForm › [react-hook-form] useController › useFormState › State @ src/Form.tsx:48`.
 - **Per-component reasons**, renders a parent caused included: `parent: props equal` (a `memo` would skip it),
