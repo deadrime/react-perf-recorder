@@ -1,4 +1,4 @@
-import { QueryClient } from '@tanstack/query-core';
+import { MutationObserver, QueriesObserver, QueryClient, QueryObserver } from '@tanstack/query-core';
 import { nextOrder } from '../../src/core/env/timers';
 import { PluginHost } from '../../src/core/plugins';
 import type { Fiber } from '../../src/core/fiber';
@@ -51,6 +51,30 @@ describe('react-query plugin runtime', () => {
     const host = new PluginHost([[plugin, null]]);
     host.start(tree(new QueryClient()), now);
     expect(host.stop(tree(null))['react-query']).toMatchObject({ active: true, highlights: ['no query events during the recording'] });
+  });
+});
+
+describe('react-query store hooks', () => {
+  const label = (deps: unknown[]) => new PluginHost([[plugin, null]]).hook(deps);
+
+  it("names a hook by the observer in its subscribe's deps: the query key and the select", () => {
+    const client = new QueryClient();
+    const indexById = (list: string[]) => new Set(list);
+    const plain = new QueryObserver(client, { queryKey: ['members', 1], queryFn: () => [] });
+    const selected = new QueryObserver(client, { queryKey: ['members'], queryFn: () => [], select: indexById });
+    expect(label([plain, true])).toEqual({ store: 'query ["members",1]' });
+    expect(label([selected, true])).toEqual({ store: 'query ["members"]', selector: 'indexById' });
+    expect(label([new MutationObserver(client, { mutationKey: ['save'] })])).toEqual({ store: 'mutation ["save"]' });
+    const queries = new QueriesObserver(client, [
+      { queryKey: ['a'], queryFn: () => 1 },
+      { queryKey: ['b'], queryFn: () => 2 },
+    ]);
+    expect(label([queries, true])).toEqual({ store: 'queries ["a"], ["b"]' });
+  });
+
+  it('leaves deps that hold no observer to others', () => {
+    expect(label([() => 1, () => 2])).toBeNull();
+    expect(label([])).toBeNull();
   });
 });
 

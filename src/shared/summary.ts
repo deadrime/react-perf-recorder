@@ -113,6 +113,8 @@ export function hookOf(root: RootStat, reason: ReasonInfo | undefined) {
   return reason.hook !== undefined ? root.hooks?.[reason.hook] : undefined;
 }
 
+const storeMark = (reason: Pick<ReasonInfo, 'storeChange'>) => (reason.storeChange ? ` ${reason.storeChange.toUpperCase()}` : '');
+
 const names = (list: string[] | undefined, max = 5) => (list ?? []).slice(0, max).join(', ');
 
 /**
@@ -126,7 +128,9 @@ export function reasonText(reason: Omit<ReasonInfo, 'i' | 'text'>): string {
     case 'state':
       return reason.hook === undefined ? `class state${mark}` : `state #${reason.hook}${mark}`;
     case 'store':
-      return `external store #${reason.hook}${mark}${reason.store ? ` [${reason.store}]` : ''}${reason.selector ? ` ${reason.selector}` : ''}`;
+      return `external store #${reason.hook}${mark}${storeMark(reason)}${reason.store ? ` [${reason.store}]` : ''}${
+        reason.selector ? ` ${reason.selector}` : ''
+      }`;
     case 'context':
       return `context ${reason.context || '(unnamed)'}${mark}`;
     case 'props':
@@ -170,7 +174,10 @@ function rootWhy(reason: ReasonInfo, root: RootStat | undefined): { kind?: strin
       return { kind: 'state', what: `${name ?? (reason.hook === undefined ? 'of a class' : `#${reason.hook}`)}${mark}` };
     }
     case 'store':
-      return { kind: 'store', what: `${[reason.store, reason.selector].filter(Boolean).join(' ') || `#${reason.hook}`}${mark}` };
+      return {
+        kind: 'store',
+        what: `${[reason.store, reason.selector].filter(Boolean).join(' ') || `#${reason.hook}`}${mark}${storeMark(reason)}`,
+      };
     case 'context':
       return { kind: 'context', what: `${reason.context || '(unnamed)'}${mark}` };
     default:
