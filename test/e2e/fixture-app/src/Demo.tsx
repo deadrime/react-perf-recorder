@@ -1,10 +1,8 @@
 import { useState, type CSSProperties, type ReactNode } from 'react';
-import results from '../../../../docs/benchmarks.json';
 import report from './assets/report.webp';
 import { href, useNoPanel } from './base';
 import { ADVANCED } from './advanced';
 import { BASICS } from './basics';
-import { times, usd } from './Benchmarks';
 import { BUGS, SCENARIOS, enabledBugs, isBlindCase } from './bugs';
 
 /**
@@ -14,6 +12,7 @@ import { BUGS, SCENARIOS, enabledBugs, isBlindCase } from './bugs';
  */
 export const REPO = 'https://github.com/deadrime/react-perf-recorder';
 const NPM = 'https://www.npmjs.com/package/react-perf-recorder';
+const SITE = 'https://zhenya.dev/';
 const INSTALL = 'npm i -D -E react-perf-recorder';
 
 // The docs take `body` and the `.demo` base from here too; everything else is the front page's own.
@@ -40,7 +39,7 @@ body { margin: 0; background: #131317; }
 .demo .top nav a:hover { color: #fff; background: rgba(255,255,255,.06); }
 
 .demo .hero { position: relative; display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, .85fr); gap: 56px; align-items: center;
-  padding: 56px 0 64px; }
+  padding: 56px 0 96px; }
 .demo .hero::before { content: ''; position: absolute; inset: -80px -200px auto 30%; height: 640px; z-index: -1; pointer-events: none;
   background: radial-gradient(closest-side, rgba(10,132,255,.20), transparent), radial-gradient(closest-side at 80% 70%, rgba(191,90,242,.14), transparent); }
 .demo .eyebrow { display: inline-flex; flex-wrap: wrap; gap: 6px; margin: 0 0 18px; }
@@ -76,16 +75,6 @@ body { margin: 0; background: #131317; }
 .demo .shot figcaption { margin-top: 4px; text-align: center; font-size: 13px; color: #85858f; }
 .demo .shot figcaption a { color: #4aa8ff; text-decoration: none; }
 
-.demo .proof { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin: 0 0 16px; border: 1px solid var(--line);
-  border-radius: 16px; background: linear-gradient(180deg, rgba(255,255,255,.035), rgba(255,255,255,.01)); }
-.demo .proof div { padding: 22px 22px 20px; border-left: 1px solid var(--line); }
-.demo .proof div:first-child { border-left: 0; }
-.demo .proof b { display: block; font-size: 34px; line-height: 1.1; letter-spacing: -.02em; color: #fff; font-variant-numeric: tabular-nums; }
-.demo .proof b small { font-size: 16px; font-weight: 500; letter-spacing: 0; color: var(--muted); }
-.demo .proof span { display: block; margin-top: 6px; font-size: 13.5px; line-height: 1.45; color: var(--muted); }
-.demo .proof-note { margin: 0 0 96px; font-size: 13.5px; }
-.demo .proof-note a { color: #4aa8ff; text-decoration: none; }
-.demo .proof-note a:hover { text-decoration: underline; }
 
 .demo .section { margin: 0 0 96px; scroll-margin-top: 16px; }
 .demo .kicker { margin: 0 0 8px; font: 600 12.5px var(--mono); text-transform: uppercase; letter-spacing: .08em; color: #4aa8ff; }
@@ -153,21 +142,24 @@ body { margin: 0; background: #131317; }
 .demo .card h2 { margin: 0; padding-right: 18px; font-size: 15.5px; line-height: 1.35; }
 .demo .card .what { margin: 0; font-size: 14px; line-height: 1.5; }
 
-.demo .foot { display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: center; padding: 26px 0 0; border-top: 1px solid var(--line);
-  font-size: 13.5px; color: #85858f; }
-.demo .foot span { margin-right: auto; }
+.demo .foot { padding: 36px 0 0; border-top: 1px solid var(--line); font-size: 14px; color: #85858f; }
 .demo .foot a { color: var(--muted); text-decoration: none; }
 .demo .foot a:hover { color: #fff; }
+.demo .foot .brand { color: #fff; }
+.demo .foot-top { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 24px 48px; margin-bottom: 32px; }
+.demo .foot-top p { max-width: 36ch; margin: 10px 0 0; font-size: 14px; }
+.demo .foot-top nav { display: grid; grid-template-columns: repeat(2, auto); gap: 8px 40px; }
+.demo .foot-bottom { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px 24px; padding: 18px 0 0;
+  border-top: 1px solid var(--line); font-size: 13.5px; }
+.demo .foot-bottom a { color: #cfcfd6; }
+.demo .foot-bottom .site { color: #4aa8ff; }
 
 @media (max-width: 900px) {
   .demo .hero { grid-template-columns: minmax(0, 1fr); gap: 40px; padding: 28px 0 48px; }
   .demo .shot > a { transform: none; max-height: 480px; }
-  .demo .proof { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .demo .proof div:nth-child(3) { border-left: 0; }
-  .demo .proof div:nth-child(n + 3) { border-top: 1px solid var(--line); }
   .demo .grid, .demo .steps, .demo .how { grid-template-columns: minmax(0, 1fr); }
   .demo .agent { grid-template-columns: minmax(0, 1fr); gap: 16px; }
-  .demo .section, .demo .proof-note { margin-bottom: 72px; }
+  .demo .section { margin-bottom: 72px; }
 }
 /* A phone: the code wraps rather than hide its ends behind a sideways scroll. */
 @media (max-width: 600px) {
@@ -177,8 +169,6 @@ body { margin: 0; background: #131317; }
   .demo .hero h1 { font-size: 38px; }
   .demo .hero .lead { font-size: 16.5px; }
   .demo .links .btn { flex: 1 1 auto; justify-content: center; }
-  .demo .proof div { padding: 16px; }
-  .demo .proof b { font-size: 28px; }
   .demo pre { font-size: 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
   .demo .agent, .demo .feature, .demo .steps > li { padding: 18px; }
   .demo .install { padding-left: 12px; }
@@ -295,52 +285,6 @@ const Feature = ({ icon, color, title, text, chip }: (typeof FEATURES)[number]) 
   </div>
 );
 
-/** The benchmark's headline, from the same file its page charts. */
-const Proof = () => {
-  const { with: w, without: wo } = results;
-  return (
-    <>
-      <div className="proof" data-testid="proof">
-        <div>
-          <b>
-            {w.solved}
-            <small>/{w.runs}</small>
-          </b>
-          <span>
-            runs fixed the bug at its cause with the recorder; {wo.solved}/{wo.runs} without it
-          </span>
-        </div>
-        <div>
-          <b>
-            {times(wo.seconds, w.seconds)} <small>faster</small>
-          </b>
-          <span>
-            {w.seconds} s to the answer against {wo.seconds} s
-          </span>
-        </div>
-        <div>
-          <b>
-            {times(wo.cost, w.cost)} <small>cheaper</small>
-          </b>
-          <span>
-            {usd(w.cost)} a task against {usd(wo.cost)}
-          </span>
-        </div>
-        <div>
-          <b>
-            {w.measured}
-            <small>/{w.proving}</small>
-          </b>
-          <span>fixes proved with a before/after recording</span>
-        </div>
-      </div>
-      <p className="proof-note">
-        Claude Code on {results.cases.length} seeded re-render bugs, {w.runs} runs a side. <a href={href('docs/benchmarks')}>How it was measured →</a>
-      </p>
-    </>
-  );
-};
-
 /**
  * The front page is the textbook cases only. The chat with its seeded bugs (`/app`, `/bug/<flag>`) is still served —
  * the e2e tests record it, and a link or a recording can point at it — but it is not how a person meets the tool:
@@ -361,9 +305,6 @@ export const Catalogue = () => {
             <nav>
               <a className="wide" href="#try">
                 Try it
-              </a>
-              <a className="wide" href={href('docs/benchmarks')}>
-                Benchmarks
               </a>
               <a href={href('docs')}>Docs</a>
               <a href={REPO}>GitHub</a>
@@ -416,8 +357,6 @@ export const Catalogue = () => {
               </figcaption>
             </figure>
           </header>
-
-          <Proof />
 
           <section className="section">
             <p className="kicker">The report</p>
@@ -550,12 +489,36 @@ export const Catalogue = () => {
             </div>
           </section>
 
-          <footer className="foot">
-            <span>MIT license</span>
-            <a href={href('docs')}>Docs</a>
-            <a href={REPO}>GitHub</a>
-            <a href={NPM}>npm</a>
-            <a href={`${REPO}/issues`}>Issues</a>
+          <footer className="foot" data-testid="footer">
+            <div className="foot-top">
+              <div>
+                <a className="brand" href={href()}>
+                  <Mark />
+                  react-perf-recorder
+                </a>
+                <p>Record why a React app re-renders, read it yourself or hand it to an agent. MIT license.</p>
+              </div>
+              <nav>
+                <a href={href('docs')}>Docs</a>
+                <a href={REPO}>GitHub</a>
+                <a href={href('docs/panel')}>The panel</a>
+                <a href={NPM}>npm</a>
+                <a href={href('docs/mcp')}>MCP server</a>
+                <a href={`${REPO}/issues`}>Issues</a>
+              </nav>
+            </div>
+            <div className="foot-bottom">
+              <span>
+                Made by{' '}
+                <a className="site" href={SITE}>
+                  zhenya.dev
+                </a>
+              </span>
+              <span>
+                Powered by <a href="https://react.dev/">React</a>, <a href="https://vite.dev/">Vite</a> and the recorder itself: every case runs it
+                live
+              </span>
+            </div>
           </footer>
         </div>
       </div>

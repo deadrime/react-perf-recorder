@@ -5,8 +5,8 @@ type Arm = (typeof results)['with'];
 type Arms = Record<(typeof SIDES)[number], Arm>;
 
 const SIDES = ['with', 'without'] as const;
-export const usd = (x: number) => `$${x.toFixed(2)}`;
-export const times = (a: number, b: number) => `${(a / b).toFixed(1)}×`;
+const usd = (x: number) => `$${x.toFixed(2)}`;
+const times = (a: number, b: number) => `${(a / b).toFixed(1)}×`;
 const maxOf = (value: (arm: Arm) => number) => Math.max(...results.cases.flatMap((c) => SIDES.map((side) => value(c[side]))));
 
 export const BENCH_STYLES = `
