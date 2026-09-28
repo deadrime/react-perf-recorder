@@ -20,7 +20,7 @@ import {
   wayText,
   type HookMode,
 } from '../shared/summary';
-import type { RecordingV2 } from '../shared/schema';
+import { GROWTH_KEYS, type RecordingV2 } from '../shared/schema';
 import { listingOf } from '../shared/listing';
 import { planReplay } from '../shared/replay';
 import { recordPage, SETUP_FILE } from './record';
@@ -42,6 +42,7 @@ const SECTIONS = [
   'timeline',
   'segments',
   'frames',
+  'growth',
   'navigations',
   'conditions',
   'warnings',
@@ -141,6 +142,7 @@ export function section(rec: RecordingV2 & { id?: string; status?: string }, nam
             i: commit.i,
             atSec: +(commit.atMs / 1000).toFixed(2),
             renders: commit.renders,
+            ...(commit.mounts ? { mounts: commit.mounts } : {}),
             ...(commit.noDom ? { noDomChange: commit.noDom } : {}),
             ...(commit.ms ? { renderMs: commit.ms } : {}),
             ...(commit.sinceMs ? { sinceMs: commit.sinceMs } : {}),
@@ -171,6 +173,17 @@ export function section(rec: RecordingV2 & { id?: string; status?: string }, nam
       return page(rec.segments);
     case 'frames':
       return { longTasks: rec.frames.longTasks, ...page(rec.frames.loaf.slice().sort((a, b) => b.duration - a.duration)) };
+    case 'growth': {
+      if (!rec.growth) return { note: 'recorded without growth sampling (growth: false, or an older version)' };
+      const { samples, ...rest } = rec.growth;
+      // A sample a second is too many to read: every n-th one, the last always kept.
+      const step = Math.max(1, Math.ceil(samples.length / 40));
+      return {
+        ...rest,
+        columns: ['atMs', ...GROWTH_KEYS],
+        samples: samples.filter((_, i) => i % step === 0 || i === samples.length - 1),
+      };
+    }
     case 'navigations':
       return page(rec.navigations);
     case 'conditions':
@@ -284,7 +297,10 @@ export function createServer(dir: string) {
               'with the props each parent handed on. timeline: one line per commit — when, what rendered, the action and causes, each ' +
               'root with its reasons, and the commit\'s cascade as a tree — for "what happened at 2.4s". actions: the element each ' +
               'one landed on, its component and file, what it cost. memos: useMemo/useCallback that keep recomputing, the dependency ' +
-              'that moved and its line.'
+              'that moved and its line. growth: DOM nodes, CSS rules, <style> elements, live intervals, window/document listeners ' +
+              'JS heap, observers and open sockets from start to stop, with slope, what kept growing, where the intervals, listeners and ' +
+              'observers left behind were added, and the components unmounted but still in memory after a garbage collection ' +
+              '(record_page collects before Stop) — for a leak.'
           ),
         top: z.number().int().min(1).max(100).optional().describe('How many entries of a long section, 10 by default.'),
         offset: z.number().int().min(0).optional().describe('Where to start in a long section, to page through it.'),
@@ -317,7 +333,7 @@ export function createServer(dir: string) {
     {
       description:
         'Use when you drive the page yourself: nobody can reproduce it in their browser, a scenario has to run the same way twice, or a fix has to be measured. When the person can reproduce it, their own recording (wait_for_recording) is worth more. ' +
-        "Records a page in a browser of its own and returns the session id, so a fix can be measured: record, change the code, record again with the same arguments, then compare_recordings. Needs the dev server running with the Vite plugin and playwright installed in the project. A scenario of clicks and typing goes in a script module, or replay does again what a recording did — the person's own clicks and typing, at their pace, from the page load; replay does not wait for data, so a scenario whose actions wait on requests needs a script. Without either it records ms of the page as it is, and fromLoad records the page load itself. Behind a sign-in: via (a link that signs in), then a session saved once by `react-perf-recorder login <url>`, then cdp; a page that redirects to a login says so. Outlines are off in these runs. A run that outlasts the client's time limit (about a minute) keeps recording in the page: list_recordings shows it as recording until it ends — keep a script well under a minute.",
+        "Records a page in a browser of its own and returns the session id with its totals and the roots whose renders mostly change nothing (wasting), so a fix can be measured: record, change the code, record again with the same arguments, then compare_recordings. Needs the dev server running with the Vite plugin and playwright installed in the project. A scenario of clicks and typing goes in a script module, or replay does again what a recording did — the person's own clicks and typing, at their pace, from the page load; replay does not wait for data, so a scenario whose actions wait on requests needs a script. Without either it records ms of the page as it is, and fromLoad records the page load itself. Behind a sign-in: via (a link that signs in), then a session saved once by `react-perf-recorder login <url>`, then cdp; a page that redirects to a login says so. Outlines are off in these runs. A run that outlasts the client's time limit (about a minute) keeps recording in the page: list_recordings shows it as recording until it ends — keep a script well under a minute.",
       inputSchema: {
         url: z
           .string()
@@ -361,7 +377,7 @@ export function createServer(dir: string) {
           .string()
           .optional()
           .describe(
-            'A recording id (or "latest") whose actions to do again, from the page load, on its page and in its area unless url and scope say otherwise, after the setup it ran: record it after the fix, then compare_recordings with the original.'
+            'A recording id (or "latest") whose actions to do again, from the page load, on its page and in its area unless url and scope say otherwise, after the setup it ran: record it after the fix, then compare_recordings with the original. A recording with no actions — the page left alone — is recorded again as it is, for as long.'
           ),
         fromLoad: z.boolean().optional().describe('Record from the first commit of the page load.'),
         viewport: z.string().optional().describe('1280x800; keep it the same across runs that will be compared.'),
@@ -390,11 +406,23 @@ export function createServer(dir: string) {
       const entry = findSession(dir, replay);
       const rec = readRecording(entry);
       const plan = planReplay({ ...rec, id: rec.id ?? replay });
-      if (!plan.steps.length) throw new Error(`${replay} has no actions to replay${plan.skipped.length ? `: ${plan.skipped.join('; ')}` : ''}`);
       const scope = args.scope ?? rec.scope?.name;
       const setup = args.setup ?? setupOf(entry.dir);
+      if (!plan.steps.length && plan.skipped.length) throw new Error(`${replay} has no actions to replay: ${plan.skipped.join('; ')}`);
+      // A recording of the page left alone: the same page, area and length again, so the two compare.
+      if (!plan.steps.length) {
+        const ms = args.ms ?? Math.min(60_000, Math.max(200, Math.round(rec.durationMs)));
+        const result = await recordPage(
+          { ...args, url: args.url ?? rec.page.startUrl ?? rec.page.url, ms, ...(scope ? { scope } : {}), ...(setup ? { setup } : {}) },
+          dir
+        );
+        return json({ ...result, warnings: [`${replay} has no actions: recorded the page as it is for ${ms} ms instead`, ...result.warnings] });
+      }
       return json(
-        await recordPage({ ...args, ...(scope ? { scope } : {}), ...(setup ? { setup } : {}), replay: { ...plan, url: rec.page.url } }, dir)
+        await recordPage(
+          { ...args, ...(scope ? { scope } : {}), ...(setup ? { setup } : {}), replay: { ...plan, url: rec.page.startUrl ?? rec.page.url } },
+          dir
+        )
       );
     }
   );
@@ -440,7 +468,7 @@ export function createServer(dir: string) {
     'compare_recordings',
     {
       description:
-        'Use to prove a fix, or to see what a change did: two recordings of one scenario, before and after — record_page with replay: <id> after the change when the actions happen in the page, the same script on both sides when they wait on requests. Before/after of two sessions: totals per second and per commit, cascade roots (new, gone, changed by cascade per second), causes, the same user actions — the median of each time it was done, per character for typing, so the runs need not match click for click — and plugin metrics. Warns when viewport, page, area, conditions or durations differ, when outlines were on in only one run, and when a side is partial.',
+        'Use to prove a fix, or to see what a change did: two recordings of one scenario, before and after — record_page with replay: <id> after the change when the actions happen in the page, the same script on both sides when they wait on requests. Before/after of two sessions: totals per second and per commit, cascade roots (new, gone, changed by cascade per second), causes, the same user actions — the median of each time it was done, per character for typing, so the runs need not match click for click — and plugin metrics; wastingAfter lists the roots of the after run whose renders still mostly change nothing — the next cause, unless its render does work besides the DOM, and a note names each that wastes as much as before. Warns when viewport, page, area, conditions or durations differ, when outlines were on in only one run, and when a side is partial.',
       inputSchema: {
         before: z.string().describe('A session id, or "latest-1".'),
         after: z.string().default('latest'),

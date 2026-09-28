@@ -1,5 +1,8 @@
 // What each case's bug costs, for check.mjs and verify.mjs: the root its wasted renders start at, and the number a
-// recording gives for that waste. The case without a bug has no root to find.
+// recording gives for that waste. The case without a bug has no root to find. Orbit's cases (orbit-<bug>-rec) take
+// theirs from the large app's own list, all but its no-bug (test/eval-large/evals.mjs says why).
+import { BUGS } from '../eval-large/cases.mjs';
+
 const wasted = (show) => show.totals.rendersWithoutDom;
 const root = (show, name) => show.topRoots.find((r) => r.root === name);
 // Where the bug is the root's own render, its hits: memo on the children would cut the renders without a DOM change
@@ -42,4 +45,9 @@ export const CASES = {
   },
   'two-bugs-rec': { root: 'Unread', waste: wasted },
   'no-bug-rec': { root: null, waste: wasted },
+  ...Object.fromEntries(
+    Object.entries(BUGS)
+      .filter(([bug, c]) => (c.patches ?? [bug]).length)
+      .map(([bug, { root, waste, shown }]) => [`orbit-${bug}-rec`, { root, waste, shown }])
+  ),
 };

@@ -88,3 +88,13 @@ export function planReplay(rec: Pick<RecordingV2, 'actions' | 'durationMs'> & { 
   const tailMs = last ? Math.min(3000, Math.max(500, rec.durationMs - last.endMs)) : Math.min(3000, rec.durationMs);
   return { ...(rec.id ? { from: rec.id } : {}), steps, tailMs, skipped };
 }
+
+/** Typing replayed without its text: a search or a filter then shows other results, and two different pages compare. */
+export function placeholderTyping(plan: Pick<ReplayPlan, 'steps'>): string | null {
+  const invented = plan.steps.filter((s) => s.kind === 'typing' && !(s.value && s.value.length >= (s.chars ?? 1)));
+  if (!invented.length) return null;
+  return (
+    `typed placeholder text for ${invented.map((s) => s.what).join('; ')}: the recording kept no typed values, so a search ` +
+    'or filter showed other results than the person saw — a script that types the real text compares like with like'
+  );
+}

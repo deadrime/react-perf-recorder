@@ -38,7 +38,8 @@ export function listSessions(dir: string): SessionEntry[] {
     const hasRecording = fs.existsSync(path.join(sessionDir, 'recording.json'));
     const stale = meta.status === 'recording' && Date.now() - Date.parse(meta.updatedAt) > STALE_MS;
     let bytes = 0;
-    for (const name of fs.readdirSync(sessionDir)) bytes += fs.statSync(path.join(sessionDir, name)).size;
+    // A dev server writing the session renames a temp file over session.json: it can be gone by the stat.
+    for (const name of fs.readdirSync(sessionDir)) bytes += fs.statSync(path.join(sessionDir, name), { throwIfNoEntry: false })?.size ?? 0;
     out.push({ id, dir: sessionDir, meta, status: stale ? 'interrupted' : meta.status, hasRecording, bytes });
   }
   return out.sort((a, b) => (a.id < b.id ? 1 : -1));

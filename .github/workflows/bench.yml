@@ -1,14 +1,14 @@
 name: bench
 
-# The agent benchmark's own checks, without an agent: every bug of the suite recorded as the person would, its root
-# among the first roots, its waste judged a failure, the clean app judged a fix. About a minute, one Vite and one
-# Chromium; the runs with agents stay manual.
+# The agent benchmark's own checks, without an agent: every bug of the suite, the chat's and Orbit's, recorded as the
+# person would, its root among the first roots, its waste judged a failure, the clean app judged a fix. About three
+# minutes, one Vite and one Chromium; the runs with agents stay manual.
 on:
   push:
     branches: [main, dev]
-    paths: ['src/**', 'test/eval-plugin/**', 'package.json', 'package-lock.json', '.github/workflows/bench.yml']
+    paths: ['src/**', 'test/eval-plugin/**', 'test/eval-large/**', 'package.json', 'package-lock.json', '.github/workflows/bench.yml']
   pull_request:
-    paths: ['src/**', 'test/eval-plugin/**', 'package.json', 'package-lock.json', '.github/workflows/bench.yml']
+    paths: ['src/**', 'test/eval-plugin/**', 'test/eval-large/**', 'package.json', 'package-lock.json', '.github/workflows/bench.yml']
 
 jobs:
   self-test:

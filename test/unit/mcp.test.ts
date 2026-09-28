@@ -5,9 +5,16 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
-import { installedChromium, moduleFile } from '../../src/mcp/record';
+import { installedChromium, moduleFile, recordPage } from '../../src/mcp/record';
 import { createServer, section } from '../../src/mcp/server';
+import { aggregateEvents } from '../../src/shared/aggregate';
 import type { RecordingV2, SessionEvent, SessionMeta } from '../../src/shared/schema';
+
+// No browser in unit tests: record_page hands back what it was asked to record.
+vi.mock('../../src/mcp/record', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../src/mcp/record')>()),
+  recordPage: vi.fn(async (options: { url: string }) => ({ id: 'new', url: options.url, requested: options.url, warnings: [] })),
+}));
 
 let dir: string;
 let client: Client;
@@ -153,6 +160,43 @@ describe('MCP server', () => {
     });
     expect(result.roots[0]).toMatchObject({ root: 'Amount', perHit: '80 → 8 (-90%)' });
     expect(result.actions[0]).toMatchObject({ per: 'char', renders: '80 → 8 (-90%)' });
+  });
+});
+
+describe('record_page with replay', () => {
+  it('records a recording with no actions again as the page is, for as long, in its area', async () => {
+    const id = '20260919-120000-OrderForm-panel-idle';
+    write(meta(id, 'recording'), [
+      events(8)[0],
+      events(8)[1],
+      { k: 'commit', t: 20, n: 8, roots: [[0, 8, [0]]], causes: [] },
+      { k: 'commit', t: 4200, n: 8, roots: [[0, 8, [0]]], causes: [] },
+    ]);
+    const result = await call('record_page', { replay: id });
+    const [options] = vi.mocked(recordPage).mock.calls.at(-1)!;
+    expect(options).toMatchObject({ url: 'http://localhost:5173/trade', scope: 'OrderForm' });
+    expect(options.ms).toBeGreaterThanOrEqual(4200);
+    expect(options).not.toHaveProperty('replay');
+    expect(result.warnings[0]).toMatch(/has no actions: recorded the page as it is for \d+ ms/);
+  });
+});
+
+describe('record_page with replay, from where it began', () => {
+  it('opens the address the recording began on, not the one its actions left', async () => {
+    const id = '20260919-120000-OrderForm-panel-typed';
+    const m = meta(id, 'done');
+    const list: SessionEvent[] = [
+      ...events(8).slice(0, 2),
+      { k: 'action', action: { id: 1, kind: 'typing', atMs: 10, endMs: 300, chars: 3, length: 3, target: { tag: 'input', selector: '#q' } } },
+      { k: 'commit', t: 20, n: 8, event: 'input', roots: [[0, 8, [0]]], causes: [] },
+    ];
+    write(m, list);
+    const rec = aggregateEvents(m, list);
+    rec.page = { ...rec.page, url: 'http://localhost:5173/#/issues?q=abc', startUrl: 'http://localhost:5173/#/issues' };
+    fs.writeFileSync(path.join(dir, id, 'recording.json'), JSON.stringify(rec));
+    await call('record_page', { replay: id });
+    const [options] = vi.mocked(recordPage).mock.calls.at(-1)!;
+    expect(options.replay).toMatchObject({ url: 'http://localhost:5173/#/issues' });
   });
 });
 

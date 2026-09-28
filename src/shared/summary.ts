@@ -1,4 +1,19 @@
-import type { ActionRecord, ChainLink, CommitRecord, HookInfo, MemoHookStat, PluginSection, ReasonInfo, RecordingV2, RootStat } from './schema';
+import {
+  GROWTH_KEYS,
+  type ActionRecord,
+  type ChainLink,
+  type CommitRecord,
+  type GrowthKey,
+  type GrowthOrigin,
+  type GrowthStats,
+  type StyleGroup,
+  type HookInfo,
+  type MemoHookStat,
+  type PluginSection,
+  type ReasonInfo,
+  type RecordingV2,
+  type RootStat,
+} from './schema';
 
 export interface RootLine {
   root: string;
@@ -59,6 +74,8 @@ export interface Summary {
   topCauses: Array<{ key: string; events: number; commits: number; keys?: string }>;
   actions: ActionLine[];
   plugins: Record<string, { version: number; highlights: string[] }>;
+  /** What kept growing on the page — nodes, CSS rules, intervals, listeners, heap — and who added most of it. */
+  growth?: string[];
   /** useMemo and useCallback that recompute on most renders, worst first. */
   memos?: string[];
   frames: { longTasks: number; maxLongTaskMs: number; longFrames: number; worstFrameMs: number };
@@ -113,6 +130,8 @@ export function hookOf(root: RootStat, reason: ReasonInfo | undefined) {
   return reason.hook !== undefined ? root.hooks?.[reason.hook] : undefined;
 }
 
+const storeMark = (reason: Pick<ReasonInfo, 'storeChange'>) => (reason.storeChange ? ` ${reason.storeChange.toUpperCase()}` : '');
+
 const names = (list: string[] | undefined, max = 5) => (list ?? []).slice(0, max).join(', ');
 
 /**
@@ -126,7 +145,9 @@ export function reasonText(reason: Omit<ReasonInfo, 'i' | 'text'>): string {
     case 'state':
       return reason.hook === undefined ? `class state${mark}` : `state #${reason.hook}${mark}`;
     case 'store':
-      return `external store #${reason.hook}${mark}${reason.store ? ` [${reason.store}]` : ''}${reason.selector ? ` ${reason.selector}` : ''}`;
+      return `external store #${reason.hook}${mark}${storeMark(reason)}${reason.store ? ` [${reason.store}]` : ''}${
+        reason.selector ? ` ${reason.selector}` : ''
+      }`;
     case 'context':
       return `context ${reason.context || '(unnamed)'}${mark}`;
     case 'props':
@@ -170,7 +191,10 @@ function rootWhy(reason: ReasonInfo, root: RootStat | undefined): { kind?: strin
       return { kind: 'state', what: `${name ?? (reason.hook === undefined ? 'of a class' : `#${reason.hook}`)}${mark}` };
     }
     case 'store':
-      return { kind: 'store', what: `${[reason.store, reason.selector].filter(Boolean).join(' ') || `#${reason.hook}`}${mark}` };
+      return {
+        kind: 'store',
+        what: `${[reason.store, reason.selector].filter(Boolean).join(' ') || `#${reason.hook}`}${mark}${storeMark(reason)}`,
+      };
     case 'context':
       return { kind: 'context', what: `${reason.context || '(unnamed)'}${mark}` };
     default:
@@ -392,6 +416,35 @@ export function rootLine(root: RootStat, durationMs: number, reasons: Map<number
   };
 }
 
+export interface WastingRoot {
+  root: string;
+  source: string;
+  hits: number;
+  instances: number;
+  noDomChange: number;
+  ownDomUnchanged?: number;
+}
+
+/**
+ * Roots that mostly render for nothing: a quarter of their renders or more left their own DOM as it was. After a fix,
+ * what is still here is the next thing to look at — or a root whose render is needed, which its own file shows.
+ */
+export function wastingRoots(rec: Pick<RecordingV2, 'roots'>, top = 5): WastingRoot[] {
+  const waste = (r: RootStat) => Math.max(r.noDomChange, r.ownDomUnchanged ?? 0);
+  return rec.roots
+    .filter((r) => waste(r) >= 2 && waste(r) >= 0.25 * r.hits * Math.max(1, r.instances))
+    .sort((a, b) => waste(b) - waste(a))
+    .slice(0, top)
+    .map((r) => ({
+      root: r.name,
+      source: r.source,
+      hits: r.hits,
+      instances: r.instances,
+      noDomChange: r.noDomChange,
+      ...(r.ownDomUnchanged ? { ownDomUnchanged: r.ownDomUnchanged } : {}),
+    }));
+}
+
 /** Why a memo hook remembers nothing, in words: which dependency moves, and whether only its reference does. */
 export function memoWhy(m: MemoHookStat): string {
   // A package's own memo, e.g. zustand's around an inline selector: a recompute, not a render, and the app's to
@@ -438,6 +491,60 @@ export function actionText(action: ActionRecord): string {
     default:
       return `${action.kind} «${field}»${where}${action.value !== undefined ? ` = ${JSON.stringify(action.value)}` : ''}`;
   }
+}
+
+export const GROWTH_LABELS: Record<GrowthKey, string> = {
+  domNodes: 'DOM nodes',
+  cssRules: 'CSS rules',
+  styleElements: '<style> elements',
+  intervals: 'live intervals',
+  listeners: 'window/document listeners',
+  heapKB: 'JS heap KB',
+  observers: 'live observers',
+  connections: 'open sockets and channels',
+};
+
+/** `useWindowSize @ src/hooks/useWindowSize.ts:12 window.addEventListener('resize', onResize)`, as mapped. */
+export const originLine = (o: GrowthOrigin) => `${o.site ? o.origin.replace(/@ .*$/, `@ ${o.site}`) : o.origin}${o.code ? ` ${o.code}` : ''}`;
+
+/** `LeakyProgress (style[data-emotion]) varying width`, or the declarations when no element carries the class now. */
+export const styleLine = (g: StyleGroup) =>
+  `${g.component ?? g.shape ?? 'unknown'} (${g.source})${g.varying ? ` varying ${g.varying.map((v) => v.prop).join(', ')}` : ''}`;
+
+/** `unmounted and still in memory: LeakyPopover (src/Leak.tsx:42) 5 of 5`, after a garbage collection only. */
+export function retainedLine(growth: GrowthStats): string | null {
+  const r = growth.retained;
+  if (!r?.collected) return null;
+  const held = r.components.filter((c) => c.retained);
+  const detached = r.detached?.roots ? `${r.detached.roots} removed DOM subtrees (${r.detached.nodes} nodes)` : '';
+  if (!held.length && !detached) return null;
+  const who = held
+    .slice(0, 3)
+    .map((c) => `${c.name}${c.site ? ` (${c.site})` : ''} ${c.retained} of ${c.unmounted}`)
+    .join(', ');
+  return `unmounted and still in memory: ${[who, detached].filter(Boolean).join('; ')}`;
+}
+
+/** What kept growing, one line each, with who left most of it behind: `live intervals: 2 → 14 (+12/min), most from …`. */
+export function growthLines(growth: GrowthStats): string[] {
+  const lines: string[] = [];
+  for (const key of GROWTH_KEYS) {
+    const m = growth.metrics[key];
+    if (!m?.growing) continue;
+    const listener = key === 'listeners' ? growth.listeners?.[0] : undefined;
+    const kinded = key === 'observers' ? growth.observers?.[0] : key === 'connections' ? growth.connections?.[0] : undefined;
+    const top = key === 'intervals' ? growth.intervals?.[0] : listener ?? kinded;
+    const style = key === 'cssRules' ? growth.styles?.[0] : undefined;
+    const who = top
+      ? `${listener ? `${listener.target} ${listener.type} ` : kinded ? `${kinded.kind} ` : ''}${originLine(top)} ×${top.live}`
+      : style
+      ? `${styleLine(style)} ×${style.rules}`
+      : '';
+    lines.push(`${GROWTH_LABELS[key]}: ${m.start} → ${m.end} (${m.perMin > 0 ? '+' : ''}${m.perMin}/min)${who ? `, most from ${who}` : ''}`);
+  }
+  const held = retainedLine(growth);
+  if (held) lines.push(held);
+  return lines.length ? lines : ['nothing kept growing'];
 }
 
 export function summarize(rec: RecordingV2 & { id?: string; status?: string }, top = 5, hooks: HookMode = 'full'): Summary {
@@ -518,6 +625,7 @@ export function summarize(rec: RecordingV2 & { id?: string; status?: string }, t
         .filter(([, section]: [string, PluginSection]) => section.active ?? Boolean(section.highlights?.length))
         .map(([name, section]: [string, PluginSection]) => [name, { version: section.version, highlights: section.highlights!.slice(0, 3) }])
     ),
+    ...(rec.growth ? { growth: growthLines(rec.growth) } : {}),
     frames: {
       longTasks: rec.frames.longTasks.count,
       maxLongTaskMs: rec.frames.longTasks.maxMs,

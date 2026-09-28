@@ -1,0 +1,38 @@
+--- a/src/features/board/BoardColumn.tsx
++++ b/src/features/board/BoardColumn.tsx
+@@ -1,5 +1,4 @@
+ import { memo, useState } from 'react';
+-import { shallowEqual } from 'react-redux';
+ import type { IssueStatus } from '../../api/types';
+ import { StatusIcon } from '../../components/ui/Badges';
+ import { useAuth } from '../../context/AuthContext';
+@@ -19,7 +18,7 @@
+ const CARD_LIMIT = 40;
+ 
+ export const BoardColumn = memo(function BoardColumn({ projectId, status, onOpen }: Props) {
+-  const issues = useAppSelector((s) => selectColumnIssues(s, projectId, status), shallowEqual);
++  const issues = useAppSelector((s) => selectColumnIssues(s, { projectId, status }));
+   const dispatch = useAppDispatch();
+   const { can } = useAuth();
+   const [over, setOver] = useState(false);
+--- a/src/store/selectors.ts
++++ b/src/store/selectors.ts
+@@ -23,9 +23,15 @@
+   issues.filter((i) => i.projectId === projectId)
+ );
+ 
+-export const selectColumnIssues = createSelector(
+-  [selectProjectIssues, (_: RootState, _projectId: string, status: IssueStatus) => status],
+-  (issues, status) => issues.filter((i) => i.status === status).sort((a, b) => a.priority - b.priority || b.updatedAt - a.updatedAt)
++export interface ColumnQuery {
++  projectId: string;
++  status: IssueStatus;
++}
++
++export const selectColumnIssues = createSelector([selectAllIssues, (_: RootState, column: ColumnQuery) => column], (issues, column) =>
++  issues
++    .filter((i) => i.projectId === column.projectId && i.status === column.status)
++    .sort((a, b) => a.priority - b.priority || b.updatedAt - a.updatedAt)
+ );
+ 
+ export const selectOpenCountByProject = createSelector([selectAllIssues], (issues) => {

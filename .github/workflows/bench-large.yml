@@ -1,0 +1,31 @@
+name: bench-large
+
+# The large app's own check, without an agent: every bug recorded as the person would, its waste well above the clean
+# app's on the same scenario, its component among the first roots, the clean app's page intact. One Vite, one Chromium.
+on:
+  push:
+    branches: [main, dev]
+    paths: ['src/**', 'test/eval-large/**', '.github/workflows/bench-large.yml']
+  pull_request:
+    paths: ['src/**', 'test/eval-large/**', '.github/workflows/bench-large.yml']
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # check.mjs reads each recording back through the built CLI.
+      - run: npm run build
+      - id: playwright
+        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ steps.playwright.outputs.version }}
+      - run: npx playwright install --with-deps chromium
+      - run: node test/eval-large/check.mjs

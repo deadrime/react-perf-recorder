@@ -24,7 +24,13 @@ const colourOf = (key: string | undefined) => (key && CAUSE_COLOURS.find(([re]) 
 /** The colour a cause is drawn in on the tracks, for whatever else names that cause: the legend above them. */
 export const causeColour = colourOf;
 
-const MIN_PX_PER_MS = 0.06;
+/** As close as zoom gets, whatever the length of the recording: a long one zooms further from its fit. */
+const DEEPEST_PX_PER_MS = 1.8;
+/**
+ * How hard a pinch zooms: the spread of the fingers to this power. 1 keeps the tracks under the fingers; below 1 is
+ * gentler (0.5: fingers three times apart zoom ×1.7), above 1 sharper.
+ */
+const PINCH_SPEED = 1;
 const STRIP_PX = 320;
 const BUCKET_PX = 2;
 /** The narrowest bar drawn: a quick commit still has to be seen; the area around it that takes the click is wider. */
@@ -74,9 +80,11 @@ interface Layout {
 }
 
 /** `fitPx` is how wide the tracks are on screen: the whole recording fills them at the first zoom level. */
-const baseScale = (durationMs: number, fitPx = STRIP_PX) => Math.max(MIN_PX_PER_MS, fitPx / Math.max(1, durationMs));
+const baseScale = (durationMs: number, fitPx = STRIP_PX) => fitPx / Math.max(1, durationMs);
 
 /** A bar per column of pixels: several commits in one column become one bar that opens on the busiest of them. */
+const px = (value: number) => Math.round(value * 100) / 100;
+
 function pack(
   commits: Array<{ commit: CommitRecord; hits: number; ms?: number }>,
   scale: number,
@@ -88,12 +96,14 @@ function pack(
   for (const { commit, hits, ms } of commits) {
     // A commit is stamped when it lands, after React rendered it: the render is the time before that moment. Drawn
     // from the stamp on, a long render would cover the commits that came after it.
-    const x = Math.round((Math.max(0, commit.atMs - (commit.ms ?? 0)) * scale) / BUCKET_PX) * BUCKET_PX;
+    // Not snapped to whole pixels: while zooming, a snapped bar steps back and forth around where it should be.
+    const x = px(Math.max(0, commit.atMs - (commit.ms ?? 0)) * scale);
     // As wide as React took, what this lane is about (a root's own render) before the whole commit.
-    const w = Math.max(MIN_BAR_PX, Math.round((ms ?? commit.ms ?? 0) * scale));
-    const bar = byColumn.get(x);
+    const w = Math.max(MIN_BAR_PX, px((ms ?? commit.ms ?? 0) * scale));
+    const column = Math.round(x / BUCKET_PX);
+    const bar = byColumn.get(column);
     if (!bar) {
-      byColumn.set(x, {
+      byColumn.set(column, {
         x,
         w,
         h: height(hits),
@@ -113,6 +123,8 @@ function pack(
     if ((ms ?? hits) > bar.top) {
       bar.top = ms ?? hits;
       bar.lead = commit.i;
+      // Drawn where its lead is: where the first commit is shifts when a zoom splits the column.
+      bar.x = x;
       bar.colour = colour(commit);
       bar.h = height(hits);
       bar.weight = weight(hits, ms);
@@ -194,13 +206,13 @@ function layout(rec: RecordingV2, causeKeys: Map<number, string>, zoom: number, 
   // An action runs until the last commit it is answerable for: the bar is how long its consequences went on.
   const actions = rec.actions.map((action) => {
     const last = (action.commitIds ?? []).reduce((end, i) => Math.max(end, rec.commits.list[i]?.atMs ?? 0), action.endMs);
-    return { x: Math.round(action.atMs * scale), w: Math.max(3, Math.round((last - action.atMs) * scale)), action };
+    return { x: px(action.atMs * scale), w: Math.max(3, px((last - action.atMs) * scale)), action };
   });
 
   const step = TICK_STEPS.find((ms) => ms * scale >= 70) ?? TICK_STEPS[TICK_STEPS.length - 1];
   const ticks: Array<{ x: number; label: string }> = [];
   for (let t = 0; t <= duration; t += step) {
-    ticks.push({ x: Math.round(t * scale), label: step < 1000 ? `${Math.round(t)}ms` : `${+(t / 1000).toFixed(1)}s` });
+    ticks.push({ x: px(t * scale), label: step < 1000 ? `${Math.round(t)}ms` : `${+(t / 1000).toFixed(1)}s` });
   }
   return { lanes, actions, ticks, width, scale, hidden };
 }
@@ -232,6 +244,7 @@ function CommitDetail({ rec, commit, more }: { rec: RecordingV2; commit: CommitR
             title="Renders after which nothing in the DOM of that component changed"
           >{`${commit.noDom} wasted`}</span>
         ) : null}
+        {commit.mounts ? <span class="badge">{`${commit.mounts} mounts`}</span> : null}
         {commit.ms ? <span class="badge">{`${commit.ms}ms`}</span> : null}
         {commit.lane ? <span class="badge">{commit.lane}</span> : null}
         {commit.event ? <span class="badge">{commit.event}</span> : null}
@@ -431,6 +444,8 @@ function Overview({
   const duration = Math.max(1, rec.durationMs);
   const strip = useRef<HTMLDivElement>(null);
   const [drag, setDrag] = useState<{ from: number; to: number } | null>(null);
+  // What the handlers read: the state is for drawing and lags a quick tap by a render.
+  const held = useRef<{ from: number; to: number; id: number } | null>(null);
   const columns = useMemo(() => {
     // A column per percent of the recording, as tall as the renders in it: the shape of the session in 100 bars.
     const buckets = new Array(100).fill(0);
@@ -455,17 +470,29 @@ function Overview({
         e.preventDefault();
         (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
         const at = fractionAt(e.clientX);
+        held.current = { from: at, to: at, id: e.pointerId };
         setDrag({ from: at, to: at });
       }}
-      onPointerMove={(e) => drag && setDrag({ ...drag, to: fractionAt(e.clientX) })}
+      onPointerMove={(e) => {
+        const now = held.current;
+        if (!now || now.id !== e.pointerId) return;
+        now.to = fractionAt(e.clientX);
+        setDrag({ from: now.from, to: now.to });
+      }}
       onPointerUp={(e) => {
-        if (!drag) return;
-        const at = fractionAt(e.clientX);
-        const from = Math.min(drag.from, at) * duration;
-        const to = Math.max(drag.from, at) * duration;
+        const now = held.current;
+        if (!now || now.id !== e.pointerId) return;
+        held.current = null;
         setDrag(null);
+        const at = fractionAt(e.clientX);
+        const from = Math.min(now.from, at) * duration;
+        const to = Math.max(now.from, at) * duration;
         // A click rather than a drag: centre there instead of zooming into nothing.
         onRange(from, to - from < duration / 200 ? from : to);
+      }}
+      onPointerCancel={() => {
+        held.current = null;
+        setDrag(null);
       }}
     >
       {columns.map((c) => (
@@ -501,48 +528,138 @@ export function Timeline({
   // Only what is on screen is drawn: zoomed in, a long recording is tens of thousands of pixels wide.
   const [view, setView] = useState({ from: 0, to: STRIP_PX });
   const pending = useRef(false);
+  const measure = () => {
+    const el = scroll.current;
+    if (el) setView({ from: el.scrollLeft, to: el.scrollLeft + el.clientWidth });
+  };
   const onScroll = () => {
     if (pending.current) return;
     pending.current = true;
     requestAnimationFrame(() => {
       pending.current = false;
-      const el = scroll.current;
-      if (el) setView({ from: el.scrollLeft, to: el.scrollLeft + el.clientWidth });
+      measure();
     });
   };
   // Dragging the tracks moves them sideways; a drag that moved is not a click on the bar it started from.
-  const drag = useRef<{ x: number; left: number; moved: boolean; on: HTMLElement } | null>(null);
+  // A finger decides its axis once: sideways moves the tracks, up and down scrolls the panel they are in.
+  const drag = useRef<{ x: number; y: number; left: number; top: number; axis: 'x' | 'y' | null; on: HTMLElement } | null>(null);
   const panned = useRef(false);
+  // Two fingers zoom: the moment under their middle stays under it, so moving them together also pans.
+  const fingers = useRef(new Map<number, number>());
+  const pinch = useRef<{ spread: number; zoom: number; heldMs: number } | null>(null);
+  // Where the tracks scroll once a zoom is drawn: set before paint, or the old scroll shows at the new zoom for a frame.
+  const scrollTo = useRef<number | null>(null);
+  // The browser scrolls by whole pixels: the rest of a zoom's scroll is a shift of the strip, or it trembles by it.
+  const nudge = useRef(0);
+  const setNudge = (px: number) => {
+    nudge.current = px;
+    const strip = scroll.current?.firstElementChild as HTMLElement | null;
+    if (strip) strip.style.transform = px ? `translateX(${px}px)` : '';
+  };
+  const spreadOf = () => {
+    const [a, b] = [...fingers.current.values()];
+    return { spread: Math.max(20, Math.abs(a - b)), middle: (a + b) / 2 - (scroll.current?.getBoundingClientRect().left ?? 0) };
+  };
+  // A finger lifted over something that a zoom re-rendered away never tells the tracks: the window hears it.
+  useEffect(() => {
+    const lift = (event: PointerEvent) => {
+      if (fingers.current.delete(event.pointerId) && fingers.current.size < 2) pinch.current = null;
+    };
+    window.addEventListener('pointerup', lift, true);
+    window.addEventListener('pointercancel', lift, true);
+    return () => {
+      window.removeEventListener('pointerup', lift, true);
+      window.removeEventListener('pointercancel', lift, true);
+    };
+  }, []);
   const onPointerDown = (event: PointerEvent) => {
     const el = scroll.current;
     if (!el) return;
+    if (event.pointerType === 'touch') {
+      // The first finger of a gesture: whatever an earlier one left behind is gone.
+      if (event.isPrimary) {
+        fingers.current.clear();
+        pinch.current = null;
+      }
+      fingers.current.set(event.pointerId, event.clientX);
+    }
+    if (fingers.current.size === 2) {
+      event.preventDefault();
+      if (drag.current?.axis) drag.current.on.releasePointerCapture?.(event.pointerId);
+      drag.current = null;
+      // A pinch is not a tap on the bar under either finger.
+      panned.current = true;
+      const { spread, middle } = spreadOf();
+      pinch.current = { spread, zoom, heldMs: (el.scrollLeft + middle) / scale };
+      return;
+    }
     // No selection may start here: with the pointer held down over the page, the browser would otherwise select it.
     event.preventDefault();
     panned.current = false;
-    drag.current = { x: event.clientX, left: el.scrollLeft, moved: false, on: event.currentTarget as HTMLElement };
+    const panel = el.closest('.card');
+    drag.current = {
+      x: event.clientX,
+      y: event.clientY,
+      left: el.scrollLeft,
+      top: panel?.scrollTop ?? 0,
+      // A mouse only drags sideways: the wheel is its way up and down.
+      axis: null,
+      on: event.currentTarget as HTMLElement,
+    };
+    if (event.pointerType === 'mouse') drag.current.y = Number.NaN;
   };
   const onPointerMove = (event: PointerEvent) => {
     const el = scroll.current;
+    if (fingers.current.has(event.pointerId)) fingers.current.set(event.pointerId, event.clientX);
+    const pinched = pinch.current;
+    if (el && pinched && fingers.current.size === 2) {
+      // From where the pinch began, not step by step: the scale of the last render lags the fingers.
+      const { spread, middle } = spreadOf();
+      const next = clampZoom(pinched.zoom * (spread / pinched.spread) ** PINCH_SPEED);
+      const left = pinched.heldMs * baseScale(rec.durationMs, fitPx) * next - middle;
+      // At a zoom limit nothing renders again, so the fingers' slide is scrolled here.
+      if (next === zoom) el.scrollLeft = Math.max(0, left);
+      else {
+        scrollTo.current = left;
+        setZoom(next);
+      }
+      return;
+    }
     const held = drag.current;
     if (!el || !held) return;
     const dx = event.clientX - held.x;
-    if (!held.moved && Math.abs(dx) > 3) {
-      held.moved = true;
+    const dy = Number.isNaN(held.y) ? 0 : event.clientY - held.y;
+    if (!held.axis && Math.max(Math.abs(dx), Math.abs(dy)) > 3) {
+      held.axis = Math.abs(dx) >= Math.abs(dy) ? 'x' : 'y';
       panned.current = true;
       // Captured only once the drag is real: a captured pointer sends the click to the tracks instead of the bar.
       held.on.setPointerCapture?.(event.pointerId);
     }
-    if (held.moved) {
-      el.scrollLeft = held.left - dx;
-      // The pointer is down over the page as well; without this it leaves a selection behind it.
-      document.getSelection()?.removeAllRanges();
-    }
+    if (held.axis === 'x') el.scrollLeft = held.left - dx;
+    // The tracks take every touch (touch-action: none), so the panel's own scroll is done here.
+    const panel = held.axis === 'y' ? el.closest('.card') : null;
+    if (panel) panel.scrollTop = held.top - dy;
+    // The pointer is down over the page as well; without this it leaves a selection behind it.
+    if (held.axis) document.getSelection()?.removeAllRanges();
   };
   const endPan = (event: PointerEvent) => {
-    if (drag.current?.moved) drag.current.on.releasePointerCapture?.(event.pointerId);
+    fingers.current.delete(event.pointerId);
+    if (fingers.current.size < 2) pinch.current = null;
+    if (drag.current?.axis) drag.current.on.releasePointerCapture?.(event.pointerId);
     drag.current = null;
   };
   useEffect(() => onScroll(), []);
+  useLayoutEffect(() => {
+    const el = scroll.current;
+    if (!el || scrollTo.current === null) return;
+    const want = Math.max(0, scrollTo.current);
+    el.scrollLeft = want;
+    scrollTo.current = null;
+    const rest = el.scrollLeft - want;
+    // More than a pixel off is the end of the strip holding the scroll back, not rounding.
+    setNudge(Math.abs(rest) < 1 ? rest : 0);
+    measure();
+  }, [zoom]);
   // Fit means the width the tracks have on the screen, which a wider panel makes wider.
   const [fitPx, setFitPx] = useState(STRIP_PX);
   useLayoutEffect(() => {
@@ -557,6 +674,9 @@ export function Timeline({
     observer.observe(el);
     return () => observer.disconnect();
   }, []);
+  // Fit shows the whole recording, however long; the deepest zoom stays as close as for a short one.
+  const maxZoom = Math.max(MAX_ZOOM, DEEPEST_PX_PER_MS / baseScale(rec.durationMs, fitPx));
+  const clampZoom = (next: number) => Math.min(maxZoom, Math.max(MIN_ZOOM, next));
   const causeKeys = useMemo(() => new Map(rec.causes.map((c) => [c.i, c.key])), [rec]);
   const { lanes, actions, ticks, width, scale, hidden } = useMemo(
     () => layout(rec, causeKeys, zoom, onlyChanged, fitPx),
@@ -586,16 +706,11 @@ export function Timeline({
    */
   const zoomTo = (next: number, anchorPx?: number) => {
     const el = scroll.current;
-    const zoomed = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, next));
+    const zoomed = clampZoom(next);
     const hold = anchorPx ?? (el ? el.clientWidth / 2 : 0);
     const heldMs = el ? (el.scrollLeft + hold) / scale : 0;
+    scrollTo.current = heldMs * baseScale(rec.durationMs, fitPx) * zoomed - hold;
     setZoom(zoomed);
-    requestAnimationFrame(() => {
-      const after = scroll.current;
-      if (!after) return;
-      after.scrollLeft = Math.max(0, heldMs * baseScale(rec.durationMs, fitPx) * zoomed - hold);
-      onScroll();
-    });
   };
   /** The wheel zooms, as it does in a profiler; a sideways wheel is left to the browser as a scroll. */
   const onWheel = (event: WheelEvent) => {
@@ -618,14 +733,17 @@ export function Timeline({
     if (!el) return;
     const span = Math.max(1, toMs - fromMs);
     const wanted = toMs > fromMs ? el.clientWidth / (baseScale(rec.durationMs, fitPx) * span) : zoom;
-    const zoomed = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, wanted));
+    const zoomed = clampZoom(wanted);
+    // Its own scroll comes after the render; one a pinch or the wheel left unused would jump there first.
+    scrollTo.current = null;
     setZoom(zoomed);
     requestAnimationFrame(() => {
       const after = scroll.current;
       if (!after) return;
       const next = baseScale(rec.durationMs, fitPx) * zoomed;
       after.scrollLeft = Math.max(0, toMs > fromMs ? fromMs * next : fromMs * next - after.clientWidth / 2);
-      onScroll();
+      setNudge(0);
+      measure();
     });
   };
   const pickedBar = picked === null ? undefined : lanes[0].bars.find((b) => b.ids.includes(picked));
@@ -634,6 +752,7 @@ export function Timeline({
   /** Back to the whole recording with nothing picked: what the tracks showed when the report opened. */
   const narrowed = zoom > MIN_ZOOM || picked !== null || pickedAction !== null || litCause !== null;
   const showAll = () => {
+    scrollTo.current = null;
     setZoom(MIN_ZOOM);
     setPicked(null);
     setPickedAction(null);
@@ -642,7 +761,8 @@ export function Timeline({
       const el = scroll.current;
       if (!el) return;
       el.scrollLeft = 0;
-      onScroll();
+      setNudge(0);
+      measure();
     });
   };
   const pickCommit = (i: number) => {
@@ -656,7 +776,7 @@ export function Timeline({
         <button data-rpr="tl-out" disabled={zoom <= MIN_ZOOM} title="Zoom out" onClick={() => zoomTo(zoom / 2)}>
           −
         </button>
-        <button data-rpr="tl-in" disabled={zoom >= MAX_ZOOM} title="Zoom in (or turn the wheel over the tracks)" onClick={() => zoomTo(zoom * 2)}>
+        <button data-rpr="tl-in" disabled={zoom >= maxZoom} title="Zoom in (or turn the wheel over the tracks)" onClick={() => zoomTo(zoom * 2)}>
           +
         </button>
         <span class="muted">{zoom <= MIN_ZOOM ? 'fit' : `×${zoom < 10 ? zoom.toFixed(1) : Math.round(zoom)}`}</span>
@@ -706,11 +826,15 @@ export function Timeline({
           onPointerUp={endPan}
           onPointerCancel={endPan}
         >
-          <div class="tl-strip" data-lit={lighting ? 'true' : undefined} style={`width:${width}px`}>
+          <div
+            class="tl-strip"
+            data-lit={lighting ? 'true' : undefined}
+            style={`width:${width}px${nudge.current ? `;transform:translateX(${nudge.current}px)` : ''}`}
+          >
             {ticks
               .filter((t) => onView(t.x))
               .map((t) => (
-                <span key={`grid-${t.x}`} class="tl-grid" style={`left:${t.x}px`} />
+                <span key={`grid-${t.label}`} class="tl-grid" style={`left:${t.x}px`} />
               ))}
             {commit ? (
               <>
@@ -750,7 +874,8 @@ export function Timeline({
                   .sort((a, b) => b.w - a.w)
                   .map((bar) => (
                     <button
-                      key={bar.x}
+                      // The first commit of the column, not its x: keyed by x, every bar is made anew on each step of a zoom.
+                      key={bar.ids[0]}
                       class="tl-bar"
                       data-picked={picked !== null && bar.ids.includes(picked) ? 'true' : undefined}
                       data-lit={lighting && bar.ids.some((i) => lit.has(i)) ? 'true' : undefined}
@@ -765,7 +890,7 @@ export function Timeline({
               {ticks
                 .filter((t) => onView(t.x))
                 .map((t) => (
-                  <span key={t.x} class="tl-tick" data-first={t.x === 0 ? 'true' : undefined} style={`left:${t.x}px`}>
+                  <span key={t.label} class="tl-tick" data-first={t.x === 0 ? 'true' : undefined} style={`left:${t.x}px`}>
                     {t.label}
                   </span>
                 ))}

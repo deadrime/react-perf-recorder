@@ -98,6 +98,41 @@ describe('eval cases', () => {
     });
   });
 
+  // A bug with more than one right fix: the check takes each, and still fails the bug left as it is.
+  it('field-state counts either half of the waste gone', () => {
+    const fixed = cases.find((c) => c.name === 'field-state-rec')!.graders.find((g) => g.name === 'fixed')!;
+    const dir = patched(['field-state']);
+    try {
+      const file = path.join(dir, 'src/components/Composer/index.tsx');
+      const bug = fs.readFileSync(file, 'utf8');
+      expect(fixed.pattern.test(bug)).toBe(true);
+      expect(fixed.pattern.test(bug.replace('void trigger();', ''))).toBe(false);
+      expect(fixed.pattern.test(bug.replace(/fieldState/g, 'state'))).toBe(false);
+      const split = bug.replace('const { field, fieldState } = useController', '// not fieldState here\n  const { field } = useController');
+      expect(fixed.pattern.test(split)).toBe(false);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('draft-context counts the draft moved out of Layout, wherever it went', () => {
+    const fixed = cases.find((c) => c.name === 'draft-context-rec')!.graders.find((g) => g.name === 'fixed')!;
+    const dir = patched(['draft-context']);
+    try {
+      const bug = fs.readFileSync(path.join(dir, 'src/components/ChatView.tsx'), 'utf8');
+      expect(fixed.pattern.test(bug)).toBe(true);
+      const below = bug
+        .replace("  const [draft, setDraft] = useState('');\n", '')
+        .replace(
+          'export const Layout = () => {',
+          "const DraftScope = ({ children }: { children: ReactNode }) => {\n  const [draft, setDraft] = useState('');\n  return children;\n};\n\nexport const Layout = () => {"
+        );
+      expect(fixed.pattern.test(below)).toBe(false);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it('memo-cache-slot counts a fix in either file, and nothing else', () => {
     const fixed = cases.find((c) => c.name === 'memo-cache-slot-rec')!.graders.find((g) => g.name === 'fixed')!;
     const edit = (file: string, text: string, keys: [string, string]) =>
@@ -111,5 +146,14 @@ describe('eval cases', () => {
       expect(fixed.pattern.test(edit('components/Header.tsx', 'memoize((s) => 1)', keys))).toBe(false);
     }
     expect(fixed.pattern.test(JSON.stringify({ type: 'tool_result', content: 'memoizeWithArgs(messageInfo, { size: 1 })' }))).toBe(false);
+    // A row that stops calling the shared selector, however it selects instead; not one that keeps calling it.
+    const row = (text: string) =>
+      JSON.stringify({
+        name: 'Edit',
+        input: { file_path: '/w/src/components/Messages.tsx', old_string: 'useChatStore((s) => selectMessageInfo(s, id))', new_string: text },
+      });
+    expect(fixed.pattern.test(row('useChatStore((s) => s.reactionsById[id] ?? 0)'))).toBe(true);
+    expect(fixed.pattern.test(row('useChatStore(useMemo(() => makeSelectInfo(id), [id]))'))).toBe(true);
+    expect(fixed.pattern.test(row('useChatStore((s) => selectMessageInfo(s, id), shallow)'))).toBe(false);
   });
 });

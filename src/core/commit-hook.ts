@@ -25,6 +25,12 @@ export interface CommitHook {
   updaters: boolean;
 }
 
+/** React keeps a set of the fibers that scheduled each lane: only when a DevTools hook was there as react-dom loaded. */
+export function hasUpdaterSets(root: FiberRoot): boolean {
+  const sets = root.pendingUpdatersLaneMap;
+  return Array.isArray(sets) && sets.length > 0 && sets.every((s) => s instanceof Set);
+}
+
 export function hookOwner(root: FiberRoot): string | null {
   const setter = Object.getOwnPropertyDescriptor(root, 'current')?.set as OwnedSetter | undefined;
   if (!setter) return null;
@@ -56,10 +62,7 @@ export function hookCommits(
   const report = (error: unknown) => {
     if (errors.length < 3) errors.push(String((error as Error)?.stack || error).slice(0, 300));
   };
-  const updaterSets = (root: FiberRoot) => {
-    const sets = root.pendingUpdatersLaneMap;
-    return withUpdaters && onUpdate && Array.isArray(sets) && sets.length && sets.every((s) => s instanceof Set) ? sets : null;
-  };
+  const updaterSets = (root: FiberRoot) => (withUpdaters && onUpdate && hasUpdaterSets(root) ? root.pendingUpdatersLaneMap! : null);
   const updaters = roots.every((root) => updaterSets(root) !== null);
   const restores = roots.map((root) => {
     let current = root.current;

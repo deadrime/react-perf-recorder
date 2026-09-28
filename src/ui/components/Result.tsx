@@ -2,7 +2,7 @@
 import type { ComponentChildren, JSX } from 'preact';
 import { useMemo, useState } from 'preact/hooks';
 import type { Saved } from '../../core/engine';
-import type { RootStat } from '../../shared/schema';
+import { GROWTH_KEYS, type GrowthKey, type GrowthMetric, type GrowthOrigin, type GrowthStats, type RootStat } from '../../shared/schema';
 import { hookOf, reasonsById, summarize, waysOf } from '../../shared/summary';
 import { downloadJson } from '../download';
 import { Compare, compareNote, type Comparison } from './Compare';
@@ -247,6 +247,8 @@ export function Result({
         <Timeline rec={rec} litCause={litCause} onReset={() => setLitCause(null)} onOutline={onOutline} />
       </Fold>
 
+      {rec.growth ? <Growth growth={rec.growth} /> : null}
+
       {others.length || hidden ? (
         <Fold id="components" title="Components" note={`${others.length}${hidden ? ` + ${hidden} hidden` : ''}`} open={false}>
           {others.slice(0, 8).map((c) => {
@@ -335,5 +337,135 @@ export function Result({
         </button>
       </div>
     </>
+  );
+}
+
+const SHORT: Record<GrowthKey, string> = {
+  domNodes: 'DOM nodes',
+  cssRules: 'CSS rules',
+  styleElements: '<style>',
+  intervals: 'intervals',
+  listeners: 'listeners',
+  heapKB: 'heap KB',
+  observers: 'observers',
+  connections: 'sockets',
+};
+
+interface Finding {
+  key: string;
+  count: string;
+  title: string;
+  where?: string;
+  code?: string;
+  hint: string;
+  retained?: true;
+}
+
+/** Where a call was made: the mapped line, or the file the stack named. */
+const placeOf = (o: GrowthOrigin) => o.site ?? o.origin.replace(/^.*@ /, '');
+
+/** One line per thing left behind, most telling first: what it is, where, and what to change. */
+function findingsOf(growth: GrowthStats): Finding[] {
+  const grew = (key: GrowthKey) => {
+    const m = growth.metrics[key];
+    return Boolean(m && m.end > m.start);
+  };
+  const out: Finding[] = [];
+  for (const g of (growth.styles ?? []).slice(0, 3))
+    out.push({
+      key: `s${g.source}${g.shape}`,
+      count: `${g.rules}×`,
+      title: g.component
+        ? `${g.component}: a new CSS class for every ${g.varying?.map((v) => v.prop).join(', ') ?? 'render'}`
+        : `${g.rules} new CSS rules: ${g.shape}`,
+      where: g.source,
+      hint: 'put the value into style or a CSS variable',
+    });
+  const held = growth.retained?.collected ? growth.retained.components.filter((c) => c.retained) : [];
+  for (const c of held.slice(0, 3))
+    out.push({
+      key: `r${c.name}${c.site}`,
+      count: `${c.retained} of ${c.unmounted}`,
+      title: `${c.name} stays in memory after unmount`,
+      where: c.site,
+      hint: 'something outside React holds it: a listener, a timer, a subscription',
+      retained: true,
+    });
+  const origins: Array<[GrowthKey, Array<GrowthOrigin & { title: string }>, string]> = [
+    [
+      'listeners',
+      (growth.listeners ?? []).map((l) => ({ ...l, title: `${l.target} ${l.type} listener never removed` })),
+      'remove it in the effect cleanup',
+    ],
+    ['intervals', (growth.intervals ?? []).map((t) => ({ ...t, title: 'setInterval never cleared' })), 'clear it in the effect cleanup'],
+    ['observers', (growth.observers ?? []).map((o) => ({ ...o, title: `${o.kind} never disconnected` })), 'disconnect it on unmount'],
+    [
+      'connections',
+      (growth.connections ?? []).map((o) => ({ ...o, title: `${o.kind}${o.url ? ` ${o.url}` : ''} left open` })),
+      'close it on unmount',
+    ],
+  ];
+  for (const [key, items, hint] of origins) {
+    if (!grew(key)) continue;
+    for (const o of items.slice(0, 3))
+      out.push({ key: `${key}${o.title}${o.origin}`, count: `${o.live}×`, title: o.title, where: placeOf(o), code: o.code, hint });
+  }
+  return out;
+}
+
+const fmt = (m: GrowthMetric) => `${m.start} → ${m.end}`;
+
+/** What the page held more of at the end, and who left it there; opens by itself when something kept growing. */
+function Growth({ growth }: { growth: GrowthStats }) {
+  const keys = GROWTH_KEYS.filter((key) => growth.metrics[key]);
+  const growing = keys.filter((key) => growth.metrics[key]!.growing);
+  const findings = findingsOf(growth);
+  const held = findings.some((f) => f.retained);
+  const note = [...growing.filter((key) => key !== 'styleElements').map((key) => SHORT[key]), ...(held ? ['retained'] : [])];
+  // <style> elements grow with the CSS rules they hold: one leak, one row.
+  const shown = keys.filter((key) => key !== 'styleElements' && growth.metrics[key]!.end !== growth.metrics[key]!.start);
+  const still = keys.filter((key) => key !== 'styleElements' && !shown.includes(key));
+  const styleEls = growth.metrics.styleElements;
+  const retained = growth.retained;
+  return (
+    <Fold id="growth" title="Growth" note={note.length ? note.join(' · ') : 'nothing kept growing'} open={note.length > 0}>
+      {findings.map((f) => (
+        <div class="growth-find" key={f.key} {...(f.retained ? { 'data-rpr': 'retained' } : {})}>
+          <span class="badge" data-tone="warn">
+            {f.count}
+          </span>
+          <div class="growth-what">
+            <div class="growth-title">{f.title}</div>
+            {f.where ? <code class="growth-where">{f.where}</code> : null}
+            {f.code ? <code class="growth-code">{f.code}</code> : null}
+            <div class="muted">{f.hint}</div>
+          </div>
+        </div>
+      ))}
+      {shown.map((key) => {
+        const m = growth.metrics[key]!;
+        const d = m.end - m.start;
+        const els = key === 'cssRules' && styleEls && styleEls.end > styleEls.start ? styleEls.end - styleEls.start : 0;
+        return (
+          <div class="growth-row" key={key} data-rpr="growth" data-key={key}>
+            <span class="who">{SHORT[key]}</span>
+            <span class="muted">{fmt(m)}</span>
+            <span class="badge" data-tone={m.growing ? 'warn' : undefined}>{`${d > 0 ? '+' : ''}${d}`}</span>
+            {m.growing ? <span class="muted">{`${m.perMin > 0 ? '+' : ''}${m.perMin}/min`}</span> : null}
+            {els ? <span class="muted">{`in ${els} new <style>`}</span> : null}
+          </div>
+        );
+      })}
+      {retained ? (
+        <div class="growth-row" data-rpr="growth" data-key="unmounted">
+          <span class="who">unmounted</span>
+          <span class="muted">{retained.unmounted}</span>
+          {retained.collected ? (
+            <span class="badge" data-tone={retained.retained ? 'warn' : undefined}>{`${retained.retained ?? 0} in memory`}</span>
+          ) : null}
+        </div>
+      ) : null}
+      {still.length ? <div class="growth-still muted">{`unchanged: ${still.map((key) => SHORT[key]).join(', ')}`}</div> : null}
+    </Fold>
   );
 }

@@ -106,6 +106,11 @@ export interface ReasonInfo {
   equal?: true;
   /** A new value with the same content: a subscription bug rather than new data. */
   sameContent?: true;
+  /**
+   * `silent`: the store changed before telling React and rode along on a render something else caused. `resync`: React
+   * re-checked the store after a commit, found it changed, and scheduled this render itself.
+   */
+  storeChange?: 'silent' | 'resync';
   /** Older recordings carry the sentence; it is built from the fields above by `reasonText` when it is not there. */
   text?: string;
 }
@@ -285,6 +290,7 @@ export interface CommitRecord {
   renders: number;
   noDom?: number;
   outside?: number;
+  /** Components mounted under the commit's roots. */
   mounts?: number;
   /** Cascade roots of this commit: which root, how many of its instances, and why each rendered. */
   roots?: Array<{ i: number; hits: number; reasonIds: number[]; /** Its render with its subtree, when the build times renders. */ ms?: number }>;
@@ -295,6 +301,89 @@ export interface CommitRecord {
    */
   ways?: CommitWay[];
 }
+
+/** What the page holds that a leak makes grow; `heapKB` only where the browser tells (Chrome's performance.memory). */
+export type GrowthKey = 'domNodes' | 'cssRules' | 'styleElements' | 'intervals' | 'listeners' | 'heapKB' | 'observers' | 'connections';
+
+export interface GrowthMetric {
+  start: number;
+  end: number;
+  peak: number;
+  /** Least-squares slope over the samples. */
+  perMin: number;
+  /** Grew by more than noise and was still growing in the second half: what a leak looks like. */
+  growing?: true;
+}
+
+/** Where what stayed behind was added: `useWindowSize @ src/hooks/useWindowSize.ts`, and its line once mapped. */
+export interface GrowthOrigin {
+  origin: string;
+  live: number;
+  /** The call in the generated code; the dev server maps it to `site` and `code`. */
+  generated?: { url: string; line: number; column: number };
+  site?: string;
+  code?: string;
+}
+
+/** Rules added to the stylesheets during the recording, of one kind: same sheet, same declarations but for numbers. */
+export interface StyleGroup {
+  /** The app's component whose element carries one of the newest classes. */
+  component?: string;
+  /** What wrote the sheet: `style[data-emotion]`, `style[data-styled]`, `adopted`. */
+  source: string;
+  rules: number;
+  classes: number;
+  /** Properties whose values differ between the rules: what the component puts into its styles. */
+  varying?: Array<{ prop: string; values: string[] }>;
+  shape: string;
+  examples: string[];
+}
+
+export interface GrowthStats {
+  /** `[atMs, ...values in GROWTH_KEYS order]`, about one a second; null where a value is not known. */
+  samples: Array<[number, ...Array<number | null>]>;
+  metrics: Partial<Record<GrowthKey, GrowthMetric>>;
+  /** Intervals set during the recording and never cleared, by where they were set. */
+  intervals?: Array<GrowthOrigin>;
+  /** Listeners added during the recording and still there, by target, type and where they were added. */
+  listeners?: Array<GrowthOrigin & { target: string; type: string }>;
+  /** New style rules, grouped, most first. */
+  styles?: StyleGroup[];
+  /** Resize, intersection and mutation observers started during the recording and never disconnected. */
+  observers?: Array<GrowthOrigin & { kind: string }>;
+  /** WebSockets, EventSources and BroadcastChannels opened during the recording and still open. */
+  connections?: Array<GrowthOrigin & { kind: string; url?: string }>;
+  /** Components unmounted during the recording, and those something still holds after a garbage collection. */
+  retained?: RetainedStats;
+}
+
+/** One component, by name and where it is used, of those unmounted during the recording. */
+export interface RetainedComponent {
+  name: string;
+  /** Where it is used, `src/Page.tsx:12`, and the line there once mapped. */
+  site?: string;
+  code?: string;
+  generated?: { url: string; line: number; column: number };
+  /** Defined in a package. */
+  library?: true;
+  unmounted: number;
+  /** Still in memory after the collection: something outside React holds it — a listener, a timer, a store. */
+  retained?: number;
+}
+
+export interface RetainedStats {
+  /** A garbage collection ran before counting; without one, what is still in memory says nothing. */
+  collected: boolean;
+  unmounted: number;
+  retained?: number;
+  /** Most retained first, then most unmounted. */
+  components: RetainedComponent[];
+  /** Removed DOM subtrees still in memory: `roots` removed at the top, `nodes` in them. */
+  detached?: { roots: number; nodes: number };
+}
+
+// Appended, not inserted: saved samples are read by position.
+export const GROWTH_KEYS: GrowthKey[] = ['domNodes', 'cssRules', 'styleElements', 'intervals', 'listeners', 'heapKB', 'observers', 'connections'];
 
 export interface Navigation {
   type: 'push' | 'replace' | 'pop';
@@ -311,7 +400,8 @@ export interface RecordingV2 {
   label?: string;
   partial?: boolean;
   tool: { version: string; source: string; plugins: PluginInfo[] };
-  page: { url: string; title: string; viewport: string; dpr: number; userAgent: string };
+  /** `url` is where the recording stopped; `startUrl`, where it began, when the actions moved it (a search in the query). */
+  page: { url: string; startUrl?: string; title: string; viewport: string; dpr: number; userAgent: string };
   react: { version: string | null; roots: number; profileTimings: boolean };
   meta?: Record<string, Primitive>;
   options: Record<string, JsonValue>;
@@ -355,6 +445,8 @@ export interface RecordingV2 {
   bigCommits: number[];
   frames: { longTasks: { count: number; maxMs: number; totalMs: number }; loaf: LongFrame[]; fps?: number };
   dom: { text: number; attr?: number; child?: number };
+  /** What grew on the page from start to stop: nodes, CSS rules, intervals, listeners, heap. */
+  growth?: GrowthStats;
   navigations: Navigation[];
   hmr: Array<{ atMs: number; type: string; paths: string[] }>;
   conditions: Conditions;
@@ -407,7 +499,9 @@ export type SessionEvent =
       ms?: number;
       lane?: string;
       event?: string;
-      roots?: Array<[number, number, number[]]>;
+      mounts?: number;
+      /** `[root, renders, reasonIds, mounts?]` */
+      roots?: Array<[number, number, number[]] | [number, number, number[], number]>;
       causes?: string[];
       outside?: number;
       noDom?: number;
@@ -420,3 +514,10 @@ export type SessionEvent =
   | { k: 'reload'; atMs: number }
   | { k: 'scope'; atMs: number; state: 'attached' | 'lost' | 'remounted' }
   | { k: 'end'; atMs: number };
+
+/** Everything in `growth` with a built position the dev server maps to `site` and `code`. */
+export function growthOrigins(rec: RecordingV2): Array<{ generated?: GrowthOrigin['generated']; site?: string; code?: string }> {
+  const g = rec.growth;
+  if (!g) return [];
+  return [...(g.intervals ?? []), ...(g.listeners ?? []), ...(g.observers ?? []), ...(g.connections ?? []), ...(g.retained?.components ?? [])];
+}

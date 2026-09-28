@@ -1,4 +1,4 @@
-import { libraryOf, parseStack, servedPath } from '../stack';
+import { libraryOf, originOf, originText, parseStack, type Origin } from '../stack';
 
 type Kind = 'setTimeout' | 'setInterval' | 'requestAnimationFrame';
 
@@ -25,6 +25,24 @@ const texts = new WeakMap<Error, string>();
 const own = new WeakMap<Error, boolean>();
 
 let order = 0;
+
+/** Intervals set since boot and not cleared yet, by id: an interval nobody clears is a leak that keeps its closure. */
+const intervals = new Map<unknown, Scheduled & { atMs: number }>();
+
+const origins = new WeakMap<Error, Origin>();
+
+/** The app's live intervals: where each was set, and when (`performance.now()`); a test driver's are left out. */
+export function liveIntervals(): Array<{ origin: () => Origin; atMs: number }> {
+  const out: Array<{ origin: () => Origin; atMs: number }> = [];
+  for (const t of intervals.values()) {
+    if (ours(t)) continue;
+    let origin = origins.get(t.origin);
+    if (!origin) origins.set(t.origin, (origin = originOf(t.origin, t.fn.name)));
+    const found = origin;
+    if (found.text) out.push({ origin: () => found, atMs: t.atMs });
+  }
+  return out;
+}
 
 /**
  * A number that only grows: what happened before a timer started, told apart from what happened in it. The clock
@@ -64,19 +82,8 @@ function libraryOfCaller(t: Scheduled): string | null {
 function timerText(t: Scheduled): string {
   let text = texts.get(t.origin);
   if (text) return text;
-  // The first frame is the wrapper itself, wherever the recorder was loaded from (a script tag has no file URL).
-  const frames = parseStack(t.origin.stack ?? '')
-    .slice(1)
-    .filter((f) => libraryOf(f.url) !== 'react-perf-recorder');
-  const app = frames.find((f) => libraryOf(f.url) === null);
-  const name = (app?.fn.split('.').pop() || t.fn.name || '').replace(/^bound /, '');
-  if (app) {
-    const file = servedPath(app.url);
-    text = `timer ${t.kind}${name ? ` ${name}` : ''} @ ${file}`;
-  } else {
-    const library = frames.map((f) => libraryOf(f.url)).find(Boolean);
-    text = `timer ${t.kind}${library ? ` (${library})` : ''}`;
-  }
+  const caller = originText(t.origin, t.fn.name);
+  text = `timer ${t.kind}${caller ? ` ${caller}` : ''}`;
   texts.set(t.origin, text);
   return text;
 }
@@ -100,7 +107,7 @@ function wrap(kind: Kind) {
   const wrapped = function (callback: unknown, ...rest: unknown[]) {
     if (typeof callback !== 'function') return original.call(window, callback, ...rest);
     const scheduled: Scheduled = { kind, fn: callback, origin: new Error() };
-    return original.call(
+    const id = original.call(
       window,
       function (this: unknown, ...args: unknown[]) {
         const s = sink;
@@ -122,9 +129,27 @@ function wrap(kind: Kind) {
       },
       ...rest
     );
+    if (kind === 'setInterval' && intervals.size < MAX_INTERVALS) intervals.set(id, { ...scheduled, atMs: performance.now() });
+    return id;
   };
   Object.defineProperty(wrapped, 'name', { value: kind });
   target[kind] = wrapped;
+}
+
+/** More than this many live intervals are counted no further: the leak is already plain. */
+const MAX_INTERVALS = 10_000;
+
+/** Browsers share one id pool for both: `clearTimeout` clears an interval too. */
+function wrapClear(name: 'clearInterval' | 'clearTimeout') {
+  const target = window as unknown as Record<string, (id: unknown) => void>;
+  const original = target[name];
+  if (typeof original !== 'function') return;
+  const wrapped = function (id: unknown) {
+    intervals.delete(id);
+    return original.call(window, id);
+  };
+  Object.defineProperty(wrapped, 'name', { value: name });
+  target[name] = wrapped;
 }
 
 /** Wraps the page's timers once, at boot: intervals set up on mount are not seen unless wrapped before recording. */
@@ -134,4 +159,6 @@ export function installTimers() {
   wrap('setTimeout');
   wrap('setInterval');
   wrap('requestAnimationFrame');
+  wrapClear('clearInterval');
+  wrapClear('clearTimeout');
 }

@@ -14,4 +14,5 @@ dist-pages
 
 # claude plugin eval output
 test/eval-plugin/evals/results/
+test/eval-plugin/evals-large/results/
 test/.eval-plugin-*/

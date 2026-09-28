@@ -61,7 +61,7 @@ export function launchChromium(repo, browsers) {
 
 /**
  * Rec, the steps, Stop — as from the panel; the dev server saves the recording in its sessions folder. Returns its id
- * and what the page showed after the steps: the parts missing and what the message box holds.
+ * and what the page showed after the steps: the parts missing, what the message box holds, and whether that all works.
  */
 export async function recordScenario(page, url, scenario) {
   if (!SCENARIOS[scenario]) throw new Error(`no scenario ${scenario}`);
@@ -76,5 +76,6 @@ export async function recordScenario(page, url, scenario) {
     const input = document.querySelector('[data-testid="message"]');
     return { missing: ids.filter((id) => !document.querySelector(`[data-testid="${id}"]`)), typed: input?.value ?? null };
   }, PARTS);
-  return { id, scenario, ...health };
+  const typed = TYPED[scenario];
+  return { id, scenario, ...health, works: health.missing.length === 0 && (typed === undefined || health.typed === typed) };
 }

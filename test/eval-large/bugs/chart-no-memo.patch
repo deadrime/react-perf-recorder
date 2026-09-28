@@ -1,0 +1,11 @@
+--- a/src/features/dashboard/ThroughputChart.tsx
++++ b/src/features/dashboard/ThroughputChart.tsx
+@@ -36,7 +36,7 @@
+   const [range, setRange] = useState<Range>('90');
+   const [hover, setHover] = useState<number | null>(null);
+ 
+-  const points = useMemo(() => buildThroughput(issues, projects, Number(range)), [issues, projects, range]);
++  const points = buildThroughput(issues, projects, Number(range));
+   const colors = useMemo(() => Object.fromEntries(projects.map((p) => [p.id, p.color])), [projects]);
+ 
+   const max = Math.max(1, ...points.map((p) => p.total));

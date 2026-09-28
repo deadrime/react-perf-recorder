@@ -198,6 +198,44 @@ test('outlines renders inside the area while nothing is recorded, and marks reco
   await expect.poll(() => painted(page)).toBe(false);
 });
 
+test('an outline inside a scrolled container moves with it and is clipped to it', async ({ page }) => {
+  await open(page);
+  // A made-up box in a scroller of its own: the outline is drawn by the highlighter, not by what React rendered.
+  const at = await page.evaluate(async () => {
+    const scroller = Object.assign(document.createElement('div'), { id: 'scroller' });
+    Object.assign(scroller.style, { position: 'fixed', left: '40px', top: '200px', width: '300px', height: '200px', overflow: 'auto' });
+    scroller.innerHTML =
+      '<div style="height:80px"></div><div id="row" style="height:40px;margin-left:20px;width:200px"></div><div style="height:600px"></div>';
+    document.body.append(scroller);
+    const highlighter = (window as any).__REACT_PERF_RECORDER__.panel.highlighter;
+    highlighter.enabled = true;
+    highlighter.flash([[document.getElementById('row'), 'Row', {}]], new Set());
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    scroller.scrollTop = 60;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const row = document.getElementById('row')!.getBoundingClientRect();
+    return { left: row.left, top: row.top, bottom: row.bottom };
+  });
+  const alphaAt = (x: number, y: number) =>
+    page.evaluate(
+      ([x, y]) => {
+        const canvas = document.querySelector('[data-react-perf-recorder]')!.shadowRoot!.querySelector('canvas')!;
+        const dpr = window.devicePixelRatio || 1;
+        return canvas.getContext('2d')!.getImageData(Math.round(x * dpr), Math.round(y * dpr), 1, 1).data[3];
+      },
+      [x, y] as const
+    );
+  // The left edge of the box is where the row is now, not 60px lower where it rendered.
+  expect(at.top).toBe(220);
+  expect(await alphaAt(at.left + 1, at.top + 20)).toBeGreaterThan(0);
+  expect(await alphaAt(at.left + 1, at.top + 70)).toBe(0);
+  // Scrolled out of the container, the box is cut at its edge instead of drawn over what is above it.
+  await page.evaluate(() => (document.getElementById('scroller')!.scrollTop = 110));
+  await page.waitForTimeout(50);
+  expect(await alphaAt(at.left + 1, 195)).toBe(0);
+  expect(await alphaAt(at.left + 1, 205)).toBeGreaterThan(0);
+});
+
 test('the dot is dragged anywhere and sticks to the nearest edge', async ({ page }) => {
   await open(page);
   await page.locator('[data-rpr="collapse"]').click();

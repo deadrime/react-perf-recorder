@@ -59,7 +59,7 @@ if (unjudged.length) console.warn(`not judged, counted as not fixed: ${unjudged.
 
 const cases = run.cases.map((c) => ({
   name: c.name,
-  input: c.name === 'no-bug-rec' ? 'control' : c.name.endsWith('-rec') ? 'recording' : 'complaint',
+  input: c.name.endsWith('no-bug-rec') ? 'control' : c.name.endsWith('-rec') ? 'recording' : 'complaint',
   with: arm(pairs(c, 'with')),
   without: arm(pairs(c, 'without')),
 }));

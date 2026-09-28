@@ -1,5 +1,5 @@
 import { sameContent } from '../shared/same-content';
-import { medianGap, topEntries } from '../shared/stats';
+import { medianGap, topEntries, topReasons } from '../shared/stats';
 import {
   RECORDING_SCHEMA,
   type ActionRecord,
@@ -17,11 +17,12 @@ import {
   type ChainLink,
   type ChainNodeInfo,
   type CommitWay,
+  type GrowthStats,
 } from '../shared/schema';
 import { buildSegments, eventName, USER_EVENTS, type SegmentCommit } from '../shared/segments';
 import { safeUrl } from '../shared/url';
 import { ActionTracker } from './actions';
-import { hookCommits, hookOwner, laneLabel, RecorderError, type CommitHook, type CommitInfo } from './commit-hook';
+import { hasUpdaterSets, hookCommits, hookOwner, laneLabel, RecorderError, type CommitHook, type CommitInfo } from './commit-hook';
 import { DomWatcher, touchedHas } from './dom';
 import { MemoHits } from './memo-hits';
 import { FrameWatcher } from './env/frames';
@@ -33,6 +34,7 @@ import {
   generatedSourceOf,
   hasProfileTimings,
   hostRootOf,
+  hasHooks,
   isComposite,
   isHost,
   isLibraryFiber,
@@ -53,9 +55,11 @@ import { inspectHooks, type InspectedHooks } from './hook-names';
 import type { CauseEvent, PluginHost } from './plugins';
 import { didRender, hookTypeAt, parentReason, reasonsOf, snapshotOf, type Reason, type Snapshot } from './reasons';
 import { ScopeTracker, type ScopeHandle, type ScopeResolution } from './scope';
+import { StoreChecks } from './store-checks';
 import { updateOrigin, type UpdateOrigin } from './env/origin';
 import { reactWarningLines } from './env/react-warnings';
 import { runningTimer, runningTimerLibrary, setTimerSink } from './env/timers';
+import { GrowthWatcher } from './growth';
 
 export interface EngineConfig {
   version: string;
@@ -86,6 +90,8 @@ export interface RecordOptions {
   meta?: Record<string, Primitive>;
   /** Work out parent-caused reasons for the first instances of a component per commit only; render counts stay exact. */
   sampleReasons?: boolean;
+  /** Sample DOM nodes, CSS rules, intervals, listeners and heap, four times a second for 10 s and then once a second; off leaves `growth` out. */
+  growth?: boolean;
 }
 
 export interface HighlightSink {
@@ -161,6 +167,8 @@ interface CommitState {
   renderMs: number;
   noDom: number;
   cascade: Map<RootAgg, number>;
+  /** Components mounted under each root in this commit. */
+  mounts: Map<RootAgg, number>;
   /** Milliseconds each root took with its subtree in this commit, when the build times renders. */
   rootMs: Map<RootAgg, number>;
   /** With sampled reasons: how many parent reasons each component has had worked out in this commit. */
@@ -255,6 +263,7 @@ const medianGapMs = (times: number[]) => {
 export class Recorder {
   readonly t0 = performance.now();
   readonly startedAt = new Date();
+  private startUrl = '';
   private readonly config: EngineConfig;
   private readonly wrapperRe: RegExp;
   private readonly prune: boolean;
@@ -265,6 +274,7 @@ export class Recorder {
   private readonly reasonIdsByFields = new Map<string, number>();
   private readonly memoHits = new MemoHits((f) => sourceOf(f, this.config.projectRoot));
   private readonly reasonList: ReasonInfo[] = [];
+  private readonly reasonInfo = (id: number) => this.reasonList[id];
   private readonly components = new Map<string, ComponentAgg>();
   private readonly watch = new Map<string, { mounted: number; renders: number; byRoot: Map<RootAgg | null, number> }>();
   private readonly zoneNodes = new Map<Element, string>();
@@ -282,6 +292,7 @@ export class Recorder {
   private readonly dom = new DomWatcher();
   private readonly frames: FrameWatcher;
   private readonly actions: ActionTracker | null;
+  private readonly growth: GrowthWatcher | null;
   /** Whether childLanes can be trusted to point at fresh updates; React 19 answers no and the walk widens. */
   private narrowUpdateWalk = true;
   private hook: CommitHook | null = null;
@@ -300,6 +311,12 @@ export class Recorder {
   private updaters: Map<Fiber, number> | null = null;
   /** Lanes that already had an update since the last commit: an origin is taken once a lane, as before. */
   private notedLanes = 0;
+  /** Which store hook scheduled each update; null when React's updater sets do not say which fiber an update is for. */
+  private storeChecks: StoreChecks | null = null;
+  /** Fibers React scheduled itself this window, having found a store changed with no notification. */
+  private resyncs = new Set<Fiber>();
+  /** Whether anything but a resync scheduled work this window. */
+  private othersUpdated = false;
   /** Where updates of this commit window came from, used only for the components no other event explains. */
   private origins: Array<UpdateOrigin & { fibers: Set<Fiber>; event: string | undefined }> = [];
   private frameCount = 0;
@@ -344,6 +361,17 @@ export class Recorder {
       onFrame: (frame) => this.emit({ k: 'frame', frame }),
       onLatency: (entry) => this.emit({ k: 'latency', entry }),
     });
+    this.growth =
+      options.growth === false
+        ? null
+        : new GrowthWatcher(
+            () => this.now(),
+            this.config.projectRoot,
+            (f) => {
+              this.records.delete(f);
+              if (f.alternate) this.records.delete(f.alternate);
+            }
+          );
     this.actions =
       options.actions === false
         ? null
@@ -374,6 +402,7 @@ export class Recorder {
   }
 
   start() {
+    this.startUrl = safeUrl(location.href);
     this.roots = this.scope ? [hostRootOf(this.scope.target)].filter((r): r is FiberRoot => Boolean(r)) : findRoots();
     if (!this.roots.length) throw new RecorderError('NO_ROOT', 'React 18 dev root not found on the page');
     for (const root of this.roots) {
@@ -381,7 +410,12 @@ export class Recorder {
       if (owner) throw new RecorderError('BUSY', `root.current is already hooked by ${owner}: wait for it to finish or call its stop()`, owner);
     }
     this.resolveZones();
-    for (const root of this.roots) this.seed(root.current);
+    // Which fiber an update is for comes only with React's updater sets.
+    const withUpdaters = devtoolsHookAtLoad() && this.roots.every(hasUpdaterSets);
+    this.storeChecks = withUpdaters ? new StoreChecks() : null;
+    // An update already pending may come from a check the recorder never saw: then the first commit marks nothing.
+    const settled = this.roots.every((root) => !root.pendingLanes);
+    for (const root of this.roots) this.seed(root.current, settled);
     this.conditions = this.readConditions();
     this.deps.plugins.start(this.pluginSession(), this.t0);
     if (this.scope) this.dom.setScopeHosts(this.scopeHosts());
@@ -391,7 +425,7 @@ export class Recorder {
       this.options.source ?? 'panel',
       (info) => this.onCommit(info),
       (fiber, lane) => this.noteUpdate(fiber, lane),
-      devtoolsHookAtLoad()
+      withUpdaters
     );
     this.updaters = this.hook.updaters ? new Map() : null;
     // A store or query notifies its subscribers before the recorder hears about it, so the fibers React just
@@ -418,6 +452,7 @@ export class Recorder {
       requestAnimationFrame(tick);
     }
     this.actions?.start();
+    this.growth?.start();
     this.stopHistory = trackHistory(
       () => this.now(),
       (nav) => {
@@ -448,14 +483,14 @@ export class Recorder {
       elapsedMs,
       scopeState: this.scope?.state ?? null,
       topRoots: [...this.rootList]
-        .sort((a, b) => b.cascade - a.cascade)
+        .sort((a, b) => b.cascade + b.mounts - (a.cascade + a.mounts))
         .slice(0, 3)
         .map((agg) => ({
           name: agg.name,
           hits: agg.hits,
           perHit: agg.hits ? Math.round(agg.cascade / agg.hits) : 0,
           ...(() => {
-            const info = this.reasonList[topEntries(agg.reasons, 1)[0]?.[0] ?? -1];
+            const info = this.reasonList[topReasons(agg.reasons, 1, this.reasonInfo)[0]?.[0] ?? -1];
             // The sentence for whoever prints it, the fields for whoever draws them.
             return info ? { reason: textOf(info), info } : { reason: '' };
           })(),
@@ -463,25 +498,28 @@ export class Recorder {
     };
   }
 
-  stop(): RecordingV2 {
+  /** `collected`: the page's garbage was collected just before, so what is still in memory is held by something. */
+  stop(collected = false): RecordingV2 {
     if (this.stopped) throw new RecorderError('NOT_RECORDING', 'recording already stopped');
     this.stopped = true;
     setTimerSink(null);
     this.deps.plugins.targets = null;
     const hookErrors = this.hook?.stop() ?? [];
+    this.storeChecks?.stop();
     this.errors.push(...hookErrors);
     this.dom.stop();
     this.frames.stop();
     this.counting = false;
     this.actions?.stop();
     this.stopHistory?.();
+    const growth = this.growth?.stop(collected);
     const sections = this.deps.plugins.stop(this.pluginSession());
     this.warnings.push(...this.deps.plugins.warnings.splice(0));
     const conditionsAfter = this.readConditions();
     this.overlayMs += this.deps.highlight?.takeCostMs?.() ?? 0;
     const durationMs = Math.round(this.now());
     this.emit({ k: 'end', atMs: durationMs });
-    return this.build(durationMs, sections, conditionsAfter);
+    return this.build(durationMs, sections, conditionsAfter, growth);
   }
 
   // ---- commits -------------------------------------------------------------------------------------------------
@@ -504,7 +542,12 @@ export class Recorder {
       }
     const origins = this.origins;
     this.origins = [];
-    const timer = runningTimer();
+    // Work React scheduled itself on finding a store changed: the event or timer around it did not ask for it.
+    const resyncOnly = this.resyncs.size > 0 && !this.othersUpdated;
+    if (this.resyncs.size) origins.push({ text: 'store resync', kind: 'effect', fibers: this.resyncs, event: undefined });
+    this.resyncs = new Set();
+    this.othersUpdated = false;
+    const timer = resyncOnly ? undefined : runningTimer();
     // A commit inside a library's timer (a legacy root): its waiting events are the cause, the timer is how they came.
     if (timer && !(this.deps.plugins.hasWaiting && this.deps.plugins.deliver(runningTimerLibrary(), () => null)))
       this.deps.plugins.emit('core', { type: timer });
@@ -516,6 +559,7 @@ export class Recorder {
       renderMs: 0,
       noDom: 0,
       cascade: new Map(),
+      mounts: new Map(),
       rootMs: new Map(),
       sampledParents: this.options.sampleReasons ? new Map() : null,
       reasons: new Map(),
@@ -536,7 +580,9 @@ export class Recorder {
     } else {
       this.scan(fiber, false, '', null, c, false);
     }
-    this.finishCommit(c, causes, lane, event, source, origins);
+    this.storeChecks?.commit();
+    this.growth?.commit(fiber);
+    this.finishCommit(c, causes, lane, event, source, origins, resyncOnly);
   }
 
   private visitChain(f: Fiber, prevs: Array<Snapshot | undefined>) {
@@ -544,6 +590,7 @@ export class Recorder {
     prevs.push(prev);
     const rendered = didRender(prev, f);
     this.remember(f);
+    if (!prev) this.storeChecks?.watch(f);
     return { rendered };
   }
 
@@ -598,7 +645,9 @@ export class Recorder {
       let chain = currentChain;
       const prev = this.prevOf(f);
       const rendered = didRender(prev, f);
-      const name = nameOf(f);
+      // memo(C, areEqual) is a fiber of its own above C's, and it takes new props even when areEqual skips C: C's
+      // fiber is the one that tells whether it rendered.
+      const name = f.tag === Tag.MemoComponent ? null : nameOf(f);
       let key = currentKey;
       let nextPending = pending;
       const zone = isHost(f) && this.zoneNodes.size ? this.zoneNodes.get(f.stateNode) ?? zoneTag : zoneTag;
@@ -611,7 +660,10 @@ export class Recorder {
         this.totals.mounts++;
         this.componentOf(name, f).mounts++;
         const agg = currentKey ? this.rootsByKey.get(currentKey) : undefined;
-        if (agg) agg.mounts++;
+        if (agg) {
+          agg.mounts++;
+          c.mounts.set(agg, (c.mounts.get(agg) ?? 0) + 1);
+        }
       }
       if (name && rendered) {
         c.renders++;
@@ -636,10 +688,14 @@ export class Recorder {
           (prev.props === f.memoizedProps ||
             ((f.tag === Tag.MemoComponent || f.tag === Tag.SimpleMemoComponent) && shallowEqual(prev.props, f.memoizedProps)));
         let rootAgg: RootAgg | null = null;
-        // A root inside another root's cascade: its time is already in that root's, and its link hangs under it.
+        // A root inside another root's cascade: its link hangs under that root, and its time comes out of that root's.
         const nested = currentKey !== null;
         if (!parentDid || ownWork) {
           const hit = this.hitRoot(f, name, pathText(currentPath, base), prev!, c, false, nested);
+          const outer = nested ? this.rootsByKey.get(currentKey!) : undefined;
+          // The outer root's actualDuration holds this one's: left in, a page above a slow component reads as slow
+          // as the component in the roots. A commit's tree keeps it, nested under the outer root there.
+          if (outer && hasProfileTimings(f)) outer.renderMs -= f.actualDuration!;
           key = hit.agg.key;
           reasons = hit.reasons;
           rootAgg = hit.agg;
@@ -648,7 +704,7 @@ export class Recorder {
           const sampled = c.sampledParents?.get(comp) ?? 0;
           if (sampled < SAMPLED_PARENTS) {
             c.sampledParents?.set(comp, sampled + 1);
-            reasons = parentReason(prev!, f, this.deps.plugins);
+            reasons = parentReason(prev!, f, this.deps.plugins, this.storeChecks);
           } else comp.sampled = true;
         }
         let firstId = -1;
@@ -695,14 +751,20 @@ export class Recorder {
       }
       // A fiber that did not render has the snapshot it had: nothing to write.
       if (rendered || !prev) this.remember(f);
+      if (rendered && hasHooks(f)) this.storeChecks?.rendered(f);
+      // Hooks are made at mount and kept: a fiber's store hooks are watched once.
+      if (!prev) this.storeChecks?.watch(f);
       if (!(isolate && f === start) && f.sibling)
         stack.push([f.sibling, parentDid, currentPath, currentKey, pending, zoneTag, currentChain, linkAbove]);
       const untouched = this.prune && f.alternate !== null && f.child === f.alternate.child;
       if (f.child && !untouched) {
         const childPath = name && !this.structural(name, f) ? { name, up: currentPath } : currentPath;
+        // A boundary renders again on its own when the data it waited for comes: what is under it was not rendered by
+        // a parent then, it is a root of that retry.
+        const through = f.tag === Tag.SuspenseComponent || f.tag === Tag.OffscreenComponent;
         stack.push([
           f.child,
-          rendered,
+          through ? parentDid : rendered,
           childPath,
           rendered ? key : currentKey,
           nextPending,
@@ -810,7 +872,7 @@ export class Recorder {
         wrapper: this.wrapperRe.test(name) || isProvider(name) || wrapsProvider(f),
         withoutDom: 0,
         byParent: 0,
-        memo: f.tag === Tag.MemoComponent || f.tag === Tag.SimpleMemoComponent,
+        memo: f.tag === Tag.SimpleMemoComponent || f.return?.tag === Tag.MemoComponent,
         reasons: new Map(),
         chains: new Map(),
       };
@@ -819,7 +881,7 @@ export class Recorder {
     return comp;
   }
 
-  /** `nested`: inside another root's cascade in this commit, whose time already holds this one's. */
+  /** `nested`: inside another root's cascade in this commit, whose time the commit's already holds. */
   private hitRoot(
     f: Fiber,
     name: string,
@@ -886,7 +948,7 @@ export class Recorder {
     agg.inCommit++;
     agg.instances = Math.max(agg.instances, agg.inCommit);
     const ids = c.reasons.get(agg) ?? new Set<number>();
-    const reasons = reasonsOf(prev, f, this.deps.plugins);
+    const reasons = reasonsOf(prev, f, this.deps.plugins, this.storeChecks);
     for (const reason of reasons) {
       const id = this.reasonId(reason);
       agg.reasons.set(id, (agg.reasons.get(id) ?? 0) + 1);
@@ -913,7 +975,8 @@ export class Recorder {
     lane: string | undefined,
     event: string | undefined,
     source: string | undefined,
-    origins: Array<UpdateOrigin & { fibers: Set<Fiber>; event: string | undefined }>
+    origins: Array<UpdateOrigin & { fibers: Set<Fiber>; event: string | undefined }>,
+    resyncOnly = false
   ) {
     if (lane) this.totals.lanes[lane] = (this.totals.lanes[lane] ?? 0) + 1;
     if (!c.renders) {
@@ -937,7 +1000,9 @@ export class Recorder {
       keys.add(key);
       if (cause.fibers?.size) targets.set(key, new Set([...(targets.get(key) ?? []), ...bothHalves(cause.fibers)]));
     }
-    if (event && USER_EVENTS.has(event)) keys.add(this.attachCause({ plugin: 'core', type: `input ${eventName(event)}`, atMs: c.t }));
+    if (resyncOnly) {
+      // The event around it is where the chain began, not what scheduled this commit: the resync origin says that.
+    } else if (event && USER_EVENTS.has(event)) keys.add(this.attachCause({ plugin: 'core', type: `input ${eventName(event)}`, atMs: c.t }));
     else if (source) keys.add(this.attachCause({ plugin: 'core', type: `message ${source}`, atMs: c.t }));
     // Where the update came from, for the components no store, query or timer event claimed. An update made while
     // the person's event was being handled is already told by `input`; an effect flushed in the same window is not.
@@ -967,7 +1032,11 @@ export class Recorder {
       for (const key of own.length ? own : keys) agg.causes.set(key, (agg.causes.get(key) ?? 0) + 1);
       if (lane && agg.lastCommit === this.totals.commits) agg.lanes.set(lane, (agg.lanes.get(lane) ?? 0) + 1);
     }
-    const ranked = [...c.cascade].sort((a, b) => b[1] - a[1]);
+    // A root whose cost is what it mounts (a tooltip per card, a remounting list) ranks by that too.
+    const weight = ([agg, n]: [RootAgg, number]) => n + (c.mounts.get(agg) ?? 0);
+    const ranked = [...c.cascade].sort((a, b) => weight(b) - weight(a));
+    let mounts = 0;
+    for (const n of c.mounts.values()) mounts += n;
     const roots = ranked.slice(0, 5).map(([agg, n]) => [agg.index, n] as [number, number]);
     const previous = this.commitList[this.commitList.length - 1];
     const record: CommitRecord = {
@@ -975,6 +1044,7 @@ export class Recorder {
       atMs: c.t,
       ...(previous ? { sinceMs: +(c.t - previous.atMs).toFixed(1) } : {}),
       renders: c.renders,
+      ...(mounts ? { mounts } : {}),
       ...(c.timed ? { ms: +c.renderMs.toFixed(2) } : {}),
       ...(lane ? { lane } : {}),
       ...(event ? { event } : {}),
@@ -1003,7 +1073,12 @@ export class Recorder {
       ...(record.ms ? { ms: record.ms } : {}),
       ...(lane ? { lane } : {}),
       ...(event ? { event } : {}),
-      roots: ranked.map(([agg, n]) => [agg.index, n, [...(c.reasons.get(agg) ?? [])]] as [number, number, number[]]),
+      ...(mounts ? { mounts } : {}),
+      roots: ranked.map(([agg, n]) => {
+        const reasons = [...(c.reasons.get(agg) ?? [])];
+        const m = c.mounts.get(agg);
+        return m ? [agg.index, n, reasons, m] : [agg.index, n, reasons];
+      }),
       causes: [...keys],
       ...(c.outside ? { outside: c.outside.index } : {}),
       ...(c.noDom ? { noDom: c.noDom } : {}),
@@ -1043,9 +1118,23 @@ export class Recorder {
    * event yet. The stack still holds the code that asked for it, so the cause names that code.
    */
   private noteUpdate(fiber?: Fiber, lane = 0) {
+    const resync = fiber !== undefined && this.storeChecks?.noteUpdate(fiber) === 'resync';
+    if (resync) {
+      // React's own re-check, not whatever event is on the stack: no event gets to claim it.
+      this.resyncs.add(fiber);
+      this.claimed.add(fiber);
+      if (fiber.alternate) this.claimed.add(fiber.alternate);
+    } else {
+      this.othersUpdated = true;
+      // A real update of a fiber React also resynced: its origin and a store's aim may name it after all.
+      if (fiber && (this.resyncs.delete(fiber) || (fiber.alternate !== null && this.resyncs.delete(fiber.alternate)))) {
+        this.claimed.delete(fiber);
+        if (fiber.alternate) this.claimed.delete(fiber.alternate);
+      }
+    }
     if (fiber && this.updaters) {
       this.updaters.set(fiber, (this.updaters.get(fiber) ?? 0) | lane);
-      if (this.notedLanes & lane) return;
+      if (resync || this.notedLanes & lane) return;
       this.notedLanes |= lane;
     }
     if (this.origins.length >= MAX_UPDATE_NOTES || runningTimer()) return;
@@ -1118,11 +1207,12 @@ export class Recorder {
     if (f.alternate) this.records.set(f.alternate, snapshot);
   }
 
-  private seed(start: Fiber) {
+  private seed(start: Fiber, settled = false) {
     const stack: Array<[Fiber, string | null]> = [[start, null]];
     while (stack.length) {
       const [f, zoneTag] = stack.pop()!;
       this.remember(f);
+      this.storeChecks?.watch(f, settled);
       const name = nameOf(f);
       const w = name ? this.watch.get(name) : undefined;
       if (w) w.mounted++;
@@ -1258,7 +1348,7 @@ export class Recorder {
       medianGapMs: medianGapMs(agg.times),
       firstAtMs: agg.times[0] ?? 0,
       lastAtMs: agg.times.at(-1) ?? 0,
-      reasons: topEntries(agg.reasons, 8),
+      reasons: topReasons(agg.reasons, 8, this.reasonInfo),
       causes: topEntries(agg.causes, 8),
       lanes: topEntries(agg.lanes, 5),
       noDomChange: agg.noDomChange,
@@ -1273,13 +1363,20 @@ export class Recorder {
     };
   }
 
-  private build(durationMs: number, sections: Record<string, RecordingV2['plugins'][string]>, conditionsAfter: Conditions): RecordingV2 {
-    const inside = this.rootList.filter((r) => !r.outside).sort((a, b) => b.cascade - a.cascade);
-    const outside = this.rootList.filter((r) => r.outside).sort((a, b) => b.cascade - a.cascade);
+  private build(
+    durationMs: number,
+    sections: Record<string, RecordingV2['plugins'][string]>,
+    conditionsAfter: Conditions,
+    growth?: GrowthStats
+  ): RecordingV2 {
+    // Mounts count as renders here: a root whose cost is the subtree it mounts would rank below a few idle renders.
+    const byWeight = (a: RootAgg, b: RootAgg) => b.cascade + b.mounts - (a.cascade + a.mounts);
+    const inside = this.rootList.filter((r) => !r.outside).sort(byWeight);
+    const outside = this.rootList.filter((r) => r.outside).sort(byWeight);
     const hooksFor = new Set([...inside.slice(0, 30), ...outside.slice(0, 10)]);
     const statsByIndex = new Map<number, RootStat>();
     for (const agg of this.rootList) statsByIndex.set(agg.index, this.rootStat(agg, hooksFor.has(agg)));
-    // Roots are ordered by cascade, inside the scope first; timeline, segments and watch are remapped to that order.
+    // Roots are ordered by cascade and mounts, inside the scope first; timeline, segments and watch are remapped to that order.
     const remap = new Map<number, number>();
     const orderedInside = inside.map((agg) => agg.index);
     const allOrdered = [...orderedInside, ...outside.map((agg) => agg.index)];
@@ -1327,6 +1424,7 @@ export class Recorder {
       tool: { version: this.config.version, source: this.options.source ?? 'panel', plugins: this.deps.plugins.info() },
       page: {
         url: safeUrl(location.href),
+        ...(this.startUrl && this.startUrl !== safeUrl(location.href) ? { startUrl: this.startUrl } : {}),
         title: document.title,
         viewport: `${innerWidth}×${innerHeight}`,
         dpr: devicePixelRatio,
@@ -1379,7 +1477,7 @@ export class Recorder {
           withoutDom: s.withoutDom,
           byParent: s.byParent,
           ...(s.memo ? { memo: true as const } : {}),
-          reasons: topEntries(s.reasons, 4),
+          reasons: topReasons(s.reasons, 4, this.reasonInfo),
           ...(s.chains.size
             ? {
                 chains: topEntries(s.chains, CHAINS_PER_COMPONENT).map(([id, n]) => ({
@@ -1432,6 +1530,7 @@ export class Recorder {
         ...(this.options.frames && durationMs ? { fps: +((this.frameCount * 1000) / durationMs).toFixed(1) } : {}),
       },
       dom: { ...this.dom.counts },
+      ...(growth ? { growth } : {}),
       navigations: this.navigations,
       hmr: this.hmr,
       conditions: this.conditions,

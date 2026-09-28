@@ -1,4 +1,4 @@
-import type { RecordingV2, SessionEvent } from '../shared/schema';
+import { growthOrigins, type RecordingV2, type SessionEvent } from '../shared/schema';
 import { safeUrl } from '../shared/url';
 import { hookOwner, RecorderError } from './commit-hook';
 import {
@@ -87,6 +87,16 @@ function applySites(recording: RecordingV2, sites: Record<string, { site: string
       }
       delete hook.generated;
     }
+  }
+  for (const origin of growthOrigins(recording)) {
+    const g = origin.generated;
+    if (!g) continue;
+    const mapped = sites[`${g.url}:${g.line}:${g.column}`];
+    if (mapped) {
+      origin.site = mapped.site;
+      if (mapped.code) origin.code = mapped.code;
+    }
+    delete origin.generated;
   }
   for (const memo of recording.memos ?? []) {
     const g = memo.info?.generated;
@@ -243,7 +253,8 @@ export class Engine {
   }
 
   /** Stops, builds the recording and, with a dev server, saves it; resolves with the id of the saved session. */
-  async stop(): Promise<Saved> {
+  /** `collected`: whoever stops has just collected the page's garbage (record_page does, through CDP). */
+  async stop(options: { collected?: boolean } = {}): Promise<Saved> {
     const recorder = this.recorder;
     if (!recorder) throw new RecorderError('NOT_RECORDING', 'no recording is running');
     if (this.timer) clearTimeout(this.timer);
@@ -253,7 +264,7 @@ export class Engine {
     this.writer = null;
     let recording: Saved;
     try {
-      recording = recorder.stop();
+      recording = recorder.stop(options.collected === true);
     } finally {
       this.syncIdleHighlight();
       this.listeners.forEach((l) => l('stopped'));

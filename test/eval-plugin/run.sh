@@ -3,6 +3,7 @@
 # bug as its workspace, served by a dev server of its own (the case's scaffold starts it), and has to fix it.
 #   test/eval-plugin/run.sh --case whole-object --runs 1 --ablation none --max-cost-usd 5
 #   test/eval-plugin/run.sh --cases decoys-rec,fallback-array-rec --runs 2
+#   test/eval-plugin/run.sh --eval-dir evals-large --cases orbit-store-whole-rec --runs 1    Orbit, the large app
 # Needs a built dist/ and playwright's Chromium. Extra arguments go to claude plugin eval.
 set -euo pipefail
 repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -13,25 +14,30 @@ repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 plugin="$repo/test/eval-plugin"
 args=()
 cases=""
+evals=evals
 while [ $# -gt 0 ]; do
   case "$1" in
     --cases) cases="$2"; shift 2 ;;
     --cases=*) cases="${1#--cases=}"; shift ;;
+    --eval-dir) evals="$2"; shift 2 ;;
+    --eval-dir=*) evals="${1#--eval-dir=}"; shift ;;
     *) args+=("$1"); shift ;;
   esac
 done
 if [ -n "$cases" ]; then
   plugin="$(mktemp -d "$repo/test/.eval-plugin-XXXXXX")"
+  # No eval dir goes in as a link: eval refuses one that points outside the plugin.
   for entry in "$repo/test/eval-plugin"/*; do
-    [ "$(basename "$entry")" = evals ] || ln -s "$entry" "$plugin/"
+    case "$(basename "$entry")" in evals | evals-*) ;; *) ln -s "$entry" "$plugin/" ;; esac
   done
   cp -R "$repo/test/eval-plugin/.claude-plugin" "$plugin/"
-  mkdir "$plugin/evals"
+  mkdir "$plugin/$evals"
   IFS=, read -ra names <<<"$cases"
   for name in "${names[@]}"; do
-    [ -f "$repo/test/eval-plugin/evals/$name/case.yaml" ] || { echo "no case $name in test/eval-plugin/evals" >&2; rm -rf "$plugin"; exit 1; }
-    cp -R "$repo/test/eval-plugin/evals/$name" "$plugin/evals/"
-    sed -i "s#\"\$(dirname \"\${BASH_SOURCE\[0\]}\")/../scaffold.mjs\"#\"$repo/test/eval-plugin/evals/scaffold.mjs\"#" "$plugin/evals/$name/scaffold.sh"
+    [ -f "$repo/test/eval-plugin/$evals/$name/case.yaml" ] || { echo "no case $name in test/eval-plugin/$evals" >&2; rm -rf "$plugin"; exit 1; }
+    cp -R "$repo/test/eval-plugin/$evals/$name" "$plugin/$evals/"
+    # The copy's scaffold still reaches scaffold.mjs from where the case really is.
+    sed -i "s#\"\$(dirname \"\${BASH_SOURCE\[0\]}\")/#\"$repo/test/eval-plugin/$evals/$name/#" "$plugin/$evals/$name/scaffold.sh"
   done
 fi
 sessions="$(mktemp -d)"
@@ -49,8 +55,10 @@ stop_servers() {
 trap stop_servers EXIT
 
 cd "$repo"
+# The skill's references sit outside the workspace, where a run may not read unless let: an installed skill can.
 claude plugin eval "$plugin" \
   --scaffold --trust-plugin --allow-real-servers \
   --allow-tools Edit Write "mcp__plugin_react-perf-recorder_react-perf-recorder__*" \
-  --model claude-sonnet-5 --no-publish ${args[@]+"${args[@]}"}
+  "Read(/$plugin/skills/**)" "Read(/$repo/claude/skills/**)" \
+  --eval-dir "$evals" --model claude-sonnet-5 --no-publish ${args[@]+"${args[@]}"}
 echo "recordings and dev server logs: $sessions"

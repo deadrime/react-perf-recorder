@@ -143,7 +143,7 @@ header .live { flex: 1; color: var(--muted-soft); white-space: nowrap; overflow:
 .tl-label .muted { margin-left: auto; font-size: 9px; }
 /* Moved by dragging, the wheel and the overview's box: a scrollbar of its own would only repeat them, and in the
    system's colours. */
-.tl-scroll { flex: 1; overflow-x: auto; overflow-y: hidden; cursor: grab; touch-action: pan-y; scrollbar-width: none; }
+.tl-scroll { flex: 1; overflow-x: auto; overflow-y: hidden; cursor: grab; touch-action: none; scrollbar-width: none; }
 .tl-scroll::-webkit-scrollbar { display: none; }
 .tl-scroll:active { cursor: grabbing; }
 .tl-strip { position: relative; min-width: 100%; padding-bottom: 12px; }
@@ -289,6 +289,16 @@ details.fold[open] > summary::before { content: '▾'; }
 .action-what { color: var(--text); margin-right: 2px; }
 .action .reason { margin-left: 10px; }
 .watched { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px; margin: 3px 0; }
+.growth-row { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; margin: 3px 0; }
+.growth-row .who { min-width: 72px; }
+.growth-find { display: flex; align-items: baseline; gap: 8px; padding: 5px 0; border-bottom: 1px solid var(--rule-soft); }
+.growth-find:last-of-type { margin-bottom: 4px; }
+.growth-find .badge { flex: none; white-space: nowrap; }
+.growth-what { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.growth-title { color: var(--text); }
+/* Wrapped, not cut: the end of a path or a call is the part that says where. */
+.growth-where, .growth-code { color: var(--muted); overflow-wrap: anywhere; white-space: pre-wrap; }
+.growth-still { margin: 3px 0; }
 .plugin { padding: 5px 0; border-top: 1px solid var(--rule-soft); }
 .plugin:first-child { border-top: 0; }
 .plugin-name { font-size: 11px; font-weight: 600; color: var(--label); margin-bottom: 2px; }
@@ -425,6 +435,8 @@ button[data-copied="true"] { color: var(--good); }
   .picker li .toggle { width: 24px; align-self: stretch; display: inline-flex; align-items: center; justify-content: center; }
   .picker li .copy, .picker li .watch-toggle { visibility: visible; width: 28px; height: 28px; }
   .tl-controls button, .way-more button { min-height: 28px; }
+  /* A finger is wider than 14px: the overview grows to be hit. */
+  .tl-overview { height: 28px; }
 }
 
 /* A phone: the card is a sheet across the bottom (or the top) edge, and the page keeps the rest of the screen. */

@@ -119,9 +119,10 @@ both forms. Every prompt asks whether something renders for nothing and says to 
   across its two forms — or fixed one bug of two in `two-bugs`, both times; one run of `effect-derived-state` left
   the page broken. The recording shows the root still rendering after a fix, and the second root waiting; reading the
   code does not. With the plugin, the one miss was also `two-bugs`: one run fixed `whole-object` and left `exact-value`.
-- The code checks pass less often than the fixes work, and the new recording is the one counted. In `field-state`
-  the agents kept `fieldState` and stopped validating the whole form on every key instead — the renders were gone, the
-  code check still saw the bug's line.
+- The code checks pass less often than the fixes work, and the new recording is the one counted. A bug can have
+  more than one right fix, and a check takes each one found so far: in `field-state` dropping the whole form's
+  `trigger()` on every key, whose rules read no other field, shows the same page with no waste left; in
+  `draft-context` the state can move into a provider below the layout.
 - Cost is the agent's own, from Claude Code; the checks cost nothing.
 
 ## Running it
@@ -131,9 +132,15 @@ npm run build
 bash test/eval-plugin/run.sh --runs 2 -j 6 --keep-temp --output-dir .agent-artifacts/evals
 node test/eval-plugin/verify.mjs .agent-artifacts/evals/aggregate-result.json
 node test/eval-plugin/summarize.mjs .agent-artifacts/evals/aggregate-result.json
+node test/eval-plugin/transcripts.mjs .agent-artifacts/evals/aggregate-result.json --publish
 ```
 
 `run.sh` runs `claude plugin eval` on the cases in `test/eval-plugin/evals`, keeping each run's sandbox — or only
-some of them, `--cases decoys-rec,fallback-array-rec`;
+some of them, `--cases decoys-rec,fallback-array-rec`, or the large app's with `--eval-dir evals-large`
+(`test/eval-large/README.md`);
 `verify.mjs` records what each agent left; `summarize.mjs` writes the tables above and the numbers the site draws
-them from, `docs/benchmarks.json`.
+them from, `docs/benchmarks.json`; `transcripts.mjs` writes every run of it to `.agent-artifacts/transcripts` — the
+prompt, the answer, the diff the agent left and its steps — so a wrong answer can be read after the sandboxes are gone.
+With `--publish` it also commits them to the
+[`benchmarks`](https://github.com/deadrime/react-perf-recorder/tree/benchmarks) branch, a folder a run, which holds
+nothing else: about a megabyte a run, they stay out of `dev` and the package.

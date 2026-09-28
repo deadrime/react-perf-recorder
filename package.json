@@ -1,6 +1,6 @@
 {
   "name": "react-perf-recorder",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "description": "Record React re-renders in the browser: cascade roots, hook-level reasons, store causes and user actions, saved as sessions an agent reads over MCP",
   "license": "MIT",
   "author": "Eugene",
@@ -25,6 +25,7 @@
     "zustand",
     "redux",
     "react-query",
+    "memory-leak",
     "devtools"
   ],
   "type": "module",
@@ -98,14 +99,11 @@
     "test:matrix": "npm run test && npm run test:19 && npm run test:e2e",
     "test:e2e": "playwright test",
     "fixture": "vite --config test/e2e/fixture-app/vite.config.ts",
-    "dev:pages": "vite --config test/e2e/fixture-app/vite.pages.config.ts",
-    "build:pages": "NODE_ENV=development vite build --config test/e2e/fixture-app/vite.pages.config.ts",
+    "dev:pages": "vite --host --config test/e2e/fixture-app/vite.pages.config.ts",
+    "build:pages": "NODE_ENV=development vite build --config test/e2e/fixture-app/vite.pages.config.ts && NODE_ENV=development vite build --config test/eval-large/vite.config.ts",
     "fixture:19": "RPR_REACT=19 FIXTURE_PORT=5392 vite --config test/e2e/fixture-app/vite.config.ts",
     "format": "prettier --write .",
     "prepublishOnly": "npm run typecheck && npm test && npm run build"
-  },
-  "dependencies": {
-    "@babel/parser": "^7.29.9"
   },
   "peerDependencies": {
     "react": "^18.2.0 || >=19.1.0",
@@ -123,6 +121,8 @@
     "node": ">=18.18"
   },
   "devDependencies": {
+    "@babel/parser": "7.29.9",
+    "@emotion/react": "11.14.0",
     "@jridgewell/trace-mapping": "0.3.31",
     "@modelcontextprotocol/sdk": "1.30.0",
     "@playwright/test": "1.53.2",

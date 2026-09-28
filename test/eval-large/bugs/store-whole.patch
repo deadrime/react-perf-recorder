@@ -1,0 +1,12 @@
+--- a/src/components/layout/Sidebar.tsx
++++ b/src/components/layout/Sidebar.tsx
+@@ -48,8 +48,7 @@
+ }
+ 
+ export function Sidebar() {
+-  const collapsed = useAppStore((s) => s.sidebarCollapsed);
+-  const toggleSidebar = useAppStore((s) => s.toggleSidebar);
++  const { sidebarCollapsed: collapsed, toggleSidebar } = useAppStore();
+   const { user } = useAuth();
+   const mine = useAppSelector((s) => selectMyOpenCount(s, user?.id));
+   const unread = useAppSelector(selectUnreadCount);
