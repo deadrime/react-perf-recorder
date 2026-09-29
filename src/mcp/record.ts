@@ -494,6 +494,7 @@ export async function recordPage(options: RecordPageOptions, sessionsDir: string
     // The plugin's recorder was there after all (a build made with it, no dev server to ask): it records as always.
     if (injected && (await page.evaluate<boolean>(`window[${JSON.stringify(INJECT_KEY)}]?.state === 'aside'`))) {
       injected = false;
+      await catalog?.release();
       catalog = null;
       delete (start.conditions as Record<string, unknown> | undefined)?.recorder;
     }

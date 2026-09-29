@@ -90,7 +90,7 @@ function install() {
     type: string,
     ...rest: [EventListenerOrEventListenerObject | null, (boolean | AddEventListenerOptions)?]
   ) {
-    if (type === 'click' && state === 'booted') {
+    if (type === 'click' && state === 'booted' && this) {
       const key = Object.keys(this).find((k) => k.startsWith('__reactContainer$'));
       const fiber = key ? (this as unknown as Record<string, { stateNode?: FiberRoot } | undefined>)[key] : undefined;
       if (fiber?.stateNode) note(fiber.stateNode);

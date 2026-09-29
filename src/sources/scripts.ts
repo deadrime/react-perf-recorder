@@ -65,6 +65,8 @@ export interface ScriptCatalogOptions {
 interface Paused {
   reason: string;
   data?: { url?: string; sourceMapURL?: string };
+  callFrames?: Array<{ callFrameId: string; location: object }>;
+  hitBreakpoints?: string[];
 }
 
 export interface CdpLike {
@@ -95,6 +97,10 @@ export class ScriptCatalog {
   private texts = new Map<string, Promise<string | null>>();
   private cdp: CdpLike | null = null;
   private instrumentation: string | null = null;
+  private tables = false;
+  /** Breakpoints where a script starts, and the table to leave in the page when one is hit. */
+  private starts = new Map<string, string>();
+  private files = new Map<string, string | null>();
 
   constructor(private options: ScriptCatalogOptions) {}
 
@@ -109,7 +115,8 @@ export class ScriptCatalog {
       if (e.url) this.scriptIds.set(e.url, e.scriptId);
     });
     // The debugger is on now, so the page's own `debugger;` would stop it for good.
-    cdp.on('Debugger.paused', (e) => void this.paused(cdp, e, tables));
+    this.tables = tables;
+    cdp.on('Debugger.paused', (e) => void this.paused(cdp, e, this.tables));
     await cdp.send('Debugger.enable');
     if (tables) {
       const set = (await cdp.send('Debugger.setInstrumentationBreakpoint', { instrumentation: 'beforeScriptWithSourceMapExecution' })) as {
@@ -122,27 +129,50 @@ export class ScriptCatalog {
   private async paused(cdp: CdpLike, e: Paused, tables: boolean) {
     try {
       const url = e.data?.url;
-      // webpack's `eval` modules name their own files, and each pauses deep in the module loader: ~80 ms apiece.
-      if (e.reason === 'instrumentation' && url && !/^https?:/.test(url) && this.instrumentation) {
+      // webpack's `eval` modules name their own files, and each pauses deep in the module loader.
+      if (e.reason === 'instrumentation' && url && /^webpack(-internal)?:/.test(url) && this.instrumentation) {
         const breakpointId = this.instrumentation;
         this.instrumentation = null;
         await cdp.send('Debugger.removeBreakpoint', { breakpointId }).catch(() => {});
       }
-      if (tables && e.reason === 'instrumentation' && url && e.data?.sourceMapURL && /^https?:/.test(url)) {
+      const start = e.callFrames?.[0];
+      if (tables && e.reason === 'instrumentation' && url && e.data?.sourceMapURL && /^https?:/.test(url) && start) {
         this.noteScript(url, e.data.sourceMapURL);
         const loaded = await this.mapOf(url);
         const table = loaded && this.tableOf(loaded);
-        // Not awaited: an evaluate sent in this pause runs only once the pause ends.
-        if (table)
-          cdp
-            .send('Runtime.evaluate', {
-              expression: `(window[${JSON.stringify(SCRIPTS_KEY)}] ??= {})[${JSON.stringify(url.split(/[?#]/)[0])}] = ${JSON.stringify(table)}`,
-            })
-            .catch(() => {});
+        // Nothing evaluates in this pause: a breakpoint where the script starts is a pause that can.
+        const set = table
+          ? ((await cdp.send('Debugger.setBreakpoint', { location: start.location }).catch(() => null)) as { breakpointId?: string } | null)
+          : null;
+        if (set?.breakpointId)
+          this.starts.set(
+            set.breakpointId,
+            `(window[${JSON.stringify(SCRIPTS_KEY)}] ??= {})[${JSON.stringify(url.split(/[?#]/)[0])}] = ${JSON.stringify(table)}`
+          );
+        return;
+      }
+      const hit = e.hitBreakpoints?.find((id) => this.starts.has(id));
+      if (hit && e.callFrames?.[0]) {
+        const expression = this.starts.get(hit)!;
+        this.starts.delete(hit);
+        await cdp.send('Debugger.evaluateOnCallFrame', { callFrameId: e.callFrames[0].callFrameId, expression, silent: true }).catch(() => {});
+        await cdp.send('Debugger.removeBreakpoint', { breakpointId: hit }).catch(() => {});
       }
     } finally {
       await cdp.send('Debugger.resume').catch(() => {});
     }
+  }
+
+  /** The plugin's recorder was on the page after all: its answers must not change under it. */
+  async release() {
+    const cdp = this.cdp;
+    if (!cdp) return;
+    if (this.instrumentation) await cdp.send('Debugger.removeBreakpoint', { breakpointId: this.instrumentation }).catch(() => {});
+    this.instrumentation = null;
+    this.tables = false;
+    for (const breakpointId of this.starts.keys()) await cdp.send('Debugger.removeBreakpoint', { breakpointId }).catch(() => {});
+    this.starts.clear();
+    await cdp.send('Runtime.evaluate', { expression: `delete window[${JSON.stringify(SCRIPTS_KEY)}]` }).catch(() => {});
   }
 
   /** A source as the page names it: its path from the root, null for the bundler's own. */
@@ -262,6 +292,19 @@ export class ScriptCatalog {
     return { site: `${name}:${pos.line}`, ...(code ? { code } : {}) };
   }
 
+  private fileText(file: string): string | null {
+    if (!this.files.has(file)) {
+      let text: string | null = null;
+      try {
+        text = fs.readFileSync(file, 'utf8');
+      } catch {
+        // Gone since: no line from it.
+      }
+      this.files.set(file, text);
+    }
+    return this.files.get(file)!;
+  }
+
   private textOf(url: string): Promise<string | null> {
     let loading = this.texts.get(url);
     const scriptId = this.scriptIds.get(url);
@@ -283,12 +326,8 @@ export class ScriptCatalog {
     if (!file || !/\.[cm]?[jt]sx?$/.test(file)) return null;
     const generated = await this.textOf(url);
     if (!generated) return null;
-    let original: string;
-    try {
-      original = fs.readFileSync(file, 'utf8');
-    } catch {
-      return null;
-    }
+    const original = this.fileText(file);
+    if (original === null) return null;
     const found = lineByText(generated, line, column, original);
     const name = rel ?? path.relative(this.options.root, file).replace(/\\/g, '/');
     return found ? siteOnDisk(this.options.root, file, found, hooks, name) : null;
@@ -318,7 +357,8 @@ export class ScriptCatalog {
     if (!abs && rel?.startsWith('node_modules/')) return { file: path.join(this.options.root, rel), line: 0, column: 0 };
     const file = abs ?? (rel ? this.locate(rel) : null);
     if (!file) return rel && /^webpack\//.test(rel) ? { package: '(bundler)' } : null;
-    return { file, line: name ? declarationLine(file, name) : 0, column: 0 };
+    const text = name ? this.fileText(file) : null;
+    return { file, line: text ? declarationLine(text, name!) : 0, column: 0 };
   }
 
   /** The CPU profile's resolver asks the same way it asks Vite's module graph. */
@@ -346,8 +386,12 @@ export class ScriptCatalog {
 
 const offsetOf = (text: string, line: number, column: number) => {
   let at = 0;
-  for (let i = 1; i < line && at >= 0; i++) at = text.indexOf('\n', at) + (at >= 0 ? 1 : 0);
-  return at < 0 ? -1 : at + Math.max(0, column - 1);
+  for (let i = 1; i < line; i++) {
+    const end = text.indexOf('\n', at);
+    if (end < 0) return -1;
+    at = end + 1;
+  }
+  return at + Math.max(0, column - 1);
 };
 
 const callsOf = (text: string, name: string) => {
@@ -404,13 +448,7 @@ export function lineByText(generated: string, line: number, column: number, orig
 }
 
 /** Where a function is declared in a file: `function Row(`, `const Row = `, `Row: `; 0 when not found. */
-function declarationLine(file: string, name: string): number {
-  let text: string;
-  try {
-    text = fs.readFileSync(file, 'utf8');
-  } catch {
-    return 0;
-  }
+function declarationLine(text: string, name: string): number {
   const escaped = name.replace(/\$/g, '\\$');
   const found = new RegExp(`(function\\*?\\s+${escaped}\\b|(?<![\\w$.])${escaped}\\s*[:=](?!=))`).exec(text);
   return found ? text.slice(0, found.index).split('\n').length : 0;

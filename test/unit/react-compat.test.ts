@@ -100,6 +100,7 @@ describe('component sites across React versions', () => {
     expect(relativeFile('http://localhost:5173/app/routes/admin/users.tsx?t=1')).toBe('app/routes/admin/users.tsx');
     expect(relativeFile('http://localhost:5173/@fs/home/me/app/app/root.tsx', '/home/me/app')).toBe('app/root.tsx');
     expect(relativeFile('/home/me/app/src/App.tsx', '/home/me/app')).toBe('src/App.tsx');
+    expect(relativeFile('C:/me/app/src/App.tsx', 'C:/me/app')).toBe('src/App.tsx');
   });
 
   it('names a context provider whichever way React holds the context', () => {

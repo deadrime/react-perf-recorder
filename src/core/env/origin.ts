@@ -1,4 +1,4 @@
-import { libraryOf, parseStack, servedPath } from '../stack';
+import { type Frame, libraryOf, parseStack, servedPath, sourceAt } from '../stack';
 
 const EFFECT_FRAMES = /flushPassiveEffects|flushPendingEffects|commitPassiveMount|commitHookEffectList/;
 const REACT_FRAMES = /^(react-dom|react|scheduler)$/;
@@ -32,8 +32,10 @@ export function updateOrigin(): UpdateOrigin | null {
   const inEffect = own.some((f) => EFFECT_FRAMES.test(f.fn));
   const kind: UpdateOrigin['kind'] = inEffect ? 'effect' : 'update';
   // The accessor is called from react-dom itself, so its file names React's own frames whatever it is bundled as.
-  const react = own[0].url;
-  const app = own.find((f) => f.url !== react && libraryOf(f.url, f.line) === null);
+  // Keyed by source: one webpack or Next chunk holds React and the app alike.
+  const fileOf = (f: Frame) => sourceAt(f.url, f.line) || f.url;
+  const react = fileOf(own[0]);
+  const app = own.find((f) => fileOf(f) !== react && libraryOf(f.url, f.line) === null);
   if (app) {
     const name =
       app.fn
@@ -47,7 +49,7 @@ export function updateOrigin(): UpdateOrigin | null {
   // function that asked, so a library's own update is at least told apart from React's internal work.
   const outside = own.find((f) => {
     const library = libraryOf(f.url, f.line);
-    return f.url !== react && library !== null && !REACT_FRAMES.test(library);
+    return fileOf(f) !== react && library !== null && !REACT_FRAMES.test(library);
   });
   if (!outside) return null;
   const library = libraryOf(outside.url, outside.line) || 'package';

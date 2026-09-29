@@ -47,7 +47,9 @@ export function parseStack(stack: string): Frame[] {
   for (const line of stack.split('\n')) {
     const m = V8_FRAME.exec(line) ?? GECKO_FRAME.exec(line);
     if (!m) continue;
-    frames.push({ fn: (m[1] ?? '').replace(/^Object\./, '').replace(/ \[as .+\]$/, ''), url: m[2], line: Number(m[3]), column: Number(m[4]) });
+    const fn = (m[1] ?? '').replace(/^Object\./, '').replace(/ \[as .+\]$/, '');
+    // V8 names an anonymous function in eval'd code (webpack's `eval` modules) after the eval.
+    frames.push({ fn: fn === 'eval' ? '' : fn, url: m[2], line: Number(m[3]), column: Number(m[4]) });
   }
   return frames;
 }
@@ -107,8 +109,7 @@ export function originOf(origin: Error, fallbackName = ''): Origin {
     .slice(1)
     .filter((f) => !INJECTED.test(f.url) && libraryOf(f.url, f.line) !== 'react-perf-recorder');
   const app = frames.find((f) => libraryOf(f.url, f.line) === null);
-  // V8 names an anonymous function in eval'd code (webpack's `eval` modules) after the eval.
-  const own = app?.fn === 'eval' ? '' : app?.fn.split('.').pop();
+  const own = app?.fn.split('.').pop();
   const name = (own || fallbackName || '').replace(/^bound /, '');
   if (app) return { text: `${name ? `${name} ` : ''}@ ${servedPath(app.url, app.line)}`, at: app };
   const library = frames.map((f) => libraryOf(f.url, f.line)).find(Boolean);

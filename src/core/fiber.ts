@@ -201,7 +201,7 @@ export function relativeFile(fileName: string, root = '', line?: number): string
       .replace(/^[a-z][\w+.-]*:\/\/[^/]*/, '')
       .replace(/[?#].*$/, '')
       .replace(/^\/@fs(?=\/)/, '')
-  ).replace(/^(?!\/)/, '/');
+  ).replace(/^(?![a-z]:\/|\/)/i, '/');
   if (root && file.startsWith(root)) return file.slice(root.length).replace(/^\/+/, '');
   const i = file.lastIndexOf('/src/');
   if (i >= 0) return file.slice(i + 1);
