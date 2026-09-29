@@ -73,7 +73,7 @@ export const ReadWhenNeeded = () => {
   useRoom();
   return (
     <Case
-      title="read it when you need it"
+      title="a subscription where getState() would do"
       what={
         <>
           The message goes out with who else was typing at that moment. On the left the composer subscribes to the room

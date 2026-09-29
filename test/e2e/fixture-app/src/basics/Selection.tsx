@@ -80,7 +80,7 @@ const ToldList = () => {
 
 export const Selection = () => (
   <Case
-    title="pass the answer, not the question"
+    title="every row gets the selected id"
     what={
       <>
         Both lists keep the selected id and hand it down to rows in <code>memo</code>. On the left each row gets the id and checks it itself, so a new

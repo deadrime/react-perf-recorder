@@ -25,7 +25,7 @@ export const selectProjectIssues = createSelector([selectAllIssues, (_: RootStat
 
 export const selectColumnIssues = createSelector(
   [selectProjectIssues, (_: RootState, _projectId: string, status: IssueStatus) => status],
-  (issues, status) => issues.filter((i) => i.status === status).sort((a, b) => a.priority - b.priority || b.updatedAt - a.updatedAt)
+  (issues, status) => issues.filter((i) => i.status === status).sort((a, b) => a.sortOrder - b.sortOrder)
 );
 
 export const selectOpenCountByProject = createSelector([selectAllIssues], (issues) => {

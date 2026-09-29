@@ -121,7 +121,7 @@ const Toolbar = () => {
   return (
     <p className="bar">
       {FOLDERS.map((name) => (
-        <button key={name} type="button" data-testid={`folder-${name}`} onClick={() => setFolder(name)}>
+        <button key={name} type="button" data-testid={`folder-${name}`} aria-pressed={folder === name} onClick={() => setFolder(name)}>
           {name}
         </button>
       ))}
@@ -143,7 +143,7 @@ const RouterButton = () => (
 export const Router = () => {
   return (
     <Case
-      title="who needs to know the URL"
+      title="a router hook high in the tree"
       what={
         <>
           Both cards show the same three letters and the folder from the query string. On the left the card itself reads the URL, so every switch

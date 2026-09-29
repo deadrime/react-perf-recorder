@@ -37,7 +37,9 @@ const Item = ({ text }: { text: string }) => {
 };
 
 const Results = memo(({ query, side }: { query: string; side: string }) => {
-  const shown = ITEMS.filter((item) => item.includes(query));
+  // "Lima" and "lima" should find the same rows.
+  const q = query.toLowerCase();
+  const shown = ITEMS.filter((item) => item.toLowerCase().includes(q));
   return (
     <>
       <p className="muted" data-testid={`found-${side}`} data-found={shown.length}>
@@ -96,7 +98,7 @@ const Search = ({ side, deferred }: { side: string; deferred: boolean }) => {
 
 export const HeavyList = () => (
   <Case
-    title="the field first, the list when there is time"
+    title="a slow list filtered as you type"
     what={
       <>
         Both fields filter two thousand rows. On the left every letter renders the list before the browser may show the letter, so typing stutters. On

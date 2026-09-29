@@ -84,7 +84,7 @@ const StarNext = () => (
 
 export const ReduxFavorites = () => (
   <Case
-    title="every card reads the whole list"
+    title="a Redux selector that returns the whole list"
     what={
       <>
         Each side keeps its favourites in a Redux store of its own. On the left each card selects the whole <code>favorites.team</code> array to find

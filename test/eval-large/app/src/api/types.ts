@@ -50,6 +50,8 @@ export interface Issue {
   updatedAt: number;
   completedAt: number | null;
   dueDate: number | null;
+  /** Place on the board: a column sorts by it, and a drop sets it between the two neighbours. */
+  sortOrder: number;
 }
 
 export interface Comment {
@@ -100,4 +102,6 @@ export interface Profile {
   weekStartsOn: 'monday' | 'sunday';
 }
 
-export type IssuePatch = Partial<Pick<Issue, 'status' | 'priority' | 'assigneeId' | 'labelIds' | 'estimate' | 'title' | 'description' | 'dueDate'>>;
+export type IssuePatch = Partial<
+  Pick<Issue, 'status' | 'priority' | 'assigneeId' | 'labelIds' | 'estimate' | 'title' | 'description' | 'dueDate' | 'sortOrder'>
+>;

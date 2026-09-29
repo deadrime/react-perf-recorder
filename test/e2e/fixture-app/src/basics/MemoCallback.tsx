@@ -77,7 +77,7 @@ const Lists = ({ stable }: { stable: boolean }) => <List key={run.use()} stable=
 export const MemoCallback = () => {
   return (
     <Case
-      title="memo and useCallback"
+      title="an inline handler breaks memo"
       what={
         <>
           Both lists are the same three rows in <code>memo</code>. The left one is handed a handler written in the parent's render, so every render of

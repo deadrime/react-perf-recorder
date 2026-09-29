@@ -92,7 +92,7 @@ const Clicked = () => <span className="muted">rendered {renders.use()}×</span>;
 
 export const MemoDeps = () => (
   <Case
-    title="a useMemo that never remembers"
+    title="an object in useMemo deps"
     what={
       <>
         Both reports keep the open rows in a <code>useMemo</code> and hand them to a table in <code>memo</code>. On the left the filter it depends on

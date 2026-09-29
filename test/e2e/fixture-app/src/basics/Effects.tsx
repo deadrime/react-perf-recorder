@@ -64,7 +64,7 @@ const Greeting = ({ by: View }: { by: typeof ByEffect }) => <View first={first.u
 export const Effects = () => {
   return (
     <Case
-      title="derive it while you render"
+      title="derived state copied in an effect"
       what={
         <>
           Both greetings are the two fields put together. On the left an effect copies the result into state, so every keystroke costs two renders and

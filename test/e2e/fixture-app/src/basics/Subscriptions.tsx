@@ -105,7 +105,7 @@ export const Subscriptions = () => {
   useServer();
   return (
     <Case
-      title="subscribe to what you show"
+      title="a store selector that returns too much"
       what={
         <>
           The same store on both sides, pushing an update every 600ms. What a component asks the store for decides how often it renders — and the

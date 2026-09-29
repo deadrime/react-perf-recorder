@@ -144,7 +144,7 @@ const ComposerWithRef = () => {
 
 export const Refs = () => (
   <Case
-    title="a value nobody draws belongs in a ref"
+    title="useState for a value nothing shows"
     what={
       <>
         State is for what the screen shows: setting it is asking React to draw again. A value that is only read later —

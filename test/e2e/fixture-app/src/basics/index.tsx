@@ -30,68 +30,68 @@ export interface BasicsCase {
 /** The textbook mistakes, each on a bare page: two versions of one widget side by side, one of them wrong. */
 export const BASICS: Record<string, BasicsCase> = {
   memo: {
-    title: 'memo and useCallback',
-    what: 'A handler written in render gives memo a new prop every time, so the children it should have skipped render anyway.',
+    title: 'an inline handler breaks memo',
+    what: 'A handler written in render gives memo a new prop every time, so the children it should have skipped render anyway; useCallback keeps it the same.',
     element: MemoCallback,
   },
   deps: {
-    title: 'a useMemo that never remembers',
+    title: 'an object in useMemo deps',
     what: 'A dependency written as an object in the render is new every time: the memo computes again and hands down a new array.',
     element: MemoDeps,
   },
   keys: {
-    title: 'key: the position or the thing',
+    title: 'key={index} in a list that changes',
     what: 'key={index} matches rows by position: inserting one at the top re-renders every row below and moves their state to the next one.',
     element: Keys,
   },
   props: {
-    title: 'a new object is a new prop',
+    title: 'an object written in render breaks memo',
     what: 'An object, an array or a JSX element written inside the render is a new one every time, and memo has nothing to compare.',
     element: Props,
   },
   state: {
-    title: 'state belongs to the smallest component that shows it',
-    what: 'A clock ticking in a card renders the whole card — and hidden in a custom hook, it renders whoever calls the hook.',
+    title: 'state kept too high in the tree',
+    what: 'A clock ticking in a card renders the whole card — and hidden in a custom hook, it renders whoever calls the hook. Move it down to what shows it.',
     element: StateDown,
   },
   dialog: {
-    title: "a dialog's flag belongs to the dialog",
+    title: "a dialog's open flag kept in the page",
     what: 'An open flag kept by the page renders the page and everything on it each time a dialog opens or closes.',
     element: Dialog,
   },
   ref: {
-    title: 'a value nobody draws belongs in a ref',
+    title: 'useState for a value nothing shows',
     what: 'State for a value only a handler reads renders for nothing; a ref holds it quietly, and keeps a handler stable too.',
     element: Refs,
   },
   selection: {
-    title: 'pass the answer, not the question',
+    title: 'every row gets the selected id',
     what: 'Every row handed the selected id renders on every pick; handed whether it is the one, two rows do.',
     element: Selection,
   },
   context: {
-    title: 'who a context wakes up',
+    title: 'a context that renders every reader',
     what: 'Two unrelated values in one context, or a value object built in the provider: readers render with nothing new to show.',
     element: Contexts,
   },
   subscriptions: {
-    title: 'subscribe to what you show',
+    title: 'a store selector that returns too much',
     what: 'The whole object, a fresh array, the exact number — three ways to ask a store for more than is on the screen.',
     element: Subscriptions,
   },
   snapshot: {
-    title: 'read it when you need it',
+    title: 'a subscription where getState() would do',
     what: 'A value used only in a click handler needs no subscription: reading the store at the click costs no renders at all.',
     element: ReadWhenNeeded,
   },
   cache: {
-    title: 'a cache smaller than the data',
+    title: 'a memoized selector with too few slots',
     what: 'A selector cached by argument, with fewer slots than rows, evicts itself: every row gets a new object with the same content.',
     element: Cache,
   },
   effect: {
-    title: 'derive it while you render',
-    what: 'State copied from props in an effect costs a second commit and leaves the screen one render behind.',
+    title: 'derived state copied in an effect',
+    what: 'An effect that copies props into state costs a second commit and leaves the screen one render behind; work it out while rendering.',
     element: Effects,
   },
   notify: {
@@ -100,8 +100,8 @@ export const BASICS: Record<string, BasicsCase> = {
     element: Notify,
   },
   init: {
-    title: 'state that starts from something',
-    what: 'useState(parse(text)) parses on every render; a draft restarted from an effect shows the old one for a commit.',
+    title: 'useState: an expensive initial value, a reset from an effect',
+    what: 'useState(parse(text)) parses on every render; a draft reset from an effect shows the old user for a commit, a key starts it fresh.',
     element: Init,
   },
   nested: {
@@ -110,13 +110,13 @@ export const BASICS: Record<string, BasicsCase> = {
     element: Nested,
   },
   children: {
-    title: 'children come in as a prop, and skip',
-    what: 'An element made by a component that did not render is reused as it is — the way to skip a subtree without memo.',
+    title: 'children as a prop: skip without memo',
+    what: 'An element made by a component that did not render is reused as it is, so the subtree sits out the renders of the one around it.',
     element: Children,
   },
   router: {
-    title: 'who needs to know the URL',
-    what: 'A router hook read high in the tree renders the whole page on every navigation, even the parts the URL says nothing about.',
+    title: 'a router hook high in the tree',
+    what: 'Reading the URL at the top of a page renders all of it on every navigation, even the parts the URL says nothing about.',
     element: Router,
   },
   form: {

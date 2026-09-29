@@ -172,7 +172,7 @@ export const Contexts = () => {
   }, []);
   return (
     <Case
-      title="who a context wakes up"
+      title="a context that renders every reader"
       what={
         <>
           Every reader of a context renders when its value changes, and <em>changes</em> means a new object, not new content. So a context that

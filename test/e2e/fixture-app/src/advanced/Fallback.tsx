@@ -116,12 +116,13 @@ const TabsInTransition = () => {
 
 export const Fallback = () => (
   <Case
-    title="a tab that hides behind its spinner"
+    title="a Suspense spinner on every tab switch"
     what={
       <>
         Each tab fetches its data the first time it is opened. On the left a click sets the tab straight away: the panel that was on the screen is
-        hidden, a spinner takes its place, and the new panel replaces the spinner when the data comes. On the right the click is a transition: React
-        keeps the old panel, dims the tabs while it waits, and swaps the panels in one go. Open a tab you have not opened yet on each side.
+        hidden, the Suspense fallback (a spinner) takes its place, and the new panel replaces the spinner when the data comes. On the right the click
+        is a transition: React keeps the old panel, dims the tabs while it waits, and swaps the panels in one go. Open a tab you have not opened yet
+        on each side.
       </>
     }
   >
