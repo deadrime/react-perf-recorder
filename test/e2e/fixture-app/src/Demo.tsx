@@ -71,61 +71,116 @@ body { margin: 0; background: #131317; }
 .demo .shot figcaption a { color: #4aa8ff; text-decoration: none; }
 
 /*
- * The hero's flow, scripted rather than screenshotted, in three scenes on one 16s loop: pick Shell on the page,
- * record it (the real highlight colours), then the report on why. Nothing is cropped and nothing sits at an angle,
- * because none of it is an image. See PanelDemo.tsx for the markup this styles.
+ * The hero's flow, scripted rather than screenshotted, on one 22s loop: pick a child then its parent from the real
+ * component tree, watch a real-looking recording bar tick, then a quick tour of the report. Nothing is cropped and
+ * nothing sits at an angle, because none of it is an image — every element shares one linear 22s timeline, and each
+ * handoff is a quick blink (not a slow dissolve) so no two overlapping labels are ever both half-visible at once.
+ * See PanelDemo.tsx for the markup this styles.
  */
 @property --num { syntax: '<integer>'; inherits: false; initial-value: 0; }
 
 .pd-stage { --pd-warn: #ffd60a; --pd-red: #ff453a; --pd-green: #34c759; --pd-amber: #ffcc00; --pd-hot: #ff453a; --pd-pick: #0a84ff;
-  position: relative; height: 460px; overflow: hidden; border: 1px solid #3a3a44; border-radius: 14px; background: #101014;
+  position: relative; height: 532px; overflow: hidden; border: 1px solid #3a3a44; border-radius: 14px; background: #101014;
   box-shadow: 0 30px 80px rgba(0,0,0,.55), 0 0 0 6px rgba(255,255,255,.025); font: 13px/1.4 var(--sans); color: #e8e8ea; }
 .pd-layer { position: absolute; inset: 0; display: flex; flex-direction: column; padding: 16px; }
 
-/* Scene 1 + 2: the page Shell renders every second, and the dock that picks and records it. */
-.pd-page-layer { justify-content: center; gap: 18px; animation: pdPageLayer 16s linear infinite; }
-.pd-mockpage { display: flex; flex: 1; align-items: center; justify-content: center; }
-.pd-mock-shell { position: relative; width: 100%; max-width: 230px; padding: 14px 16px; border: 1px solid #3a3a44; border-radius: 10px;
-  background: #1a1a1f; animation: pdShellFlash 16s linear infinite; }
-.pd-mock-label { margin: 0 0 8px; font: 700 10px var(--mono); letter-spacing: .06em; color: #8a8a94; text-transform: uppercase; }
-.pd-mock-rows { display: flex; flex-direction: column; gap: 6px; margin: 0; padding: 0; list-style: none; font-size: 12.5px; color: #b9b9c2; }
-.pd-mock-rows b { color: #fff; font-weight: 600; }
-.pd-pickbox { position: absolute; inset: -5px; border: 2px solid var(--pd-pick); border-radius: 8px;
-  background: color-mix(in srgb, var(--pd-pick) 8%, transparent); opacity: 0; animation: pdPickBox 16s linear infinite; }
+/* Scenes 1+2: an Orbit board column renders behind a dock that picks (tree) then records it. */
+.pd-page-layer { padding-bottom: 315px; animation: pdPageLayer 22s linear infinite; }
+.pd-orbit { flex: 1; display: flex; align-items: flex-start; justify-content: center; padding-top: 4px; }
+.pd-orbit-col { position: relative; width: 100%; max-width: 220px; padding: 10px; border: 1px solid #3a3a44; border-radius: 10px;
+  background: #1a1a1f; display: flex; flex-direction: column; gap: 6px; }
+.pd-orbit-head { display: flex; align-items: center; gap: 6px; padding-bottom: 6px; border-bottom: 1px solid #29292f;
+  font-size: 12px; font-weight: 600; }
+.pd-status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--pd-green); }
+.pd-muted { color: var(--muted); font-weight: 400; }
+.pd-pts { margin-left: auto; }
+.pd-orbit-card { padding: 7px 9px; border: 1px solid #3a3a44; border-radius: 8px; background: #1f1f27; display: flex; flex-direction: column; gap: 5px; }
+.pd-orbit-card .pd-card-top { display: flex; align-items: center; justify-content: space-between; font-size: 10.5px; }
+.pd-card-title { margin: 0; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical;
+  font-size: 11px; line-height: 1.3; color: #e8e8ea; }
+.pd-card-bottom { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.pd-chip-mini { padding: 1px 5px; border-radius: 5px; background: rgba(255,255,255,.06); color: #b9b9c2; font-size: 9px; }
+.pd-chip-mini--warn { background: rgba(255,214,10,.16); color: var(--pd-warn); }
+.pd-avatar { display: grid; place-items: center; width: 16px; height: 16px; border-radius: 50%; background: #3b6fe0; color: #fff;
+  font-size: 8px; font-weight: 700; }
+.pd-orbit-card-wrap { position: relative; }
+
+.pd-pickbox { position: absolute; border: 2px solid var(--pd-pick); border-radius: 8px; pointer-events: none;
+  background: color-mix(in srgb, var(--pd-pick) 8%, transparent); opacity: 0; }
+.pd-pickbox--child { inset: -4px; animation: pdPickChild 22s linear infinite; }
+.pd-pickbox--parent { inset: -4px; animation: pdPickParent 22s linear infinite; }
 .pd-picktag { position: absolute; left: -2px; top: -18px; background: var(--pd-pick); color: #fff; padding: 0 5px; border-radius: 3px 3px 0 0;
   font: 11px var(--mono); white-space: nowrap; }
 
-.pd-dock { align-self: center; width: 100%; max-width: 260px; padding: 10px; border: 1px solid #3a3a44; border-radius: 10px; background: #17171c;
-  box-shadow: 0 10px 30px rgba(0,0,0,.4); }
-.pd-dock-head { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; font-weight: 600; font-size: 12px; }
+.pd-cursor { position: absolute; z-index: 5; width: 18px; height: 18px; fill: #fff; pointer-events: none;
+  filter: drop-shadow(0 2px 3px rgba(0,0,0,.6)); animation: pdCursor 22s linear infinite; }
+
+.pd-dock { position: absolute; left: 0; right: 0; bottom: 0; height: 287px; max-width: 260px; margin: 0 auto; }
+.pd-dock-mode { position: absolute; inset: 0; display: flex; flex-direction: column; padding: 10px; border: 1px solid #3a3a44;
+  border-radius: 10px; background: #17171c; box-shadow: 0 10px 30px rgba(0,0,0,.4); overflow: hidden; opacity: 0; }
+.pd-mode-idle { justify-content: center; gap: 10px; animation: pdModeIdle 22s linear infinite; }
+.pd-mode-tree { animation: pdModeTree 22s linear infinite; }
+.pd-mode-record { animation: pdModeRecord 22s linear infinite; }
+.pd-dock-head { display: flex; align-items: center; gap: 6px; font-weight: 600; font-size: 12px; }
 .pd-dock-head .mark { width: 14px; height: 14px; }
-.pd-dock-rows { position: relative; height: 26px; }
-.pd-dock-row { position: absolute; inset: 0; display: flex; align-items: center; gap: 6px; opacity: 0; }
-.pd-row-a { animation: pdRowA 16s linear infinite; }
-.pd-row-b { animation: pdRowB 16s linear infinite; }
-.pd-row-c { animation: pdRowC 16s linear infinite; }
-.pd-row-d { animation: pdRowD 16s linear infinite; }
+.pd-dock-buttons { display: flex; gap: 6px; }
+.pd-pulse-pick { animation: pdPickPulse 22s linear infinite; }
+
+/* Scene 1 (tree): the picked area's name, the tree itself, and the Cancel/Confirm row underneath it. */
+.pd-tree-top { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+.pd-pick-icon-lg { width: 13px; height: 13px; fill: none; stroke: var(--pd-pick); stroke-width: 1.2; stroke-linecap: round; }
+.pd-tree-area { position: relative; flex: 1; min-width: 0; height: 15px; font-size: 12px; }
+.pd-tree-area-child, .pd-tree-area-parent { position: absolute; left: 0; top: 0; white-space: nowrap; opacity: 0; }
+.pd-tree-area-child { animation: pdAreaChild 22s linear infinite; }
+.pd-tree-area-parent { animation: pdAreaParent 22s linear infinite; }
+.pd-icon-btn { display: grid; place-items: center; width: 16px; height: 16px; font-style: normal; color: var(--muted); font-size: 11px; }
+.pd-tree-actions { display: flex; gap: 6px; margin-bottom: 6px; }
+.pd-tree-filters { display: flex; gap: 10px; margin-bottom: 5px; font-size: 10px; color: var(--muted); }
+.pd-tree-filters label { display: flex; align-items: center; gap: 3px; }
+.pd-tree-filters input { width: 9px; height: 9px; }
+.pd-tree-rows { display: flex; flex-direction: column; overflow: hidden; }
+.pd-tree-row { display: flex; align-items: baseline; justify-content: space-between; gap: 6px; padding: 1px 4px; border-radius: 4px;
+  font-size: 9.5px; line-height: 1.3; color: #cfcfd6; }
+.pd-tree-bold { color: #fff; font-weight: 600; }
+.pd-tree-loc { flex: none; color: #6d6d78; font: 8.5px var(--mono); }
+.pd-depth-0 { padding-left: 0; } .pd-depth-1 { padding-left: 7px; } .pd-depth-2 { padding-left: 14px; } .pd-depth-3 { padding-left: 21px; }
+.pd-depth-4 { padding-left: 28px; } .pd-depth-5 { padding-left: 35px; } .pd-depth-6 { padding-left: 42px; }
+.pd-row-tooltip { animation: pdRowTooltip 22s linear infinite; }
+.pd-row-boardcolumn { animation: pdRowBoardcolumn 22s linear infinite; }
+.pd-tree-hint, .pd-tree-keys { margin: 2px 0 0; font-size: 8.5px; color: #6d6d78; }
+
+/* Scene 2 (record): the compact bar a real recording shows, ticking. */
+.pd-rec-top { display: flex; align-items: center; gap: 4px; margin-bottom: 8px; font-size: 10.5px; }
+.pd-rec-time { flex: none; color: #fff; }
+.pd-rec-top .pd-muted { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.pd-mini-toggle { flex: none; margin-left: auto; display: flex; align-items: center; gap: 3px; font-size: 10px; color: var(--muted); }
+.pd-mini-toggle input { width: 10px; height: 10px; }
+.pd-rec-list { flex: 1; display: flex; flex-direction: column; gap: 6px; overflow: hidden; }
+.pd-rec-row { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; padding: 6px 8px; border: 1px solid #3a3a44; border-radius: 7px;
+  background: #1a1a1f; font-size: 10.5px; color: #cfcfd6; opacity: 0; transform: translateY(4px); }
+.pd-rec-row-1 { animation: pdRecRow1 22s linear infinite; }
+.pd-rec-row-2 { animation: pdRecRow2 22s linear infinite; }
+.pd-rec-bottom { margin-top: 8px; display: flex; gap: 6px; }
+
+.pd-orbit-card-wrap .pd-orbit-card { animation: pdCardFlash 22s linear infinite; }
 
 /* Scene 3: the report, its stats counted, its cause found. */
-.pd-report-layer { opacity: 0; animation: pdReportLayer 16s linear infinite; }
+.pd-report-layer { opacity: 0; animation: pdReportLayer 22s linear infinite; }
 .pd-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; font-weight: 600; }
 .pd-head .mark { width: 16px; height: 16px; margin-right: 6px; vertical-align: -3px; }
 .pd-opts { display: flex; align-items: center; gap: 10px; font-size: 11.5px; color: var(--muted); font-weight: 400; }
 .pd-opts label { display: flex; align-items: center; gap: 4px; }
 .pd-opts input { width: 11px; height: 11px; }
-.pd-collapse { display: grid; place-items: center; width: 18px; height: 18px; border: 1px solid #3a3a44; border-radius: 5px; font-style: normal; }
+.pd-collapse { flex: none; display: grid; place-items: center; width: 18px; height: 18px; border: 1px solid #3a3a44; border-radius: 5px; font-style: normal; }
 
 .pd-buttons { display: flex; gap: 6px; margin-bottom: 12px; }
 .pd-b { display: flex; align-items: center; gap: 5px; padding: 6px 10px; border: 1px solid #3a3a44; border-radius: 8px;
   font-size: 12px; font-weight: 600; background: #1d1d22; color: #e8e8ea; white-space: nowrap; }
 .pd-rec-b { color: var(--pd-red); }
-.pd-stop-b { color: #fff; background: #b3261e; border-color: #d0463c; }
-.pd-confirm-b { color: #fff; background: #3b6fe0; border-color: #4a7dff; }
+.pd-stop-b { color: #fff; background: #b3261e; border-color: #d0463c; animation: pdStopFlash 22s linear infinite; }
+.pd-confirm-b { color: #fff; background: #3b6fe0; border-color: #4a7dff; animation: pdConfirmFlash 22s linear infinite; }
 .pd-area-b { margin-left: auto; }
-.pd-pick-icon { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 1.2; stroke-linecap: round; }
-.pd-pulse-pick { animation: pdPickPulse 16s linear infinite; }
-.pd-pulse-rec { animation: pdRecPulse 16s linear infinite; }
-.pd-confirm-b { animation: pdConfirmFlash 16s linear infinite; }
+.pd-pick-icon, .pd-dock-mode .pd-pick-icon { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 1.2; stroke-linecap: round; }
 
 .pd-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; margin-bottom: 14px; }
 .pd-stat { padding: 8px 4px 8px 10px; border: 1px solid #3a3a44; border-radius: 8px; background: #1a1a1f; }
@@ -133,70 +188,93 @@ body { margin: 0; background: #131317; }
 .pd-stat span { font-size: 10.5px; color: var(--muted); }
 .pd-stat--warn { border-color: rgba(255, 214, 10, .4); }
 .pd-stat--warn b { color: var(--pd-warn); }
-.pd-num { counter-reset: pdnum var(--num); animation: pdCount 16s linear infinite; }
+.pd-num { counter-reset: pdnum var(--num); }
 .pd-num::before { content: counter(pdnum); }
+.pd-stat .pd-num { animation: pdCountReport 22s linear infinite; }
+.pd-rec-time .pd-num, .pd-rec-top .pd-num { animation: pdCountRec 22s linear infinite; }
 
 .pd-kicker { margin: 0 0 6px; font: 700 10px var(--mono); letter-spacing: .06em; color: #8a8a94; text-transform: uppercase; }
 .pd-card { padding: 10px; margin: 0 0 10px; border: 1px solid #3a3a44; border-radius: 10px; background: #1a1a1f; }
-.pd-card--main { animation: pdHighlight 16s linear infinite; }
-.pd-card-top { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 12.5px; }
+.pd-card--main { animation: pdHighlight 22s linear infinite; }
+.pd-report-layer .pd-card-top { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 12.5px; }
 .pd-chip { color: var(--muted); font-size: 11px; }
 .pd-warn-chip { padding: 1px 6px; border-radius: 5px; background: rgba(255, 214, 10, .16); color: var(--pd-warn); font-size: 11px; }
 .pd-loc { margin: 3px 0 6px; text-align: right; font: 11px var(--mono); color: #8a8a94; }
-.pd-reason { margin: 0; font-size: 11.5px; color: #9c9ca6; animation: pdReason 16s linear infinite; }
+.pd-reason { margin: 0; font-size: 11.5px; color: #9c9ca6; animation: pdReason 22s linear infinite; }
 .pd-tag { padding: 1px 6px; border-radius: 5px; background: rgba(10, 132, 255, .16); color: #4aa8ff; }
 .pd-indent { display: block; margin-top: 2px; padding-left: 14px; color: #67b7ff; font: 11px var(--mono); }
 
-.pd-timeline { margin-bottom: 8px; }
+.pd-reveal-otherroots { animation: pdRevealA 22s linear infinite; }
+.pd-timeline { margin-bottom: 8px; animation: pdRevealB 22s linear infinite; }
 .pd-tl-row { display: flex; gap: 6px; padding: 6px 0; font-size: 11.5px; line-height: 1.5; color: #b9b9c2; }
 .pd-tl-dot { flex: none; width: 8px; height: 8px; margin-top: 3px; border-radius: 2px; background: var(--pd-warn); }
 
-.pd-zoom { display: flex; align-items: center; gap: 8px; padding-top: 8px; border-top: 1px solid #29292f; font-size: 11px; color: var(--muted); }
+.pd-zoom { display: flex; align-items: center; gap: 8px; padding-top: 8px; border-top: 1px solid #29292f; font-size: 11px; color: var(--muted);
+  animation: pdRevealC 22s linear infinite; }
 .pd-zoom label { display: flex; align-items: center; gap: 4px; margin-left: auto; }
 
-/* Scene 1: idle (Rec / Page load / Pick), then Pick is pressed. Rows swap in a quick blink, not a slow dissolve —
-   two rows' text overlapping mid-crossfade reads as a garble, so each handoff is one linear stop apart. */
-@keyframes pdRowA { 0%, 7% { opacity: 1; } 8%, 100% { opacity: 0; } }
-@keyframes pdPickPulse { 0%, 3% { box-shadow: none; } 5% { box-shadow: 0 0 0 3px color-mix(in srgb, var(--pd-pick) 35%, transparent); } 7%, 100% { box-shadow: none; } }
-/* Scene 1: the box + tag land on Shell, Cancel / Confirm replace the row, Confirm flashes. */
-@keyframes pdPickBox { 0%, 10% { opacity: 0; } 12%, 21% { opacity: 1; } 22%, 100% { opacity: 0; } }
-@keyframes pdRowB { 0%, 7% { opacity: 0; } 8%, 21% { opacity: 1; } 22%, 100% { opacity: 0; } }
-@keyframes pdConfirmFlash { 0%, 18% { filter: none; } 20% { filter: brightness(1.35); } 22%, 100% { filter: none; } }
-/* Scene 2: Shell is the area now, Rec is pressed and turns into Stop. */
-@keyframes pdRowC { 0%, 21% { opacity: 0; } 22%, 27% { opacity: 1; } 28%, 100% { opacity: 0; } }
-@keyframes pdRecPulse { 0%, 25% { box-shadow: none; } 27% { box-shadow: 0 0 0 3px color-mix(in srgb, var(--pd-red) 35%, transparent); } 29%, 100% { box-shadow: none; } }
-@keyframes pdRowD { 0%, 27% { opacity: 0; } 28%, 58% { opacity: 1; } 59%, 100% { opacity: 0; } }
-/* Scene 2: while recording, Shell flashes the way the real highlight does — green, then amber, then red. */
-@keyframes pdShellFlash {
-  0%, 31% { border-color: #3a3a44; box-shadow: none; }
-  34% { border-color: var(--pd-green); box-shadow: 0 0 0 2px var(--pd-green); }
+/* Scene 1 (idle, 0–6%): the dock shows Rec / Page load / Pick, Pick pulses; the cursor is still hidden. */
+@keyframes pdModeIdle { 0%, 5% { opacity: 1; } 7%, 100% { opacity: 0; } }
+@keyframes pdPickPulse { 0%, 2% { box-shadow: none; } 4% { box-shadow: 0 0 0 3px color-mix(in srgb, var(--pd-pick) 35%, transparent); } 6%, 100% { box-shadow: none; } }
+/* The cursor: appears by the Pick button, moves onto the child card, then down to the BoardColumn tree row, then to Confirm — then hides until the loop repeats. */
+@keyframes pdCursor {
+  0%, 5% { opacity: 0; left: 158px; top: 208px; }
+  7% { opacity: 1; left: 158px; top: 208px; }
+  12%, 18% { opacity: 1; left: 128px; top: 108px; }
+  21%, 27% { opacity: 1; left: 70px; top: 198px; }
+  29% { opacity: 1; left: 150px; top: 172px; }
+  31%, 100% { opacity: 0; left: 150px; top: 172px; }
+}
+/* Scene 1 (tree, 8–30%): the tree opens, a child is picked, then its parent — box, tag, row and area name all crossfade together. */
+@keyframes pdModeTree { 0%, 6% { opacity: 0; } 8%, 29% { opacity: 1; } 31%, 100% { opacity: 0; } }
+@keyframes pdPickChild { 0%, 8% { opacity: 0; } 10%, 19% { opacity: 1; } 21%, 100% { opacity: 0; } }
+@keyframes pdAreaChild { 0%, 8% { opacity: 0; } 10%, 19% { opacity: 1; } 21%, 100% { opacity: 0; } }
+@keyframes pdRowTooltip { 0%, 9% { background: transparent; } 11%, 20% { background: rgba(10,132,255,.16); } 22%, 100% { background: transparent; } }
+@keyframes pdPickParent { 0%, 21% { opacity: 0; } 23%, 30% { opacity: 1; } 32%, 100% { opacity: 0; } }
+@keyframes pdAreaParent { 0%, 21% { opacity: 0; } 23%, 30% { opacity: 1; } 32%, 100% { opacity: 0; } }
+@keyframes pdRowBoardcolumn { 0%, 22% { background: transparent; } 24%, 31% { background: rgba(10,132,255,.16); } 33%, 100% { background: transparent; } }
+@keyframes pdConfirmFlash { 0%, 27% { filter: none; } 29% { filter: brightness(1.4); } 31%, 100% { filter: none; } }
+/* Scene 2 (record, 31–58%): the timer and commit counters tick, wasted-render rows stagger in, the card flashes like a live highlight, then Stop. */
+@keyframes pdModeRecord { 0%, 30% { opacity: 0; } 32%, 58% { opacity: 1; } 60%, 100% { opacity: 0; } }
+@keyframes pdCountRec { 0%, 32% { --num: 0; } 40%, 100% { --num: var(--target); } }
+@keyframes pdRecRow1 { 0%, 37% { opacity: 0; transform: translateY(4px); } 40%, 55% { opacity: 1; transform: translateY(0); } 58%, 100% { opacity: 0; transform: translateY(4px); } }
+@keyframes pdRecRow2 { 0%, 44% { opacity: 0; transform: translateY(4px); } 47%, 55% { opacity: 1; transform: translateY(0); } 58%, 100% { opacity: 0; transform: translateY(4px); } }
+@keyframes pdCardFlash {
+  0%, 33% { border-color: #3a3a44; box-shadow: none; }
+  35% { border-color: var(--pd-green); box-shadow: 0 0 0 2px var(--pd-green); }
   38% { border-color: #3a3a44; box-shadow: none; }
   42% { border-color: var(--pd-green); box-shadow: 0 0 0 2px var(--pd-green); }
   46% { border-color: #3a3a44; box-shadow: none; }
-  50% { border-color: var(--pd-amber); box-shadow: 0 0 0 2px var(--pd-amber); }
-  54% { border-color: #3a3a44; box-shadow: none; }
-  57% { border-color: var(--pd-hot); box-shadow: 0 0 0 2px var(--pd-hot); }
-  60%, 100% { border-color: #3a3a44; box-shadow: none; }
+  49% { border-color: var(--pd-amber); box-shadow: 0 0 0 2px var(--pd-amber); }
+  52% { border-color: #3a3a44; box-shadow: none; }
+  55% { border-color: var(--pd-hot); box-shadow: 0 0 0 2px var(--pd-hot); }
+  58%, 100% { border-color: #3a3a44; box-shadow: none; }
 }
+@keyframes pdStopFlash { 0%, 54% { filter: none; } 56% { filter: brightness(1.35); } 58%, 100% { filter: none; } }
 /* Scenes 1+2 give way to scene 3: the page fades out, the report fades in over it. */
-@keyframes pdPageLayer { 0%, 58% { opacity: 1; } 63%, 97% { opacity: 0; } 100% { opacity: 1; } }
-@keyframes pdReportLayer { 0%, 60% { opacity: 0; } 65%, 95% { opacity: 1; } 100% { opacity: 0; } }
-/* Scene 3: the stats count up, the wasted Shell card flashes, then its cause line settles in. */
-@keyframes pdCount { 0%, 66% { --num: 0; } 78%, 100% { --num: var(--target); } }
+@keyframes pdPageLayer { 0%, 56% { opacity: 1; } 61%, 97% { opacity: 0; } 100% { opacity: 1; } }
+@keyframes pdReportLayer { 0%, 58% { opacity: 0; } 63%, 95% { opacity: 1; } 100% { opacity: 0; } }
+/* Scene 3 (63–95%): a quick tour — stats count up, the wasted-render card lights up and gives its reason, then other roots, the timeline and the zoom row reveal in turn. */
+@keyframes pdCountReport { 0%, 64% { --num: 0; } 70%, 100% { --num: var(--target); } }
 @keyframes pdHighlight {
-  0%, 78% { border-color: #3a3a44; box-shadow: none; background: #1a1a1f; }
-  85% { border-color: var(--pd-warn); box-shadow: 0 0 0 3px rgba(255, 214, 10, .16); background: #22200f; }
-  93%, 100% { border-color: #3a3a44; box-shadow: none; background: #1a1a1f; }
+  0%, 71% { border-color: #3a3a44; box-shadow: none; background: #1a1a1f; }
+  76% { border-color: var(--pd-warn); box-shadow: 0 0 0 3px rgba(255, 214, 10, .16); background: #22200f; }
+  82%, 100% { border-color: #3a3a44; box-shadow: none; background: #1a1a1f; }
 }
-@keyframes pdReason { 0%, 82% { opacity: 0; transform: translateY(4px); } 91%, 100% { opacity: 1; transform: translateY(0); } }
+@keyframes pdReason { 0%, 73% { opacity: 0; transform: translateY(4px); } 80%, 100% { opacity: 1; transform: translateY(0); } }
+@keyframes pdRevealA { 0%, 79% { opacity: 0; transform: translateY(6px); } 84%, 100% { opacity: 1; transform: translateY(0); } }
+@keyframes pdRevealB { 0%, 83% { opacity: 0; transform: translateY(6px); } 88%, 100% { opacity: 1; transform: translateY(0); } }
+@keyframes pdRevealC { 0%, 87% { opacity: 0; transform: translateY(6px); } 92%, 100% { opacity: 1; transform: translateY(0); } }
 
 /* A still "after" frame instead of a loop: the report only, counted, and left there. */
 @media (prefers-reduced-motion: reduce) {
   .pd-page-layer { display: none; }
-  .pd-report-layer, .pd-num, .pd-card--main, .pd-reason { animation: none !important; }
+  .pd-report-layer, .pd-stat .pd-num, .pd-card--main, .pd-reason, .pd-reveal-otherroots, .pd-timeline, .pd-zoom {
+    animation: none !important;
+  }
   .pd-report-layer { opacity: 1; }
-  .pd-num { --num: var(--target); }
-  .pd-reason { opacity: 1; transform: none; }
+  .pd-stat .pd-num { --num: var(--target); }
+  .pd-reason, .pd-reveal-otherroots, .pd-timeline, .pd-zoom { opacity: 1; transform: none; }
 }
 
 
@@ -298,8 +376,13 @@ body { margin: 0; background: #131317; }
   .demo .agent, .demo .feature, .demo .steps > li { padding: 18px; }
   .demo .install { padding-left: 12px; }
   .demo .install code { font-size: 13px; }
-  .pd-stage { height: 420px; font-size: 12px; }
+  .pd-stage { height: 512px; font-size: 12px; }
   .pd-layer { padding: 12px; }
+  .pd-page-layer { padding-bottom: 267px; }
+  .pd-dock { height: 265px; }
+  .pd-orbit-col { max-width: 180px; }
+  .pd-tree-row, .pd-tree-loc { font-size: 8.5px; }
+  .pd-cursor { width: 15px; height: 15px; }
   .pd-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .pd-tl-row { font-size: 11px; }
   /* One column is long on a phone: the icon and the number sit beside the title, not above it. */
