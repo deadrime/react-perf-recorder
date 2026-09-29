@@ -1,6 +1,6 @@
 import { registerRoot, type FiberRoot } from './fiber';
 
-type Listener = () => void;
+type Listener = (root?: FiberRoot) => void;
 
 const listeners = new Set<Listener>();
 
@@ -10,7 +10,8 @@ const listeners = new Set<Listener>();
  */
 export function noteRoot(root?: { _internalRoot?: FiberRoot | null }) {
   if (root?._internalRoot) registerRoot(root._internalRoot);
-  listeners.forEach((listener) => listener());
+  const created = root?._internalRoot ?? undefined;
+  listeners.forEach((listener) => listener(created));
 }
 
 export function onRootCreated(listener: Listener) {

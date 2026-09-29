@@ -1,5 +1,5 @@
 import type { Engine, Owner, Saved } from '../core/engine';
-import { currentOf, type Fiber, type FiberRoot } from '../core/fiber';
+import { currentOf, isHydrating, type Fiber, type FiberRoot } from '../core/fiber';
 import { scopeNames, type ScopeHandle } from '../core/scope';
 import type { Highlighter } from '../overlay/highlight';
 import { NOTE_IN_PANEL, renderPanel, type PanelHandlers, type PanelViewProps } from './components/PanelView';
@@ -87,6 +87,17 @@ export class Panel {
   mount() {
     document.documentElement.appendChild(this.host);
     this.syncIdleHighlight();
+  }
+
+  /**
+   * Keeps the host out of the page while `root` hydrates the whole document: React 18 takes a node on <html> it did
+   * not render for a mismatch and renders the page again on the client, the host gone with it.
+   */
+  awaitHydration(root: FiberRoot) {
+    if (!this.host.isConnected || !isHydrating(root) || !(root.containerInfo as Node)?.contains?.(document.documentElement)) return;
+    this.host.remove();
+    const back = () => (isHydrating(root) ? setTimeout(back, 20) : this.mount());
+    setTimeout(back, 20);
   }
 
   get shadowRoot() {
