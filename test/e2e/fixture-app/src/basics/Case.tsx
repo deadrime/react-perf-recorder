@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { useRef, useSyncExternalStore } from 'react';
+import { highlight } from './highlight';
 
 /**
  * What a case's buttons change, kept outside React. Only the components the lesson is about read it, so the page,
@@ -51,23 +52,25 @@ export const Case = ({ title, what, children }: { title: string; what: ReactNode
   </div>
 );
 
+const colored = new Map<string, string>();
+
+/** Open by default where the two versions stand side by side; a phone keeps them folded under the demo. */
+const wide = () => typeof matchMedia === 'function' && matchMedia('(min-width: 900px)').matches;
+
 /** The shape of the code, with the line that matters marked by a `// ←` comment. */
-const Code = ({ source }: { source: string }) => (
-  <details className="code">
-    <summary>the code</summary>
-    <pre>
-      {source
-        .trim()
-        .split('\n')
-        .map((line, i) => (
-          <span key={i} className={line.includes('// ←') ? 'line bad' : 'line'}>
-            {line}
-            {'\n'}
-          </span>
-        ))}
-    </pre>
-  </details>
-);
+const Code = ({ source }: { source: string }) => {
+  // Some cases render the whole page on a press, this one with it: colour each snippet once.
+  let html = colored.get(source);
+  if (html === undefined) colored.set(source, (html = highlight(source)));
+  return (
+    <details className="code" open={wide()}>
+      <summary>
+        the code<span className="meta">{source.trim().split('\n').length} lines · tsx</span>
+      </summary>
+      <pre dangerouslySetInnerHTML={{ __html: html }} />
+    </details>
+  );
+};
 
 export const Panel = ({
   kind,
@@ -86,7 +89,7 @@ export const Panel = ({
     <h2>
       <span className="mark">{kind === 'broken' ? '✗' : '✓'}</span> {title}
     </h2>
-    {children}
+    <div className="case-body">{children}</div>
     <p className="says">{says}</p>
     {code ? <Code source={code} /> : null}
   </section>
