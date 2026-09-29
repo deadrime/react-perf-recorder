@@ -2,6 +2,7 @@
   "name": "react-perf-recorder",
   "description": "Record why a React app re-renders and prove a fix with numbers: a skill, an agent and the MCP server of react-perf-recorder.",
   "author": { "name": "Eugene", "url": "https://github.com/deadrime" },
+  "license": "MIT",
   "mcpServers": {
     "react-perf-recorder": {
       "command": "npx",
