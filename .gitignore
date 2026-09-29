@@ -16,3 +16,7 @@ dist-pages
 test/eval-plugin/evals/results/
 test/eval-plugin/evals-large/results/
 test/.eval-plugin-*/
+
+# The React Router fixture: lockfile committed, install and generated types not
+test/react-router/node_modules
+test/react-router/.react-router

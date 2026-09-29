@@ -12,6 +12,7 @@ process.env.FIXTURE_OUT_DIR = SESSIONS_DIR;
 const PORTS = {
   react18: Number(process.env.FIXTURE_PORT ?? 5391),
   react19: Number(process.env.FIXTURE_PORT_19 ?? 5392),
+  reactRouter: Number(process.env.FIXTURE_PORT_RR ?? 5394),
 };
 
 const fixture = (port: number, react19: boolean) => ({
@@ -24,9 +25,25 @@ const fixture = (port: number, react19: boolean) => ({
 
 /** One React only, when CI runs the two as jobs side by side: only its dev server is started. */
 const only = process.env.E2E_PROJECT;
+const REACT_ROUTER_SPEC = /react-router\.spec\.ts$/;
 const projects = [
-  { name: 'react18', use: { baseURL: `http://localhost:${PORTS.react18}` }, server: fixture(PORTS.react18, false) },
-  { name: 'react19', use: { baseURL: `http://localhost:${PORTS.react19}` }, server: fixture(PORTS.react19, true) },
+  { name: 'react18', use: { baseURL: `http://localhost:${PORTS.react18}` }, server: fixture(PORTS.react18, false), testIgnore: REACT_ROUTER_SPEC },
+  { name: 'react19', use: { baseURL: `http://localhost:${PORTS.react19}` }, server: fixture(PORTS.react19, true), testIgnore: REACT_ROUTER_SPEC },
+  {
+    // An app that renders its own HTML, served by its framework with the recorder as built: `npm run build` first.
+    name: 'react-router',
+    use: { baseURL: `http://localhost:${PORTS.reactRouter}` },
+    testMatch: REACT_ROUTER_SPEC,
+    metadata: { warm: '/' },
+    server: {
+      command: 'npx react-router dev',
+      cwd: 'test/react-router',
+      url: `http://localhost:${PORTS.reactRouter}`,
+      reuseExistingServer: false,
+      env: { FIXTURE_OUT_DIR: SESSIONS_DIR, FIXTURE_PORT: String(PORTS.reactRouter) },
+      timeout: 60_000,
+    },
+  },
 ].filter((p) => !only || p.name === only);
 
 export default defineConfig({
@@ -36,6 +53,6 @@ export default defineConfig({
   // Files run side by side; a test finds its recording by the id it was saved under, not by what is new in the folder.
   workers: process.env.CI ? 2 : 4,
   use: { headless: true, viewport: { width: 1280, height: 800 } },
-  projects: projects.map(({ name, use }) => ({ name, use })),
+  projects: projects.map(({ server: _, ...project }) => project),
   webServer: projects.map((p) => p.server),
 });

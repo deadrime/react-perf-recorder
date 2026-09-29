@@ -143,10 +143,23 @@ function definedInPackage(f: Fiber): boolean {
 }
 
 /**
+ * A component of the app whose element a package created — a route React Router renders from its module — has no
+ * line of the app's that rendered it: the file its own elements are written in stands in, without a line.
+ */
+function ownFileOf(f: Fiber): string | null {
+  const shown = shownSiteOf(f);
+  if (shown && libraryOf(shown.url) === null) return null;
+  const inner = f.child && siteOf(f.child);
+  return inner && libraryOf(inner.url) === null ? inner.url : null;
+}
+
+/**
  * `src/components/Row.tsx:42`. On React 19 the position is in the built module, so until the dev server maps it
  * the line is left off rather than guessed.
  */
 export function sourceOf(f: Fiber, root = ''): string {
+  const own = ownFileOf(f);
+  if (own) return relativeFile(own, root);
   const site = shownSiteOf(f);
   if (!site) return '';
   const file = relativeFile(site.url, root);
@@ -157,6 +170,7 @@ export function sourceOf(f: Fiber, root = ''): string {
 
 /** The built position to map through the dev server, when the fiber's own is not the file's. */
 export function generatedSourceOf(f: Fiber): { url: string; line: number; column: number } | undefined {
+  if (ownFileOf(f)) return undefined;
   const site = shownSiteOf(f);
   return site && !site.exact ? { url: site.url, line: site.line, column: site.column } : undefined;
 }
@@ -169,10 +183,17 @@ export function siteKeyOf(f: Fiber, root = ''): string {
 
 export function relativeFile(fileName: string, root = ''): string {
   // A React 19 site is a URL the dev server served: `http://localhost:5173/src/App.tsx?t=1`.
-  const file = fileName.replace(/^[a-z]+:\/\/[^/]+/, '').replace(/[?#].*$/, '');
+  const served = /^[a-z]+:\/\/[^/]+/.test(fileName);
+  const file = fileName
+    .replace(/^[a-z]+:\/\/[^/]+/, '')
+    .replace(/[?#].*$/, '')
+    .replace(/^\/@fs(?=\/)/, '');
   if (root && file.startsWith(root)) return file.slice(root.length).replace(/^\/+/, '');
   const i = file.lastIndexOf('/src/');
-  return i >= 0 ? file.slice(i + 1) : file.replace(/^\/+/, '').split('/').slice(-3).join('/');
+  if (i >= 0) return file.slice(i + 1);
+  // The dev server serves a file of the project at its path from the root: `app/routes/admin/users.tsx`.
+  if (served && !file.startsWith('/@') && !file.includes('/node_modules/')) return file.replace(/^\/+/, '');
+  return file.replace(/^\/+/, '').split('/').slice(-3).join('/');
 }
 
 let fiberKey: string | null = null;

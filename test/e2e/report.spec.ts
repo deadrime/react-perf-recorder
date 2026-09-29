@@ -309,13 +309,19 @@ test('the report shows where the CPU went, the page having profiled itself', asy
   const cdp = await page.context().newCDPSession(page);
   await cdp.send('Emulation.setCPUThrottlingRate', { rate: 6 });
   await page.locator('[data-rpr="record"]').click();
-  for (let i = 0; i < 20; i++) await page.getByTestId('render').first().click();
+  for (let i = 0; i < 40; i++) await page.getByTestId('render').first().click();
   await page.locator('[data-rpr="stop"]').click();
   await expect(page.locator('[data-rpr="result"]')).toContainText('saved');
   const cpu = page.locator('[data-rpr="cpu"]');
   await expect(cpu).toBeVisible();
   if (!(await cpu.evaluate((e) => (e as HTMLDetailsElement).open))) await cpu.locator('summary').click();
-  await expect(cpu.locator('[data-rpr="cpu-render"]').first()).toContainText('NotesEager');
-  await expect(cpu.locator('[data-rpr="cpu-render"]').first()).toContainText('parseNotes');
+  const rows = cpu.locator('[data-rpr="cpu-render"]');
+  await expect(rows.filter({ hasText: 'NotesEager' })).toContainText('parseNotes');
+  // A sample every 10 ms sees a few ms of React's own work per render too: the rank that holds is against the lazy
+  // twin, which renders as often. The exact order is record_page's test, sampled every 0.5 ms.
+  const names = await rows.allInnerTexts();
+  const rank = (name: string) => names.findIndex((text) => text.startsWith(name));
+  expect(rank('NotesEager')).toBeGreaterThanOrEqual(0);
+  if (rank('NotesLazy') >= 0) expect(rank('NotesEager')).toBeLessThan(rank('NotesLazy'));
   await expect(cpu).toContainText('sampled every 10ms');
 });

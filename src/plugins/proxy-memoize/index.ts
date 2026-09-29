@@ -22,7 +22,7 @@ export function proxyMemoize(options: ProxyMemoizeOptions = {}): PerfRecorderPlu
   const source = options.module ?? 'proxy-memoize';
   let context: BuildContext | null = null;
   const root = () => context?.root() ?? process.cwd();
-  const filter = createFilter(root, options.include ?? ['src/**/*.{ts,tsx,js,jsx}'], options.exclude);
+  const filter = createFilter(root, options.include ?? ['**/*.{ts,tsx,js,jsx}'], options.exclude);
   const proxy = proxyModule('proxy-memoize', {
     source,
     importer: filter,
