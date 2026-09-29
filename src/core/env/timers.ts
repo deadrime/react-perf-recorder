@@ -72,8 +72,8 @@ function libraryOfCaller(t: Scheduled): string | null {
   if (library === undefined) {
     const caller = parseStack(t.origin.stack ?? '')
       .slice(1)
-      .find((f) => libraryOf(f.url) !== 'react-perf-recorder');
-    callers.set(t.origin, (library = caller ? libraryOf(caller.url) : null));
+      .find((f) => libraryOf(f.url, f.line) !== 'react-perf-recorder');
+    callers.set(t.origin, (library = caller ? libraryOf(caller.url, caller.line) : null));
   }
   return library;
 }
@@ -91,7 +91,7 @@ function timerText(t: Scheduled): string {
 /** The code that called the timer is the recorder's own — the panel, its outlines, a replay — whoever called it. */
 export function scheduledByRecorder(stack: string): boolean {
   const caller = parseStack(stack)[1];
-  return caller !== undefined && libraryOf(caller.url) === 'react-perf-recorder';
+  return caller !== undefined && libraryOf(caller.url, caller.line) === 'react-perf-recorder';
 }
 
 function ours(t: Scheduled): boolean {

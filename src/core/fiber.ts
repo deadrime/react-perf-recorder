@@ -1,6 +1,6 @@
 import { contextOf, isConsumerTag, isProviderTag, shownSiteOf, siteOf } from './react-compat';
 import { mappedSite } from './sites';
-import { libraryOf } from './stack';
+import { libraryOf, moduleIdPath, sourceAt } from './stack';
 
 export { captureRenderers, devtoolsHookAtLoad, laneLabel, reactVersion, renderer, sourcesUnavailable, type Renderer } from './react-compat';
 export { onSitesMapped, setSiteMapper, type Position, type SiteMapper } from './sites';
@@ -139,18 +139,18 @@ function definedInPackage(f: Fiber): boolean {
   // The element under the component — the one it returned, or the children it passed through. App code is built
   // with the dev transform and its elements carry the file they were written in; a package's do not.
   const site = siteOf(f.child ?? f);
-  return !site || libraryOf(site.url) !== null;
+  return !site || libraryOf(site.url, site.line) !== null;
 }
 
 /**
  * A component of the app whose element a package created — a route React Router renders from its module — has no
  * line of the app's that rendered it: the file its own elements are written in stands in, without a line.
  */
-function ownFileOf(f: Fiber): string | null {
+function ownFileOf(f: Fiber): { url: string; line: number } | null {
   const shown = shownSiteOf(f);
-  if (shown && libraryOf(shown.url) === null) return null;
+  if (shown && libraryOf(shown.url, shown.line) === null) return null;
   const inner = f.child && siteOf(f.child);
-  return inner && libraryOf(inner.url) === null ? inner.url : null;
+  return inner && libraryOf(inner.url, inner.line) === null ? inner : null;
 }
 
 /**
@@ -159,10 +159,10 @@ function ownFileOf(f: Fiber): string | null {
  */
 export function sourceOf(f: Fiber, root = ''): string {
   const own = ownFileOf(f);
-  if (own) return relativeFile(own, root);
+  if (own) return relativeFile(own.url, root, own.line);
   const site = shownSiteOf(f);
   if (!site) return '';
-  const file = relativeFile(site.url, root);
+  const file = relativeFile(site.url, root, site.line);
   if (site.exact) return `${file}:${site.line}`;
   // The dev server maps the built position; asking puts it in the next batch, and the file alone does for now.
   return mappedSite(site) || file;
@@ -178,16 +178,21 @@ export function generatedSourceOf(f: Fiber): { url: string; line: number; column
 /** What tells two call sites apart in a root's key, whether or not the position can be shown yet. */
 export function siteKeyOf(f: Fiber, root = ''): string {
   const site = siteOf(f);
-  return site ? `${relativeFile(site.url, root)}:${site.line}:${site.column}` : '';
+  return site ? `${relativeFile(site.url, root, site.line)}:${site.line}:${site.column}` : '';
 }
 
-export function relativeFile(fileName: string, root = ''): string {
+/** `line`: of a bundled script whose sources record_page read, the file is the source's. */
+export function relativeFile(fileName: string, root = '', line?: number): string {
+  const mapped = sourceAt(fileName, line);
+  if (mapped) return mapped;
   // A React 19 site is a URL the dev server served: `http://localhost:5173/src/App.tsx?t=1`.
-  const served = /^[a-z]+:\/\/[^/]+/.test(fileName);
-  const file = fileName
-    .replace(/^[a-z]+:\/\/[^/]+/, '')
-    .replace(/[?#].*$/, '')
-    .replace(/^\/@fs(?=\/)/, '');
+  const served = /^[a-z][\w+.-]*:\/\/[^/]*/.test(fileName);
+  const file = moduleIdPath(
+    fileName
+      .replace(/^[a-z][\w+.-]*:\/\/[^/]*/, '')
+      .replace(/[?#].*$/, '')
+      .replace(/^\/@fs(?=\/)/, '')
+  ).replace(/^(?!\/)/, '/');
   if (root && file.startsWith(root)) return file.slice(root.length).replace(/^\/+/, '');
   const i = file.lastIndexOf('/src/');
   if (i >= 0) return file.slice(i + 1);

@@ -237,7 +237,7 @@ function buildInfo(fiber: Fiber, log: LoggedHook[]): InspectedHooks {
     const component = renderAt - 1;
     const steps = frames
       .slice(start, component)
-      .map((f) => ({ name: f.fn.split('.').pop() || '', library: libraryOf(f.url) }))
+      .map((f) => ({ name: f.fn.split('.').pop() || '', library: libraryOf(f.url, f.line) }))
       // The recorder's own wrappers (zustand, proxy-memoize) are not part of the app's chain.
       .filter((step) => step.name && step.library !== 'react-perf-recorder')
       .reverse();

@@ -1,3 +1,5 @@
+import { SCRIPTS_KEY, type ScriptSources } from '../shared/inject';
+
 export interface Frame {
   fn: string;
   url: string;
@@ -8,12 +10,37 @@ export interface Frame {
 const V8_FRAME = /^\s*at (?:(?:async )?(.+?) \()?(.+?):(\d+):(\d+)\)?\s*$/;
 const GECKO_FRAME = /^\s*(.*?)@(.+?):(\d+):(\d+)\s*$/;
 
+/**
+ * The source file a line of a bundled script came from, when the source map was read for it: a chunk holds many
+ * modules, the app's and the packages', and its url says nothing of which. `''`: the bundler's own code.
+ */
+export function sourceAt(url: string, line?: number): string | undefined {
+  const tables = (globalThis as Record<string, unknown>)[SCRIPTS_KEY] as Record<string, ScriptSources> | undefined;
+  const table = tables?.[url.split(/[?#]/)[0]];
+  if (!table) return undefined;
+  // A script of one source, every line of it.
+  if (!table.l.length) return table.s[0];
+  if (line === undefined) return undefined;
+  let lo = 0;
+  let hi = table.l.length / 2 - 1;
+  let found = -1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    if (table.l[mid * 2] <= line) {
+      found = mid;
+      lo = mid + 1;
+    } else hi = mid - 1;
+  }
+  const index = found >= 0 ? table.l[found * 2 + 1] : -1;
+  return index >= 0 ? table.s[index] : '';
+}
+
+/** A module id's own prefixes: webpack's `./`, the layer in `(app-pages-browser)/`. */
+export const moduleIdPath = (path: string) => path.replace(/^\/+/, '').replace(/^(\([\w-]+\)\/)?(\.\/)?/, '');
+
 /** A frame's file as the dev server served it: `src/hooks/useCountdown.ts`, without the origin or the query. */
-export const servedPath = (url: string) =>
-  url
-    .replace(/^[a-z]+:\/\/[^/]+/, '')
-    .split(/[?#]/)[0]
-    .replace(/^\//, '');
+export const servedPath = (url: string, line?: number) =>
+  sourceAt(url, line) || moduleIdPath(url.replace(/^[a-z][\w+.-]*:\/\/[^/]*/, '').split(/[?#]/)[0]);
 
 export function parseStack(stack: string): Frame[] {
   const frames: Frame[] = [];
@@ -46,9 +73,15 @@ const SHARED_CHUNK = /^chunk-|-(?=[\w$-]{0,7}[A-Z])[\w$-]{8}$/;
  * The npm package a frame runs in, or null for app code. Pre-bundled deps are `<cacheDir>/deps/<id>.js?v=…` with `/`
  * in the id flattened to `_` (`@tanstack_react-query`); shared chunks (`chunk-XYZ.js`) have no name and give `''`.
  */
-export function libraryOf(url: string): string | null {
+export function libraryOf(url: string, line?: number): string | null {
   const path = url.split(/[?#]/)[0];
   if (OWN.some((prefix) => path.startsWith(prefix))) return 'react-perf-recorder';
+  const mapped = sourceAt(url, line);
+  if (mapped !== undefined) {
+    if (!mapped) return '';
+    const at = `/${mapped}`.lastIndexOf('/node_modules/');
+    return at >= 0 ? packageOf(`/${mapped}`.slice(at + '/node_modules/'.length)) : null;
+  }
   const deps = /\/deps\/([^/]+)\.js$/.exec(path);
   if (deps && (url.includes('?v=') || path.includes('/.vite'))) return SHARED_CHUNK.test(deps[1]) ? '' : packageOf(deps[1].replace(/_/g, '/'));
   const at = path.lastIndexOf('/node_modules/');
@@ -72,11 +105,13 @@ const INJECTED = /^(<anonymous>|native$|(chrome|moz|safari(-web)?)-extension:)/;
 export function originOf(origin: Error, fallbackName = ''): Origin {
   const frames = parseStack(origin.stack ?? '')
     .slice(1)
-    .filter((f) => !INJECTED.test(f.url) && libraryOf(f.url) !== 'react-perf-recorder');
-  const app = frames.find((f) => libraryOf(f.url) === null);
-  const name = (app?.fn.split('.').pop() || fallbackName || '').replace(/^bound /, '');
-  if (app) return { text: `${name ? `${name} ` : ''}@ ${servedPath(app.url)}`, at: app };
-  const library = frames.map((f) => libraryOf(f.url)).find(Boolean);
+    .filter((f) => !INJECTED.test(f.url) && libraryOf(f.url, f.line) !== 'react-perf-recorder');
+  const app = frames.find((f) => libraryOf(f.url, f.line) === null);
+  // V8 names an anonymous function in eval'd code (webpack's `eval` modules) after the eval.
+  const own = app?.fn === 'eval' ? '' : app?.fn.split('.').pop();
+  const name = (own || fallbackName || '').replace(/^bound /, '');
+  if (app) return { text: `${name ? `${name} ` : ''}@ ${servedPath(app.url, app.line)}`, at: app };
+  const library = frames.map((f) => libraryOf(f.url, f.line)).find(Boolean);
   return { text: library ? `(${library})` : '' };
 }
 

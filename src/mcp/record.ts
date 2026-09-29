@@ -422,8 +422,9 @@ export async function recordPage(options: RecordPageOptions, sessionsDir: string
       : null;
     if (catalog) {
       await page.addInitScript({ content: injectedScript({ projectRoot: root.replace(/\\/g, '/') }) });
-      // Every script's source map, as the page loads it: there is no dev server to ask for them afterwards.
-      await catalog.attach(await session());
+      // Every script's source map, as the page loads it: there is no dev server to ask for them afterwards, and the
+      // page learns whose code each line of a bundled chunk is.
+      await catalog.attach(await session(), { tables: true });
     }
     // A link that signs the browser in — `/debug/<jwt>`, a magic link — is opened first and is never recorded.
     if (options.via) await page.goto(options.via, { waitUntil: 'load' });

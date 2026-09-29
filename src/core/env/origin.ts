@@ -27,30 +27,30 @@ export interface UpdateOrigin {
 
 export function updateOrigin(): UpdateOrigin | null {
   const frames = parseStack(captureStack()).slice(1);
-  const own = frames.filter((f) => libraryOf(f.url) !== 'react-perf-recorder');
+  const own = frames.filter((f) => libraryOf(f.url, f.line) !== 'react-perf-recorder');
   if (!own.length) return null;
   const inEffect = own.some((f) => EFFECT_FRAMES.test(f.fn));
   const kind: UpdateOrigin['kind'] = inEffect ? 'effect' : 'update';
   // The accessor is called from react-dom itself, so its file names React's own frames whatever it is bundled as.
   const react = own[0].url;
-  const app = own.find((f) => f.url !== react && libraryOf(f.url) === null);
+  const app = own.find((f) => f.url !== react && libraryOf(f.url, f.line) === null);
   if (app) {
     const name =
       app.fn
         .split('.')
         .pop()
         ?.replace(/^bound /, '') ?? '';
-    const file = servedPath(app.url);
+    const file = servedPath(app.url, app.line);
     return { text: `${kind}${name ? ` ${name}` : ''} @ ${file}`, kind };
   }
   // Outside the app: name the package when the bundler kept it (deps are split into unnamed chunks) and the
   // function that asked, so a library's own update is at least told apart from React's internal work.
   const outside = own.find((f) => {
-    const library = libraryOf(f.url);
+    const library = libraryOf(f.url, f.line);
     return f.url !== react && library !== null && !REACT_FRAMES.test(library);
   });
   if (!outside) return null;
-  const library = libraryOf(outside.url) || 'package';
+  const library = libraryOf(outside.url, outside.line) || 'package';
   const name =
     outside.fn
       .split('.')
