@@ -47,7 +47,7 @@ const Editor = ({ user }) => {
 
 <Editor key={user.id} user={user} />   // ← new user, new state`;
 
-const TEXT = Array.from({ length: 400 }, (_, i) => `- [${i % 3 ? ' ' : 'x'}] note ${i}: ${'lorem ipsum '.repeat(8)}`).join('\n');
+const TEXT = Array.from({ length: 2000 }, (_, i) => `- [${i % 3 ? ' ' : 'x'}] note ${i}: ${'lorem ipsum '.repeat(8)}`).join('\n');
 
 /** Parses the notes the slow way, as a markdown parser does, and keeps how often and how long it was asked to. */
 const parsed = { eager: { runs: 0, ms: 0 }, lazy: { runs: 0, ms: 0 } };
