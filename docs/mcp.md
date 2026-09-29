@@ -19,6 +19,14 @@ this package. A browser of the machine's own — a CI image, a sandbox with a pr
 version — is picked by `REACT_PERF_RECORDER_BROWSER=/path/to/chromium`, else the newest Chromium under
 `PLAYWRIGHT_BROWSERS_PATH`.
 
+Without the Vite plugin on the dev server (`record_page` asks it at `<base>/__react-perf-recorder/health`),
+`record_page` puts the recorder into the page itself before the page's first script, maps the positions through the
+source maps the page loaded and saves the recording from the MCP server. The answer says `recorder: "injected"`,
+the recording's conditions carry it, and a warning lists what such a recording lacks: `memo` components written as
+arrow functions show as `Anonymous`, zustand stores without the `devtools` middleware have no store or action names,
+proxy-memoize is not seen. `inject: 'never'` records only through the plugin; `root` is the app's folder when it is
+not the working directory. With the plugin, nothing changes: nothing is put into the page.
+
 A page behind a sign-in: `record_page` through a signing link, else a session saved once by
 `react-perf-recorder login <url>`, else a browser you already have open (`cdp`).
 

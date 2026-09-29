@@ -93,6 +93,8 @@ async function resolveFrame(frame: CallFrame, server: ModuleSource, origin: { va
   } catch {
     return { name, package: '(other)' };
   }
+  // The recorder as record_page puts it into a page without the plugin.
+  if (url.protocol === 'react-perf-recorder:') return { name, package: 'react-perf-recorder', own: true };
   if (!/^https?:$/.test(url.protocol)) return { name, package: `(${url.protocol.replace(/:$/, '')})` };
   // The page's own origin is the one most frames come from; another one is a CDN or a third-party script.
   origin.value ||= url.origin;

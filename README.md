@@ -5,7 +5,8 @@ names the component that started each render cascade and why — the hook and it
 the keys it changed, the props that broke `memo` — and an agent reads the same recordings through an MCP server.
 
 It runs only in the Vite dev server and never ships to a build: a Vite app, or a framework on Vite that renders its own
-HTML, such as React Router. React 18.2+ and 19.1+.
+HTML, such as React Router. React 18.2+ and 19.1+. An agent can also record a Vite app without the plugin, with less
+in the recording ([MCP](docs/mcp.md)).
 
 ## Install
 

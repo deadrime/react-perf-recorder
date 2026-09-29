@@ -19,6 +19,10 @@ test('records a page in a browser of its own', async ({ baseURL }) => {
   const rec = saved(result.id!);
   expect(rec.tool.source).toBe('script:record');
   expect(rec.label).toBe('from the record tool');
+  // The dev server has the plugin: nothing is put into the page, the plugin's recorder does it all.
+  expect(result.recorder).toBe('plugin');
+  expect(rec.conditions.recorder).toBeUndefined();
+  expect(rec.tool.plugins.map((p) => p.name)).toContain('proxy-memoize');
   // A measuring run draws no outlines, so nothing warns that the timings read high.
   expect(rec.warnings.some((w) => w.startsWith('highlight was on'))).toBe(false);
 });
@@ -42,6 +46,15 @@ test('an area that is not on the page answers with the ones that are', async ({ 
   await expect(recordPage({ url: `${baseURL}/app?tick=120`, ms: 500, scope: 'NoSuchThing' }, SESSIONS_DIR)).rejects.toThrow(
     /is not mounted; the page has .*MessageList/
   );
+});
+
+test('a recorder put in anyway stands aside for the plugin', async ({ baseURL }) => {
+  // As on a build made with the plugin: no dev server to ask, the plugin's recorder boots from the page itself.
+  const result = await recordPage({ url: `${baseURL}/app?tick=120`, ms: 800, inject: 'always' }, SESSIONS_DIR);
+  expect(result.recorder).toBe('plugin');
+  const rec = saved(result.id!);
+  expect(rec.conditions.recorder).toBeUndefined();
+  expect(rec.tool.plugins.map((p) => p.name)).toContain('proxy-memoize');
 });
 
 test('says what is wrong instead of recording the wrong page', async () => {

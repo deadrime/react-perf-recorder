@@ -28,7 +28,8 @@ const recording = await page.evaluate(async () => {
   `prune`, `actions`, `bigCommit`, `timeline` (how many commits to keep), `meta`.
 - The answer carries `id`: read the whole thing later with `get_recording`, and compare two runs with
   `compare_recordings`.
-- No engine on the page means the Vite plugin is not there — say so instead of measuring something else.
+- No engine on the page means the Vite plugin is not there — say so instead of measuring something else, or record
+  with `record_page`, which puts the recorder into such a page itself.
 
 **Conditions decide whether two runs can be compared.** Same viewport, same data, same CPU throttling, same
 account. Throttle through CDP (`Emulation.setCPUThrottlingRate`) if the machine is too fast to show the problem,
