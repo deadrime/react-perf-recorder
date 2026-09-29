@@ -70,12 +70,44 @@ body { margin: 0; background: #131317; }
 .demo .shot figcaption { margin-top: 10px; text-align: center; font-size: 13px; color: #85858f; }
 .demo .shot figcaption a { color: #4aa8ff; text-decoration: none; }
 
-/* The hero's report: a scripted loop, not a screenshot, so nothing is cropped and nothing sits at an angle. */
+/*
+ * The hero's flow, scripted rather than screenshotted, in three scenes on one 16s loop: pick Shell on the page,
+ * record it (the real highlight colours), then the report on why. Nothing is cropped and nothing sits at an angle,
+ * because none of it is an image. See PanelDemo.tsx for the markup this styles.
+ */
 @property --num { syntax: '<integer>'; inherits: false; initial-value: 0; }
 
-.pd-panel { --pd-warn: #ffd60a; --pd-red: #ff453a; padding: 14px; border: 1px solid #3a3a44; border-radius: 14px; background: #17171c;
+.pd-stage { --pd-warn: #ffd60a; --pd-red: #ff453a; --pd-green: #34c759; --pd-amber: #ffcc00; --pd-hot: #ff453a; --pd-pick: #0a84ff;
+  position: relative; height: 460px; overflow: hidden; border: 1px solid #3a3a44; border-radius: 14px; background: #101014;
   box-shadow: 0 30px 80px rgba(0,0,0,.55), 0 0 0 6px rgba(255,255,255,.025); font: 13px/1.4 var(--sans); color: #e8e8ea; }
-.pd-fade { animation: pdFade 9s linear infinite; }
+.pd-layer { position: absolute; inset: 0; display: flex; flex-direction: column; padding: 16px; }
+
+/* Scene 1 + 2: the page Shell renders every second, and the dock that picks and records it. */
+.pd-page-layer { justify-content: center; gap: 18px; animation: pdPageLayer 16s linear infinite; }
+.pd-mockpage { display: flex; flex: 1; align-items: center; justify-content: center; }
+.pd-mock-shell { position: relative; width: 100%; max-width: 230px; padding: 14px 16px; border: 1px solid #3a3a44; border-radius: 10px;
+  background: #1a1a1f; animation: pdShellFlash 16s linear infinite; }
+.pd-mock-label { margin: 0 0 8px; font: 700 10px var(--mono); letter-spacing: .06em; color: #8a8a94; text-transform: uppercase; }
+.pd-mock-rows { display: flex; flex-direction: column; gap: 6px; margin: 0; padding: 0; list-style: none; font-size: 12.5px; color: #b9b9c2; }
+.pd-mock-rows b { color: #fff; font-weight: 600; }
+.pd-pickbox { position: absolute; inset: -5px; border: 2px solid var(--pd-pick); border-radius: 8px;
+  background: color-mix(in srgb, var(--pd-pick) 8%, transparent); opacity: 0; animation: pdPickBox 16s linear infinite; }
+.pd-picktag { position: absolute; left: -2px; top: -18px; background: var(--pd-pick); color: #fff; padding: 0 5px; border-radius: 3px 3px 0 0;
+  font: 11px var(--mono); white-space: nowrap; }
+
+.pd-dock { align-self: center; width: 100%; max-width: 260px; padding: 10px; border: 1px solid #3a3a44; border-radius: 10px; background: #17171c;
+  box-shadow: 0 10px 30px rgba(0,0,0,.4); }
+.pd-dock-head { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; font-weight: 600; font-size: 12px; }
+.pd-dock-head .mark { width: 14px; height: 14px; }
+.pd-dock-rows { position: relative; height: 26px; }
+.pd-dock-row { position: absolute; inset: 0; display: flex; align-items: center; gap: 6px; opacity: 0; }
+.pd-row-a { animation: pdRowA 16s linear infinite; }
+.pd-row-b { animation: pdRowB 16s linear infinite; }
+.pd-row-c { animation: pdRowC 16s linear infinite; }
+.pd-row-d { animation: pdRowD 16s linear infinite; }
+
+/* Scene 3: the report, its stats counted, its cause found. */
+.pd-report-layer { opacity: 0; animation: pdReportLayer 16s linear infinite; }
 .pd-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; font-weight: 600; }
 .pd-head .mark { width: 16px; height: 16px; margin-right: 6px; vertical-align: -3px; }
 .pd-opts { display: flex; align-items: center; gap: 10px; font-size: 11.5px; color: var(--muted); font-weight: 400; }
@@ -84,10 +116,16 @@ body { margin: 0; background: #131317; }
 .pd-collapse { display: grid; place-items: center; width: 18px; height: 18px; border: 1px solid #3a3a44; border-radius: 5px; font-style: normal; }
 
 .pd-buttons { display: flex; gap: 6px; margin-bottom: 12px; }
-.pd-btn, .pd-rec { display: flex; align-items: center; gap: 5px; padding: 6px 10px; border: 1px solid #3a3a44; border-radius: 8px;
-  font-size: 12px; background: #1d1d22; }
-.pd-rec { font-weight: 600; }
-.pd-dot { width: 8px; height: 8px; border-radius: 50%; background: #55555f; animation: pdRec 9s ease-in-out infinite; }
+.pd-b { display: flex; align-items: center; gap: 5px; padding: 6px 10px; border: 1px solid #3a3a44; border-radius: 8px;
+  font-size: 12px; font-weight: 600; background: #1d1d22; color: #e8e8ea; white-space: nowrap; }
+.pd-rec-b { color: var(--pd-red); }
+.pd-stop-b { color: #fff; background: #b3261e; border-color: #d0463c; }
+.pd-confirm-b { color: #fff; background: #3b6fe0; border-color: #4a7dff; }
+.pd-area-b { margin-left: auto; }
+.pd-pick-icon { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 1.2; stroke-linecap: round; }
+.pd-pulse-pick { animation: pdPickPulse 16s linear infinite; }
+.pd-pulse-rec { animation: pdRecPulse 16s linear infinite; }
+.pd-confirm-b { animation: pdConfirmFlash 16s linear infinite; }
 
 .pd-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; margin-bottom: 14px; }
 .pd-stat { padding: 8px 4px 8px 10px; border: 1px solid #3a3a44; border-radius: 8px; background: #1a1a1f; }
@@ -95,17 +133,17 @@ body { margin: 0; background: #131317; }
 .pd-stat span { font-size: 10.5px; color: var(--muted); }
 .pd-stat--warn { border-color: rgba(255, 214, 10, .4); }
 .pd-stat--warn b { color: var(--pd-warn); }
-.pd-num { counter-reset: pdnum var(--num); animation: pdCount 9s linear infinite; }
+.pd-num { counter-reset: pdnum var(--num); animation: pdCount 16s linear infinite; }
 .pd-num::before { content: counter(pdnum); }
 
 .pd-kicker { margin: 0 0 6px; font: 700 10px var(--mono); letter-spacing: .06em; color: #8a8a94; text-transform: uppercase; }
 .pd-card { padding: 10px; margin: 0 0 10px; border: 1px solid #3a3a44; border-radius: 10px; background: #1a1a1f; }
-.pd-card--main { animation: pdHighlight 9s ease-in-out infinite; }
+.pd-card--main { animation: pdHighlight 16s linear infinite; }
 .pd-card-top { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 12.5px; }
 .pd-chip { color: var(--muted); font-size: 11px; }
 .pd-warn-chip { padding: 1px 6px; border-radius: 5px; background: rgba(255, 214, 10, .16); color: var(--pd-warn); font-size: 11px; }
 .pd-loc { margin: 3px 0 6px; text-align: right; font: 11px var(--mono); color: #8a8a94; }
-.pd-reason { margin: 0; font-size: 11.5px; color: #9c9ca6; animation: pdReason 9s ease-out infinite; }
+.pd-reason { margin: 0; font-size: 11.5px; color: #9c9ca6; animation: pdReason 16s linear infinite; }
 .pd-tag { padding: 1px 6px; border-radius: 5px; background: rgba(10, 132, 255, .16); color: #4aa8ff; }
 .pd-indent { display: block; margin-top: 2px; padding-left: 14px; color: #67b7ff; font: 11px var(--mono); }
 
@@ -116,20 +154,47 @@ body { margin: 0; background: #131317; }
 .pd-zoom { display: flex; align-items: center; gap: 8px; padding-top: 8px; border-top: 1px solid #29292f; font-size: 11px; color: var(--muted); }
 .pd-zoom label { display: flex; align-items: center; gap: 4px; margin-left: auto; }
 
-@keyframes pdFade { 0%, 92% { opacity: 1; } 97% { opacity: .4; } 100% { opacity: 1; } }
-@keyframes pdRec { 0%, 9% { background: #55555f; box-shadow: none; } 13%, 100% { background: var(--pd-red); box-shadow: 0 0 0 4px rgba(255, 69, 58, .18); } }
-@keyframes pdCount { 0%, 10% { --num: 0; } 45%, 100% { --num: var(--target); } }
-@keyframes pdHighlight {
-  0%, 48% { border-color: #3a3a44; box-shadow: none; background: #1a1a1f; }
-  56% { border-color: var(--pd-warn); box-shadow: 0 0 0 3px rgba(255, 214, 10, .16); background: #22200f; }
-  70%, 100% { border-color: #3a3a44; box-shadow: none; background: #1a1a1f; }
+/* Scene 1: idle (Rec / Page load / Pick), then Pick is pressed. Rows swap in a quick blink, not a slow dissolve —
+   two rows' text overlapping mid-crossfade reads as a garble, so each handoff is one linear stop apart. */
+@keyframes pdRowA { 0%, 7% { opacity: 1; } 8%, 100% { opacity: 0; } }
+@keyframes pdPickPulse { 0%, 3% { box-shadow: none; } 5% { box-shadow: 0 0 0 3px color-mix(in srgb, var(--pd-pick) 35%, transparent); } 7%, 100% { box-shadow: none; } }
+/* Scene 1: the box + tag land on Shell, Cancel / Confirm replace the row, Confirm flashes. */
+@keyframes pdPickBox { 0%, 10% { opacity: 0; } 12%, 21% { opacity: 1; } 22%, 100% { opacity: 0; } }
+@keyframes pdRowB { 0%, 7% { opacity: 0; } 8%, 21% { opacity: 1; } 22%, 100% { opacity: 0; } }
+@keyframes pdConfirmFlash { 0%, 18% { filter: none; } 20% { filter: brightness(1.35); } 22%, 100% { filter: none; } }
+/* Scene 2: Shell is the area now, Rec is pressed and turns into Stop. */
+@keyframes pdRowC { 0%, 21% { opacity: 0; } 22%, 27% { opacity: 1; } 28%, 100% { opacity: 0; } }
+@keyframes pdRecPulse { 0%, 25% { box-shadow: none; } 27% { box-shadow: 0 0 0 3px color-mix(in srgb, var(--pd-red) 35%, transparent); } 29%, 100% { box-shadow: none; } }
+@keyframes pdRowD { 0%, 27% { opacity: 0; } 28%, 58% { opacity: 1; } 59%, 100% { opacity: 0; } }
+/* Scene 2: while recording, Shell flashes the way the real highlight does — green, then amber, then red. */
+@keyframes pdShellFlash {
+  0%, 31% { border-color: #3a3a44; box-shadow: none; }
+  34% { border-color: var(--pd-green); box-shadow: 0 0 0 2px var(--pd-green); }
+  38% { border-color: #3a3a44; box-shadow: none; }
+  42% { border-color: var(--pd-green); box-shadow: 0 0 0 2px var(--pd-green); }
+  46% { border-color: #3a3a44; box-shadow: none; }
+  50% { border-color: var(--pd-amber); box-shadow: 0 0 0 2px var(--pd-amber); }
+  54% { border-color: #3a3a44; box-shadow: none; }
+  57% { border-color: var(--pd-hot); box-shadow: 0 0 0 2px var(--pd-hot); }
+  60%, 100% { border-color: #3a3a44; box-shadow: none; }
 }
-@keyframes pdReason { 0%, 55% { opacity: 0; transform: translateY(4px); } 68%, 100% { opacity: 1; transform: translateY(0); } }
+/* Scenes 1+2 give way to scene 3: the page fades out, the report fades in over it. */
+@keyframes pdPageLayer { 0%, 58% { opacity: 1; } 63%, 97% { opacity: 0; } 100% { opacity: 1; } }
+@keyframes pdReportLayer { 0%, 60% { opacity: 0; } 65%, 95% { opacity: 1; } 100% { opacity: 0; } }
+/* Scene 3: the stats count up, the wasted Shell card flashes, then its cause line settles in. */
+@keyframes pdCount { 0%, 66% { --num: 0; } 78%, 100% { --num: var(--target); } }
+@keyframes pdHighlight {
+  0%, 78% { border-color: #3a3a44; box-shadow: none; background: #1a1a1f; }
+  85% { border-color: var(--pd-warn); box-shadow: 0 0 0 3px rgba(255, 214, 10, .16); background: #22200f; }
+  93%, 100% { border-color: #3a3a44; box-shadow: none; background: #1a1a1f; }
+}
+@keyframes pdReason { 0%, 82% { opacity: 0; transform: translateY(4px); } 91%, 100% { opacity: 1; transform: translateY(0); } }
 
-/* A still "after" frame instead of a loop: counted, highlighted, expanded, and left there. */
+/* A still "after" frame instead of a loop: the report only, counted, and left there. */
 @media (prefers-reduced-motion: reduce) {
-  .pd-fade, .pd-dot, .pd-num, .pd-card--main, .pd-reason { animation: none !important; }
-  .pd-dot { background: var(--pd-red); box-shadow: 0 0 0 4px rgba(255, 69, 58, .18); }
+  .pd-page-layer { display: none; }
+  .pd-report-layer, .pd-num, .pd-card--main, .pd-reason { animation: none !important; }
+  .pd-report-layer { opacity: 1; }
   .pd-num { --num: var(--target); }
   .pd-reason { opacity: 1; transform: none; }
 }
@@ -233,7 +298,8 @@ body { margin: 0; background: #131317; }
   .demo .agent, .demo .feature, .demo .steps > li { padding: 18px; }
   .demo .install { padding-left: 12px; }
   .demo .install code { font-size: 13px; }
-  .pd-panel { padding: 12px; font-size: 12px; }
+  .pd-stage { height: 420px; font-size: 12px; }
+  .pd-layer { padding: 12px; }
   .pd-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .pd-tl-row { font-size: 11px; }
   /* One column is long on a phone: the icon and the number sit beside the title, not above it. */
