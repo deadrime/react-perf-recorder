@@ -17,5 +17,5 @@
     "forceConsistentCasingInFileNames": true
   },
   "include": ["src", "test", "*.config.ts"],
-  "exclude": ["test/react-router"]
+  "exclude": ["test/react-router", "test/bundlers", "test/next"]
 }

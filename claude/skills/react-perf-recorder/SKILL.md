@@ -7,8 +7,9 @@ description: Record why a React app re-renders and read the recording — cascad
 
 A dev-only Vite plugin that records React re-renders from the page. Recordings land in a folder
 (`.agent-artifacts/perf-recorder`, or `REACT_PERF_RECORDER_DIR`) and this session reads them through the
-`react-perf-recorder` MCP server. `record_page` records a dev server without the plugin too, by putting the recorder
-into the page: its answer says `recorder: "injected"`, and its warning names what such a recording cannot show.
+`react-perf-recorder` MCP server. `record_page` records a dev server without the plugin too (Vite, webpack 5,
+Rsbuild, Next.js), by putting the recorder into the page: its answer says `recorder: "injected"`, and its warning names what
+such a recording cannot show.
 
 **Never write measured numbers into a file of the repository.** They are true for one machine and one moment;
 numbers belong in the answer.

@@ -20,3 +20,16 @@ test/.eval-plugin-*/
 # The React Router fixture: lockfile committed, install and generated types not
 test/react-router/node_modules
 test/react-router/.react-router
+
+# webpack and Rsbuild fixture: lockfile committed, install not
+test/bundlers/node_modules
+test/bundlers/dist
+
+# Next.js fixture: lockfile and tsconfig committed; install, builds and generated types not
+test/next/node_modules
+test/next/.next
+test/next/.next-webpack
+test/next/next-env.d.ts
+# written by `next dev` on its first run
+test/next/AGENTS.md
+test/next/CLAUDE.md

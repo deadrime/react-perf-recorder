@@ -27,6 +27,12 @@ arrow functions show as `Anonymous`, zustand stores without the `devtools` middl
 proxy-memoize is not seen. `inject: 'never'` records only through the plugin; `root` is the app's folder when it is
 not the working directory. With the plugin, nothing changes: nothing is put into the page.
 
+This works on a dev server of any bundler that serves the page's scripts with source maps: checked on Vite, webpack 5,
+Rsbuild and Next.js 16 (Turbopack and `--webpack`, app and pages router, recorded from the load with hydration). A chunk holds modules of the app and of packages alike, so the page is told whose code each of its lines
+is as the chunk loads. webpack's development default, `devtool: 'eval'`, gives no maps: the line of a hook or an
+element is found by what the transformed code calls there, in the module's file on disk. Next.js's dev overlay is a
+React root of its own and is left out.
+
 A page behind a sign-in: `record_page` through a signing link, else a session saved once by
 `react-perf-recorder login <url>`, else a browser you already have open (`cdp`).
 

@@ -27,8 +27,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # bare18/bare19: the same app with no plugin in its build, recorded by a recorder put in from outside.
-        project: [react18, react19, react-router, bare18, bare19]
+        # bare18/bare19: the same app with no plugin in its build, recorded by a recorder put in from outside;
+        # webpack, webpack-maps, rsbuild: test/bundlers, the same way; next, next-webpack: test/next.
+        project: [react18, react19, react-router, bare18, bare19, webpack, webpack-maps, rsbuild, next, next-webpack]
     env:
       E2E_PROJECT: ${{ matrix.project }}
     steps:
@@ -42,6 +43,10 @@ jobs:
       - run: npm ci --prefix test/react19
       # A framework that renders its own HTML: React Router, with the recorder from dist.
       - run: npm ci --prefix test/react-router
+      - if: startsWith(matrix.project, 'webpack') || matrix.project == 'rsbuild'
+        run: npm ci --prefix test/bundlers
+      - if: startsWith(matrix.project, 'next')
+        run: npm ci --prefix test/next
       # The e2e run loads what was built: engine.iife.js into a page, the CLI as an MCP server.
       - run: npm run build
       - id: playwright

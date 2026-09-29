@@ -422,8 +422,9 @@ export async function recordPage(options: RecordPageOptions, sessionsDir: string
       : null;
     if (catalog) {
       await page.addInitScript({ content: injectedScript({ projectRoot: root.replace(/\\/g, '/') }) });
-      // Every script's source map, as the page loads it: there is no dev server to ask for them afterwards.
-      await catalog.attach(await session());
+      // Every script's source map, as the page loads it: there is no dev server to ask for them afterwards, and the
+      // page learns whose code each line of a bundled chunk is.
+      await catalog.attach(await session(), { tables: true });
     }
     // A link that signs the browser in — `/debug/<jwt>`, a magic link — is opened first and is never recorded.
     if (options.via) await page.goto(options.via, { waitUntil: 'load' });
@@ -493,6 +494,7 @@ export async function recordPage(options: RecordPageOptions, sessionsDir: string
     // The plugin's recorder was there after all (a build made with it, no dev server to ask): it records as always.
     if (injected && (await page.evaluate<boolean>(`window[${JSON.stringify(INJECT_KEY)}]?.state === 'aside'`))) {
       injected = false;
+      await catalog?.release();
       catalog = null;
       delete (start.conditions as Record<string, unknown> | undefined)?.recorder;
     }

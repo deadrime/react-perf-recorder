@@ -27,8 +27,8 @@ export function receiveStores(global: string, register: (store: unknown, made: E
  * `.vite/deps/@xyflow_react.js`. `own` are the store library's packages, passed over on the way down.
  */
 export function storeOrigin(stack: string | undefined, own: string[]): string | null {
-  for (const { url } of parseStack(stack ?? '')) {
-    const pkg = libraryOf(url);
+  for (const { url, line } of parseStack(stack ?? '')) {
+    const pkg = libraryOf(url, line);
     // The app's code, or a linked package served by its path: the store is theirs, and the declaration names it.
     if (pkg === null) return null;
     if (pkg && pkg !== 'react-perf-recorder' && !own.includes(pkg)) return pkg;

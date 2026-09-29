@@ -13,6 +13,13 @@ export interface ModuleSource {
   root: string;
   publicDir?: string;
   getModuleByUrl(url: string): Promise<{ file?: string | null; transformResult?: { map?: unknown } | null } | undefined>;
+  /** No module graph (a page without the plugin): a frame's file by the maps the page loaded, or the bundler's own. */
+  position?(
+    url: string,
+    line: number,
+    column: number,
+    name?: string
+  ): Promise<{ file: string; line: number; column: number } | { package: string } | null>;
 }
 
 const packageOf = (rest: string) => {
@@ -95,6 +102,13 @@ async function resolveFrame(frame: CallFrame, server: ModuleSource, origin: { va
   }
   // The recorder as record_page puts it into a page without the plugin.
   if (url.protocol === 'react-perf-recorder:') return { name, package: 'react-perf-recorder', own: true };
+  const at = frame.lineNumber >= 0 ? await server.position?.(frame.url, frame.lineNumber + 1, frame.columnNumber, name) : null;
+  if (at && 'package' in at) return { name, package: at.package };
+  if (at) {
+    const out = classify(name, at.file.replace(/\\/g, '/'), at.line, server.root);
+    if (!name && out.package === null && at.line) out.name = declaredAt(at.file, at.line, at.column);
+    return out;
+  }
   if (!/^https?:$/.test(url.protocol)) return { name, package: `(${url.protocol.replace(/:$/, '')})` };
   // The page's own origin is the one most frames come from; another one is a CDN or a third-party script.
   origin.value ||= url.origin;
@@ -160,5 +174,5 @@ function classify(name: string, file: string, line: number, root: string): Resol
     const pkg = deps ? (deps.startsWith('chunk-') ? '(vite deps)' : packageOf(deps.replace(/_/g, '/'))) : packageOf(rest);
     return pkg === 'react-perf-recorder' ? { name, package: pkg, own: true } : { name, package: pkg };
   }
-  return { name, site: `${path.relative(root, file).replace(/\\/g, '/')}:${line}`, package: null };
+  return { name, site: `${path.relative(root, file).replace(/\\/g, '/')}${line ? `:${line}` : ''}`, package: null };
 }
