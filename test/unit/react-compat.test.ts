@@ -102,3 +102,18 @@ describe('lane labels on React 18', () => {
     expect(laneLabel(1 << 21)).toBe('Transition');
   });
 });
+
+describe('lane labels on React 19', () => {
+  it('reads the lane a hydration commit takes as TransitionHydration, and the one below it as Gesture', async () => {
+    // The renderer tells the version: it is known once react-dom has loaded.
+    const { version } = await import('react-dom');
+    await import('react-dom/client');
+    const { laneLabel } = await import('../../src/core/react-compat');
+    if (!version.startsWith('19')) return;
+    // React Router hydrates in a transition: 128 on 19.1 through 19.3, with GestureLane at 64.
+    expect(laneLabel(128)).toBe('TransitionHydration');
+    expect(laneLabel(64)).toBe('Gesture');
+    expect(laneLabel(256)).toBe('Transition');
+    expect(laneLabel(2)).toBe('Sync');
+  });
+});
