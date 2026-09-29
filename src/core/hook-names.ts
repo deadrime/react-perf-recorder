@@ -1,5 +1,5 @@
 import type { HookInfo } from '../shared/schema';
-import { Tag, renderer, type Fiber, type Hook } from './fiber';
+import { Tag, dispatcherRefs, type Fiber, type Hook } from './fiber';
 import { hookTypeAt } from './reasons';
 import { libraryOf, parseStack } from './stack';
 
@@ -31,8 +31,8 @@ export interface InspectedHooks {
 
 export function inspectHooks(fiber: Fiber): InspectedHooks | null {
   const render = renderFunctionOf(fiber);
-  const ref = renderer()?.currentDispatcherRef as { current?: unknown; H?: unknown } | undefined;
-  if (!render || !ref) return null;
+  const refs = dispatcherRefs();
+  if (!render || !refs.length) return null;
   const log: LoggedHook[] = [];
   let hook = fiber.memoizedState as Hook | null;
   let index = 0;
@@ -174,10 +174,13 @@ export function inspectHooks(fiber: Fiber): InspectedHooks | null {
   const errorCtor = Error as ErrorConstructor & { stackTraceLimit?: number };
   const stackLimit = errorCtor.stackTraceLimit;
   errorCtor.stackTraceLimit = 100;
-  const useH = ref.H !== undefined || !('current' in ref);
-  const previous = useH ? ref.H : ref.current;
-  if (useH) ref.H = dispatcher;
-  else ref.current = dispatcher;
+  const swaps = refs.map((ref) => {
+    const useH = ref.H !== undefined || !('current' in ref);
+    const previous = useH ? ref.H : ref.current;
+    if (useH) ref.H = dispatcher;
+    else ref.current = dispatcher;
+    return () => (useH ? (ref.H = previous) : (ref.current = previous));
+  });
   const props = fiber.memoizedProps;
   const second = fiber.tag === Tag.ForwardRef ? (fiber as Fiber & { ref?: unknown }).ref ?? null : undefined;
   const marker = {
@@ -190,8 +193,7 @@ export function inspectHooks(fiber: Fiber): InspectedHooks | null {
   } catch {
     // The stand-in values can make a component throw halfway; hooks logged so far are still valid.
   } finally {
-    if (useH) ref.H = previous;
-    else ref.current = previous;
+    swaps.forEach((restore) => restore());
     restoreContexts();
     errorCtor.stackTraceLimit = stackLimit;
   }

@@ -252,6 +252,9 @@ export class ScriptCatalog {
     const name = rel ?? (abs ? path.relative(this.options.root, abs).replace(/\\/g, '/') : undefined);
     if (file) return siteOnDisk(this.options.root, file, pos.line, hooks, name);
     if (!name) return null;
+    // A package's own map may name a file it never shipped (Next.js's, through webpack): its module is what there is.
+    const module = sourcePath(url).rel;
+    if (module?.includes('node_modules/') && !name.includes('node_modules/')) return { site: module };
     // Not on this disk: the map may carry the source itself.
     const index = loaded.trace.resolvedSources.indexOf(pos.source);
     const content = index >= 0 ? loaded.trace.sourcesContent?.[index] : null;

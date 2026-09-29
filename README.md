@@ -6,7 +6,7 @@ the keys it changed, the props that broke `memo` — and an agent reads the same
 
 It runs only in the Vite dev server and never ships to a build: a Vite app, or a framework on Vite that renders its own
 HTML, such as React Router. React 18.2+ and 19.1+. An agent can also record an app without the plugin, on Vite,
-webpack 5 or Rsbuild, with less in the recording ([MCP](docs/mcp.md)).
+webpack 5, Rsbuild or Next.js, with less in the recording ([MCP](docs/mcp.md)).
 
 ## Install
 

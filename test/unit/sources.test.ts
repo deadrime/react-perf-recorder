@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { TraceMap } from '@jridgewell/trace-mapping';
-import { relativeFile } from '../../src/core/fiber';
+import { isDevOverlay, relativeFile } from '../../src/core/fiber';
 import { libraryOf, originOf, servedPath } from '../../src/core/stack';
 import { healthUrls } from '../../src/mcp/record';
 import { SCRIPTS_KEY } from '../../src/shared/inject';
@@ -104,6 +104,24 @@ describe('source maps without a dev server plugin', () => {
     // Babel 7 and swc write the element's line into the call.
     const swc = 'x = (0,jsx_dev_runtime.jsxDEV)("li", {}, void 0, false, { fileName: "a.tsx", lineNumber: 42, columnNumber: 3 }, this);';
     expect(lineByText(swc, 1, swc.indexOf(')("li"') + 2, original)).toBe(42);
+  });
+  it('names a package’s module when its own map points at a file it never shipped', async () => {
+    const map = { version: 3 as const, sources: ['/nowhere/src/client/components/layout-router.tsx'], names: [], mappings: 'AAEE' };
+    const catalog = new ScriptCatalog({ root: os.tmpdir(), fetchText: async () => null });
+    const url = 'webpack-internal:///(app-pages-browser)/./node_modules/next/dist/client/components/layout-router.js';
+    catalog.noteScript(url, `data:application/json;base64,${Buffer.from(JSON.stringify(map)).toString('base64')}`);
+    expect(await catalog.mapSite(url, 1, 1)).toEqual({ site: 'node_modules/next/dist/client/components/layout-router.js' });
+  });
+
+  it('tells Next.js’s dev overlay from the app', () => {
+    const portal = document.createElement('nextjs-portal');
+    document.body.append(portal);
+    const inside = document.createElement('div');
+    portal.attachShadow({ mode: 'open' }).append(inside);
+    expect(isDevOverlay(portal)).toBe(true);
+    expect(isDevOverlay(inside)).toBe(true);
+    expect(isDevOverlay(document)).toBe(false);
+    portal.remove();
   });
 });
 

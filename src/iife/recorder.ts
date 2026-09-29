@@ -1,5 +1,5 @@
 import { boot, type ClientConfig } from '../client';
-import { captureRenderers, type FiberRoot } from '../core/fiber';
+import { captureRenderers, isDevOverlay, type FiberRoot } from '../core/fiber';
 import { noteRoot } from '../core/roots-notify';
 import reactQuery from '../plugins/react-query/runtime';
 import redux from '../plugins/redux/runtime';
@@ -12,6 +12,7 @@ declare const __VERSION__: string;
 type Hook = {
   inject?: (renderer: unknown) => number;
   onScheduleFiberRoot?: (id: number, root: FiberRoot, children: unknown) => void;
+  onCommitFiberRoot?: (id: number, root: FiberRoot, ...rest: unknown[]) => void;
 };
 
 /**
@@ -61,15 +62,40 @@ function install() {
       settle();
       return inject.call(this, renderer);
     }, inject);
-  // No proxy of react-dom/client tells of a new root: React tells the DevTools hook as the root is first rendered.
+  // No proxy of react-dom/client tells of a new root: React tells the DevTools hook as the root is first rendered,
+  // and of a hydrated one (hydrateRoot(document) in Next.js) only once it has committed.
   const seen = new WeakSet<FiberRoot>();
+  const note = (root: FiberRoot | undefined) => {
+    if (state !== 'booted' || !root || seen.has(root)) return;
+    // An overlay's container may not be in its portal yet when its root first renders: its commit tells.
+    if (!(root.containerInfo as Node | undefined)?.isConnected) return;
+    seen.add(root);
+    if (!isDevOverlay(root.containerInfo as Node)) noteRoot({ _internalRoot: root });
+  };
   const schedule = hook.onScheduleFiberRoot;
   hook.onScheduleFiberRoot = function (this: unknown, id, root, children) {
-    if (state === 'booted' && root && !seen.has(root)) {
-      seen.add(root);
-      noteRoot({ _internalRoot: root });
-    }
+    note(root);
     return schedule?.call(this, id, root, children);
+  };
+  const commit = hook.onCommitFiberRoot;
+  hook.onCommitFiberRoot = function (this: unknown, id, root, ...rest) {
+    note(root);
+    return commit?.call(this, id, root, ...rest);
+  };
+  // React marks a root's container just before it listens there for events, and hydrateRoot tells the hook nothing
+  // until it commits: a recording from the load would start after the hydration it is about.
+  const listen = EventTarget.prototype.addEventListener;
+  EventTarget.prototype.addEventListener = function (
+    this: EventTarget,
+    type: string,
+    ...rest: [EventListenerOrEventListenerObject | null, (boolean | AddEventListenerOptions)?]
+  ) {
+    if (type === 'click' && state === 'booted') {
+      const key = Object.keys(this).find((k) => k.startsWith('__reactContainer$'));
+      const fiber = key ? (this as unknown as Record<string, { stateNode?: FiberRoot } | undefined>)[key] : undefined;
+      if (fiber?.stateNode) note(fiber.stateNode);
+    }
+    return listen.call(this, type, ...rest);
   };
   // A page with no React on it still gets an engine, so record_page can say so rather than wait for one.
   window.addEventListener('load', settle, { once: true });

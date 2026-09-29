@@ -2,7 +2,16 @@ import { contextOf, isConsumerTag, isProviderTag, shownSiteOf, siteOf } from './
 import { mappedSite } from './sites';
 import { libraryOf, moduleIdPath, sourceAt } from './stack';
 
-export { captureRenderers, devtoolsHookAtLoad, laneLabel, reactVersion, renderer, sourcesUnavailable, type Renderer } from './react-compat';
+export {
+  captureRenderers,
+  devtoolsHookAtLoad,
+  dispatcherRefs,
+  laneLabel,
+  reactVersion,
+  renderer,
+  sourcesUnavailable,
+  type Renderer,
+} from './react-compat';
 export { onSitesMapped, setSiteMapper, type Position, type SiteMapper } from './sites';
 
 export interface Hook {
@@ -238,6 +247,12 @@ export function registerRoot(root: FiberRoot) {
   created.add(new WeakRef(root));
 }
 
+/** A framework's own dev overlay, a React root of its own: Next.js renders its into `<nextjs-portal>`. */
+export function isDevOverlay(container: Node | null | undefined): boolean {
+  const host = (container?.getRootNode?.() as ShadowRoot | undefined)?.host;
+  return (container as Element | null)?.localName === 'nextjs-portal' || host?.localName === 'nextjs-portal';
+}
+
 /** React roots mounted in the page: the ones the app created, then `#root`, children of body and their children. */
 export function findRoots(doc: Document = document): FiberRoot[] {
   const roots = new Set<FiberRoot>();
@@ -252,7 +267,7 @@ export function findRoots(doc: Document = document): FiberRoot[] {
     if (!el) continue;
     const key = Object.keys(el).find((k) => k.startsWith('__reactContainer$'));
     const container = key ? (el as unknown as Record<string, Fiber | undefined>)[key] : undefined;
-    if (container?.stateNode) roots.add(container.stateNode as FiberRoot);
+    if (container?.stateNode && !isDevOverlay(el)) roots.add(container.stateNode as FiberRoot);
   }
   return [...roots];
 }

@@ -246,6 +246,17 @@ export function renderer(): Renderer | null {
   return knownRenderers().find((r) => r.currentDispatcherRef) ?? null;
 }
 
+/** Every React's dispatcher: a page may carry two (Next.js has its dev overlay's own), a component calls its own. */
+export function dispatcherRefs(): Array<{ current?: unknown; H?: unknown }> {
+  return [
+    ...new Set(
+      knownRenderers()
+        .map((r) => r.currentDispatcherRef)
+        .filter(Boolean)
+    ),
+  ] as Array<{ current?: unknown; H?: unknown }>;
+}
+
 function majorVersion(): number {
   return Number.parseInt(reactVersion() ?? '', 10) || 0;
 }
