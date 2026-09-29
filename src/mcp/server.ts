@@ -354,7 +354,7 @@ export function createServer(dir: string) {
     {
       description:
         'Use when you drive the page yourself: nobody can reproduce it in their browser, a scenario has to run the same way twice, or a fix has to be measured. When the person can reproduce it, their own recording (wait_for_recording) is worth more. ' +
-        "Records a page in a browser of its own and returns the session id with its totals and the roots whose renders mostly change nothing (wasting), so a fix can be measured: record, change the code, record again with the same arguments, then compare_recordings. Needs the dev server running with the Vite plugin and playwright installed in the project. A scenario of clicks and typing goes in a script module, or replay does again what a recording did — the person's own clicks and typing, at their pace, from the page load; replay does not wait for data, so a scenario whose actions wait on requests needs a script. Without either it records ms of the page as it is, and fromLoad records the page load itself. Behind a sign-in: via (a link that signs in), then a session saved once by `react-perf-recorder login <url>`, then cdp; a page that redirects to a login says so. Outlines are off in these runs. A run that outlasts the client's time limit (about a minute) keeps recording in the page: list_recordings shows it as recording until it ends — keep a script well under a minute.",
+        "Records a page in a browser of its own and returns the session id with its totals and the roots whose renders mostly change nothing (wasting), so a fix can be measured: record, change the code, record again with the same arguments, then compare_recordings. Needs a running dev server with React's development build and playwright installed in the project. With the Vite plugin on the dev server the recording is complete; without it record_page puts the recorder into the page itself — recorder: \"injected\" in the answer, and a warning says what such a recording lacks. A scenario of clicks and typing goes in a script module, or replay does again what a recording did — the person's own clicks and typing, at their pace, from the page load; replay does not wait for data, so a scenario whose actions wait on requests needs a script. Without either it records ms of the page as it is, and fromLoad records the page load itself. Behind a sign-in: via (a link that signs in), then a session saved once by `react-perf-recorder login <url>`, then cdp; a page that redirects to a login says so. Outlines are off in these runs. A run that outlasts the client's time limit (about a minute) keeps recording in the page: list_recordings shows it as recording until it ends — keep a script well under a minute.",
       inputSchema: {
         url: z
           .string()
@@ -427,6 +427,16 @@ export function createServer(dir: string) {
           .string()
           .optional()
           .describe('A url to open first that signs the browser in — a debug or magic link. It is not recorded, and its token is never stored.'),
+        inject: z
+          .enum(['auto', 'always', 'never'])
+          .optional()
+          .describe('auto (default): put the recorder into the page when the dev server has no Vite plugin. never: record only through the plugin.'),
+        root: z
+          .string()
+          .optional()
+          .describe(
+            "The app's folder, when it is not the working directory (a monorepo): file names and source lines without the plugin are read from it."
+          ),
       },
     },
     async ({ replay, ...args }) => {

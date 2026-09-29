@@ -76,7 +76,11 @@ export function nameStore(store: unknown, name: string) {
 
 const storeName = (api: StoreApi) => names.get(api.getState);
 
-export default definePlugin((options: { devtools?: boolean } | null) => {
+/**
+ * `untracked`: the stores were not rewritten at build time (record_page put the recorder in without the plugin), so a
+ * devtools action is the only word of an update and becomes a cause of its own.
+ */
+export default definePlugin((options: { devtools?: boolean; untracked?: boolean } | null) => {
   const unsubscribes: Array<() => void> = [];
   const counts = new Map<string, number>();
   let ctx: PluginContext | null = null;
@@ -93,6 +97,10 @@ export default definePlugin((options: { devtools?: boolean } | null) => {
         // `set()` without a name reaches devtools as `anonymous`: keep `<store>.setState`, its keys say more.
         if (event && type && type !== 'anonymous') {
           event.type = type;
+          actions++;
+        } else if (!event && options?.untracked && type) {
+          // Sent after the store told its subscribers: React already knows which components it woke.
+          ctx.emitCause({ type: type === 'anonymous' ? 'setState' : type, aim: true });
           actions++;
         }
       });

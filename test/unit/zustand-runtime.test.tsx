@@ -43,6 +43,31 @@ describe('zustand plugin runtime', () => {
     });
   });
 
+  it('without the build rewriting its stores, a devtools action is a cause only when asked for', () => {
+    const makeStore = () =>
+      create<{ n: number; inc(): void }>()(
+        devtools((set) => ({ n: 0, inc: () => set((s) => ({ n: s.n + 1 }), false, 'counter/inc') }), { enabled: true })
+      );
+    const session = { scope: null, findFibers: () => [] };
+    // With the plugin every store is rewritten: one it did not rewrite stays out, as it always has.
+    const tracked = new PluginHost([[plugin, null]]);
+    tracked.setupAll();
+    const quiet = makeStore();
+    tracked.start(session, performance.now());
+    quiet.getState().inc();
+    expect(tracked.drain()).toEqual([]);
+    tracked.stop(session);
+    delete (window as unknown as Record<string, unknown>).__REDUX_DEVTOOLS_EXTENSION__;
+    // Put into a page from outside, nothing was rewritten: the action name is all there is.
+    const untracked = new PluginHost([[plugin, { untracked: true }]]);
+    untracked.setupAll();
+    const store = makeStore();
+    untracked.start(session, performance.now());
+    store.getState().inc();
+    expect(untracked.drain()).toEqual([expect.objectContaining({ plugin: 'zustand', type: 'counter/inc' })]);
+    untracked.stop(session);
+  });
+
   it('labels stores without devtools and useShallow selectors', () => {
     const host = new PluginHost([[plugin, null]]);
     host.setupAll();

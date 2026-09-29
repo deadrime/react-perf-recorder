@@ -65,6 +65,8 @@ async function main() {
         ...(flag('state') ? { state: flag('state') } : {}),
         ...(flag('cdp') ? { cdp: flag('cdp') } : {}),
         ...(flag('via') ? { via: flag('via') } : {}),
+        ...(flag('inject') ? { inject: flag('inject') as 'auto' | 'always' | 'never' } : {}),
+        ...(flag('root') ? { root: flag('root') } : {}),
         fromLoad: args.includes('--from-load'),
         headed: args.includes('--headed'),
       },
@@ -120,7 +122,9 @@ async function main() {
   pull    wait for the next finished recording and print its summary  [--timeout ms]
   record  record a page in a browser of its own  <url> [--ms 3000] [--label x] [--scope json] [--watch A,B]
           [--script f.mjs] [--from-load] [--viewport 1280x800] [--throttle 4] [--cpu] [--cpu-profile] [--state file] [--cdp url] [--via url] [--headed]
+          [--inject auto|always|never] [--root dir]
           --cpu profiles the CPU as well (show --section cpu); --cpu-profile also keeps cpu.cpuprofile for DevTools
+          without the Vite plugin on the dev server the recorder is put into the page; --root is the app's folder then
   login   keep a session for later recordings  <url> [--state file] [--for <selector> | --wait <ms>]
           without --for/--wait it opens a real browser and waits for you to sign in and press Enter
 

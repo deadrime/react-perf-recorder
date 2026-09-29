@@ -27,7 +27,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        project: [react18, react19, react-router]
+        # bare18/bare19: the same app with no plugin in its build, recorded by a recorder put in from outside.
+        project: [react18, react19, react-router, bare18, bare19]
     env:
       E2E_PROJECT: ${{ matrix.project }}
     steps:
