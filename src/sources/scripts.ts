@@ -94,6 +94,7 @@ export class ScriptCatalog {
   private scriptIds = new Map<string, string>();
   private texts = new Map<string, Promise<string | null>>();
   private cdp: CdpLike | null = null;
+  private instrumentation: string | null = null;
 
   constructor(private options: ScriptCatalogOptions) {}
 
@@ -110,12 +111,23 @@ export class ScriptCatalog {
     // The debugger is on now, so the page's own `debugger;` would stop it for good.
     cdp.on('Debugger.paused', (e) => void this.paused(cdp, e, tables));
     await cdp.send('Debugger.enable');
-    if (tables) await cdp.send('Debugger.setInstrumentationBreakpoint', { instrumentation: 'beforeScriptWithSourceMapExecution' });
+    if (tables) {
+      const set = (await cdp.send('Debugger.setInstrumentationBreakpoint', { instrumentation: 'beforeScriptWithSourceMapExecution' })) as {
+        breakpointId?: string;
+      };
+      this.instrumentation = set?.breakpointId ?? null;
+    }
   }
 
   private async paused(cdp: CdpLike, e: Paused, tables: boolean) {
     try {
       const url = e.data?.url;
+      // webpack's `eval` modules name their own files, and each pauses deep in the module loader: ~80 ms apiece.
+      if (e.reason === 'instrumentation' && url && !/^https?:/.test(url) && this.instrumentation) {
+        const breakpointId = this.instrumentation;
+        this.instrumentation = null;
+        await cdp.send('Debugger.removeBreakpoint', { breakpointId }).catch(() => {});
+      }
       if (tables && e.reason === 'instrumentation' && url && e.data?.sourceMapURL && /^https?:/.test(url)) {
         this.noteScript(url, e.data.sourceMapURL);
         const loaded = await this.mapOf(url);
