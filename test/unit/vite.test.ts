@@ -137,6 +137,34 @@ describe('perfRecorder vite plugin', () => {
     expect(fromLib?.id.startsWith('\0')).toBe(false);
   });
 
+  it('without HTML of its own, the module that creates the root imports the entry first, and the server is left alone', async () => {
+    // React Router renders the page itself and never asks for transformIndexHtml.
+    const [core] = perfRecorder({ plugins: [zustand()] }) as Array<{ transform: Function; resolveId: Function }>;
+    const entry = 'import { hydrateRoot } from "react-dom/client";\nhydrateRoot(document, null);';
+    const framework = path.resolve('node_modules/@react-router/dev/dist/config/defaults/entry.client.tsx');
+    const out = core.transform.call({}, entry, framework)?.code as string;
+    expect(
+      out.startsWith('import "virtual:react-perf-recorder/entry";import { hydrateRoot } from "\0react-perf-recorder:core:react-dom/client"')
+    ).toBe(true);
+    // Not one line of the module moves: its source map still holds.
+    expect(out.split('\n')).toHaveLength(2);
+    // Code outside src/ is the app's too: React Router keeps it in app/.
+    expect(core.transform.call({}, entry, path.resolve('app/entry.client.tsx'))?.code).toContain('virtual:react-perf-recorder/entry');
+    // A package's built code keeps the original.
+    expect(core.transform.call({}, entry, path.resolve('node_modules/some-lib/dist/index.js'))).toBeNull();
+    // Server rendering: Vite 5 says so in the options, Vite 6+ in the environment.
+    expect(core.transform.call({}, entry, framework, { ssr: true })).toBeNull();
+    expect(core.transform.call({ environment: { config: { consumer: 'server' } } }, entry, framework)).toBeNull();
+    expect(core.resolveId.call({}, 'react-dom/client', path.resolve('app/root.tsx'), { ssr: true })).toBeNull();
+  });
+
+  it('proxies no store on the server: a page rendered there never loads the runtime', async () => {
+    const app = path.join(fixture, 'src/store/selectors.ts');
+    expect((await server.pluginContainer.resolveId('zustand', app, { ssr: true }))?.id.startsWith('\0')).toBe(false);
+    const store = await server.transformRequest('/src/store/chat.ts', { ssr: true });
+    expect(store?.code).not.toContain('__rprNameStore');
+  });
+
   it('names selectors, stores and memo components', async () => {
     const selectors = await server.transformRequest('/src/store/selectors.ts');
     expect(selectors?.code).toContain('__rprNameMemoized(selectMessageIds, "selectMessageIds", "src/store/selectors.ts")');

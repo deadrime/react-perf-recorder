@@ -62,7 +62,7 @@ export function redux(options: ReduxOptions = {}): PerfRecorderPlugin {
   const functions = options.functions ?? ['configureStore', 'createStore', 'legacy_createStore'];
   let context: BuildContext | null = null;
   const root = () => context?.root() ?? process.cwd();
-  const filter = createFilter(root, options.include ?? ['src/**/*.{ts,tsx,js,jsx}'], options.exclude);
+  const filter = createFilter(root, options.include ?? ['**/*.{ts,tsx,js,jsx}'], options.exclude);
   return {
     name: 'redux',
     init: (ctx) => void (context = ctx),

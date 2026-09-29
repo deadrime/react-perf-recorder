@@ -15,7 +15,9 @@ what is under test.
 `npm run fixture` opens it by hand on http://localhost:5391; `npm run dev:pages` serves it as the project's site,
 under `/react-perf-recorder/` on http://localhost:5393, and `npm run build:pages` builds that site into `dist-pages`. Playwright starts its own copies of the server on 5391
 (React 18) and 5392 (React 19): stop yours first, or move the tests with `FIXTURE_PORT` / `FIXTURE_PORT_19`.
-`E2E_PROJECT=react18` runs one version only.
+`E2E_PROJECT=react18` runs one version only. The `react-router` project serves `test/react-router`, a React Router
+app in framework mode, with `react-router dev` on 5394 (`FIXTURE_PORT_RR`); it loads the recorder from `dist`, so
+`npm run build` first, and `npm ci --prefix test/react-router` once.
 
 `react-perf-recorder mcp --reload` restarts the MCP server whenever the CLI is rebuilt, for working on the server
 from a checkout.

@@ -9,7 +9,7 @@ import { addComponentNames, DEFAULT_WRAPPERS, type ComponentNamesOptions } from 
 import { ENTRY_ID, entryCode, RESOLVED_ENTRY_ID, runtimeSpecifier } from './entry';
 import type { Statement } from '@babel/types';
 import { optimizeDepsFor, transformServedDep } from './helpers/dep-transform';
-import { createFilter } from './helpers/filter';
+import { cleanId, createFilter } from './helpers/filter';
 import { memoDepsAt, memoDepsInHook } from './helpers/hook-deps';
 import { parseModule } from './helpers/name-declarations';
 import { proxyModule } from './helpers/proxy-module';
@@ -59,6 +59,17 @@ function resolvable(specifier: string, root = process.cwd()): boolean {
 }
 
 const DEFAULT_WRAPPER_PATTERN = '^(Anonymous|ForwardRef|Memo)$';
+
+type HookOptions = { ssr?: boolean } | undefined;
+
+/** A module run by the server, as an SSR framework renders its pages: the recorder is for the browser only. */
+function onServer(context: unknown, options: HookOptions): boolean {
+  if (options?.ssr) return true;
+  return (context as { environment?: { config?: { consumer?: string } } } | undefined)?.environment?.config?.consumer === 'server';
+}
+
+/** Frameworks ship their default client entry as source (React Router's `entry.client.tsx`); packages ship built JS. */
+const SOURCE_IN_PACKAGE = /\/node_modules\/(?!\.vite\/).+\.[jt]sx$/;
 
 export function resolveOutDir(root: string, outDir: string | undefined): string {
   const dir = outDir ?? process.env.REACT_PERF_RECORDER_DIR ?? '.agent-artifacts/perf-recorder';
@@ -155,14 +166,17 @@ export function perfRecorder(options: PerfRecorderOptions = {}): VitePluginLike[
   const apply = (_: unknown, env: { command: string; mode: string }) =>
     options.enabled ?? (env.command === 'serve' && !process.env.VITEST && env.mode !== 'test');
   const components = options.components === false ? null : options.components ?? {};
-  const componentFilter = createFilter(() => root, components?.include ?? ['src/**/*.{tsx,jsx}'], components?.exclude);
+  const componentFilter = createFilter(() => root, components?.include ?? ['**/*.{tsx,jsx}'], components?.exclude);
   const wrapperPattern = components?.wrapperPattern ?? DEFAULT_WRAPPER_PATTERN;
   // Recording from the page load has to start before the first commit, and a root exists as soon as createRoot
   // returns; the app's own import of react-dom/client goes through a proxy that says so.
-  const appFilter = createFilter(() => root, ['src/**/*.{ts,tsx,js,jsx}']);
+  const appFilter = createFilter(() => root, ['**/*.{ts,tsx,js,jsx}']);
+  const clientEntry = (id: string | undefined) => appFilter(id) || (!!id && !id.startsWith('\0') && SOURCE_IN_PACKAGE.test(cleanId(id)));
+  // Set once the page's HTML went through Vite; an SSR framework renders its own and never asks.
+  let htmlEntry = false;
   const rootProxy = proxyModule('core', {
     source: 'react-dom/client',
-    importer: appFilter,
+    importer: clientEntry,
     code: () =>
       [
         // Named exports only: react-dom/client is interop'd from CJS, and `export *` would lose them.
@@ -222,7 +236,10 @@ export function perfRecorder(options: PerfRecorderOptions = {}): VitePluginLike[
       base = config.base;
       serving = config.command === 'serve';
     },
-    resolveId: (id, importer) => (id === ENTRY_ID ? RESOLVED_ENTRY_ID : rootProxy.resolveId(id, importer)),
+    resolveId(id, importer, opts) {
+      if (id === ENTRY_ID) return RESOLVED_ENTRY_ID;
+      return onServer(this, opts) ? null : rootProxy.resolveId(id, importer);
+    },
     load(id) {
       const proxied = rootProxy.load(id);
       if (proxied) return proxied;
@@ -232,10 +249,14 @@ export function perfRecorder(options: PerfRecorderOptions = {}): VitePluginLike[
         .map((p) => ({ module: runtimeSpecifier(p.runtime!.module, root), options: p.runtime!.options }));
       return entryCode('react-perf-recorder/client', clientConfig(), runtimes);
     },
-    transform(code, id) {
+    transform(code, id, opts) {
+      if (onServer(this, opts)) return null;
       // Rewritten rather than intercepted at resolve: when the app aliases `react-dom`, the optimizer answers first
       // and the root would quietly stop announcing itself.
-      const rewritten = appFilter(id) ? rootProxy.rewrite(code) : null;
+      let rewritten = clientEntry(id) ? rootProxy.rewrite(code) : null;
+      // No HTML to put the entry in: the module that creates the root imports it first, on its first line so no
+      // line of the module moves.
+      if (rewritten && !htmlEntry) rewritten = `import ${JSON.stringify(ENTRY_ID)};${rewritten}`;
       if (!components || !componentFilter(id)) return rewritten ? { code: rewritten, map: null } : null;
       const named = addComponentNames(rewritten ?? code, components.wrappers ?? DEFAULT_WRAPPERS, id);
       return named ? { code: named, map: null } : rewritten ? { code: rewritten, map: null } : null;
@@ -244,7 +265,10 @@ export function perfRecorder(options: PerfRecorderOptions = {}): VitePluginLike[
     // reads the page's scripts; a build bundles the module from its id, and only for such a tag.
     transformIndexHtml: {
       order: 'pre',
-      handler: () => [{ tag: 'script', attrs: { type: 'module', src: serving ? `/@id/${ENTRY_ID}` : ENTRY_ID }, injectTo: 'head-prepend' }],
+      handler: () => {
+        htmlEntry = true;
+        return [{ tag: 'script', attrs: { type: 'module', src: serving ? `/@id/${ENTRY_ID}` : ENTRY_ID }, injectTo: 'head-prepend' as const }];
+      },
     },
     configureServer(server) {
       const dir = resolveOutDir(root, options.outDir);
@@ -291,11 +315,18 @@ export function perfRecorder(options: PerfRecorderOptions = {}): VitePluginLike[
               },
             }
           : {}),
-        ...(resolveId ? { resolveId: (source, importer) => resolveId(source, importer) ?? null } : {}),
+        ...(resolveId
+          ? {
+              resolveId(source, importer, opts) {
+                return onServer(this, opts) ? null : resolveId(source, importer) ?? null;
+              },
+            }
+          : {}),
         ...(load ? { load: (id) => load(id) ?? null } : {}),
         ...(transform || transformDep
           ? {
-              transform(code, id) {
+              transform(code, id, opts) {
+                if (onServer(this, opts)) return null;
                 const depCode = transformDep && transformServedDep(transformDep, code, id);
                 if (depCode != null) return { code: depCode, map: null };
                 return transform?.(code, id) ?? null;

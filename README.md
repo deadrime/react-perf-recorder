@@ -4,7 +4,8 @@ Record why a React app re-renders, from the page itself: press **Rec**, use the 
 names the component that started each render cascade and why — the hook and its line of code, the store action and
 the keys it changed, the props that broke `memo` — and an agent reads the same recordings through an MCP server.
 
-It runs only in the Vite dev server and never ships to a build. React 18.2+ and 19.1+.
+It runs only in the Vite dev server and never ships to a build: a Vite app, or a framework on Vite that renders its own
+HTML, such as React Router. React 18.2+ and 19.1+.
 
 ## Install
 

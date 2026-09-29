@@ -27,7 +27,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        project: [react18, react19]
+        project: [react18, react19, react-router]
     env:
       E2E_PROJECT: ${{ matrix.project }}
     steps:
@@ -39,6 +39,8 @@ jobs:
       - run: npm ci
       # React 19 lives in a tree of its own; its fixture is served from there.
       - run: npm ci --prefix test/react19
+      # A framework that renders its own HTML: React Router, with the recorder from dist.
+      - run: npm ci --prefix test/react-router
       # The e2e run loads what was built: engine.iife.js into a page, the CLI as an MCP server.
       - run: npm run build
       - id: playwright
