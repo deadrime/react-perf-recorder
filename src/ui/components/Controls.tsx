@@ -111,7 +111,7 @@ export function Controls({ p }: { p: PanelViewProps }): JSX.Element {
   );
 }
 
-/** What Esc and Enter do, as buttons: a phone has no keys. Stepping out is a tap on the row above. */
+/** What Esc and Enter do, as buttons: a phone has no keys. Shown only for a finger (styles.ts). Stepping out is a tap on the row above. */
 const PickBar = ({ p }: { p: PanelViewProps }) =>
   p.picking ? (
     <span class="pick-bar" data-rpr="pick-bar">

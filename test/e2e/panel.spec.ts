@@ -362,6 +362,8 @@ test('Esc cancels the picker and the page keeps working', async ({ page }) => {
   await open(page);
   await page.locator('[data-rpr="pick"]').click();
   await page.getByTestId('tab-people').hover();
+  // With a mouse the keys do it: Cancel and Confirm are buttons for a finger only.
+  await expect(page.locator('[data-rpr="pick-cancel"]')).toBeHidden();
   await page.keyboard.press('Escape');
   await expect(page.locator('[data-rpr="tree"]')).toHaveCount(0);
   await page.getByTestId('tab-people').click();
