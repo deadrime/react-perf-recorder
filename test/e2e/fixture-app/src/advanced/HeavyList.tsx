@@ -37,7 +37,9 @@ const Item = ({ text }: { text: string }) => {
 };
 
 const Results = memo(({ query, side }: { query: string; side: string }) => {
-  const shown = ITEMS.filter((item) => item.includes(query));
+  // "Lima" and "lima" should find the same rows.
+  const q = query.toLowerCase();
+  const shown = ITEMS.filter((item) => item.toLowerCase().includes(q));
   return (
     <>
       <p className="muted" data-testid={`found-${side}`} data-found={shown.length}>
