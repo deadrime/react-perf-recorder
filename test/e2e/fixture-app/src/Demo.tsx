@@ -38,7 +38,7 @@ body { margin: 0; background: #131317; }
 .demo .top nav a { padding: 6px 12px; border-radius: 8px; color: var(--muted); font-size: 14px; text-decoration: none; }
 .demo .top nav a:hover { color: #fff; background: rgba(255,255,255,.06); }
 
-.demo .hero { position: relative; display: grid; grid-template-columns: minmax(0, 1fr); gap: 56px;
+.demo .hero { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.08fr); gap: 48px; align-items: center;
   padding: 56px 0 96px; }
 .demo .hero::before { content: ''; position: absolute; inset: -80px -200px auto 30%; height: 640px; z-index: -1; pointer-events: none;
   background: radial-gradient(closest-side, rgba(10,132,255,.20), transparent), radial-gradient(closest-side at 80% 70%, rgba(191,90,242,.14), transparent); }
@@ -79,7 +79,7 @@ body { margin: 0; background: #131317; }
 .demo .lights i:nth-child(3) { background: #28c840; }
 .demo .address { position: absolute; left: 50%; transform: translateX(-50%); width: min(340px, 50%); padding: 2px 10px; border-radius: 6px;
   background: #0f0f14; color: #8c8c96; font: 12px var(--mono); text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.demo .window-view { position: relative; aspect-ratio: 16 / 10; overflow: hidden; background: #0f0f13; }
+.demo .window-view { position: relative; overflow: hidden; background: #0f0f13; }
 .demo .window-view iframe { position: absolute; left: 0; top: 0; display: block; border: 0; transform-origin: 0 0; pointer-events: none; }
 .demo .shot figcaption { margin-top: 14px; text-align: center; font-size: 13.5px; color: #85858f; }
 .demo .shot figcaption a { color: #4aa8ff; text-decoration: none; }
@@ -182,7 +182,6 @@ body { margin: 0; background: #131317; }
   .demo .agent, .demo .feature, .demo .steps > li { padding: 18px; }
   .demo .install { padding-left: 12px; }
   .demo .install code { font-size: 13px; }
-  .demo .window-view { aspect-ratio: 4 / 5; }
   .demo .address { width: 58%; }
   /* One column is long on a phone: the icon and the number sit beside the title, not above it. */
   .demo .feature { display: grid; grid-template-columns: 38px minmax(0, 1fr); column-gap: 14px; align-items: center; }

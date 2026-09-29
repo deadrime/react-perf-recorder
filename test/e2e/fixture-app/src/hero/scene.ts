@@ -1,18 +1,20 @@
 import { STYLES } from '../../../../../src/ui/styles';
 import board from './board.webp';
 import panel from './panel.json';
+import pinned from './pinned.webp';
+import { NARROW, NARROW_QUERY, WIDE } from './size';
 
 /**
  * The hero: the real panel's markup, captured step by step on Orbit (capture.mjs), laid over a picture of the board
- * and played on one CSS timeline. It runs in an iframe of 1280×800 or 640×800, so the panel's own stylesheet — its
- * vh sizes, its fixed position — works as it does on a page of that size.
+ * and played on one CSS timeline. It runs in an iframe (size.ts), so the landing's styles cannot reach in and the
+ * panel's own stylesheet works as it does on the page it was captured on.
  */
 
 type Rect = { x: number; y: number; w: number; h: number };
 type Point = { x: number; y: number };
 
 /** The loop, in seconds. */
-const T = 28;
+const T = 43;
 const EASE = 'cubic-bezier(.45,0,.25,1)';
 
 let keyframes = '';
@@ -84,25 +86,61 @@ const at = {
   row: 6.05,
   rec: 7.35,
   stop: 17.3,
-  dismiss: 26.95,
+  memo: 26.6,
+  memoClose: 30.3,
+  bar: 35.6,
+  dismiss: 41.6,
 };
 const REC_FROM = 7.45;
 const FRAME = 0.5;
 const REPORT = 17.4;
-const IDLE_AGAIN = 27.05;
+/** The camera leaves the panel for the page, where the picked commit's components are outlined. */
+const PAGE_AGAIN = 36.8;
+const IDLE_AGAIN = at.dismiss + 0.1;
+
+type Layout = Record<'kpis' | 'rendered' | 'memos' | 'memosSummary' | 'others' | 'timeline' | 'tracks', Rect> & {
+  card: Rect;
+  scrollable: number;
+  bar: Rect | null;
+  detail: Rect | null;
+};
 
 const {
+  view: { width: W, height: H },
   board: page,
-  clicks,
+  clicks: captured,
   html,
   rec,
   report,
 } = panel as {
+  view: { width: number; height: number };
   board: { target: Rect; column: Rect; cards: Rect[] };
   clicks: Record<'pick' | 'card' | 'row' | 'rec' | 'stop' | 'dismiss', Point>;
-  html: Record<'idle' | 'browsing' | 'child' | 'hoverParent' | 'parent' | 'report', string>;
+  html: Record<'idle' | 'browsing' | 'child' | 'hoverParent' | 'parent' | 'report' | 'reportMemos' | 'reportCommit', string>;
   rec: string[];
-  report: { card: Rect; scrollable: number; verdict: number; memo: number; causes: number };
+  report: { plain: Layout; memos: Layout; commit: Layout };
+};
+
+// ---- The report's tour: how far its card is scrolled at each stop, and what the ring shows.
+const card = report.plain.card;
+const scrolls = {
+  memos: Math.min(report.memos.scrollable, report.memos.memos.y - 50),
+  others: Math.min(report.plain.scrollable, report.plain.others.y - 60),
+  timeline: Math.min(report.plain.scrollable, report.plain.tracks.y - 90),
+  commit: Math.min(report.commit.scrollable, report.commit.tracks.y - 20),
+};
+/** Where a part of the report is on the page with the card scrolled by `scroll`, cut to the card's visible part. */
+const onPage = (r: Rect, scroll: number): Rect => {
+  const top = Math.max(card.y + r.y - scroll, card.y + 4);
+  const bottom = Math.min(card.y + r.y - scroll + r.h, card.y + card.h - 46);
+  return { x: r.x - 5, y: top - 5, w: r.w + 10, h: Math.max(0, bottom - top) + 10 };
+};
+const barOf = report.commit.bar ?? { x: 116, y: report.plain.tracks.y + 58, w: 3, h: 13 };
+const clicks: Record<Exclude<keyof typeof at, 'hoverCard' | 'hoverRow'>, Point> = {
+  ...captured,
+  memo: { x: 96, y: card.y + report.plain.memosSummary.y + 8 },
+  memoClose: { x: 96, y: card.y + report.memos.memosSummary.y + 8 - scrolls.memos },
+  bar: { x: barOf.x + 1, y: card.y + barOf.y + 6 - scrolls.timeline },
 };
 
 // ---- The panel, one snapshot a step.
@@ -160,30 +198,45 @@ function panelSteps(): string {
 
   // The report: it comes in, then scrolls to what the tour shows. A margin, not a transform, so the sticky bar stays.
   const scroll = (y: number) => `margin-top:${-8 - y}px`;
-  // Down to the other roots and the timeline, and no further than the card scrolls.
-  const down = Math.min(report.memo - 70, report.scrollable);
-  let out = styled(
-    html.report,
-    'data-rpr="result"',
-    track([
-      [REPORT, 'opacity:0;transform:translateY(8px)'],
-      [REPORT + 0.35, 'opacity:1;transform:none'],
-    ])
+  const scrolled = track([
+    [REPORT, scroll(0)],
+    [26.9, scroll(0)],
+    [27.6, scroll(scrolls.memos)],
+    [at.memoClose + 0.2, scroll(scrolls.memos)],
+    [at.memoClose + 0.7, scroll(scrolls.others)],
+    [34.0, scroll(scrolls.others)],
+    [34.7, scroll(scrolls.timeline)],
+    [at.bar + 0.3, scroll(scrolls.timeline)],
+    [at.bar + 0.9, scroll(scrolls.commit)],
+    [IDLE_AGAIN, scroll(scrolls.commit)],
+    [IDLE_AGAIN + 0.01, scroll(0)],
+  ]);
+  const reportStep = (markup: string) => markup.replace('<div class="card"><header>', `<div class="card"><header style="${scrolled}">`);
+  const plain = reportStep(
+    styled(
+      html.report,
+      'data-rpr="result"',
+      track([
+        [REPORT, 'opacity:0;transform:translateY(8px)'],
+        [REPORT + 0.35, 'opacity:1;transform:none'],
+      ])
+    )
   );
-  out = out.replace(
-    '<div class="card"><header>',
-    `<div class="card"><header style="${track([
-      [REPORT, scroll(0)],
-      [21.4, scroll(0)],
-      [22.2, scroll(down)],
-      [IDLE_AGAIN, scroll(down)],
-      [IDLE_AGAIN + 0.01, scroll(0)],
-    ])}">`
+  steps.push({
+    html: plain,
+    spans: [
+      [REPORT, at.memo + 0.05],
+      [at.memoClose + 0.05, at.bar + 0.05],
+    ],
+  });
+  steps.push({ html: reportStep(html.reportMemos), spans: [[at.memo + 0.05, at.memoClose + 0.05]] });
+  const commit = reportStep(html.reportCommit).replace(
+    '<button type="button">Dismiss</button>',
+    `<button type="button" style="${press(at.dismiss)}">Dismiss</button>`
   );
-  out = out.replace('<button type="button">Dismiss</button>', `<button type="button" style="${press(at.dismiss)}">Dismiss</button>`);
-  steps.push({ html: out, spans: [[REPORT, IDLE_AGAIN]] });
+  steps.push({ html: commit, spans: [[at.bar + 0.05, IDLE_AGAIN]] });
 
-  return steps.map((s, i) => `<div class="step${i === steps.length - 1 ? ' last' : ''}" style="${during(s.spans, 0.03)}">${s.html}</div>`).join('');
+  return steps.map((s) => `<div class="step${s.html === plain ? ' still' : ''}" style="${during(s.spans, 0.03)}">${s.html}</div>`).join('');
 }
 
 // ---- The outlines the recorder draws over the page while it records.
@@ -253,11 +306,122 @@ function pickBox(): string {
   return `<div class="box pick" style="${style}">${tag('Tooltip', [[0, at.hoverRow + 0.15]])}${tag('BoardColumn', [[at.hoverRow + 0.15, T]])}</div>`;
 }
 
+// ---- A ring over the part of the report the caption is about.
+function spotlight(): string {
+  const box = (r: Rect) => `left:${r.x}px;top:${r.y}px;width:${r.w}px;height:${r.h}px`;
+  const { plain, memos, commit } = report;
+  const stops: Array<[number, Rect, number]> = [
+    [18.0, onPage(plain.kpis, 0), 1],
+    [21.4, onPage(plain.kpis, 0), 1],
+    [21.9, onPage(plain.rendered, 0), 1],
+    [26.0, onPage(plain.rendered, 0), 1],
+    [26.3, onPage(plain.memosSummary, 0), 1],
+    [26.9, onPage(memos.memos, 0), 1],
+    [27.6, onPage(memos.memos, scrolls.memos), 1],
+    [30.1, onPage(memos.memos, scrolls.memos), 1],
+    [30.3, onPage(memos.memos, scrolls.memos), 0],
+    [30.8, onPage(plain.others, scrolls.others), 0],
+    [31.0, onPage(plain.others, scrolls.others), 1],
+    [34.0, onPage(plain.others, scrolls.others), 1],
+    [34.7, onPage(plain.tracks, scrolls.timeline), 1],
+    [at.bar + 0.3, onPage(plain.tracks, scrolls.timeline), 1],
+    [at.bar + 0.9, onPage(commit.detail ?? commit.tracks, scrolls.commit), 1],
+    [PAGE_AGAIN + 0.6, onPage(commit.detail ?? commit.tracks, scrolls.commit), 1],
+    [PAGE_AGAIN + 1.0, onPage(commit.detail ?? commit.tracks, scrolls.commit), 0],
+  ];
+  const style = track([
+    [REPORT + 0.3, `${box(stops[0][1])};opacity:0`],
+    ...stops.map(([t, r, o]): [number, string] => [t, `${box(r)};opacity:${o}`]),
+  ]);
+  return `<div class="spot" style="${style}"></div>`;
+}
+
+// ---- What each step shows, in a line or two: the loop is the tool's first introduction.
+const CAPTIONS: Array<{ from: number; to: number; step: string; title: string; text: string }> = [
+  { from: 0, to: 3.5, step: '1 of 3 · Pick', title: 'Pick an area', text: 'Hover the page: the box shows the component a click takes.' },
+  {
+    from: 3.5,
+    to: 7.3,
+    step: '1 of 3 · Pick',
+    title: 'Move up the tree',
+    text: 'The tree opens on the pick. One row up, BoardColumn takes the whole column.',
+  },
+  {
+    from: 7.3,
+    to: 17.35,
+    step: '2 of 3 · Record',
+    title: 'Use the app, then Stop',
+    text: 'Outlines mark every render on the page; the panel names the component that started each cascade.',
+  },
+  {
+    from: 17.35,
+    to: 21.4,
+    step: '3 of 3 · Report',
+    title: 'What the recording caught',
+    text: 'Commits in the area, renders, and the wasted ones: renders that changed nothing on the page.',
+  },
+  {
+    from: 21.4,
+    to: 26.0,
+    step: '3 of 3 · Report',
+    title: 'Why it rendered',
+    text: 'The store hook behind IssueCard, its selector, and the line to change.',
+  },
+  {
+    from: 26.0,
+    to: 30.6,
+    step: '3 of 3 · Report',
+    title: 'Memos that miss',
+    text: 'useMemo and useCallback that never reuse their value, and what makes them start over.',
+  },
+  { from: 30.6, to: 34.0, step: '3 of 3 · Report', title: 'Other roots', text: 'Every other cascade in the area, each with its own cause.' },
+  {
+    from: 34.0,
+    to: at.bar + 0.1,
+    step: '3 of 3 · Report',
+    title: 'Timeline',
+    text: 'Every commit and what woke it: a worker message, a presence update, a heartbeat.',
+  },
+  {
+    from: at.bar + 0.1,
+    to: IDLE_AGAIN,
+    step: '3 of 3 · Report',
+    title: 'Where it renders',
+    text: 'Pick a commit: every component it rendered is outlined on the page.',
+  },
+];
+
+function captions(): string {
+  return CAPTIONS.map(({ from, to, step, title, text }, i) => {
+    // The first one comes back as the loop ends, so the strip is never empty.
+    const spans: Array<[number, number]> =
+      i === 0
+        ? [
+            [from, to],
+            [IDLE_AGAIN + 0.2, T],
+          ]
+        : [[from, to]];
+    const shown = during(spans, 0.2, 'opacity:1;transform:none', 'opacity:0;transform:translateY(4px)');
+    const progress = track(
+      [
+        [from, 'transform:scaleX(0)'],
+        [to, 'transform:scaleX(1)'],
+        [to + 0.01, 'transform:scaleX(0)'],
+      ],
+      'linear'
+    );
+    // Without motion the report stands still, and so does its caption.
+    const still = i === 3 ? ' still' : '';
+    return `<div class="caption${still}" style="${shown}"><small>${step}</small><p><b>${title}.</b> ${text}</p><i style="${progress}"></i></div>`;
+  }).join('');
+}
+
 // ---- The cursor and the rings its clicks leave.
 function cursor(): string {
-  const rest: Point = { x: 1010, y: 560 };
-  const aside: Point = { x: 560, y: 430 };
-  const away: Point = { x: 1040, y: 470 };
+  const rest: Point = { x: W * 0.8, y: H * 0.7 };
+  const aside: Point = { x: W * 0.45, y: H * 0.5 };
+  // Off the panel, out of the camera's frame while it reads the report.
+  const away: Point = { x: W - 50, y: H * 0.4 };
   const move: Array<[number, Point]> = [
     [0.4, rest],
     [1.3, clicks.pick],
@@ -273,13 +437,25 @@ function cursor(): string {
     [16.9, clicks.stop],
     [17.7, clicks.stop],
     [18.6, away],
-    [25.9, away],
-    [26.8, clicks.dismiss],
-    [27.3, clicks.dismiss],
-    [28, rest],
+    [25.8, away],
+    [26.45, clicks.memo],
+    [26.9, clicks.memo],
+    [27.6, { x: clicks.memo.x, y: clicks.memo.y - scrolls.memos }],
+    [29.7, clicks.memoClose],
+    [30.3, clicks.memoClose],
+    [31.2, away],
+    [34.8, away],
+    [35.45, clicks.bar],
+    [35.9, clicks.bar],
+    [36.5, { x: clicks.bar.x, y: clicks.bar.y - (scrolls.commit - scrolls.timeline) }],
+    [37.6, aside],
+    [40.6, aside],
+    [41.45, clicks.dismiss],
+    [42.2, clicks.dismiss],
+    [T, rest],
   ];
   const style = track(move.map(([t, p]) => [t, `transform:translate(${p.x}px,${p.y}px)`]));
-  const downs = Object.values(at);
+  const downs = Object.values(at).filter((t) => t !== at.hoverCard && t !== at.hoverRow);
   const squash = track(
     downs.flatMap(
       (t): Array<[number, string]> => [
@@ -318,52 +494,84 @@ export function sceneDocument(): string {
   const outlines = flashes();
   const box = pickBox();
   const pointer = cursor();
-  const view = report.card.y + report.card.h;
+  const ring = spotlight();
+  const strip = captions();
+  const pins = during([[at.bar + 0.05, IDLE_AGAIN]], 0.15);
+  const zoom = 1.4;
   const wide = camera([
-    [7.5, 1, 0, 0],
-    [8.4, 1.12, 0, 86],
-    [17.5, 1.12, 0, 86],
-    [18.4, 1.5, 0, view - 533],
-    [25.1, 1.5, 0, view - 533],
-    [25.9, 1, 0, 0],
+    [3.5, 1, 0, 0],
+    [4.1, 1.15, 0, H - H / 1.15],
+    [7.4, 1.15, 0, H - H / 1.15],
+    [8.0, 1, 0, 0],
+    [17.5, 1, 0, 0],
+    [18.4, zoom, 0, H - WIDE.stage / zoom],
+    [PAGE_AGAIN, zoom, 0, H - WIDE.stage / zoom],
+    [PAGE_AGAIN + 0.8, 1, 0, 0],
   ]);
+  // A phone's window is narrower than the board: the camera goes where the action is.
+  const low = H - NARROW.stage;
+  const right = W - NARROW.width;
   const narrow = camera([
-    [1.5, 1.25, 0, 160],
-    [2.2, 1.25, 420, 60],
-    [3.8, 1.25, 420, 60],
-    [4.4, 1.25, 0, 160],
-    [7.5, 1.25, 0, 160],
-    [8.2, 1.25, 420, 60],
-    [11.4, 1.25, 420, 60],
-    [12.1, 1.25, 0, 160],
-    [17.5, 1.25, 0, 160],
-    [18.4, 1.45, 0, view - 552],
-    [25.1, 1.45, 0, view - 552],
-    [25.9, 1.25, 0, 160],
+    [1.5, 1, 0, low],
+    [2.2, 1, right, 0],
+    [3.8, 1, right, 0],
+    [4.4, 1, 0, low],
+    [7.5, 1, 0, low],
+    [8.2, 1, right, 0],
+    [11.4, 1, right, 0],
+    [12.1, 1, 0, low],
+    [17.5, 1, 0, low],
+    [18.4, 1.1, 0, H - NARROW.stage / 1.1],
+    [PAGE_AGAIN, 1.1, 0, H - NARROW.stage / 1.1],
+    [PAGE_AGAIN + 0.8, 1, 0, low],
   ]);
   return `<!doctype html><html><head><meta charset="utf-8"><style>
 ${withoutTouchRules(STYLES)}
-html, body { margin: 0; height: 100%; overflow: hidden; background: #0f0f13; }
-.cam { position: absolute; left: 0; top: 0; width: 1280px; height: 800px; transform-origin: 0 0; ${wide} }
-@media (max-width: 900px) { .cam { ${narrow} } }
-.bg { position: absolute; inset: 0; background: url("${board}") 0 0 / 1280px 800px no-repeat; }
+html, body { margin: 0; overflow: hidden; background: #0f0f13; }
+/* The card's height as captured: the iframe is taller than the page was, by the caption strip. */
+.card { max-height: ${card.h}px; max-width: none; }
+.stage { position: relative; height: ${WIDE.stage}px; overflow: hidden; }
+/* A transform even at rest: it is what keeps the panel's fixed position inside the scene. */
+.cam { position: absolute; left: 0; top: 0; width: ${W}px; height: ${H}px; transform-origin: 0 0; transform: scale(1); ${wide} }
+.bg { position: absolute; inset: 0; background: url("${board}") 0 0 / ${W}px ${H}px no-repeat; }
 .step { opacity: 0; }
-.step.last { opacity: 1; }
+.step.still { opacity: 1; }
 .picker li[data-hover="true"] { background: var(--row-hover); }
 .picker li[data-hover="true"] .copy, .picker li[data-hover="true"] .watch-toggle { visibility: visible; }
 .box.pick { opacity: 0; transform-origin: 50% 50%; }
 .flash { position: absolute; opacity: 0; box-shadow: inset 0 0 0 1.5px rgb(var(--c)); pointer-events: none; z-index: 2147483645; }
 .flash b { position: absolute; left: 0; top: -14px; height: 14px; padding: 0 3px; background: rgba(var(--c), .9); color: #000;
   font: 400 11px/14px ui-monospace, SFMono-Regular, Menlo, monospace; white-space: nowrap; }
-.cursor { position: absolute; left: -2px; top: -2px; z-index: 2147483647; filter: drop-shadow(0 2px 3px rgba(0,0,0,.5)); transform: translate(1010px, 560px); }
+.cursor { position: absolute; left: -2px; top: -2px; z-index: 2147483647; filter: drop-shadow(0 2px 3px rgba(0,0,0,.5)); transform: translate(${
+    W * 0.8
+  }px, ${H * 0.7}px); }
 .cursor svg { display: block; transform-origin: 3px 3px; }
+.pins { position: absolute; inset: 0; opacity: 0; background: url("${pinned}") 0 0 / ${W}px ${H}px no-repeat; pointer-events: none; }
+.spot { position: absolute; opacity: 0; border: 2px solid #4aa8ff; border-radius: 9px; z-index: 2147483647; pointer-events: none;
+  box-shadow: 0 0 0 4px rgba(10,132,255,.22), 0 0 30px rgba(10,132,255,.35); }
 .ring { position: absolute; width: 36px; height: 36px; margin: -18px 0 0 -18px; border-radius: 50%; border: 2px solid rgba(10,132,255,.9);
   background: rgba(10,132,255,.15); opacity: 0; z-index: 2147483647; pointer-events: none; }
+.captions { position: relative; height: ${WIDE.caption}px; border-top: 1px solid #2a2a32; background: #141419; }
+.caption { position: absolute; inset: 0; padding: 16px 22px 0; opacity: 0; color: #b9b9c2;
+  font: 16.5px/1.45 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; }
+.caption small { display: block; margin-bottom: 6px; color: #4aa8ff; font: 600 12px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: .08em; text-transform: uppercase; }
+.caption p { margin: 0; }
+.caption b { color: #fff; font-weight: 700; }
+.caption i { position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: #4aa8ff; transform-origin: 0 50%; transform: scaleX(0); }
+.caption.still { opacity: 1; }
+@media ${NARROW_QUERY} {
+  .stage { height: ${NARROW.stage}px; }
+  .cam { transform: translate(0, ${-low}px); ${narrow} }
+  .captions { height: ${NARROW.caption}px; }
+  .caption { padding: 16px 20px 0; font-size: 20px; }
+  .caption small { font-size: 14px; margin-bottom: 8px; }
+}
 ${keyframes}
 /* Without motion: the report, as it is left at the end of a recording. */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; }
-  .cursor, .ring { display: none; }
+  .cursor, .ring, .spot, .caption i { display: none; }
 }
-</style></head><body><div class="cam"><div class="bg"></div>${outlines}<div class="host">${box}${steps}</div>${pointer}</div></body></html>`;
+</style></head><body><div class="stage"><div class="cam"><div class="bg"></div>${outlines}<div class="pins" style="${pins}"></div><div class="host">${box}${steps}</div>${ring}${pointer}</div></div><div class="captions">${strip}</div></body></html>`;
 }
