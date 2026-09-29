@@ -89,7 +89,8 @@ export const SortInRender = () => (
       <>
         Both fields search fifteen hundred contacts sorted by name. On the left the sort sits in the render, so every letter sorts them all again; on
         the right <code>useMemo</code> sorts once. Both sides render as often: what differs is how long a render takes, and only the CPU fold of the
-        report names the reason — <code>byName</code> inside the render of the left one.
+        report names the reason — <code>byName</code> inside the render of the left one. The fold needs Vite's dev server, which reads the profile:
+        run the page locally (<code>npm run dev:pages</code>); this built site keeps recordings in the tab and has no CPU.
       </>
     }
   >

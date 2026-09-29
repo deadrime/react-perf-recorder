@@ -36,6 +36,10 @@ used. The review behind these choices: why each was left, and what it needs.
 - **The components list with its CPU** (`components[].hot`): needs the component's file in the recording, which today
   only roots carry (their JSX call site, not the declaration).
 - **A per-component file of the CPU**: the panel's Tree could show a component's render time next to its renders.
+- **CPU on the built site** (GitHub Pages): no dev server reads the profile and no header lets the page take one. A
+  service worker can add `Document-Policy: js-profiling` to the pages it serves, and the aggregation, which needs
+  nothing of Node, can run in the page, naming frames by the paths the site keeps (`preserveModules`) instead of
+  source maps.
 - **Frames of static files** (a bundle served from `public/`) are named by their folder; a source map next to such a
   bundle could name its package too.
 

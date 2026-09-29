@@ -70,8 +70,9 @@ The recorder's own work — its wrappers, its commit hook, its panel — and scr
 CSS-in-JS libraries do more work there than in production, so read their share as an upper bound; the app's own hot
 functions, and a before/after under the same conditions, hold.
 
-[A list sorted again on every render](https://zhenya.dev/react-perf-recorder/advanced/sort) shows it on the site:
-both sides render as often, and the CPU fold names `byName` as what the slow side's render spends its time on.
+[A list sorted again on every render](https://zhenya.dev/react-perf-recorder/advanced/sort) is the example: both
+sides render as often, and the CPU fold names `byName` as what the slow side's render spends its time on. The fold
+needs the dev server, so run it locally (`npm run dev:pages`): the built site has none to read the profile.
 
 ## Sessions
 
