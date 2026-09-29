@@ -181,6 +181,13 @@ code {
   background: var(--raised);
   color: var(--text);
 }
+/* Folded: the toggle, the icons and the project dots share one centre line. */
+.sidebar-collapsed .sidebar-head,
+.sidebar-collapsed .nav-item {
+  justify-content: center;
+  padding-left: 0;
+  padding-right: 0;
+}
 .count {
   background: var(--accent);
   color: white;

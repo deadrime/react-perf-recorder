@@ -62,7 +62,7 @@ test('moving the area patches the tree instead of drawing it again', async ({ pa
   await expect(page.locator(`[data-rpr="watch"] [data-name="${activeName}"]`)).toBeVisible();
 
   // Closing empties the container; opening it again draws the tree from scratch.
-  await page.locator('[data-rpr="tree"] li[data-active="true"]').click();
+  await page.locator('[data-rpr="tree"] li[data-active="true"]').dblclick();
   await expect(page.locator('[data-rpr="tree"]')).toHaveCount(0);
   await page.locator('[data-rpr="scope"]').click();
   await expect(page.locator('[data-rpr="tree"] li[data-active="true"]')).toHaveCount(1);
@@ -106,6 +106,25 @@ test('hovering shows the box the click would leave', async ({ page }) => {
   expect((await box(page)).w).toBe(hovered.w);
 });
 
+test('hovering a row outlines its component on the page while the area stays on the one picked', async ({ page }) => {
+  await page.goto('/app?rpr=panel&tick=150');
+  await expect(page.getByTestId('unread')).toBeVisible();
+  await page.locator('[data-rpr="pick"]').click();
+  await page.getByTestId('message-m1').click();
+  await expect(page.locator('[data-rpr="scope"]')).toHaveText('MessageRow');
+  const tag = page.locator(`${SHADOW} .box .tag`);
+  // The pointer moves over the row and keeps moving there: the outline stays on the hovered row's component.
+  const row = page.locator('[data-rpr="tree"] li[data-name="MessageList"]');
+  await row.hover();
+  const at = (await row.boundingBox())!;
+  await page.mouse.move(at.x + 30, at.y + at.height / 2, { steps: 4 });
+  await expect(tag).toHaveText('MessageList');
+  await expect(page.locator('[data-rpr="scope"]')).toHaveText('MessageRow');
+  // Off the rows, the outline is the area's again.
+  await page.locator('[data-rpr="show-library"]').hover();
+  await expect(tag).toHaveText('MessageRow');
+});
+
 test('with no area, Pick opens the tree of the whole app without choosing anything yet', async ({ page }) => {
   await page.goto('/app?rpr=panel&tick=150');
   await expect(page.getByTestId('unread')).toBeVisible();
@@ -145,14 +164,20 @@ test('× with the tree open moves it to the whole app, and the tree can go back 
   await expect(page.locator('[data-rpr="scope"]')).toBeHidden();
   await expect(page.locator('[data-rpr="tree"] li[data-active="true"]')).toHaveAttribute('data-rpr', 'whole-app');
 
-  // A row of the tree is an area again…
+  // A row of the tree is an area again: a click tries it on, a double click keeps it and closes the tree…
   await page.locator('[data-rpr="tree"] li[data-name="MessageList"]').click();
+  await expect(page.locator('[data-rpr="scope"]')).toHaveText('MessageList');
+  await expect(page.locator('[data-rpr="tree"]')).toHaveCount(1);
+  await page.locator('[data-rpr="tree"] li[data-name="MessageList"]').dblclick();
   await expect(page.locator('[data-rpr="scope"]')).toHaveText('MessageList');
   await expect(page.locator('[data-rpr="tree"]')).toHaveCount(0);
 
-  // …and the Whole app row is one to choose as well: it closes the tree on the whole app.
+  // …and the Whole app row is one to choose as well.
   await page.locator('[data-rpr="scope"]').click();
   await page.locator('[data-rpr="whole-app"]').click();
+  await expect(page.locator('[data-rpr="scope"]')).toBeHidden();
+  await expect(page.locator('[data-rpr="tree"]')).toHaveCount(1);
+  await page.locator('[data-rpr="whole-app"]').dblclick();
   await expect(page.locator('[data-rpr="scope"]')).toBeHidden();
   await expect(page.locator('[data-rpr="tree"]')).toHaveCount(0);
 });

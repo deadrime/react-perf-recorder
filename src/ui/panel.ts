@@ -306,7 +306,8 @@ export class Panel {
 
   private async start() {
     if (this.engine.recording || this.busy) return;
-    this.picker.cancel();
+    // Rec with the tree open records the area the tree is on, as Enter would keep it.
+    this.picker.keep();
     this.result = null;
     this.say('');
     try {
@@ -414,7 +415,7 @@ export class Panel {
     if (top) this.picker.startAt(top, { quiet: true });
     else this.picker.start();
     // The page ignores the clicks meanwhile. Said after the start, so the view draws the picker's buttons with it.
-    this.say(pickHint(top ? 'an element or a row' : 'an element', 'to take it as the area.'), 'muted');
+    this.say(pickHint(top ? 'an element or a row' : 'an element', 'to try it as the area.'), 'muted');
   }
 
   /** Reopens the tree on the current area; without one, picks from scratch. */

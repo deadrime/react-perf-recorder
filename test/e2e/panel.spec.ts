@@ -105,14 +105,15 @@ test('one click on the page is the area; the tree opens around it and moves it',
   // No area again: the whole app, which has no chip of its own.
   await expect(page.locator('[data-rpr="scope"]')).toBeHidden();
 
-  // Clicking a row confirms it and closes the tree.
+  // Clicking a row tries it on and the tree stays; Rec records the area the tree is on.
   await page.locator('[data-rpr="pick"]').click();
   await page.getByTestId('message-m1').click();
   await page.locator('[data-rpr="tree"] li[data-active="true"]').click();
-  await expect(page.locator('[data-rpr="tree"]')).toHaveCount(0);
+  await expect(page.locator('[data-rpr="tree"]')).toHaveCount(1);
   await expect(page.locator('[data-rpr="scope"]')).toHaveText('MessageRow');
 
   await page.locator('[data-rpr="record"]').click();
+  await expect(page.locator('[data-rpr="tree"]')).toHaveCount(0);
   // Reactions land on one message at a time, so the recording has to be long enough for this row's turn.
   await page.waitForTimeout(3000);
   await page.locator('[data-rpr="stop"]').click();
@@ -335,7 +336,8 @@ test('records the page load inside the area picked before it', async ({ page }) 
   await page.getByTestId('messages').click();
   await page.locator('[data-rpr="tree"] li[data-name="MessageList"]').click();
   await expect(page.locator('[data-rpr="scope"]')).toHaveText('MessageList');
-  await page.keyboard.press('Escape');
+  await page.keyboard.press('Enter');
+  await expect(page.locator('[data-rpr="tree"]')).toHaveCount(0);
   await expect(page.locator('[data-rpr="scope"]')).toHaveText('MessageList');
   await page.locator('[data-rpr="record-on-load"]').click();
   await expect(page.locator('[data-rpr="stop"]')).toBeVisible();
@@ -362,6 +364,8 @@ test('Esc cancels the picker and the page keeps working', async ({ page }) => {
   await open(page);
   await page.locator('[data-rpr="pick"]').click();
   await page.getByTestId('tab-people').hover();
+  // With a mouse the keys do it: Cancel and Confirm are buttons for a finger only.
+  await expect(page.locator('[data-rpr="pick-cancel"]')).toBeHidden();
   await page.keyboard.press('Escape');
   await expect(page.locator('[data-rpr="tree"]')).toHaveCount(0);
   await page.getByTestId('tab-people').click();

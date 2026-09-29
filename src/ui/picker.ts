@@ -9,15 +9,16 @@ export interface TreeRow {
 }
 
 export interface TreeActions {
+  /** A double click: the row is the area and the tree closes. */
   select(index: number): void;
-  /** A tap: the row becomes the area on trial, as the arrows make it; Confirm or Cancel ends the pick. */
+  /** A click or a tap: the row becomes the area on trial, as the arrows make it; Enter, Confirm or Esc ends the pick. */
   focus(index: number): void;
   hover(index: number): void;
   toggle(index: number): void;
   leave(): void;
-  /** The row above the app's components: the whole app as the area, and the tree closes on it. */
+  /** A double click on the row above the app's components: the whole app as the area, and the tree closes on it. */
   wholeApp(): void;
-  /** A tap on the Whole app row: it becomes the area on trial, the tree stays open. */
+  /** A click on the Whole app row: it becomes the area on trial, the tree stays open. */
   focusWholeApp(): void;
 }
 
@@ -45,7 +46,7 @@ const sameFiber = (a: Fiber, b: Fiber) => a === b || a.alternate === b;
 
 /**
  * Picks the area to record: hover outlines a component, a click takes it and opens the tree around it.
- * Arrows move through the tree, Enter or a row confirms, Esc puts the old area back.
+ * A row or an arrow tries the area on, Enter or a double click confirms, Esc puts the old area back.
  */
 export class Picker {
   active = false;
@@ -62,6 +63,8 @@ export class Picker {
   private listeners: Array<[string, EventListener]> = [];
   /** What the box is drawn around, so it can be measured again when the page scrolls under it. */
   private shown: { fiber: Fiber; label: string } | null = null;
+  /** The tree row under the pointer: its component stays outlined on the page until the pointer leaves the rows. */
+  private hovered = false;
 
   constructor(
     private shadow: ShadowRoot,
@@ -174,7 +177,7 @@ export class Picker {
     this.box.hidden = true;
     this.shown = null;
     this.root = this.current = this.previewed = null;
-    this.quietOpen = this.browsing = false;
+    this.quietOpen = this.browsing = this.hovered = false;
     this.callbacks.done(owner);
   }
 
@@ -189,6 +192,7 @@ export class Picker {
   private onMove(event: PointerEvent) {
     // Over the panel, the box goes back to the area the tree is on: the preview is of the page only.
     if (this.isOwn(event)) {
+      if (this.hovered) return;
       if (this.frozen && !this.browsing && this.current && this.shown?.fiber !== this.current.owner.fiber)
         this.outline(this.current.owner.fiber, this.current.owner.name);
       return;
@@ -337,7 +341,11 @@ export class Picker {
           this.current = node;
           this.render();
         },
-        hover: (i) => rows[i] && this.outline(rows[i].node.owner.fiber, rows[i].node.owner.name),
+        hover: (i) => {
+          if (!rows[i]) return;
+          this.hovered = true;
+          this.outline(rows[i].node.owner.fiber, rows[i].node.owner.name);
+        },
         toggle: (i) => {
           const node = rows[i]?.node;
           if (!node || !node.children.length) return;
@@ -347,7 +355,10 @@ export class Picker {
           if (!this.rows().some((r) => r.node === this.current)) this.current = node;
           this.render();
         },
-        leave: () => this.hideOutline(),
+        leave: () => {
+          this.hovered = false;
+          this.hideOutline();
+        },
         wholeApp: () => this.finish('whole-app'),
         focusWholeApp: () => void this.release(),
       }
