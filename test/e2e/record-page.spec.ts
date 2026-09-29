@@ -201,3 +201,14 @@ test('with cpu, a render that is slow rather than frequent is named with the fun
   expect(cpu.functions.some((f) => f.package === '(evaluated)' || f.package === 'react-perf-recorder')).toBe(false);
   expect(fs.existsSync(path.join(SESSIONS_DIR, result.id!, 'cpu.cpuprofile'))).toBe(true);
 });
+
+test('with cpu, a sort left in the render is what its render spends the time on', async ({ baseURL }) => {
+  const script = moduleOf(
+    'sort-typing',
+    "await page.getByTestId('search-broken').pressSequentially('ada', { delay: 30 }); await page.getByTestId('search-fixed').pressSequentially('ada', { delay: 30 });"
+  );
+  const cpu = saved((await recordPage({ url: `${baseURL}/advanced/sort`, script, cpu: true }, SESSIONS_DIR)).id!).cpu!;
+  expect(cpu.renders[0]).toMatchObject({ name: 'ContactsSortedEachRender' });
+  expect(cpu.renders[0].hot[0]).toMatchObject({ name: 'byName', site: expect.stringMatching(/SortInRender\.tsx:\d+$/) });
+  expect(cpu.renders.find((r) => r.name === 'ContactsSortedOnce')?.hot.some((h) => h.name === 'byName')).not.toBe(true);
+});

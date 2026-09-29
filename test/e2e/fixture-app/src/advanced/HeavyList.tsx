@@ -55,7 +55,7 @@ const Results = memo(({ query, side }: { query: string; side: string }) => {
 });
 
 /** How long from a keystroke to the screen showing it, written straight into the DOM so measuring costs no render. */
-function useLag() {
+export function useLag() {
   const out = useRef<HTMLSpanElement>(null);
   const worst = useRef(0);
   const onKey = () => {
