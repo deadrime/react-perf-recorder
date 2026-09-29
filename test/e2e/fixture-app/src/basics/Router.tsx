@@ -121,7 +121,7 @@ const Toolbar = () => {
   return (
     <p className="bar">
       {FOLDERS.map((name) => (
-        <button key={name} type="button" data-testid={`folder-${name}`} onClick={() => setFolder(name)}>
+        <button key={name} type="button" data-testid={`folder-${name}`} aria-pressed={folder === name} onClick={() => setFolder(name)}>
           {name}
         </button>
       ))}
