@@ -29,7 +29,7 @@ const open = async (page: Page, id: string) => {
 
 test('the front page lists the harder cases apart from the textbook ones', async ({ page }) => {
   await page.goto('/');
-  await expect(page.locator('[data-testid="advanced"] [data-advanced]')).toHaveCount(12);
+  await expect(page.locator('[data-testid="advanced"] [data-advanced]')).toHaveCount(13);
   await page.locator('[data-advanced="chain"]').click();
   await expect(page.getByTestId('strip')).toContainText('a chain of effects');
 });

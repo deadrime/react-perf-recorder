@@ -22,6 +22,13 @@ version — is picked by `REACT_PERF_RECORDER_BROWSER=/path/to/chromium`, else t
 A page behind a sign-in: `record_page` through a signing link, else a session saved once by
 `react-perf-recorder login <url>`, else a browser you already have open (`cdp`).
 
+`record_page` with `cpu: true` also profiles the page's JS through CDP, every 0.5 ms (`cpu: { intervalUs }` changes
+it, `cpu: { raw: true }` keeps `cpu.cpuprofile` beside the recording for DevTools). `get_recording` reads it with
+`section: 'cpu'`, and the summary has one line of it. The profiler starts before the page load for `fromLoad` and
+right before the recording otherwise, and stops before the garbage is collected. Throttling and the sampling
+interval go into the recording's conditions, so `compare_recordings` says when two runs differ in them. A replay of a
+profiled recording is profiled too.
+
 ## CLI
 
 ```text
@@ -29,7 +36,7 @@ react-perf-recorder mcp            MCP server over stdio  [--reload: restart whe
 react-perf-recorder list           sessions, newest first  [--limit 20]
 react-perf-recorder show [id]      one session  [--section summary|roots|components|…] [--top 10]
 react-perf-recorder pull           wait for the next finished recording and print its summary
-react-perf-recorder record <url>   record a page  [--ms] [--scope] [--watch] [--script] [--from-load] [--via] …
+react-perf-recorder record <url>   record a page  [--ms] [--scope] [--watch] [--script] [--from-load] [--cpu] [--via] …
 react-perf-recorder login <url>    keep a signed-in session for later recordings
 react-perf-recorder init-claude    copy the skill and the agent, register the MCP server  [--force]
 ```

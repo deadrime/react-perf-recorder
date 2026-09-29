@@ -71,6 +71,8 @@ export interface EngineConfig {
   timelineLimit: number;
   /** Timers are wrapped at boot; off leaves the page's timers alone and timer causes out. */
   timers?: boolean;
+  /** The dev server lets the page profile itself (`Document-Policy: js-profiling`). */
+  cpu?: boolean;
 }
 
 export interface RecordOptions {
@@ -92,6 +94,8 @@ export interface RecordOptions {
   sampleReasons?: boolean;
   /** Sample DOM nodes, CSS rules, intervals, listeners and heap, four times a second for 10 s and then once a second; off leaves `growth` out. */
   growth?: boolean;
+  /** Set by whoever records, not seen by the page: CPU throttling, how the CPU was sampled. */
+  conditions?: Record<string, Primitive>;
 }
 
 export interface HighlightSink {
@@ -1308,6 +1312,7 @@ export class Recorder {
       url: safeUrl(location.pathname + location.search),
       dpr: devicePixelRatio,
       ...this.deps.plugins.conditions(),
+      ...this.options.conditions,
     };
   }
 

@@ -6,6 +6,7 @@ import { GROWTH_KEYS, type GrowthKey, type GrowthMetric, type GrowthOrigin, type
 import { hookOf, reasonsById, summarize, waysOf } from '../../shared/summary';
 import { downloadJson } from '../download';
 import { Compare, compareNote, type Comparison } from './Compare';
+import { Cpu } from './Cpu';
 import { Memos } from './Memos';
 import { planReplay } from '../../shared/replay';
 import { Kpis, Notice, ReasonLine, StatCard, type Badge, type Kpi, type StatReason } from './Stats';
@@ -246,6 +247,8 @@ export function Result({
         ) : null}
         <Timeline rec={rec} litCause={litCause} onReset={() => setLitCause(null)} onOutline={onOutline} />
       </Fold>
+
+      {rec.cpu ? <Cpu cpu={rec.cpu} open={rec.cpu.busyMs > rec.cpu.wallMs * 0.15} /> : null}
 
       {rec.growth ? <Growth growth={rec.growth} /> : null}
 

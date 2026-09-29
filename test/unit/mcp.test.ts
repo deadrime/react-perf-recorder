@@ -90,6 +90,29 @@ describe('MCP server', () => {
     expect(components.items[0].reasons).toEqual([{ i: 7, n: 394, reason: 'external store #2 SAME-CONTENT [useChatStore]' }]);
   });
 
+  it('reads the CPU of a profiled recording in words, and says how to get one when there is none', () => {
+    const cpu = {
+      version: 1,
+      source: 'cdp',
+      intervalMs: 0.5,
+      samples: 2000,
+      wallMs: 1000,
+      busyMs: 400,
+      gcMs: 10,
+      recorderMs: 40,
+      packages: [{ name: '(app)', selfMs: 200, totalMs: 300 }],
+      functions: [{ name: 'parseNotes', site: 'src/Init.tsx:54', selfMs: 180, totalMs: 190 }],
+      renders: [{ name: 'Notes', site: 'src/Init.tsx:70', ms: 190, hot: [{ name: 'parseNotes', site: 'src/Init.tsx:54', ms: 180 }] }],
+      entries: [{ name: '', package: 'engine.io-client', ms: 30 }],
+    };
+    const got = section({ cpu } as unknown as RecordingV2, 'cpu', 10, 0) as Record<string, any>;
+    expect(got.line).toBe('400ms busy of 1s (40%): (app) 50%, recorder itself 10%');
+    expect(got.functions.items).toEqual(['180ms self, 190ms total  parseNotes @ src/Init.tsx:54']);
+    expect(got.renders.items[0]).toEqual({ render: '190ms  Notes @ src/Init.tsx:70', hot: ['180ms parseNotes @ src/Init.tsx:54'] });
+    expect(got.entries.items).toEqual(['30ms  (engine.io-client)']);
+    expect(section({} as RecordingV2, 'cpu', 10, 0)).toMatchObject({ note: expect.stringMatching(/record_page cpu: true/) });
+  });
+
   it('returns a partial summary and the actions section', async () => {
     const got = await call('get_recording', { id: 'latest-1' });
     expect(got).toMatchObject({ status: 'interrupted', partial: true });

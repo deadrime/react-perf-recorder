@@ -5,6 +5,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import type { RecordingV2 } from '../shared/schema';
 import { placeholderTyping, type ReplayPlan } from '../shared/replay';
+import { cpuLine } from '../shared/cpu';
 import { wastingRoots, type WastingRoot } from '../shared/summary';
 import { safeUrl } from '../shared/url';
 import { ON_LOAD_KEY } from '../ui/storage';
@@ -35,6 +36,11 @@ export interface RecordPageOptions {
   sample?: boolean;
   /** CPU slowdown through CDP, the way a profiler does it: 4 means four times slower. */
   throttle?: number;
+  /**
+   * Profile the page's JS through CDP while recording (every 0.5 ms by default): where the CPU went, by package,
+   * function, component render and entry point. `raw` keeps the profile beside the recording, to open in DevTools.
+   */
+  cpu?: boolean | { intervalUs?: number; raw?: boolean };
   /** Cookies and storage saved by `login`, so a page behind a sign-in records as the signed-in person. */
   state?: string;
   /** Record in a browser that is already running with `--remote-debugging-port`, as the person who owns it. */
@@ -58,6 +64,8 @@ export interface RecordPageResult {
   topRoot: string | null;
   /** Roots whose renders mostly changed nothing: after a fix, what is left to look at. */
   wasting: WastingRoot[];
+  /** Busy time and the packages that took most of it, when `cpu` was on; the rest is in section cpu. */
+  cpu?: string;
   warnings: string[];
 }
 
@@ -287,6 +295,23 @@ export async function recordPage(options: RecordPageOptions, sessionsDir: string
     let cdp: { send(method: string, params?: object): Promise<unknown> } | null = null;
     const session = async () => (cdp ??= await context.newCDPSession(page as never));
     if (options.throttle && options.throttle > 1) await (await session()).send('Emulation.setCPUThrottlingRate', { rate: options.throttle });
+    const cpuAsked = options.cpu ? { intervalUs: 500, raw: false, ...(options.cpu === true ? {} : options.cpu) } : null;
+    const cpu = cpuAsked && { ...cpuAsked, intervalUs: Math.max(50, Math.round(cpuAsked.intervalUs)) };
+    let profiling = false;
+    const startProfile = async () => {
+      if (!cpu || profiling) return;
+      const s = await session();
+      await s.send('Profiler.enable');
+      await s.send('Profiler.setSamplingInterval', { interval: cpu.intervalUs });
+      await s.send('Profiler.start');
+      profiling = true;
+    };
+    const stopProfile = async () => {
+      if (!profiling) return null;
+      profiling = false;
+      const { profile } = (await (await session()).send('Profiler.stop')) as { profile: unknown };
+      return profile;
+    };
     // Before Stop, so the components still in memory are the ones something holds, not garbage not yet collected.
     const collect = () =>
       session()
@@ -307,12 +332,18 @@ export async function recordPage(options: RecordPageOptions, sessionsDir: string
       );
     // A name is the form an agent has at hand: it read the component's file, so it knows what the component is called.
     const scope = typeof options.scope === 'string' ? { names: [options.scope] } : options.scope;
+    // What the page cannot see about itself goes into its conditions, so a comparison says when two runs differ in it.
+    const conditions = {
+      ...(options.throttle && options.throttle > 1 ? { throttle: options.throttle } : {}),
+      ...(cpu ? { cpu: `sampled every ${cpu.intervalUs / 1000}ms` } : {}),
+    };
     const start = {
       source: 'script:record',
       ...(options.label ? { label: options.label } : {}),
       ...(scope ? { scope } : {}),
       ...(options.watch?.length ? { watch: options.watch } : {}),
       ...(options.sample ? { sampleReasons: true } : {}),
+      ...(Object.keys(conditions).length ? { conditions } : {}),
       highlight: false,
     };
     // A recording from the load starts in the page before this script can say anything: what it should be about
@@ -329,6 +360,8 @@ export async function recordPage(options: RecordPageOptions, sessionsDir: string
         { key: ON_LOAD_KEY, value: JSON.stringify(start) }
       );
     const requested = options.fromLoad ? withLoadFlag(url) : url;
+    // Starting the profiler takes V8 a moment (120-200 ms on a small app): before the load it records, else outside.
+    if (options.fromLoad) await startProfile();
     if (!stay) await page.goto(requested, { waitUntil: 'load' });
     try {
       // The client script is injected at the top of <head>, so by `load` it has either booted or never will:
@@ -364,6 +397,7 @@ export async function recordPage(options: RecordPageOptions, sessionsDir: string
     } else {
       // The engine is in the page before the app: an app still loading has no React root yet to record.
       await page.waitForFunction(`${ENGINE}.engine.componentNames(1).length > 0`, undefined, { timeout: Math.min(timeout, 15_000) }).catch(() => {});
+      await startProfile();
       try {
         await page.evaluate(`${ENGINE}.engine.start(${JSON.stringify(start)})`);
       } catch (error) {
@@ -395,8 +429,19 @@ export async function recordPage(options: RecordPageOptions, sessionsDir: string
       } else {
         await page.waitForTimeout(ms);
       }
+      // Stopped before the garbage is collected: a forced GC is not the page's work.
+      const profile = await stopProfile();
       const collected = await collect();
-      saved = await page.evaluate<Stopped>(`${ENGINE}.engine.stop({ collected: ${collected} }).then((r) => ({ id: r.id ?? null, recording: r }))`);
+      const cpuInput = profile && cpu ? { format: 'cdp', profile, intervalMs: cpu.intervalUs / 1000, keep: cpu.raw } : undefined;
+      saved = await page.evaluate<Promise<Stopped>>(
+        ([collected, cpu]: [boolean, unknown]) =>
+          (
+            globalThis as unknown as { __REACT_PERF_RECORDER__: { engine: { stop(o: object): Promise<RecordingV2 & { id?: string }> } } }
+          ).__REACT_PERF_RECORDER__.engine
+            .stop({ collected, cpu })
+            .then((r) => ({ id: r.id ?? null, recording: r })),
+        [collected, cpuInput]
+      );
     } catch (error) {
       throw options.script || options.replay ? await explainFailure(error, page, navigatedTo, url, sessionsDir) : error;
     }
@@ -416,7 +461,14 @@ export async function recordPage(options: RecordPageOptions, sessionsDir: string
       rendersPerCommit: rec.totals.rendersPerScopeCommit,
       topRoot: rec.roots[0] ? `${rec.roots[0].name} ×${rec.roots[0].hits}` : null,
       wasting: wastingRoots(rec),
-      warnings: [...warnings, ...rec.warnings],
+      ...(rec.cpu ? { cpu: cpuLine(rec.cpu) } : {}),
+      warnings: [
+        ...warnings,
+        ...(cpu && !rec.cpu && !rec.warnings.some((w) => w.startsWith('CPU'))
+          ? ['CPU profile not saved: the page has no dev server to read it']
+          : []),
+        ...rec.warnings,
+      ],
     };
   } finally {
     if (connected) await page?.close().catch(() => {});

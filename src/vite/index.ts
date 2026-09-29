@@ -13,6 +13,7 @@ import { createFilter } from './helpers/filter';
 import { memoDepsAt, memoDepsInHook } from './helpers/hook-deps';
 import { parseModule } from './helpers/name-declarations';
 import { proxyModule } from './helpers/proxy-module';
+import { summarizeCpu } from './cpu';
 import { createMiddleware, SessionStore } from './middleware';
 import type { BuildContext, PerfRecorderPlugin } from './plugin-api';
 
@@ -40,6 +41,11 @@ export interface PerfRecorderOptions {
   /** `timers: false` leaves setTimeout, setInterval and requestAnimationFrame unwrapped: no timer causes. */
   engine?: { bigCommit?: number; timelineLimit?: number; maxDurationMs?: number; timers?: boolean };
   plugins?: PerfRecorderPlugin[];
+  /**
+   * CPU in the panel's recordings: the dev server sends `Document-Policy: js-profiling`, so Chromium lets the page
+   * sample its own JS (every 10 ms). false leaves the header off; record_page's `cpu` works either way.
+   */
+  cpu?: boolean;
 }
 
 /** Whether a package can be imported from the project: an `include` of one that is not there fails the optimizer. */
@@ -178,6 +184,7 @@ export function perfRecorder(options: PerfRecorderOptions = {}): VitePluginLike[
     bigCommit: options.engine?.bigCommit ?? 150,
     timelineLimit: options.engine?.timelineLimit ?? 5000,
     timers: options.engine?.timers ?? true,
+    cpu: options.cpu ?? true,
     endpoint: options.save ?? serving ? `${base.replace(/\/$/, '')}/${ENDPOINT}` : null,
     panel:
       options.panel === false
@@ -247,7 +254,19 @@ export function perfRecorder(options: PerfRecorderOptions = {}): VitePluginLike[
         retain: { sessions: options.retain?.sessions ?? 100, bytes: options.retain?.bytes ?? 500 * 1024 * 1024 },
         gitignore: !path.relative(root, dir).startsWith('..'),
         mapSite: (url, line, column, hooks) => mapSite(server, root, url, line, column, hooks),
+        summarizeCpu: (input) =>
+          summarizeCpu(input, {
+            root,
+            publicDir: server.config.publicDir || undefined,
+            getModuleByUrl: (url) => server.moduleGraph.getModuleByUrl(url),
+          }),
       });
+      // Chromium hands a page its own profiler only when the document asks for it.
+      if (options.cpu !== false)
+        server.middlewares.use((_req, res, next) => {
+          res.setHeader('Document-Policy', 'js-profiling');
+          next();
+        });
       server.middlewares.use(createMiddleware(store, base, VERSION));
       server.config.logger.info(`  react-perf-recorder: sessions → ${dir}`);
     },

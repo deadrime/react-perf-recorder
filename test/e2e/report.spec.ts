@@ -302,3 +302,20 @@ test('what kept growing opens by itself, with the line that left the listeners b
   await expect(growth.locator('[data-key="cssRules"]')).toContainText('in 100 new <style>');
   await expect(growth.locator('.growth-still')).toContainText('unchanged:');
 });
+
+test('the report shows where the CPU went, the page having profiled itself', async ({ page }) => {
+  // Samples come every 10 ms in the page: slowed down, the slow render is sampled for sure.
+  await page.goto('/basics/init?rpr=panel');
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send('Emulation.setCPUThrottlingRate', { rate: 6 });
+  await page.locator('[data-rpr="record"]').click();
+  for (let i = 0; i < 20; i++) await page.getByTestId('render').first().click();
+  await page.locator('[data-rpr="stop"]').click();
+  await expect(page.locator('[data-rpr="result"]')).toContainText('saved');
+  const cpu = page.locator('[data-rpr="cpu"]');
+  await expect(cpu).toBeVisible();
+  if (!(await cpu.evaluate((e) => (e as HTMLDetailsElement).open))) await cpu.locator('summary').click();
+  await expect(cpu.locator('[data-rpr="cpu-render"]').first()).toContainText('NotesEager');
+  await expect(cpu.locator('[data-rpr="cpu-render"]').first()).toContainText('parseNotes');
+  await expect(cpu).toContainText('sampled every 10ms');
+});

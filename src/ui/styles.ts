@@ -70,7 +70,7 @@ export const STYLES = `
 .rpr { font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; }
 .box .tag { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 /* Whatever is a name, a number or a piece of code reads in the monospace face: it is copied, compared and searched. */
-code, input[type="text"], .who, .what, .n, .badge, .kind, .flag, .sel, .chain, .site, .code, .stat-name, .stat-src,
+code, input[type="text"], .who, .what, .n, .badge, .kind, .flag, .sel, .chain, .site, .code, .stat-name, .stat-src, .cpu-name, .cpu-where,
 .scope, .cause-key, .way-name, .way-cause, .cascade-n, .cause-chip, .kpi-value, .saved, .action-at, header .live, .picker li, [class^="tl-"], .tl-detail * {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
@@ -299,6 +299,21 @@ details.fold[open] > summary::before { content: '▾'; }
 /* Wrapped, not cut: the end of a path or a call is the part that says where. */
 .growth-where, .growth-code { color: var(--muted); overflow-wrap: anywhere; white-space: pre-wrap; }
 .growth-still { margin: 3px 0; }
+.cpu-bar { display: flex; height: 10px; border-radius: 3px; overflow: hidden; gap: 1px; margin: 4px 0; }
+.cpu-bar i { min-width: 2px; }
+.cpu-legend { display: flex; flex-wrap: wrap; gap: 2px 10px; margin-bottom: 4px; font-size: 11px; }
+.cpu-key { display: inline-flex; align-items: baseline; gap: 4px; }
+.cpu-head { margin: 8px 0 2px; font-size: 11px; font-weight: 600; color: var(--label); }
+.cpu-render { padding: 3px 0; border-bottom: 1px solid var(--rule-soft); }
+.cpu-render:last-of-type { border-bottom: 0; }
+.cpu-row { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; margin: 2px 0; }
+.cpu-row .badge { flex: none; min-width: 38px; text-align: right; }
+.cpu-hot { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; padding-left: 12px; }
+.cpu-hot .muted { min-width: 30px; text-align: right; font-variant-numeric: tabular-nums; }
+.cpu-name { color: var(--text); }
+/* Wrapped, not cut: the end of a path is the part that says where. */
+.cpu-where { color: var(--muted); overflow-wrap: anywhere; }
+.cpu-note { margin: 6px 0 0; font-size: 11px; }
 .plugin { padding: 5px 0; border-top: 1px solid var(--rule-soft); }
 .plugin:first-child { border-top: 0; }
 .plugin-name { font-size: 11px; font-weight: 600; color: var(--label); margin-bottom: 2px; }

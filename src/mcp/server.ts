@@ -20,6 +20,7 @@ import {
   wayText,
   type HookMode,
 } from '../shared/summary';
+import { CPU_CAVEAT, cpuLine, placeText } from '../shared/cpu';
 import { GROWTH_KEYS, type RecordingV2 } from '../shared/schema';
 import { listingOf } from '../shared/listing';
 import { planReplay } from '../shared/replay';
@@ -43,6 +44,7 @@ const SECTIONS = [
   'segments',
   'frames',
   'growth',
+  'cpu',
   'navigations',
   'conditions',
   'warnings',
@@ -184,6 +186,23 @@ export function section(rec: RecordingV2 & { id?: string; status?: string }, nam
         samples: samples.filter((_, i) => i % step === 0 || i === samples.length - 1),
       };
     }
+    case 'cpu': {
+      const cpu = rec.cpu;
+      if (!cpu)
+        return {
+          note: 'not profiled: record with record_page cpu: true (or the panel in Chromium, where the dev server allows the page to profile itself)',
+        };
+      const { packages, functions, renders, entries, ...rest } = cpu;
+      return {
+        ...rest,
+        line: cpuLine(cpu),
+        caveat: CPU_CAVEAT,
+        packages: packages.map((p) => `${p.name}: ${p.selfMs}ms self, ${p.totalMs}ms on the stack`),
+        functions: page(functions.map((f) => `${f.selfMs}ms self, ${f.totalMs}ms total  ${placeText(f)}`)),
+        renders: page(renders.map((r) => ({ render: `${r.ms}ms  ${placeText(r)}`, hot: r.hot.map((h) => `${h.ms}ms ${placeText(h)}`) }))),
+        entries: page(entries.map((e) => `${e.ms}ms  ${placeText(e)}`)),
+      };
+    }
     case 'navigations':
       return page(rec.navigations);
     case 'conditions':
@@ -300,7 +319,9 @@ export function createServer(dir: string) {
               'that moved and its line. growth: DOM nodes, CSS rules, <style> elements, live intervals, window/document listeners ' +
               'JS heap, observers and open sockets from start to stop, with slope, what kept growing, where the intervals, listeners and ' +
               'observers left behind were added, and the components unmounted but still in memory after a garbage collection ' +
-              '(record_page collects before Stop) — for a leak.'
+              '(record_page collects before Stop) — for a leak. cpu: where the CPU went, when it was profiled — busy time, packages, ' +
+              'the hottest functions with file:line, component renders with what inside them took the time, and work outside renders ' +
+              'by the function that started it.'
           ),
         top: z.number().int().min(1).max(100).optional().describe('How many entries of a long section, 10 by default.'),
         offset: z.number().int().min(0).optional().describe('Where to start in a long section, to page through it.'),
@@ -393,6 +414,13 @@ export function createServer(dir: string) {
           .max(20)
           .optional()
           .describe('CPU slowdown, 4 = four times slower; keep it the same across runs that will be compared.'),
+        cpu: z
+          .union([z.boolean(), z.object({ intervalUs: z.number().int().min(50).max(10_000).optional(), raw: z.boolean().optional() })])
+          .optional()
+          .describe(
+            'Profile the CPU while recording (every 0.5 ms; intervalUs changes it): where the time went by package, function with file:line, component render and what inside it, and work outside renders — read it with section cpu. ' +
+              'For a render that is slow rather than frequent, or work outside React (a socket, a timer, a chart); not needed to count renders. The profiler slows the page a little: compare a run with cpu only against another with cpu. raw keeps cpu.cpuprofile beside the recording, for DevTools.'
+          ),
         state: z.string().optional().describe('A session saved by `login`; the default beside the recordings is used when it is there.'),
         cdp: z.string().optional().describe('http://localhost:9222 of a browser already running and signed in.'),
         via: z
@@ -407,6 +435,9 @@ export function createServer(dir: string) {
       const rec = readRecording(entry);
       const plan = planReplay({ ...rec, id: rec.id ?? replay });
       const scope = args.scope ?? rec.scope?.name;
+      // Measured again the way it was measured: a profile compares with a profile, a throttled run with a throttled one.
+      if (args.cpu === undefined && rec.cpu) args = { ...args, cpu: true };
+      if (args.throttle === undefined && typeof rec.conditions.throttle === 'number') args = { ...args, throttle: rec.conditions.throttle };
       const setup = args.setup ?? setupOf(entry.dir);
       if (!plan.steps.length && plan.skipped.length) throw new Error(`${replay} has no actions to replay: ${plan.skipped.join('; ')}`);
       // A recording of the page left alone: the same page, area and length again, so the two compare.
