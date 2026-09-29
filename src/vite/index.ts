@@ -7,6 +7,7 @@ import type { VitePluginLike } from './plugin-api';
 import { ENDPOINT, type JsonValue } from '../shared/schema';
 import { addComponentNames, DEFAULT_WRAPPERS, type ComponentNamesOptions } from './component-names';
 import { ENTRY_ID, entryCode, RESOLVED_ENTRY_ID, runtimeSpecifier } from './entry';
+import { fixJsxLines } from './jsx-lines';
 import { optimizeDepsFor, transformServedDep } from './helpers/dep-transform';
 import { cleanId, createFilter } from './helpers/filter';
 import { proxyModule } from './helpers/proxy-module';
@@ -235,6 +236,17 @@ export function perfRecorder(options: PerfRecorderOptions = {}): VitePluginLike[
     },
   };
 
+  // After esbuild (no `enforce`): it is esbuild that writes the element lines React 18 reports.
+  const jsxLines: Plugin = {
+    name: 'react-perf-recorder:jsx-lines',
+    apply,
+    transform(code, _id, opts) {
+      if (onServer(this, opts) || !code.includes('jsxDEV(')) return null;
+      const fixed = fixJsxLines(code, this.getCombinedSourcemap() as unknown as Parameters<typeof fixJsxLines>[1]);
+      return fixed ? { code: fixed, map: null } : null;
+    },
+  };
+
   const wrapped: Plugin[] = plugins
     .filter((p) => p.vite)
     .map((p) => {
@@ -275,7 +287,7 @@ export function perfRecorder(options: PerfRecorderOptions = {}): VitePluginLike[
       } satisfies Plugin;
     });
 
-  return [core, ...wrapped] as unknown as VitePluginLike[];
+  return [core, ...wrapped, jsxLines] as unknown as VitePluginLike[];
 }
 
 export { definePerfRecorderPlugin, type BuildContext, type PerfRecorderPlugin, type VitePluginLike } from './plugin-api';
