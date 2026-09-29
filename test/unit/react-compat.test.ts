@@ -77,8 +77,28 @@ describe('component sites across React versions', () => {
     expect(isLibraryFiber({ tag: 0, type: function Compiled() {}, child: null } as unknown as Fiber)).toBe(true);
   });
 
+  it('shows a route a package rendered from its module at its own file, without a line', () => {
+    // React Router creates the route's element itself: no frame of the owner stack is the app's.
+    const route = withOwnerStack('http://localhost:5173/node_modules/.vite/deps/chunk-SPQK3X7I.js?v=abc', 900, 12, {
+      child: withOwnerStack('http://localhost:5173/app/routes/admin/users.tsx', 21, 5),
+    });
+    expect(sourceOf(route)).toBe('app/routes/admin/users.tsx');
+    expect(generatedSourceOf(route)).toBeUndefined();
+    // React 18 leaves such an element without a source; the file of what it rendered stands in the same way.
+    const route18 = { tag: 0, type: function Users() {}, child: withDebugSource('/home/me/app/app/routes/users.tsx', 8) } as unknown as Fiber;
+    expect(sourceOf(route18, '/home/me/app')).toBe('app/routes/users.tsx');
+    // A package's own component keeps the package's site.
+    const theirs = withOwnerStack('http://localhost:5173/node_modules/.vite/deps/chunk-SPQK3X7I.js?v=abc', 900, 12, {
+      child: withOwnerStack('http://localhost:5173/node_modules/.vite/deps/chunk-SPQK3X7I.js?v=abc', 950, 3),
+    });
+    expect(sourceOf(theirs)).toBe('.vite/deps/chunk-SPQK3X7I.js');
+  });
+
   it('strips the dev server off a URL and keeps the path from the project', () => {
     expect(relativeFile('http://localhost:5173/src/App.tsx?t=1712')).toBe('src/App.tsx');
+    // Outside src/ too: the dev server serves a file of the project at its path from the root.
+    expect(relativeFile('http://localhost:5173/app/routes/admin/users.tsx?t=1')).toBe('app/routes/admin/users.tsx');
+    expect(relativeFile('http://localhost:5173/@fs/home/me/app/app/root.tsx', '/home/me/app')).toBe('app/root.tsx');
     expect(relativeFile('/home/me/app/src/App.tsx', '/home/me/app')).toBe('src/App.tsx');
   });
 

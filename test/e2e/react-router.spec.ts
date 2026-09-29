@@ -27,6 +27,8 @@ test('records a page React Router renders, with the file, the store and the memo
   const rec = saved(id);
   const counter = rec.roots.find((r) => r.name === 'Counter');
   expect(counter?.hits).toBe(3);
+  // React Router creates the route's element itself; the route's own file stands in for the line that rendered it.
+  expect(counter?.source).toBe('app/routes/counter.tsx');
   expect(Object.values(counter?.hooks ?? {}).map((h) => h.site)).toContain('app/routes/counter.tsx:12');
   expect(JSON.stringify(rec)).toContain('"Label"');
   expect(JSON.stringify(rec.causes)).toContain('useClicks.setState');
@@ -37,5 +39,8 @@ test('records a page React Router renders, with the file, the store and the memo
 test('records the page load, hydration and all', async ({ baseURL }) => {
   const result = await recordPage({ url: `${baseURL}/`, fromLoad: true, ms: 800 }, SESSIONS_DIR);
   expect(result.id).toBeTruthy();
-  expect(saved(result.id!).totals.mounts).toBeGreaterThan(5);
+  const rec = saved(result.id!);
+  expect(rec.totals.mounts).toBeGreaterThan(5);
+  // It hydrates in a transition: React 19's lane 128.
+  expect(rec.totals.lanes).toHaveProperty('TransitionHydration');
 });
