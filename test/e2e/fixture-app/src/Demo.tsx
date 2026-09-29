@@ -1,9 +1,9 @@
 import { useState, type CSSProperties, type ReactNode } from 'react';
-import report from './assets/report.webp';
 import { href, useNoPanel } from './base';
 import { ADVANCED } from './advanced';
 import { BASICS } from './basics';
 import { BUGS, SCENARIOS, enabledBugs, isBlindCase } from './bugs';
+import { PanelDemo } from './PanelDemo';
 
 /**
  * The fixture doubles as the demo: every seeded bug is a card that opens the app with that bug on, says what to do
@@ -66,14 +66,73 @@ body { margin: 0; background: #131317; }
 .demo .fine { margin: 18px 0 0; font-size: 13.5px; color: #85858f; }
 
 .demo .shot { position: relative; margin: 0; justify-self: center; width: 100%; max-width: 420px; }
-.demo .shot > a { display: block; overflow: hidden; max-height: 560px; border: 1px solid #3a3a44; border-radius: 14px; background: #17171c;
-  box-shadow: 0 30px 80px rgba(0,0,0,.55), 0 0 0 6px rgba(255,255,255,.025);
-  -webkit-mask-image: linear-gradient(#000 78%, transparent); mask-image: linear-gradient(#000 78%, transparent);
-  transform: perspective(1400px) rotateY(-7deg) rotateX(2deg); transition: transform .4s; }
-.demo .shot > a:hover { transform: none; }
-.demo .shot img { display: block; width: 100%; height: auto; }
-.demo .shot figcaption { margin-top: 4px; text-align: center; font-size: 13px; color: #85858f; }
+.demo .shot > a { display: block; text-decoration: none; }
+.demo .shot figcaption { margin-top: 10px; text-align: center; font-size: 13px; color: #85858f; }
 .demo .shot figcaption a { color: #4aa8ff; text-decoration: none; }
+
+/* The hero's report: a scripted loop, not a screenshot, so nothing is cropped and nothing sits at an angle. */
+@property --num { syntax: '<integer>'; inherits: false; initial-value: 0; }
+
+.pd-panel { --pd-warn: #ffd60a; --pd-red: #ff453a; padding: 14px; border: 1px solid #3a3a44; border-radius: 14px; background: #17171c;
+  box-shadow: 0 30px 80px rgba(0,0,0,.55), 0 0 0 6px rgba(255,255,255,.025); font: 13px/1.4 var(--sans); color: #e8e8ea; }
+.pd-fade { animation: pdFade 9s linear infinite; }
+.pd-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; font-weight: 600; }
+.pd-head .mark { width: 16px; height: 16px; margin-right: 6px; vertical-align: -3px; }
+.pd-opts { display: flex; align-items: center; gap: 10px; font-size: 11.5px; color: var(--muted); font-weight: 400; }
+.pd-opts label { display: flex; align-items: center; gap: 4px; }
+.pd-opts input { width: 11px; height: 11px; }
+.pd-collapse { display: grid; place-items: center; width: 18px; height: 18px; border: 1px solid #3a3a44; border-radius: 5px; font-style: normal; }
+
+.pd-buttons { display: flex; gap: 6px; margin-bottom: 12px; }
+.pd-btn, .pd-rec { display: flex; align-items: center; gap: 5px; padding: 6px 10px; border: 1px solid #3a3a44; border-radius: 8px;
+  font-size: 12px; background: #1d1d22; }
+.pd-rec { font-weight: 600; }
+.pd-dot { width: 8px; height: 8px; border-radius: 50%; background: #55555f; animation: pdRec 9s ease-in-out infinite; }
+
+.pd-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; margin-bottom: 14px; }
+.pd-stat { padding: 8px 4px 8px 10px; border: 1px solid #3a3a44; border-radius: 8px; background: #1a1a1f; }
+.pd-stat b { display: block; font-size: 17px; font-weight: 700; }
+.pd-stat span { font-size: 10.5px; color: var(--muted); }
+.pd-stat--warn { border-color: rgba(255, 214, 10, .4); }
+.pd-stat--warn b { color: var(--pd-warn); }
+.pd-num { counter-reset: pdnum var(--num); animation: pdCount 9s linear infinite; }
+.pd-num::before { content: counter(pdnum); }
+
+.pd-kicker { margin: 0 0 6px; font: 700 10px var(--mono); letter-spacing: .06em; color: #8a8a94; text-transform: uppercase; }
+.pd-card { padding: 10px; margin: 0 0 10px; border: 1px solid #3a3a44; border-radius: 10px; background: #1a1a1f; }
+.pd-card--main { animation: pdHighlight 9s ease-in-out infinite; }
+.pd-card-top { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 12.5px; }
+.pd-chip { color: var(--muted); font-size: 11px; }
+.pd-warn-chip { padding: 1px 6px; border-radius: 5px; background: rgba(255, 214, 10, .16); color: var(--pd-warn); font-size: 11px; }
+.pd-loc { margin: 3px 0 6px; text-align: right; font: 11px var(--mono); color: #8a8a94; }
+.pd-reason { margin: 0; font-size: 11.5px; color: #9c9ca6; animation: pdReason 9s ease-out infinite; }
+.pd-tag { padding: 1px 6px; border-radius: 5px; background: rgba(10, 132, 255, .16); color: #4aa8ff; }
+.pd-indent { display: block; margin-top: 2px; padding-left: 14px; color: #67b7ff; font: 11px var(--mono); }
+
+.pd-timeline { margin-bottom: 8px; }
+.pd-tl-row { display: flex; gap: 6px; padding: 6px 0; font-size: 11.5px; line-height: 1.5; color: #b9b9c2; }
+.pd-tl-dot { flex: none; width: 8px; height: 8px; margin-top: 3px; border-radius: 2px; background: var(--pd-warn); }
+
+.pd-zoom { display: flex; align-items: center; gap: 8px; padding-top: 8px; border-top: 1px solid #29292f; font-size: 11px; color: var(--muted); }
+.pd-zoom label { display: flex; align-items: center; gap: 4px; margin-left: auto; }
+
+@keyframes pdFade { 0%, 92% { opacity: 1; } 97% { opacity: .4; } 100% { opacity: 1; } }
+@keyframes pdRec { 0%, 9% { background: #55555f; box-shadow: none; } 13%, 100% { background: var(--pd-red); box-shadow: 0 0 0 4px rgba(255, 69, 58, .18); } }
+@keyframes pdCount { 0%, 10% { --num: 0; } 45%, 100% { --num: var(--target); } }
+@keyframes pdHighlight {
+  0%, 48% { border-color: #3a3a44; box-shadow: none; background: #1a1a1f; }
+  56% { border-color: var(--pd-warn); box-shadow: 0 0 0 3px rgba(255, 214, 10, .16); background: #22200f; }
+  70%, 100% { border-color: #3a3a44; box-shadow: none; background: #1a1a1f; }
+}
+@keyframes pdReason { 0%, 55% { opacity: 0; transform: translateY(4px); } 68%, 100% { opacity: 1; transform: translateY(0); } }
+
+/* A still "after" frame instead of a loop: counted, highlighted, expanded, and left there. */
+@media (prefers-reduced-motion: reduce) {
+  .pd-fade, .pd-dot, .pd-num, .pd-card--main, .pd-reason { animation: none !important; }
+  .pd-dot { background: var(--pd-red); box-shadow: 0 0 0 4px rgba(255, 69, 58, .18); }
+  .pd-num { --num: var(--target); }
+  .pd-reason { opacity: 1; transform: none; }
+}
 
 
 .demo .section { margin: 0 0 96px; scroll-margin-top: 16px; }
@@ -158,7 +217,6 @@ body { margin: 0; background: #131317; }
 
 @media (max-width: 900px) {
   .demo .hero { grid-template-columns: minmax(0, 1fr); gap: 40px; padding: 28px 0 48px; }
-  .demo .shot > a { transform: none; max-height: 480px; }
   .demo .grid, .demo .steps, .demo .how { grid-template-columns: minmax(0, 1fr); }
   .demo .agent { grid-template-columns: minmax(0, 1fr); gap: 16px; }
   .demo .section { margin-bottom: 72px; }
@@ -175,7 +233,9 @@ body { margin: 0; background: #131317; }
   .demo .agent, .demo .feature, .demo .steps > li { padding: 18px; }
   .demo .install { padding-left: 12px; }
   .demo .install code { font-size: 13px; }
-  .demo .shot > a { max-height: 420px; }
+  .pd-panel { padding: 12px; font-size: 12px; }
+  .pd-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .pd-tl-row { font-size: 11px; }
   /* One column is long on a phone: the icon and the number sit beside the title, not above it. */
   .demo .feature { display: grid; grid-template-columns: 38px minmax(0, 1fr); column-gap: 14px; align-items: center; }
   .demo .feature i { margin: 0 0 10px; }
@@ -350,12 +410,7 @@ export const Catalogue = () => {
             </div>
             <figure className="shot">
               <a href={href('basics/context')} aria-label="Open the case this report was recorded on">
-                <img
-                  src={report}
-                  width={420}
-                  height={700}
-                  alt="The recorder's report: 4 wasted renders, the main cause Shell rendering 4 times for nothing, InlineUser and InlineTheme woken by a context with the same content"
-                />
+                <PanelDemo />
               </a>
               <figcaption>
                 A real report, recorded on <a href={href('basics/context')}>one of the cases below</a>
