@@ -54,6 +54,14 @@ npx react-perf-recorder init-claude
 Adds a skill, an agent and the MCP server to the project. The agent records a scenario — or reads the one you
 recorded — and answers with the cascade root, the hook behind it and the file to change.
 
+Or install the same three as a [Claude Code plugin](https://code.claude.com/docs/en/plugin-marketplaces), without
+touching the project's files:
+
+```sh
+claude plugin marketplace add deadrime/react-perf-recorder
+claude plugin install react-perf-recorder@react-perf-recorder
+```
+
 ## Docs
 
 - [The panel and the report](docs/panel.md)
