@@ -13,6 +13,7 @@
 | `components` | `{ include: ['src/**/*.{tsx,jsx}'], wrappers: ['memo', 'forwardRef', 'createContext'] }` | Adds `displayName` to `const X = memo(…)` and contexts. `wrapperPattern` is only for names an app leaves empty: `^(Anonymous\|ForwardRef\|Memo)$` by default |
 | `panel`      | `{ corner: 'bottom-left', highlight: true, shortcuts }`                                  | `false` — engine only                                                                                                                                        |
 | `engine`     | `{ bigCommit: 150, timelineLimit: 5000, maxDurationMs: 600000, timers: true }`           | `timers: false` leaves `setTimeout`, `setInterval` and `requestAnimationFrame` unwrapped, and timer causes out                                               |
+| `cpu`        | `true`                                                                                   | The dev server sends `Document-Policy: js-profiling`, so the panel's recordings in Chromium carry [CPU](recording.md#cpu); `false` leaves the header off     |
 
 Plugin options:
 

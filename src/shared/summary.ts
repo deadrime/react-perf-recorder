@@ -14,6 +14,7 @@ import {
   type RecordingV2,
   type RootStat,
 } from './schema';
+import { cpuLine, placeText, type CpuSummary } from './cpu';
 
 export interface RootLine {
   root: string;
@@ -78,6 +79,8 @@ export interface Summary {
   growth?: string[];
   /** useMemo and useCallback that recompute on most renders, worst first. */
   memos?: string[];
+  /** Busy time and the packages that took it, when the recording was profiled; the rest is in section cpu. */
+  cpu?: string;
   frames: { longTasks: number; maxLongTaskMs: number; longFrames: number; worstFrameMs: number };
   overhead: RecordingV2['overhead'];
   warnings: string[];
@@ -634,6 +637,15 @@ export function summarize(rec: RecordingV2 & { id?: string; status?: string }, t
     },
     overhead: rec.overhead,
     ...(rec.memos?.length ? { memos: rec.memos.slice(0, 5).map(memoLine) } : {}),
+    ...(rec.cpu ? { cpu: cpuSummaryLine(rec.cpu) } : {}),
     warnings: [...rec.warnings, ...rec.errors.map((e) => `error: ${e}`)].slice(0, 10),
   };
+}
+
+/** The summary's CPU line: busy time and packages, and the render or function that took most. */
+function cpuSummaryLine(cpu: CpuSummary): string {
+  const render = cpu.renders[0];
+  const fn = cpu.functions.find((f) => !f.package);
+  const hottest = render ? `; slowest render ${render.name} ${render.ms}ms` : fn ? `; hottest app function ${placeText(fn)} ${fn.selfMs}ms` : '';
+  return `${cpuLine(cpu)}${hottest}`;
 }

@@ -31,6 +31,9 @@ REACT_PERF_RECORDER_DIR=<abs path of the first checkout>/.agent-artifacts/perf-r
 ## Fair, and read right
 
 - Same viewport, throttling, data, account and area on both sides.
+- CPU on both sides or on neither, at the same interval: the profiler slows the page a little. A replay of a
+  profiled recording is profiled by itself. `compare_recordings` does not set CPU side by side yet: read section
+  `cpu` of both, and compare shares and the fixed function's time rather than the busy total.
 - Compare renders, not milliseconds — timings move with the machine. ±1 render on an action is noise (a feed tick or
   a poll landing on a keystroke); a result is clear when it moves more, or the same way on a second run.
 - Read `warnings` first: a different page, area or a partial side makes it no comparison, and so do actions that

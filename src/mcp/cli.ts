@@ -61,6 +61,7 @@ async function main() {
         ...(flag('script') ? { script: flag('script') } : {}),
         ...(flag('viewport') ? { viewport: flag('viewport') } : {}),
         ...(flag('throttle') ? { throttle: Number(flag('throttle')) } : {}),
+        ...(args.includes('--cpu') || args.includes('--cpu-profile') ? { cpu: { raw: args.includes('--cpu-profile') } } : {}),
         ...(flag('state') ? { state: flag('state') } : {}),
         ...(flag('cdp') ? { cdp: flag('cdp') } : {}),
         ...(flag('via') ? { via: flag('via') } : {}),
@@ -115,10 +116,11 @@ async function main() {
   mcp     MCP server over stdio (list_recordings, get_recording, wait_for_recording, compare_recordings, record_page)
           [--reload] start it again whenever the CLI is rebuilt, for a checkout of this repository
   list    sessions, newest first  [--limit 20]
-  show    one session  [id|latest] [--section summary|actions|roots|components|causes|plugins|…] [--top 10]
+  show    one session  [id|latest] [--section summary|actions|roots|components|causes|cpu|plugins|…] [--top 10]
   pull    wait for the next finished recording and print its summary  [--timeout ms]
   record  record a page in a browser of its own  <url> [--ms 3000] [--label x] [--scope json] [--watch A,B]
-          [--script f.mjs] [--from-load] [--viewport 1280x800] [--throttle 4] [--state file] [--cdp url] [--via url] [--headed]
+          [--script f.mjs] [--from-load] [--viewport 1280x800] [--throttle 4] [--cpu] [--cpu-profile] [--state file] [--cdp url] [--via url] [--headed]
+          --cpu profiles the CPU as well (show --section cpu); --cpu-profile also keeps cpu.cpuprofile for DevTools
   login   keep a session for later recordings  <url> [--state file] [--for <selector> | --wait <ms>]
           without --for/--wait it opens a real browser and waits for you to sign in and press Enter
 

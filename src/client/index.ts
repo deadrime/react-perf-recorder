@@ -72,6 +72,8 @@ function recordFromLoad(engine: Engine, pending: RecordOnLoad | null, panel: Pan
         scope: pending?.scope ?? (pending?.names ? { names: pending.names } : null),
         ...(pending?.watch?.length ? { watch: pending.watch } : {}),
         ...(pending?.sampleReasons ? { sampleReasons: true } : {}),
+        ...(pending?.cpu ? { cpu: true } : {}),
+        ...(pending?.conditions ? { conditions: pending.conditions } : {}),
         // A script is measuring, and outlines cost frame time; the panel's load button keeps what the person set.
         ...(!pending || pending.highlight === false ? { highlight: false } : {}),
       });

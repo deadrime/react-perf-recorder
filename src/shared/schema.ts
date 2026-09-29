@@ -2,6 +2,8 @@ export const RECORDING_SCHEMA = 'react-perf-recorder/recording';
 export const SESSION_SCHEMA = 'react-perf-recorder/session';
 export const SCHEMA_VERSION = 2;
 export const GLOBAL_KEY = '__REACT_PERF_RECORDER__';
+import type { CpuSummary } from './cpu';
+
 export const ENDPOINT = '__react-perf-recorder';
 export const CLIENT_HEADER = 'x-react-perf-recorder';
 
@@ -447,6 +449,8 @@ export interface RecordingV2 {
   dom: { text: number; attr?: number; child?: number };
   /** What grew on the page from start to stop: nodes, CSS rules, intervals, listeners, heap. */
   growth?: GrowthStats;
+  /** Where the CPU went, when the recording was profiled: record_page with `cpu`, or the panel where the page allows it. */
+  cpu?: CpuSummary;
   navigations: Navigation[];
   hmr: Array<{ atMs: number; type: string; paths: string[] }>;
   conditions: Conditions;

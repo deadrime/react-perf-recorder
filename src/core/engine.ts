@@ -22,6 +22,8 @@ import type { PluginHost } from './plugins';
 import { Recorder, type EngineConfig, type HighlightSink, type RecordOptions } from './recorder';
 import { scopeFromFiber, type ScopeHandle } from './scope';
 import { SessionWriter, type SavedSession } from './transport';
+import { startSelfProfile, type SelfProfile } from './cpu';
+import type { CpuInput } from '../shared/cpu';
 
 export interface BootConfig extends EngineConfig {
   /** `{base}__react-perf-recorder`; null when no dev server stores sessions. */
@@ -34,6 +36,8 @@ export interface StartOptions extends Omit<RecordOptions, 'scope'> {
   scope?: ScopeSpec;
   /** Stream the session to the dev server; on by default when there is one. */
   save?: boolean;
+  /** Sample the page's own JS while recording, where Chromium allows it; the dev server sums it up. */
+  cpu?: boolean;
 }
 
 /** What the tree may hide: components of packages, providers, and the app's own unnamed wrappers. */
@@ -127,6 +131,8 @@ export class Engine {
   private idle: { scope: ScopeSpec } | null = null;
   private idleHighlight: LiveHighlight | null = null;
   private idleRetry: ReturnType<typeof setTimeout> | null = null;
+  private selfProfile: SelfProfile | null = null;
+  private cpuNote: string | null = null;
 
   constructor(
     readonly config: BootConfig,
@@ -209,6 +215,12 @@ export class Engine {
     this.idleHighlight?.stop();
     this.idleHighlight = null;
     const writerRef: { current: SessionWriter | null } = { current: null };
+    // Only a dev server reads a profile; without one it would be sampled for nothing.
+    const profiled =
+      options.cpu && this.config.cpu !== false && this.config.endpoint && options.save !== false ? startSelfProfile(this.config.maxDurationMs) : null;
+    const selfProfile = profiled && typeof profiled !== 'string' ? profiled : null;
+    this.cpuNote = typeof profiled === 'string' ? profiled : null;
+    const conditions = selfProfile ? { ...options.conditions, cpu: `sampled every ${selfProfile.intervalMs}ms` } : options.conditions;
     const recorder = new Recorder(
       {
         config: this.config,
@@ -217,15 +229,17 @@ export class Engine {
         highlight: options.highlight === false ? null : this.highlight,
         onEvent: (event: SessionEvent) => writerRef.current?.push(event),
       },
-      { ...options, scope }
+      { ...options, scope, ...(conditions ? { conditions } : {}) }
     );
     try {
       recorder.start();
     } catch (error) {
+      void selfProfile?.stop().catch(() => {});
       this.syncIdleHighlight();
       throw error;
     }
     this.recorder = recorder;
+    this.selfProfile = selfProfile;
     this.recordingScope = scope;
     if (this.config.endpoint && options.save !== false) {
       writerRef.current = this.writer = new SessionWriter(this.config.endpoint, {
@@ -253,8 +267,11 @@ export class Engine {
   }
 
   /** Stops, builds the recording and, with a dev server, saves it; resolves with the id of the saved session. */
-  /** `collected`: whoever stops has just collected the page's garbage (record_page does, through CDP). */
-  async stop(options: { collected?: boolean } = {}): Promise<Saved> {
+  /**
+   * `collected`: whoever stops has just collected the page's garbage (record_page does, through CDP). `cpu`: a
+   * profile taken from outside the page (record_page's, through CDP), for the dev server to sum up.
+   */
+  async stop(options: { collected?: boolean; cpu?: CpuInput } = {}): Promise<Saved> {
     const recorder = this.recorder;
     if (!recorder) throw new RecorderError('NOT_RECORDING', 'no recording is running');
     if (this.timer) clearTimeout(this.timer);
@@ -262,6 +279,10 @@ export class Engine {
     this.recordingScope = null;
     const writer = this.writer;
     this.writer = null;
+    // Stopped before the recording is built: building it is the recorder's work, not the page's.
+    const self = this.selfProfile;
+    this.selfProfile = null;
+    const trace = self?.stop().catch(() => null);
     let recording: Saved;
     try {
       recording = recorder.stop(options.collected === true);
@@ -269,11 +290,17 @@ export class Engine {
       this.syncIdleHighlight();
       this.listeners.forEach((l) => l('stopped'));
     }
+    if (this.cpuNote) recording.warnings.push(this.cpuNote);
     if (writer) {
-      const saved: SavedSession | null = await writer.finish(recording);
+      const sampled = self && trace ? await trace : null;
+      const cpu: CpuInput | undefined =
+        options.cpu ?? (self && sampled ? { format: 'self', trace: sampled, intervalMs: self.intervalMs } : undefined);
+      const saved: SavedSession | null = await writer.finish(recording, cpu);
       if (saved) {
         Object.assign(recording, { id: saved.id, dir: saved.dir });
         applySites(recording, saved.sites ?? {});
+        if (saved.cpu) recording.cpu = saved.cpu;
+        if (saved.cpuError) recording.warnings.push(saved.cpuError);
       } else recording.saveError = writer.failed ?? 'not saved';
     }
     this.last = recording;

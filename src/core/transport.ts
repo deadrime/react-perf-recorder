@@ -1,3 +1,4 @@
+import type { CpuInput, CpuSummary } from '../shared/cpu';
 import { CLIENT_HEADER, type RecordingV2, type SessionEvent, type SessionMeta } from '../shared/schema';
 
 export interface OpenMeta {
@@ -14,6 +15,8 @@ export interface SavedSession {
   dir: string;
   /** `url:line:column` of a generated call site → its line in the source. */
   sites?: Record<string, { site: string; code?: string; deps?: string[] }>;
+  cpu?: CpuSummary;
+  cpuError?: string;
 }
 
 const FLUSH_MS = 2000;
@@ -73,13 +76,13 @@ export class SessionWriter {
     this.clearPending();
   }
 
-  async finish(recording: RecordingV2): Promise<SavedSession | null> {
+  async finish(recording: RecordingV2, cpu?: CpuInput): Promise<SavedSession | null> {
     await this.flush();
     this.stopHeartbeat();
     this.clearPending();
     if (!this.id || this.failed) return null;
     try {
-      const saved = (await this.post(`sessions/${this.id}/finish`, { recording })) as SavedSession;
+      const saved = (await this.post(`sessions/${this.id}/finish`, { recording, ...(cpu ? { cpu } : {}) })) as SavedSession;
       return saved;
     } catch (error) {
       this.failed = `recording not saved: ${String((error as Error)?.message ?? error)}`;

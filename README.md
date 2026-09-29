@@ -43,6 +43,9 @@ an area of the page to record alone.
 - **A timeline** of actions and commits; a picked commit shows its cascade as a tree and outlines its components on
   the page.
 - **Memos that miss** — a `useMemo` that recomputes on every render, and the dependency that moved.
+- **CPU** — where the time went when renders are few but slow: busy time by package, the slowest renders with the
+  function inside them that took it, the hottest functions with their line, and the work outside renders
+  (`record_page` with `cpu`, or the panel in Chromium).
 - **Before → after** — `↻ Repeat` reloads the page and does the same actions again, so a fix is measured.
 
 ## With an assistant

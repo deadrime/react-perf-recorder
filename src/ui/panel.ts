@@ -190,6 +190,7 @@ export class Panel {
       label: replay ? `replay of ${replay.from ?? 'the last recording'}` : (NOTE_IN_PANEL && this.state.label) || 'from page load',
       ...(replay ? { replay } : {}),
       ...(this.state.fast ? { sampleReasons: true } : {}),
+      cpu: true,
     });
     location.reload();
   }
@@ -317,6 +318,7 @@ export class Panel {
         label: (NOTE_IN_PANEL && this.state.label) || undefined,
         ...(this.state.watch.length ? { watch: this.state.watch } : {}),
         ...(this.state.fast ? { sampleReasons: true } : {}),
+        cpu: true,
       });
     } catch (error) {
       this.say(String((error as Error)?.message ?? error), 'error');

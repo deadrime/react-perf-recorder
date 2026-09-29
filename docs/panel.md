@@ -47,6 +47,10 @@ letter while only the input under it changes. Then warnings, actions, the other 
 - **Memos that miss** — a `useMemo` or `useCallback` that recomputed on at least half of its renders, how often it
   kept its value, the dependency that moved by its name in the code, whether it moved to a new object with the same
   content, and the line.
+- **CPU** — in Chromium, where the page profiled itself (see [CPU](recording.md#cpu)): busy time split by package,
+  the recorder's own share apart, the slowest renders with what inside them took the time, the hottest functions
+  and the work outside renders. It opens by itself when the page was busy for more than a sixth of the recording.
+  The page samples every 10 ms: a short scenario of quick renders gets few samples, and the report says so.
 - **Plugins** — what the store, query and memoizer plugins saw; a library that is not on the page is left out.
 
 The bottom bar keeps the id, **Copy id**, **↻ Repeat**, **Download**, **⤢ Wide** and **Dismiss** in reach however far
