@@ -96,7 +96,7 @@ const Frame = ({ children }: { children: ReactNode }) => <div className="stack">
 
 export const Dialog = () => (
   <Case
-    title="a dialog's flag belongs to the dialog"
+    title="a dialog's open flag kept in the page"
     what={
       <>
         Both pages have a Help button that opens a dialog above a feed. On the left the page keeps the open flag, so opening and closing the dialog

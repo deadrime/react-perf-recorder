@@ -79,7 +79,7 @@ export const Cache = () => {
   useUpdates();
   return (
     <Case
-      title="a cache smaller than the data"
+      title="a memoized selector with too few slots"
       what={
         <>
           Four rows read their task through one memoized selector, cached by the row's id. The store updates twice a

@@ -98,7 +98,7 @@ const Search = ({ side, deferred }: { side: string; deferred: boolean }) => {
 
 export const HeavyList = () => (
   <Case
-    title="the field first, the list when there is time"
+    title="a slow list filtered as you type"
     what={
       <>
         Both fields filter two thousand rows. On the left every letter renders the list before the browser may show the letter, so typing stutters. On

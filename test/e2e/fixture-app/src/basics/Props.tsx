@@ -142,7 +142,7 @@ const Fresh = ({ children }: { children: (run: number) => ReactNode }) => <>{chi
 export const Props = () => {
   return (
     <Case
-      title="a new object is a new prop"
+      title="an object written in render breaks memo"
       what={
         <>
           Every list passes its <code>memo</code> rows something that does not change when the panel renders — but on the left it is written inside
