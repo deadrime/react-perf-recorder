@@ -30,8 +30,6 @@ interface Item {
   name?: string;
   atEnd?: true;
   removed?: ShiftNode;
-  /** Put in by React itself: its own fiber, not one of a parent it was put into. */
-  react?: true;
 }
 
 type How = ShiftCulprit['change'];
@@ -46,7 +44,6 @@ interface Candidate {
   atEnd?: boolean;
   /** What was removed, named when the change came, while React still knew it; `node` only marks where it was. */
   removed?: ShiftNode;
-  react?: true;
 }
 
 export interface ShiftOptions {
@@ -70,10 +67,8 @@ const LAYOUT_PROP =
 export const shiftsSupported = () =>
   typeof PerformanceObserver !== 'undefined' && (PerformanceObserver.supportedEntryTypes ?? []).includes('layout-shift');
 
-const isSheet = (n: Node) =>
-  n.nodeName === 'STYLE' ||
-  (n.nodeName === 'LINK' && /stylesheet/i.test((n as Element).getAttribute('rel') ?? '')) ||
-  n.parentNode?.nodeName === 'STYLE';
+/** A <style> applies when put in; a <link> only when it loads, which its load event reports. */
+const isSheet = (n: Node) => n.nodeName === 'STYLE' || n.parentNode?.nodeName === 'STYLE';
 // An iframe or an embed has a 300×150 box before it loads, and keeps it.
 const isMedia = (n: Node) => /^(IMG|VIDEO|IMAGE)$/i.test(n.nodeName);
 /**
@@ -291,13 +286,14 @@ export class ShiftWatcher {
         m.addedNodes.forEach((node) => {
           // A stylesheet put into the page moves everything; it is no one's neighbour. Other links move nothing.
           if (isSheet(node)) this.add({ t, frame: NaN, kind: 'sheet', node });
-          else if (node.nodeName !== 'LINK') items.push({ node, how: 'added', ...(madeByReact(node) ? { react: true as const } : {}) });
+          else if (node.nodeName !== 'LINK') items.push({ node, how: 'added' });
         });
         const gone = m.removedNodes[0];
         if (!gone) continue;
         // Named now: by the time the shift is reported React has let go of the removed nodes' fibers.
-        const removed = named++ < MAX_NAMED ? this.removedName(gone, m.target) : { node: nodePath(m.target) };
-        items.push(m.nextSibling ? { node: m.nextSibling, how: 'removed', removed } : { node: m.target, how: 'removed', atEnd: true, removed });
+        // Past the cap it is named later by where it was, which still has its component.
+        const removed = named++ < MAX_NAMED ? { removed: this.removedName(gone, m.target) } : {};
+        items.push(m.nextSibling ? { node: m.nextSibling, how: 'removed', ...removed } : { node: m.target, how: 'removed', atEnd: true, ...removed });
       }
     }
     const change: Change = { t, frame: NaN, kind: commit ? 'commit' : 'dom', items };
@@ -478,7 +474,7 @@ export class ShiftWatcher {
     const atMs = Math.round(change.t - this.options.t0);
     if (change.kind === 'commit') return { commit: change.commit ?? null, atMs, by };
     // Mounted by React all the same: a root the recording does not follow, outside the recorded area.
-    if (how === 'added' && candidate.react) return { commit: null, atMs, by };
+    if (how === 'added' && madeByReact(candidate.node)) return { commit: null, atMs, by };
     if (change.kind === 'load') return { resource: 'image', by };
     if (how === 'attribute' && name === 'style') return { animation: 'inline-style', by };
     return { dom: true, by };

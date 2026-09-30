@@ -128,7 +128,15 @@ export class Highlighter implements HighlightSink {
     this.redraw();
   }
 
+  private slowTimer: ReturnType<typeof setTimeout> | null = null;
+
   private redraw() {
+    // A slow refresh waiting is no frame on its way: draw now.
+    if (this.slowTimer) {
+      clearTimeout(this.slowTimer);
+      this.slowTimer = null;
+      this.drawing = false;
+    }
     if (this.drawing) return;
     this.drawing = true;
     requestAnimationFrame(() => this.draw());
@@ -254,8 +262,13 @@ export class Highlighter implements HighlightSink {
     // Only render outlines count as overhead: a picked shift is drawn from the report, not while the app works.
     this.costMs += performance.now() - started;
     this.drawShift(ctx);
-    // A picked shift plays its move a few times, so the canvas keeps drawing until then.
+    // A picked shift plays its move a few times; then its boxes follow the page a few times a second.
     if (this.flashes.size || this.replaying()) requestAnimationFrame(() => this.draw());
+    else if (this.shift)
+      this.slowTimer = setTimeout(() => {
+        this.slowTimer = null;
+        requestAnimationFrame(() => this.draw());
+      }, 250);
     else this.drawing = false;
   }
 

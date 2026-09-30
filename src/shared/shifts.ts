@@ -109,14 +109,10 @@ const empty = (r: ShiftRect) => r[2] === 0 || r[3] === 0;
 export function runMoves(run: ShiftRun): Array<ShiftNode & { from: ShiftRect; to: ShiftRect }> {
   // Two list rows named alike are told apart by their order among the ones named so.
   const nth = (sources: ShiftNode[], i: number) => sources.slice(0, i).filter((s) => nodeKey(s) === nodeKey(sources[i])).length;
-  // The rects are in the viewport: a run the window scrolled through would count the scroll as a move.
-  const dx = (run.first.scroll?.[0] ?? 0) - (run.last.scroll?.[0] ?? 0);
-  const dy = (run.first.scroll?.[1] ?? 0) - (run.last.scroll?.[1] ?? 0);
   return run.first.sources.map((source, i) => {
     const n = nth(run.first.sources, i);
     const end = run.last.sources.filter((s) => nodeKey(s) === nodeKey(source))[n] ?? source;
-    const from: ShiftRect = empty(source.from) ? source.from : [source.from[0] + dx, source.from[1] + dy, source.from[2], source.from[3]];
-    return { ...source, from, to: end.to };
+    return { ...source, to: end.to };
   });
 }
 

@@ -369,13 +369,6 @@ describe('shifts in a partial recording and in a comparison', () => {
     expect(aggregateEvents(meta, [{ k: 'end', atMs: 1000 }]).shifts).toBeUndefined();
   });
 
-  it('takes the window scroll out of the move of a run', () => {
-    const first = shift(0, 0.01, { scroll: [0, 0] });
-    const last = shift(100, 0.01, { scroll: [0, 120], sources: [{ ...first.sources[0], from: [0, 100, 300, 400], to: [0, 100, 300, 400] }] });
-    // Scrolled 120 px down, the list stayed where it was on the page: in the last frame's viewport it was at -20.
-    expect(runMoves(shiftRuns([first, last])[0])[0]).toMatchObject({ from: [0, -20, 300, 400], to: [0, 100, 300, 400] });
-  });
-
   it('pairs list rows named alike by their order in the run', () => {
     const row = (y: number) => ({
       node: 'ul > li',
