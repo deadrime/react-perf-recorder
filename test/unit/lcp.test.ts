@@ -326,6 +326,22 @@ describe('reading the largest paint', () => {
     expect(findings).toContain('the text painted after web font /fonts/inter.woff2 arrived at 0.88s');
   });
 
+  it('counts nothing after the mount when the paint is stamped before it, at the start of a long frame', () => {
+    const text = lcp({
+      element: { component: 'IssueRow', node: 'td', kind: 'text' },
+      phases: { ttfb: 6, loadDelay: 0, loadDuration: 0, renderDelay: 430 },
+      mount: { commit: 3, atMs: 560, ms: 560, change: 'added' },
+      image: undefined,
+      ms: 436,
+      atMs: 436,
+    });
+    const r = rec({
+      lcp: text,
+      frames: { longTasks: { count: 1, maxMs: 136, totalMs: 136 }, loaf: [{ atMs: 420, duration: 200, blocking: 136, commits: 1, scripts: [] }] },
+    } as Partial<RecordingV2>);
+    expect(lcpFindings(r, text).some((f) => f.includes('to the paint'))).toBe(false);
+  });
+
   it('says a lazy image holds its request', () => {
     const lazy = lcp({ mount: { before: true }, image: { lazy: true, initiator: 'img', requestMs: 400 } });
     expect(lcpFindings(rec({ lcp: lazy }), lazy)[0]).toMatch(/loading="lazy"/);

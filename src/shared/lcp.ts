@@ -85,7 +85,8 @@ export function lcpFindings(rec: Pick<RecordingV2, 'commits' | 'frames' | 'cause
     const paintAt = lcp.atMs;
     // For text, the wait before its mount is the mount's finding: what came after it held the paint.
     const from = Math.max(paintAt - phases.renderDelay, mounted && !isImage ? mounted.atMs : -Infinity);
-    const busy = busyBetween(rec, from, paintAt);
+    // After a long task the paint's time is its frame's start, which can come before the mount it painted.
+    const busy = paintAt > from && busyBetween(rec, from, paintAt);
     if (busy)
       out.push({
         weight: paintAt - from,
