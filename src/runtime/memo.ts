@@ -56,9 +56,9 @@ const MAX_DISTINCT = 64;
 function createdAt(rec: MemoRecord): { name: string; file: string } {
   const frame = parseStack(rec.created?.stack ?? '')
     .slice(1)
-    .find((f) => libraryOf(f.url) === null);
+    .find((f) => libraryOf(f.url, f.line) === null);
   if (!frame) return { name: rec.kind, file: '' };
-  const file = servedPath(frame.url).replace(/^src\//, '');
+  const file = servedPath(frame.url, frame.line).replace(/^src\//, '');
   const fn = /^[A-Za-z_$][\w$]*$/.test(frame.fn) ? frame.fn : '';
   return { name: `${rec.kind} in ${fn ? `${fn} · ` : ''}${file.split('/').pop()}`, file };
 }

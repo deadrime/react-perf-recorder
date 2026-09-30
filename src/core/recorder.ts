@@ -60,6 +60,7 @@ import { updateOrigin, type UpdateOrigin } from './env/origin';
 import { reactWarningLines } from './env/react-warnings';
 import { runningTimer, runningTimerLibrary, setTimerSink } from './env/timers';
 import { GrowthWatcher } from './growth';
+import { ShiftWatcher, shiftsSupported } from './shifts';
 
 export interface EngineConfig {
   version: string;
@@ -71,6 +72,8 @@ export interface EngineConfig {
   timelineLimit: number;
   /** Timers are wrapped at boot; off leaves the page's timers alone and timer causes out. */
   timers?: boolean;
+  /** The dev server lets the page profile itself (`Document-Policy: js-profiling`). */
+  cpu?: boolean;
 }
 
 export interface RecordOptions {
@@ -92,6 +95,10 @@ export interface RecordOptions {
   sampleReasons?: boolean;
   /** Sample DOM nodes, CSS rules, intervals, listeners and heap, four times a second for 10 s and then once a second; off leaves `growth` out. */
   growth?: boolean;
+  /** Set by whoever records, not seen by the page: CPU throttling, how the CPU was sampled. */
+  conditions?: Record<string, Primitive>;
+  /** Layout shifts and what moved them, where the browser reports them (Chromium); off leaves `shifts` out. */
+  shifts?: boolean;
 }
 
 export interface HighlightSink {
@@ -293,6 +300,7 @@ export class Recorder {
   private readonly frames: FrameWatcher;
   private readonly actions: ActionTracker | null;
   private readonly growth: GrowthWatcher | null;
+  private readonly shifts: ShiftWatcher | null;
   /** Whether childLanes can be trusted to point at fresh updates; React 19 answers no and the walk widens. */
   private narrowUpdateWalk = true;
   private hook: CommitHook | null = null;
@@ -361,6 +369,16 @@ export class Recorder {
       onFrame: (frame) => this.emit({ k: 'frame', frame }),
       onLatency: (entry) => this.emit({ k: 'latency', entry }),
     });
+    this.shifts =
+      options.shifts === false || !shiftsSupported()
+        ? null
+        : new ShiftWatcher({
+            t0: this.t0,
+            projectRoot: this.config.projectRoot,
+            wrapperPattern: this.wrapperRe,
+            ownHost: deps.ownHost,
+            onShift: (shift) => this.emit({ k: 'shift', shift }),
+          });
     this.growth =
       options.growth === false
         ? null
@@ -427,6 +445,12 @@ export class Recorder {
       (fiber, lane) => this.noteUpdate(fiber, lane),
       withUpdaters
     );
+    // After the hook, which can throw: nothing stops listeners and observers of a start that failed.
+    if (this.shifts) {
+      const shifts = this.shifts;
+      this.dom.onRecords = (records, commit) => shifts.noteRecords(records, commit);
+      shifts.start();
+    }
     this.updaters = this.hook.updaters ? new Map() : null;
     // A store or query notifies its subscribers before the recorder hears about it, so the fibers React just
     // marked are the ones this event updated.
@@ -501,6 +525,8 @@ export class Recorder {
   /** `collected`: the page's garbage was collected just before, so what is still in memory is held by something. */
   stop(collected = false): RecordingV2 {
     if (this.stopped) throw new RecorderError('NOT_RECORDING', 'recording already stopped');
+    // Shifts the observer still holds must stream out before emit stops taking events.
+    this.shifts?.flush();
     this.stopped = true;
     setTimerSink(null);
     this.deps.plugins.targets = null;
@@ -508,6 +534,7 @@ export class Recorder {
     this.storeChecks?.stop();
     this.errors.push(...hookErrors);
     this.dom.stop();
+    this.shifts?.stop();
     this.frames.stop();
     this.counting = false;
     this.actions?.stop();
@@ -527,6 +554,7 @@ export class Recorder {
   private onCommit({ fiber, lanes }: CommitInfo) {
     const started = performance.now();
     const t = Math.round(started - this.t0);
+    const seq = this.commitSeq;
     this.totals.commits++;
     if (this.commitTimes.length < MAX_SEGMENT_COMMITS) this.commitTimes.push(t);
     const lane = laneLabel(lanes);
@@ -583,6 +611,7 @@ export class Recorder {
     this.storeChecks?.commit();
     this.growth?.commit(fiber);
     this.finishCommit(c, causes, lane, event, source, origins, resyncOnly);
+    this.shifts?.commitDone(this.commitSeq > seq ? seq : null);
   }
 
   private visitChain(f: Fiber, prevs: Array<Snapshot | undefined>) {
@@ -1308,6 +1337,7 @@ export class Recorder {
       url: safeUrl(location.pathname + location.search),
       dpr: devicePixelRatio,
       ...this.deps.plugins.conditions(),
+      ...this.options.conditions,
     };
   }
 
@@ -1531,6 +1561,7 @@ export class Recorder {
       },
       dom: { ...this.dom.counts },
       ...(growth ? { growth } : {}),
+      ...(this.shifts ? { shifts: this.shifts.result(this.frames.latency) } : {}),
       navigations: this.navigations,
       hmr: this.hmr,
       conditions: this.conditions,

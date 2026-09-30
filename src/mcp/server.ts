@@ -20,6 +20,8 @@ import {
   wayText,
   type HookMode,
 } from '../shared/summary';
+import { CPU_CAVEAT, cpuLine, placeText } from '../shared/cpu';
+import { commitCausesOf, runText, shiftRuns } from '../shared/shifts';
 import { GROWTH_KEYS, type RecordingV2 } from '../shared/schema';
 import { listingOf } from '../shared/listing';
 import { planReplay } from '../shared/replay';
@@ -43,6 +45,8 @@ const SECTIONS = [
   'segments',
   'frames',
   'growth',
+  'cpu',
+  'shifts',
   'navigations',
   'conditions',
   'warnings',
@@ -50,6 +54,11 @@ const SECTIONS = [
 ] as const;
 
 // No indentation: an agent reads compact JSON as well, and indented answers cost it a fifth more.
+const SHIFTS_NOTE =
+  'Counted the way Chrome counts CLS. Resizing the viewport (a phone keyboard, the URL bar), scrolling and transform ' +
+  'animations are not shifts, so field data stays the only source for those. A dev build loads CSS through JS and may ' +
+  'get its data in another order than production: a shift on page load may not happen there.';
+
 const json = (value: unknown) => ({ content: [{ type: 'text' as const, text: JSON.stringify(value) }] });
 
 /** The setup record_page ran before a recording: its replay needs the same mocks, storage or sign-in. */
@@ -184,6 +193,45 @@ export function section(rec: RecordingV2 & { id?: string; status?: string }, nam
         samples: samples.filter((_, i) => i % step === 0 || i === samples.length - 1),
       };
     }
+    case 'cpu': {
+      const cpu = rec.cpu;
+      if (!cpu)
+        return {
+          note: 'not profiled: record with record_page cpu: true (or the panel in Chromium, where the dev server allows the page to profile itself)',
+        };
+      const { packages, functions, renders, entries, ...rest } = cpu;
+      return {
+        ...rest,
+        line: cpuLine(cpu),
+        caveat: CPU_CAVEAT,
+        packages: packages.map((p) => `${p.name}: ${p.selfMs}ms self, ${p.totalMs}ms on the stack`),
+        functions: page(functions.map((f) => `${f.selfMs}ms self, ${f.totalMs}ms total  ${placeText(f)}`)),
+        renders: page(renders.map((r) => ({ render: `${r.ms}ms  ${placeText(r)}`, hot: r.hot.map((h) => `${h.ms}ms ${placeText(h)}`) }))),
+        entries: page(entries.map((e) => `${e.ms}ms  ${placeText(e)}`)),
+      };
+    }
+    case 'shifts': {
+      const shifts = rec.shifts;
+      if (!shifts)
+        return {
+          note: 'no layout shifts recorded: the browser does not report them (Firefox, Safari), the recording was made with shifts: false, or by an older version',
+        };
+      return {
+        cls: shifts.cls,
+        ...(shifts.truncated ? { truncated: true } : {}),
+        ...(shifts.cls.nearMiss && !rec.conditions.throttle
+          ? {
+              hint: 'excluded shifts driven by an animation, or late after an input, would likely count on a slower device: record again with throttle: 4 or 6 to see them counted',
+            }
+          : {}),
+        note: SHIFTS_NOTE,
+        // One line per element and reason: an animation shifts every frame, and fifty lines of one drawer help no one.
+        ...(() => {
+          const causes = commitCausesOf(rec);
+          return page(shiftRuns(shifts.list).map((run) => runText(run, causes)));
+        })(),
+      };
+    }
     case 'navigations':
       return page(rec.navigations);
     case 'conditions':
@@ -300,7 +348,12 @@ export function createServer(dir: string) {
               'that moved and its line. growth: DOM nodes, CSS rules, <style> elements, live intervals, window/document listeners ' +
               'JS heap, observers and open sockets from start to stop, with slope, what kept growing, where the intervals, listeners and ' +
               'observers left behind were added, and the components unmounted but still in memory after a garbage collection ' +
-              '(record_page collects before Stop) — for a leak.'
+              '(record_page collects before Stop) — for a leak. cpu: where the CPU went, when it was profiled — busy time, packages, ' +
+              'the hottest functions with file:line, component renders with what inside them took the time, and work outside renders ' +
+              'by the function that started it. shifts: layout shifts (Chromium) worst first, grouped per element and reason — what ' +
+              'moved, which way and how far, what moved it (the component a commit mounted or changed above it, a style written ' +
+              'every frame, a CSS animation, an image with no size, a font), and whether the browser counted it; CLS by session ' +
+              'windows and the near miss a slower device would add.'
           ),
         top: z.number().int().min(1).max(100).optional().describe('How many entries of a long section, 10 by default.'),
         offset: z.number().int().min(0).optional().describe('Where to start in a long section, to page through it.'),
@@ -333,7 +386,7 @@ export function createServer(dir: string) {
     {
       description:
         'Use when you drive the page yourself: nobody can reproduce it in their browser, a scenario has to run the same way twice, or a fix has to be measured. When the person can reproduce it, their own recording (wait_for_recording) is worth more. ' +
-        "Records a page in a browser of its own and returns the session id with its totals and the roots whose renders mostly change nothing (wasting), so a fix can be measured: record, change the code, record again with the same arguments, then compare_recordings. Needs the dev server running with the Vite plugin and playwright installed in the project. A scenario of clicks and typing goes in a script module, or replay does again what a recording did — the person's own clicks and typing, at their pace, from the page load; replay does not wait for data, so a scenario whose actions wait on requests needs a script. Without either it records ms of the page as it is, and fromLoad records the page load itself. Behind a sign-in: via (a link that signs in), then a session saved once by `react-perf-recorder login <url>`, then cdp; a page that redirects to a login says so. Outlines are off in these runs. A run that outlasts the client's time limit (about a minute) keeps recording in the page: list_recordings shows it as recording until it ends — keep a script well under a minute.",
+        "Records a page in a browser of its own and returns the session id with its totals and the roots whose renders mostly change nothing (wasting), so a fix can be measured: record, change the code, record again with the same arguments, then compare_recordings. Needs a running dev server with React's development build and playwright installed in the project. With the Vite plugin on the dev server the recording is complete; without it record_page puts the recorder into the page itself — recorder: \"injected\" in the answer, and a warning says what such a recording lacks. A scenario of clicks and typing goes in a script module, or replay does again what a recording did — the person's own clicks and typing, at their pace, from the page load; replay does not wait for data, so a scenario whose actions wait on requests needs a script. Without either it records ms of the page as it is, and fromLoad records the page load itself. Behind a sign-in: via (a link that signs in), then a session saved once by `react-perf-recorder login <url>`, then cdp; a page that redirects to a login says so. Outlines are off in these runs. A run that outlasts the client's time limit (about a minute) keeps recording in the page: list_recordings shows it as recording until it ends — keep a script well under a minute.",
       inputSchema: {
         url: z
           .string()
@@ -393,12 +446,29 @@ export function createServer(dir: string) {
           .max(20)
           .optional()
           .describe('CPU slowdown, 4 = four times slower; keep it the same across runs that will be compared.'),
+        cpu: z
+          .union([z.boolean(), z.object({ intervalUs: z.number().int().min(50).max(10_000).optional(), raw: z.boolean().optional() })])
+          .optional()
+          .describe(
+            'Profile the CPU while recording (every 0.5 ms; intervalUs changes it): where the time went by package, function with file:line, component render and what inside it, and work outside renders — read it with section cpu. ' +
+              'For a render that is slow rather than frequent, or work outside React (a socket, a timer, a chart); not needed to count renders. The profiler slows the page a little: compare a run with cpu only against another with cpu. raw keeps cpu.cpuprofile beside the recording, for DevTools.'
+          ),
         state: z.string().optional().describe('A session saved by `login`; the default beside the recordings is used when it is there.'),
         cdp: z.string().optional().describe('http://localhost:9222 of a browser already running and signed in.'),
         via: z
           .string()
           .optional()
           .describe('A url to open first that signs the browser in — a debug or magic link. It is not recorded, and its token is never stored.'),
+        inject: z
+          .enum(['auto', 'always', 'never'])
+          .optional()
+          .describe('auto (default): put the recorder into the page when the dev server has no Vite plugin. never: record only through the plugin.'),
+        root: z
+          .string()
+          .optional()
+          .describe(
+            "The app's folder, when it is not the working directory (a monorepo): file names and source lines without the plugin are read from it."
+          ),
       },
     },
     async ({ replay, ...args }) => {
@@ -407,6 +477,9 @@ export function createServer(dir: string) {
       const rec = readRecording(entry);
       const plan = planReplay({ ...rec, id: rec.id ?? replay });
       const scope = args.scope ?? rec.scope?.name;
+      // Measured again the way it was measured: a profile compares with a profile, a throttled run with a throttled one.
+      if (args.cpu === undefined && rec.cpu) args = { ...args, cpu: true };
+      if (args.throttle === undefined && typeof rec.conditions.throttle === 'number') args = { ...args, throttle: rec.conditions.throttle };
       const setup = args.setup ?? setupOf(entry.dir);
       if (!plan.steps.length && plan.skipped.length) throw new Error(`${replay} has no actions to replay: ${plan.skipped.join('; ')}`);
       // A recording of the page left alone: the same page, area and length again, so the two compare.

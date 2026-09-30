@@ -24,6 +24,22 @@ const FADE_MS = 420;
 /** Renders closer together than this are one streak, and the count keeps rising. */
 const STREAK_MS = LIT_MS + FADE_MS;
 const MAX_FLASHES = 300;
+/** A picked shift plays again every this long: a still, the move, then the result held. */
+const SHIFT_LOOP_MS = 2200;
+/** `roundRect` where the browser has it, a plain rectangle where it does not. */
+const rounded = (ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) =>
+  typeof ctx.roundRect === 'function' ? ctx.roundRect(x, y, w, h, r) : ctx.rect(x, y, w, h);
+const ease = (k: number) => (k < 0.5 ? 2 * k * k : 1 - (-2 * k + 2) ** 2 / 2);
+
+/** Then it holds still: a loop left running draws every frame for as long as the report stays open. */
+const SHIFT_REPLAYS = 3;
+
+/** A layout shift picked in the report: where each moved element was and is, and what moved it. */
+export interface ShiftPin {
+  /** `dx`, `dy`: from its box now to where it was before the shift; `was` is the size it had then. */
+  moved: Array<{ el: Element; dx: number; dy: number; was: [number, number] | null; label: string }>;
+  culprit: { el: Element; label: string } | null;
+}
 
 /** A closed menu or popover often stays in the DOM, unpositioned in the top-left: outlining it stacks boxes there. */
 const shown = (el: Element) => el.checkVisibility?.({ opacityProperty: true, visibilityProperty: true, contentVisibilityAuto: true }) ?? true;
@@ -66,6 +82,8 @@ export class Highlighter implements HighlightSink {
   private colours: Rgb[] = PALETTE.map(([, fallback]) => fallback);
   /** Components picked on the report's timeline: outlined until the pick changes, whatever the highlight toggle says. */
   private pinned: Array<{ fiber: Fiber; label: string }> = [];
+  private shift: ShiftPin | null = null;
+  private shiftSince = 0;
 
   constructor(parent: ShadowRoot | Element) {
     const host = parent instanceof ShadowRoot ? parent.host : parent;
@@ -91,6 +109,13 @@ export class Highlighter implements HighlightSink {
     this.redraw();
   }
 
+  /** Outlines a layout shift until the next call; null takes it away. */
+  pinShift(pin: ShiftPin | null) {
+    this.shift = pin;
+    this.shiftSince = performance.now();
+    this.redraw();
+  }
+
   /** Window scroll is taken off document coords in draw; an inner container moves its boxes without it. */
   private scrolled(target: EventTarget | null) {
     if (target instanceof Element && target !== document.scrollingElement) {
@@ -103,7 +128,15 @@ export class Highlighter implements HighlightSink {
     this.redraw();
   }
 
+  private slowTimer: ReturnType<typeof setTimeout> | null = null;
+
   private redraw() {
+    // A slow refresh waiting is no frame on its way: draw now.
+    if (this.slowTimer) {
+      clearTimeout(this.slowTimer);
+      this.slowTimer = null;
+      this.drawing = false;
+    }
     if (this.drawing) return;
     this.drawing = true;
     requestAnimationFrame(() => this.draw());
@@ -167,10 +200,7 @@ export class Highlighter implements HighlightSink {
         if (this.flashes.size <= MAX_FLASHES) break;
         this.flashes.delete(el);
       }
-      if (!this.drawing) {
-        this.drawing = true;
-        requestAnimationFrame(() => this.draw());
-      }
+      this.redraw();
     });
     targets.forEach((el) => observer.observe(el));
     this.costMs += performance.now() - started;
@@ -226,8 +256,16 @@ export class Highlighter implements HighlightSink {
       if (flash.scroller) ctx.restore();
     }
     this.drawPinned(ctx);
+    // Only render outlines count as overhead: a picked shift is drawn from the report, not while the app works.
     this.costMs += performance.now() - started;
-    if (this.flashes.size) requestAnimationFrame(() => this.draw());
+    this.drawShift(ctx);
+    // A picked shift plays its move a few times; then its boxes follow the page a few times a second.
+    if (this.flashes.size || this.replaying()) requestAnimationFrame(() => this.draw());
+    else if (this.shift)
+      this.slowTimer = setTimeout(() => {
+        this.slowTimer = null;
+        requestAnimationFrame(() => this.draw());
+      }, 250);
     else this.drawing = false;
   }
 
@@ -277,6 +315,156 @@ export class Highlighter implements HighlightSink {
       ctx.fillStyle = '#fff';
       ctx.fillText(label, x + 4, top + 12);
     }
+  }
+
+  /** A picked shift: the culprit hatched in a red frame, each moved element blue now and dashed where it was, an arrow between. */
+  private drawShift(ctx: CanvasRenderingContext2D) {
+    const pin = this.shift;
+    if (!pin) return;
+    const blue = this.colours[4];
+    const red = this.colours[3];
+    const rgba = ([r, g, b]: Rgb, a = 1) => `rgba(${r},${g},${b},${a})`;
+    const labels: Array<() => void> = [];
+    ctx.font = '600 12px ui-monospace, SFMono-Regular, Menlo, monospace';
+
+    const culprit = pin.culprit?.el.isConnected ? pin.culprit : null;
+    if (culprit) {
+      const box = culprit.el.getBoundingClientRect();
+      this.stripes(ctx, box, 'rgba(110,110,122,0.28)');
+      ctx.strokeStyle = rgba(red, 0.9);
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(box.left + 0.75, box.top + 0.75, Math.max(0, box.width - 1.5), Math.max(0, box.height - 1.5));
+      labels.push(() => this.tag(ctx, culprit.label, box.left, box.top - 20, red));
+    }
+
+    const t = (performance.now() - this.shiftSince) % SHIFT_LOOP_MS;
+    for (const moved of pin.moved) {
+      if (!moved.el.isConnected) continue;
+      const now = moved.el.getBoundingClientRect();
+      const was = moved.was && { left: now.left + moved.dx, top: now.top + moved.dy, width: moved.was[0], height: moved.was[1] };
+      if (was) {
+        ctx.strokeStyle = rgba(blue, 0.9);
+        ctx.lineWidth = 2;
+        ctx.setLineDash([6, 4]);
+        ctx.strokeRect(was.left + 1, was.top + 1, Math.max(0, was.width - 2), Math.max(0, was.height - 2));
+        ctx.setLineDash([]);
+      }
+      ctx.fillStyle = rgba(blue, 0.1);
+      ctx.fillRect(now.left, now.top, now.width, now.height);
+      ctx.strokeStyle = rgba(blue);
+      ctx.lineWidth = 2;
+      ctx.strokeRect(now.left + 1, now.top + 1, Math.max(0, now.width - 2), Math.max(0, now.height - 2));
+      if (was && Math.hypot(moved.dx, moved.dy) > 4) {
+        // The move once more, from where it was to where it is: the eye follows motion before it reads boxes.
+        if (this.replaying()) {
+          const k = t < 500 ? 0 : t < 900 ? ease((t - 500) / 400) : 1;
+          const fade = t < 900 ? 1 : Math.max(0, 1 - (t - 900) / 600);
+          if (fade > 0) {
+            ctx.fillStyle = rgba(blue, 0.28 * fade);
+            ctx.fillRect(was.left + (now.left - was.left) * k, was.top + (now.top - was.top) * k, now.width, now.height);
+          }
+        }
+        const vertical = Math.abs(moved.dy) >= Math.abs(moved.dx);
+        // Along the side the labels leave free: the right edge for a move up or down, the top for one sideways.
+        const x = Math.min(now.right, innerWidth) - 28;
+        const y = Math.max(now.top, 0) + 28;
+        const [x1, y1, x2, y2] = vertical ? [x, was.top, x, now.top] : [was.left, y, now.left, y];
+        this.arrow(ctx, x1, y1, x2, y2, rgba(blue));
+        const distance = `${vertical ? (moved.dy < 0 ? '↓' : '↑') : moved.dx < 0 ? '→' : '←'} ${Math.round(Math.hypot(moved.dx, moved.dy))}px`;
+        labels.push(() => {
+          const w = ctx.measureText(distance).width + 12;
+          if (vertical) this.tag(ctx, distance, x1 - w - 8, (y1 + y2) / 2 - 10, blue);
+          else this.tag(ctx, distance, (x1 + x2) / 2 - w / 2, y1 + 8, blue);
+        });
+        // Inside the old box's top left: the arrow's start dot is on its right, the cause's name above it.
+        labels.push(() => this.tag(ctx, 'before', was.left + 4, was.top + 4, blue, true));
+      }
+      labels.push(() => this.tag(ctx, moved.label, now.left, now.top - 20 >= 0 ? now.top - 20 : now.top, blue));
+    }
+    // Labels last, over every box, so none of them is buried under the box of another element.
+    for (const draw of labels) draw();
+  }
+
+  private readonly reducedMotion = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  private replaying() {
+    return Boolean(this.shift) && !this.reducedMotion && performance.now() - this.shiftSince < SHIFT_REPLAYS * SHIFT_LOOP_MS;
+  }
+
+  /** A label on a rounded tab; `outline` draws it as a dashed tab, for the box of where something was. */
+  private tag(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, [r, g, b]: Rgb, outline = false) {
+    const w = ctx.measureText(text).width + 12;
+    const left = Math.max(0, Math.min(x, innerWidth - w));
+    const top = Math.max(0, y);
+    ctx.beginPath();
+    rounded(ctx, left, top, w, 20, 4);
+    ctx.fillStyle = outline ? 'rgba(20,20,26,0.85)' : `rgb(${r},${g},${b})`;
+    ctx.fill();
+    if (outline) {
+      ctx.beginPath();
+      rounded(ctx, left + 0.5, top + 0.5, w - 1, 19, 4);
+      ctx.strokeStyle = `rgb(${r},${g},${b})`;
+      ctx.lineWidth = 1;
+      ctx.setLineDash([4, 3]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+    ctx.fillStyle = '#fff';
+    ctx.fillText(text, left + 6, top + 14);
+  }
+
+  /** Thin grey hatching: marks the cause as something put in without shouting over the page under it. */
+  private stripes(ctx: CanvasRenderingContext2D, box: DOMRect, colour: string) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(box.left, box.top, box.width, box.height);
+    ctx.clip();
+    ctx.strokeStyle = colour;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    for (let d = -box.height; d < box.width; d += 9) {
+      ctx.moveTo(box.left + d, box.bottom);
+      ctx.lineTo(box.left + d + box.height, box.top);
+    }
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  /**
+   * From a ringed dot where the edge was to a swept head where it is: a slim shaft with a soft shadow, so it stands
+   * off a light page and a dark one without a heavy rim.
+   */
+  private arrow(ctx: CanvasRenderingContext2D, x1: number, y1: number, x2: number, y2: number, colour: string) {
+    const angle = Math.atan2(y2 - y1, x2 - x1);
+    const [cos, sin] = [Math.cos(angle), Math.sin(angle)];
+    const [len, half, notch] = [13, 5.5, 4];
+    ctx.save();
+    ctx.shadowColor = 'rgba(0,0,0,0.35)';
+    ctx.shadowBlur = 4;
+    ctx.shadowOffsetY = 1;
+    ctx.strokeStyle = colour;
+    ctx.fillStyle = colour;
+    ctx.lineWidth = 2.5;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x2 - (len - notch) * cos, y2 - (len - notch) * sin);
+    ctx.stroke();
+    // The head's back is cut in, the way a drawn arrow is, rather than a flat triangle.
+    ctx.beginPath();
+    ctx.moveTo(x2, y2);
+    ctx.lineTo(x2 - len * cos - half * sin, y2 - len * sin + half * cos);
+    ctx.lineTo(x2 - (len - notch) * cos, y2 - (len - notch) * sin);
+    ctx.lineTo(x2 - len * cos + half * sin, y2 - len * sin - half * cos);
+    ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(x1, y1, 4, 0, Math.PI * 2);
+    ctx.fillStyle = '#fff';
+    ctx.fill();
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.restore();
   }
 
   /** Grey when the render changed nothing; otherwise green, amber and red by how often it came. */

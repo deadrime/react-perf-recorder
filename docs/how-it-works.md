@@ -15,6 +15,9 @@
   React marked new work during it, and the cause goes to the components that work belongs to.
 - The app's `react-dom/client` is proxied so the recorder learns of a root the moment `createRoot` returns — that is
   what makes recording from the page load possible.
+- A framework that renders its own HTML (React Router) never lets the recorder into the page's `<head>`: the module
+  that imports `react-dom/client` — the app's, or the framework's own entry — imports it first instead. Modules the
+  server renders are left as they are.
 - Store and memoizer plugins replace `zustand` and `proxy-memoize` for the app's imports only, so libraries keep the
   originals and memoization behaves the same. The zustand plugin also rewrites `zustand/vanilla` itself, in the
   dependency optimizer too, so a store a library makes (xyflow's) is followed, named by its package (`@xyflow/react#1`).

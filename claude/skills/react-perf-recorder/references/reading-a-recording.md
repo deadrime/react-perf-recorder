@@ -91,3 +91,32 @@ per component counts those still in memory — something outside React holds a s
 usually the listener, timer or subscription in `listeners`/`intervals` above (`LeakyPopover 5 of 5`). With
 `collected: false` only `unmounted` means anything: record with record_page to know what stayed. One recording shows growth; a leak is growth that repeats with the scenario —
 record the same steps twice and compare, `compare_recordings` sets the growth of the two side by side.
+
+## CPU
+
+`section: cpu`, when the recording was profiled (`record_page` with `cpu`, or the panel in Chromium), says where the
+CPU went; the summary has one line of it. `renders` is the part to read first: each component by the time its
+renders took, with `hot` — the app's function inside the render that took it (a parser, a sort, a selector), or the
+package API the component called (a CSS-in-JS style call, a form library's hook). A `hot` function of the app is the
+fix: out of render — computed once, lazily (`useState(() => …)`), memoized on what it depends on — or made cheaper.
+`functions` is the hottest code by its own time; a selector high in `total` across many components is one shared
+subscription doing the work for all of them. `entries` is work in no render, by the app function that started it or
+the package that did (a socket's parser, a chart). `gcMs` that stands out is allocation in a hot loop. The recorder's
+own share is counted apart: it is the measurement's cost, not the page's. The numbers come from the development
+build, where React and CSS-in-JS libraries do extra work: read their share as an upper bound; the app's own functions
+and a before/after taken the same way hold. The panel samples every 10 ms: a line saying there were few samples means
+rough shares — record longer, or with `throttle`.
+
+## Layout shifts
+
+`section: shifts` (Chromium) lists what moved on the page, worst first, one line per element and reason: an
+animation that shifts every frame is one line. Each line names the element that moved and which way, and what moved
+it: the component a commit mounted, removed or changed above it (with the commit's causes — follow them like any
+commit's), a style written from script frame after frame, a CSS animation of a property that takes space, an image
+with no size, a font or a stylesheet that arrived. The fix is at what moved it: space kept for content that comes
+late (a fixed height, a skeleton of the same size, `width`/`height` on the image), an animation of `transform`
+instead of `height` or `top`. `cls` is CLS counted the way Chrome and web-vitals count it; shifts less than 500 ms
+after an input are excluded. `nearMiss` is the part of the excluded ones a slower phone would likely count — an
+animation that fits inside 500 ms on this machine starts later there: with a `hint` about it, record again with
+`throttle: 4` or `6` and the same shifts show up counted. A viewport resize (a phone keyboard, the URL bar) is no
+shift, so field data stays the only source for those.

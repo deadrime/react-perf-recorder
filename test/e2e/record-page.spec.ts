@@ -19,6 +19,10 @@ test('records a page in a browser of its own', async ({ baseURL }) => {
   const rec = saved(result.id!);
   expect(rec.tool.source).toBe('script:record');
   expect(rec.label).toBe('from the record tool');
+  // The dev server has the plugin: nothing is put into the page, the plugin's recorder does it all.
+  expect(result.recorder).toBe('plugin');
+  expect(rec.conditions.recorder).toBeUndefined();
+  expect(rec.tool.plugins.map((p) => p.name)).toContain('proxy-memoize');
   // A measuring run draws no outlines, so nothing warns that the timings read high.
   expect(rec.warnings.some((w) => w.startsWith('highlight was on'))).toBe(false);
 });
@@ -42,6 +46,15 @@ test('an area that is not on the page answers with the ones that are', async ({ 
   await expect(recordPage({ url: `${baseURL}/app?tick=120`, ms: 500, scope: 'NoSuchThing' }, SESSIONS_DIR)).rejects.toThrow(
     /is not mounted; the page has .*MessageList/
   );
+});
+
+test('a recorder put in anyway stands aside for the plugin', async ({ baseURL }) => {
+  // As on a build made with the plugin: no dev server to ask, the plugin's recorder boots from the page itself.
+  const result = await recordPage({ url: `${baseURL}/app?tick=120`, ms: 800, inject: 'always' }, SESSIONS_DIR);
+  expect(result.recorder).toBe('plugin');
+  const rec = saved(result.id!);
+  expect(rec.conditions.recorder).toBeUndefined();
+  expect(rec.tool.plugins.map((p) => p.name)).toContain('proxy-memoize');
 });
 
 test('says what is wrong instead of recording the wrong page', async () => {
@@ -178,4 +191,37 @@ test('collects the garbage before Stop, so what is still in memory is what somet
   expect(retained.collected).toBe(true);
   expect(retained.components.find((c) => c.name === 'LeakyPopover')).toMatchObject({ unmounted: 5, retained: 5 });
   expect(retained.components.find((c) => c.name === 'TidyPopover')).toMatchObject({ unmounted: 5, retained: 0 });
+});
+
+test('with cpu, a render that is slow rather than frequent is named with the function inside it', async ({ baseURL }) => {
+  // parseNotes runs in every render of NotesEager: the renders are as many as NotesLazy's, the time is not.
+  const script = moduleOf(
+    'init-renders',
+    "for (let i = 0; i < 20; i++) { await page.getByTestId('render').first().click(); await page.waitForTimeout(20); }"
+  );
+  const result = await recordPage({ url: `${baseURL}/basics/init`, script, cpu: { raw: true } }, SESSIONS_DIR);
+  expect(result.cpu).toMatch(/busy of/);
+  const rec = saved(result.id!);
+  expect(rec.conditions.cpu).toBe('sampled every 0.5ms');
+  const cpu = rec.cpu!;
+  expect(cpu.source).toBe('cdp');
+  expect(cpu.renders[0]).toMatchObject({ name: 'NotesEager', site: expect.stringMatching(/Init\.tsx:\d+$/) });
+  expect(cpu.renders[0].hot[0]).toMatchObject({ name: 'parseNotes', site: expect.stringMatching(/Init\.tsx:\d+$/) });
+  expect(cpu.functions.find((f) => f.name === 'parseNotes')?.package).toBeUndefined();
+  // A pre-bundled chunk is named by the package its source map points at, not left as chunk-XYZ.
+  expect(cpu.packages.map((p) => p.name)).toContain('react-dom');
+  // The driver's own scripts and the recorder's work are kept out of the page's lists.
+  expect(cpu.functions.some((f) => f.package === '(evaluated)' || f.package === 'react-perf-recorder')).toBe(false);
+  expect(fs.existsSync(path.join(SESSIONS_DIR, result.id!, 'cpu.cpuprofile'))).toBe(true);
+});
+
+test('with cpu, a sort left in the render is what its render spends the time on', async ({ baseURL }) => {
+  const script = moduleOf(
+    'sort-typing',
+    "await page.getByTestId('search-broken').pressSequentially('ada', { delay: 30 }); await page.getByTestId('search-fixed').pressSequentially('ada', { delay: 30 });"
+  );
+  const cpu = saved((await recordPage({ url: `${baseURL}/advanced/sort`, script, cpu: true }, SESSIONS_DIR)).id!).cpu!;
+  expect(cpu.renders[0]).toMatchObject({ name: 'ContactsSortedEachRender' });
+  expect(cpu.renders[0].hot[0]).toMatchObject({ name: 'byName', site: expect.stringMatching(/SortInRender\.tsx:\d+$/) });
+  expect(cpu.renders.find((r) => r.name === 'ContactsSortedOnce')?.hot.some((h) => h.name === 'byName')).not.toBe(true);
 });

@@ -1,0 +1,25 @@
+{
+  "name": "react-perf-recorder-bundlers",
+  "private": true,
+  "version": "0.0.0",
+  "description": "One small app built by webpack and by Rsbuild, with nothing of the recorder in it: record_page puts the recorder into the page. The e2e projects `webpack`, `webpack-maps` and `rsbuild` serve it.",
+  "type": "module",
+  "dependencies": {
+    "@tanstack/react-query": "5.104.0",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "zustand": "5.0.15"
+  },
+  "devDependencies": {
+    "@babel/core": "8.0.6",
+    "@babel/preset-react": "8.0.1",
+    "@babel/preset-typescript": "8.0.1",
+    "@rsbuild/core": "2.2.11",
+    "@rsbuild/plugin-react": "2.1.1",
+    "babel-loader": "10.1.1",
+    "html-webpack-plugin": "5.6.8",
+    "webpack": "5.111.1",
+    "webpack-cli": "6.0.1",
+    "webpack-dev-server": "5.2.6"
+  }
+}

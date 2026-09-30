@@ -1,6 +1,6 @@
 import { registerRoot, type FiberRoot } from './fiber';
 
-type Listener = () => void;
+type Listener = (root?: FiberRoot) => void;
 
 const listeners = new Set<Listener>();
 
@@ -9,8 +9,9 @@ const listeners = new Set<Listener>();
  * root itself: it is found wherever the app mounted it, not only where a search of the page would look.
  */
 export function noteRoot(root?: { _internalRoot?: FiberRoot | null }) {
-  if (root?._internalRoot) registerRoot(root._internalRoot);
-  listeners.forEach((listener) => listener());
+  const created = root?._internalRoot || undefined;
+  if (created) registerRoot(created);
+  listeners.forEach((listener) => listener(created));
 }
 
 export function onRootCreated(listener: Listener) {

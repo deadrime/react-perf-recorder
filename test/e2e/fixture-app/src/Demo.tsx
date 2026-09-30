@@ -1,9 +1,9 @@
 import { useState, type CSSProperties, type ReactNode } from 'react';
-import report from './assets/report.webp';
 import { href, useNoPanel } from './base';
 import { ADVANCED } from './advanced';
 import { BASICS } from './basics';
 import { BUGS, SCENARIOS, enabledBugs, isBlindCase } from './bugs';
+import { HeroDemo } from './hero/HeroDemo';
 
 /**
  * The fixture doubles as the demo: every seeded bug is a card that opens the app with that bug on, says what to do
@@ -38,7 +38,7 @@ body { margin: 0; background: #131317; }
 .demo .top nav a { padding: 6px 12px; border-radius: 8px; color: var(--muted); font-size: 14px; text-decoration: none; }
 .demo .top nav a:hover { color: #fff; background: rgba(255,255,255,.06); }
 
-.demo .hero { position: relative; display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, .85fr); gap: 56px; align-items: center;
+.demo .hero { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.08fr); gap: 48px; align-items: center;
   padding: 56px 0 96px; }
 .demo .hero::before { content: ''; position: absolute; inset: -80px -200px auto 30%; height: 640px; z-index: -1; pointer-events: none;
   background: radial-gradient(closest-side, rgba(10,132,255,.20), transparent), radial-gradient(closest-side at 80% 70%, rgba(191,90,242,.14), transparent); }
@@ -65,16 +65,24 @@ body { margin: 0; background: #131317; }
 .demo .btn svg { width: 16px; height: 16px; fill: currentColor; }
 .demo .fine { margin: 18px 0 0; font-size: 13.5px; color: #85858f; }
 
-.demo .shot { position: relative; margin: 0; justify-self: center; width: 100%; max-width: 420px; }
-.demo .shot > a { display: block; overflow: hidden; max-height: 560px; border: 1px solid #3a3a44; border-radius: 14px; background: #17171c;
-  box-shadow: 0 30px 80px rgba(0,0,0,.55), 0 0 0 6px rgba(255,255,255,.025);
-  -webkit-mask-image: linear-gradient(#000 78%, transparent); mask-image: linear-gradient(#000 78%, transparent);
-  transform: perspective(1400px) rotateY(-7deg) rotateX(2deg); transition: transform .4s; }
-.demo .shot > a:hover { transform: none; }
-.demo .shot img { display: block; width: 100%; height: auto; }
-.demo .shot figcaption { margin-top: 4px; text-align: center; font-size: 13px; color: #85858f; }
+/* The hero's picture: the real panel's markup, captured on Orbit and played in a browser window (hero/scene.ts). */
+.demo .shot { margin: 0; }
+.demo .shot > a { display: block; text-decoration: none; }
+.demo .window { overflow: hidden; border: 1px solid #34343e; border-radius: 12px; background: #0f0f13;
+  box-shadow: 0 30px 90px rgba(0,0,0,.55), 0 0 0 6px rgba(255,255,255,.025); transition: border-color .2s, transform .2s; }
+.demo .shot > a:hover .window { border-color: #4a4a56; transform: translateY(-2px); }
+.demo .window-bar { position: relative; display: flex; align-items: center; height: 34px; padding: 0 12px; background: #1a1a20;
+  border-bottom: 1px solid #2a2a32; }
+.demo .lights { display: flex; gap: 7px; }
+.demo .lights i { width: 11px; height: 11px; border-radius: 50%; background: #ff5f57; }
+.demo .lights i:nth-child(2) { background: #febc2e; }
+.demo .lights i:nth-child(3) { background: #28c840; }
+.demo .address { position: absolute; left: 50%; transform: translateX(-50%); width: min(340px, 50%); padding: 2px 10px; border-radius: 6px;
+  background: #0f0f14; color: #8c8c96; font: 12px var(--mono); text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.demo .window-view { position: relative; overflow: hidden; background: #0f0f13; }
+.demo .window-view iframe { position: absolute; left: 0; top: 0; display: block; border: 0; transform-origin: 0 0; pointer-events: none; }
+.demo .shot figcaption { margin-top: 14px; text-align: center; font-size: 13.5px; color: #85858f; }
 .demo .shot figcaption a { color: #4aa8ff; text-decoration: none; }
-
 
 .demo .section { margin: 0 0 96px; scroll-margin-top: 16px; }
 .demo .kicker { margin: 0 0 8px; font: 600 12.5px var(--mono); text-transform: uppercase; letter-spacing: .08em; color: #4aa8ff; }
@@ -158,7 +166,6 @@ body { margin: 0; background: #131317; }
 
 @media (max-width: 900px) {
   .demo .hero { grid-template-columns: minmax(0, 1fr); gap: 40px; padding: 28px 0 48px; }
-  .demo .shot > a { transform: none; max-height: 480px; }
   .demo .grid, .demo .steps, .demo .how { grid-template-columns: minmax(0, 1fr); }
   .demo .agent { grid-template-columns: minmax(0, 1fr); gap: 16px; }
   .demo .section { margin-bottom: 72px; }
@@ -175,7 +182,7 @@ body { margin: 0; background: #131317; }
   .demo .agent, .demo .feature, .demo .steps > li { padding: 18px; }
   .demo .install { padding-left: 12px; }
   .demo .install code { font-size: 13px; }
-  .demo .shot > a { max-height: 420px; }
+  .demo .address { width: 58%; }
   /* One column is long on a phone: the icon and the number sit beside the title, not above it. */
   .demo .feature { display: grid; grid-template-columns: 38px minmax(0, 1fr); column-gap: 14px; align-items: center; }
   .demo .feature i { margin: 0 0 10px; }
@@ -349,16 +356,11 @@ export const Catalogue = () => {
               <p className="fine">Runs only in the Vite dev server and never ships to a build.</p>
             </div>
             <figure className="shot">
-              <a href={href('basics/context')} aria-label="Open the case this report was recorded on">
-                <img
-                  src={report}
-                  width={420}
-                  height={700}
-                  alt="The recorder's report: 4 wasted renders, the main cause Shell rendering 4 times for nothing, InlineUser and InlineTheme woken by a context with the same content"
-                />
+              <a href={href('orbit/')} aria-label="Open Orbit, the app this was recorded on">
+                <HeroDemo />
               </a>
               <figcaption>
-                A real report, recorded on <a href={href('basics/context')}>one of the cases below</a>
+                The real panel, recorded on <a href={href('orbit/')}>Orbit</a>: pick an area, record, read the report
               </figcaption>
             </figure>
           </header>

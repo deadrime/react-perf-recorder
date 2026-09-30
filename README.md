@@ -4,7 +4,9 @@ Record why a React app re-renders, from the page itself: press **Rec**, use the 
 names the component that started each render cascade and why — the hook and its line of code, the store action and
 the keys it changed, the props that broke `memo` — and an agent reads the same recordings through an MCP server.
 
-It runs only in the Vite dev server and never ships to a build. React 18.2+ and 19.1+.
+It runs only in the Vite dev server and never ships to a build: a Vite app, or a framework on Vite that renders its own
+HTML, such as React Router. React 18.2+ and 19.1+. An agent can also record an app without the plugin, on Vite,
+webpack 5, Rsbuild or Next.js, with less in the recording ([MCP](docs/mcp.md)).
 
 ## Install
 
@@ -43,6 +45,13 @@ an area of the page to record alone.
 - **A timeline** of actions and commits; a picked commit shows its cascade as a tree and outlines its components on
   the page.
 - **Memos that miss** — a `useMemo` that recomputes on every render, and the dependency that moved.
+- **CPU** — where the time went when renders are few but slow: busy time by package, the slowest renders with the
+  function inside them that took it, the hottest functions with their line, and the work outside renders
+  (`record_page` with `cpu`, or the panel in Chromium).
+- **Layout shifts** — what jumped on the page and what moved it: the component a commit mounted above it, a style
+  written every frame, a CSS animation, an image with no size, a font; CLS counted as Chrome counts it, and the
+  shifts a slower phone would likely count. In the panel a shift picked is outlined on the page where the element
+  was and where it is, with what moved it (Chromium).
 - **Before → after** — `↻ Repeat` reloads the page and does the same actions again, so a fix is measured.
 
 ## With an assistant

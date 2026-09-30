@@ -7,7 +7,9 @@ description: Record why a React app re-renders and read the recording — cascad
 
 A dev-only Vite plugin that records React re-renders from the page. Recordings land in a folder
 (`.agent-artifacts/perf-recorder`, or `REACT_PERF_RECORDER_DIR`) and this session reads them through the
-`react-perf-recorder` MCP server.
+`react-perf-recorder` MCP server. `record_page` records a dev server without the plugin too (Vite, webpack 5,
+Rsbuild, Next.js), by putting the recorder into the page: its answer says `recorder: "injected"`, and its warning names what
+such a recording cannot show.
 
 **Never write measured numbers into a file of the repository.** They are true for one machine and one moment;
 numbers belong in the answer.
@@ -17,7 +19,10 @@ numbers belong in the answer.
 1. **The recording** is the person's own: they press **Rec** in the panel and do it (`wait_for_recording`), or give
    you its id. No recording, and they cannot make one: `references/recording-yourself.md`.
 2. **Read** the `get_recording` summary. Follow the hook chain to the app's own code, left of `[package]`, and ask for
-   another section only for what the summary left open.
+   another section only for what the summary left open. When the page is slow while it renders little — a render that
+   takes long rather than comes often, work outside React — the time is the question, not the count: record with
+   `cpu` and read section `cpu` (`references/reading-a-recording.md`). When the page jumps rather than lags — content
+   pushed down, a sheet that moves the layout — read section `shifts`.
 3. **Check before you conclude.** A reason line summarizes the recording; it is not a proof. Open the code at its
    `file:line` and find the mechanism there: the `setState`, the selector, the prop built in render. A claim about
    one component — it re-renders, `memo` holds, the fix helped — stands on that component's own counts in
@@ -51,7 +56,7 @@ Work through the `react-perf-recorder` MCP tools: each one says in its descripti
 
 - `references/recording-yourself.md` — no recording of the person's: their steps as a scenario of your own.
 - `references/measuring-a-fix.md` — before and after: replay or script, a worktree for the change, reading the result.
-- `references/reading-a-recording.md` — roots, reasons, hook chains, components and their ways, memos, growth (leaks).
+- `references/reading-a-recording.md` — roots, reasons, hook chains, components and their ways, memos, growth (leaks), CPU, layout shifts.
 - `references/causes-and-actions.md` — what scheduled each commit, the person's actions, plugin sections, traps.
 - `references/panel.md` — the panel, for guiding a person who records it themselves.
 - `references/from-scripts.md` — the page API for a script of your own, and the CLI when the MCP tools are missing.

@@ -44,6 +44,35 @@
   store's subscriber list. `record_page` collects through CDP before Stop; the panel's Stop collects only in a
   Chrome started with `--js-flags=--expose-gc`, and otherwise tells how many were unmounted, not how many stayed.
   `growth: false` in the recording's options leaves it out.
+- **CPU** — see [below](#cpu).
+
+## CPU
+
+Where the page's CPU went while it recorded, from a sampling profile: `record_page` with `cpu` takes one through CDP
+every 0.5 ms; the panel in Chromium takes one in the page itself (the JS Self-Profiling API, every 10 ms), because the
+dev server allows it with a `Document-Policy: js-profiling` header. The dev server resolves each frame through source
+maps, those of pre-bundled dependencies included, so a shared `chunk-XYZ.js` is named by the npm package it came
+from, and sums the samples up into `recording.cpu`:
+
+- busy time and its share of the recording, GC apart;
+- **packages** by the time spent in their own code and by the time they were on the stack; the app's own code is
+  `(app)`;
+- the **hottest functions** by their own time, the app's with `file:line`; a builtin such as `JSON.parse` counts for
+  the function that called it;
+- **renders** — each component by the time its renders took (the frame React called under `renderWithHooks`, so
+  `memo(() => …)` is found too and named by what the line assigns it to), with what inside the render took the time:
+  the innermost function of the app, or the package API the component called;
+- **outside renders** — work in no render, by the app's function that started it (an event handler, a timer's
+  callback, an effect), or by the package when the app has none on the stack (a socket's message).
+
+The recorder's own work — its wrappers, its commit hook, its panel — and scripts evaluated into the page from outside
+(the test driver's) are counted apart and in no list. The numbers come from the development build: React and
+CSS-in-JS libraries do more work there than in production, so read their share as an upper bound; the app's own hot
+functions, and a before/after under the same conditions, hold.
+
+[A list sorted again on every render](https://zhenya.dev/react-perf-recorder/advanced/sort) is the example: both
+sides render as often, and the CPU fold names `byName` as what the slow side's render spends its time on. The fold
+needs the dev server, so run it locally (`npm run dev:pages`): the built site has none to read the profile.
 
 ## Sessions
 
@@ -51,7 +80,9 @@
 
 - `session.json` — `status: recording | done | interrupted`, page, area, conditions;
 - `events.ndjson` — streamed while recording, every ~2 s;
-- `recording.json` — written on Stop (`schema: react-perf-recorder/recording`).
+- `recording.json` — written on Stop (`schema: react-perf-recorder/recording`);
+- `cpu.cpuprofile` — the CPU profile itself, with `record_page`'s `cpu: { raw: true }`; DevTools' Performance panel
+  opens it.
 
 A session whose page reloads or closes mid-recording stays readable: the MCP server rebuilds a partial recording
 from its events. Hook names, components, ways and plugin sections exist only in the final recording.

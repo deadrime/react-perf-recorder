@@ -6,12 +6,17 @@ import { chromium, type FullConfig } from '@playwright/test';
  * starts from the page load has no page load left to record.
  */
 export default async function warmFixtures(config: FullConfig) {
-  const urls = new Set(config.projects.map((project) => project.use.baseURL).filter(Boolean) as string[]);
+  // A framework that compiles each route on its first request (Next.js) warms every page it has.
+  const urls = new Set(
+    config.projects
+      .filter((project) => project.use.baseURL)
+      .flatMap((project) => [project.metadata?.warm ?? '/app'].flat().map((page: string) => `${project.use.baseURL}${page}`))
+  );
   const browser = await chromium.launch();
   try {
     for (const url of urls) {
       const page = await browser.newPage();
-      await page.goto(`${url}/app`, { waitUntil: 'networkidle' }).catch(() => {});
+      await page.goto(url, { waitUntil: 'networkidle' }).catch(() => {});
       await page.close();
     }
   } finally {

@@ -7,6 +7,10 @@ fi
 
 cd "$CLAUDE_PROJECT_DIR"
 
+# Setup-скрипт окружения в новых сессиях берётся из кэша и не выполняется,
+# поэтому ключ подписи ставим здесь. До npm ci, чтобы сбой сборки не мешал.
+"$CLAUDE_PROJECT_DIR/.claude/hooks/install-signing-key.sh" || true
+
 # ci, а не install: install переписывает package-lock.json и пачкает дерево.
 npm ci --no-audit --no-fund
 # .mcp.json запускает MCP-сервер из dist/cli.js, а dist/ в git не лежит.

@@ -2,6 +2,8 @@ export const RECORDING_SCHEMA = 'react-perf-recorder/recording';
 export const SESSION_SCHEMA = 'react-perf-recorder/session';
 export const SCHEMA_VERSION = 2;
 export const GLOBAL_KEY = '__REACT_PERF_RECORDER__';
+import type { CpuSummary } from './cpu';
+
 export const ENDPOINT = '__react-perf-recorder';
 export const CLIENT_HEADER = 'x-react-perf-recorder';
 
@@ -252,6 +254,81 @@ export interface LongFrame {
   scripts: Array<{ invoker: string; source: string; duration: number; layout: number; own?: boolean }>;
 }
 
+/** An element's box in the viewport: `[x, y, width, height]`. */
+export type ShiftRect = [number, number, number, number];
+
+/** An element named the way the rest of the recording names things: its app component, file, and a short DOM path. */
+export interface ShiftNode {
+  /** The nearest app component that rendered the element. */
+  component?: string;
+  file?: string;
+  /** React 19: the built position, which the dev server maps into `file` when saving. */
+  generated?: { url: string; line: number; column: number };
+  /** `main > ul.list`: without hashed class names, for when no component is found (a portal, a package). */
+  node: string;
+}
+
+/**
+ * The element that changed in the frame of the shift, and where it is from the element that moved: the moved one
+ * itself, one of its ancestors, before it in the document, or inside it.
+ */
+export interface ShiftCulprit extends ShiftNode {
+  where: 'self' | 'ancestor' | 'before' | 'inside';
+  change: 'added' | 'removed' | 'attribute' | 'text' | 'loaded' | 'animated';
+  /** The attribute written (`style`, `class`) or the property animated (`height`). */
+  name?: string;
+  /** An image, video or iframe with no width and height set: it takes its space only once it has loaded. */
+  unsized?: true;
+}
+
+/** What moved it: a React commit, an animation, a change to the DOM outside React, a resource that arrived, or none found. */
+export type ShiftCause =
+  | { commit: number | null; atMs: number; by?: ShiftCulprit }
+  | { animation: 'css' | 'web-animations' | 'inline-style'; by?: ShiftCulprit }
+  | { dom: true; by?: ShiftCulprit }
+  | { resource: 'image' | 'font' | 'css'; by?: ShiftCulprit }
+  | { unknown: true };
+
+export interface LayoutShift {
+  atMs: number;
+  value: number;
+  /** The browser leaves it out of CLS: an input (tap, key) came less than 500 ms before. */
+  hadRecentInput: boolean;
+  /** Time since the last pointerdown or keydown, when there was one in the recording. */
+  sinceInputMs?: number;
+  /** The interaction in `latency` the shift followed, within a few seconds. */
+  interactionId?: number;
+  cause: ShiftCause;
+  /**
+   * The elements that moved, largest first, as the browser lists them (five at most). `fixed`: it stays put in the
+   * window as the page scrolls.
+   */
+  sources: Array<ShiftNode & { from: ShiftRect; to: ShiftRect; fixed?: true }>;
+  /** The window's scroll then, when not at the top: the rects are in the viewport. */
+  scroll?: [number, number];
+}
+
+/** CLS the way web-vitals counts it, so the number matches field data. */
+export interface ClsTotals {
+  /** Largest session window: shifts less than 1 s apart, a window at most 5 s long, excluded shifts left out. */
+  value: number;
+  windowAtMs: number | null;
+  /**
+   * Excluded shifts a slower device would likely count: those driven by an animation, whose frames run later when the
+   * thread is busy, and those 300–500 ms after the input.
+   */
+  nearMiss: number;
+  /** Sum of every shift the browser left out after an input. */
+  excluded: number;
+  count: number;
+}
+
+export interface ShiftStats {
+  list: LayoutShift[];
+  truncated?: true;
+  cls: ClsTotals;
+}
+
 export interface Segment {
   action: number;
   /** Internal wiring while a recording is built; the saved recording keeps these on the action itself. */
@@ -447,6 +524,10 @@ export interface RecordingV2 {
   dom: { text: number; attr?: number; child?: number };
   /** What grew on the page from start to stop: nodes, CSS rules, intervals, listeners, heap. */
   growth?: GrowthStats;
+  /** Where the CPU went, when the recording was profiled: record_page with `cpu`, or the panel where the page allows it. */
+  cpu?: CpuSummary;
+  /** Layout shifts and what moved them; absent where the browser does not report them (Firefox, Safari). */
+  shifts?: ShiftStats;
   navigations: Navigation[];
   hmr: Array<{ atMs: number; type: string; paths: string[] }>;
   conditions: Conditions;
@@ -509,11 +590,22 @@ export type SessionEvent =
   | { k: 'action'; action: ActionRecord }
   | { k: 'latency'; entry: LatencyEntry }
   | { k: 'frame'; frame: LongFrame }
+  | { k: 'shift'; shift: LayoutShift }
   | { k: 'nav'; nav: Navigation }
   | { k: 'hmr'; atMs: number; type: string; paths: string[] }
   | { k: 'reload'; atMs: number }
   | { k: 'scope'; atMs: number; state: 'attached' | 'lost' | 'remounted' }
   | { k: 'end'; atMs: number };
+
+/** Everything in `shifts` with a built position the dev server maps into `file`. */
+export function shiftNodes(rec: RecordingV2): ShiftNode[] {
+  const out: ShiftNode[] = [];
+  for (const shift of rec.shifts?.list ?? []) {
+    out.push(...shift.sources);
+    if ('by' in shift.cause && shift.cause.by) out.push(shift.cause.by);
+  }
+  return out;
+}
 
 /** Everything in `growth` with a built position the dev server maps to `site` and `code`. */
 export function growthOrigins(rec: RecordingV2): Array<{ generated?: GrowthOrigin['generated']; site?: string; code?: string }> {

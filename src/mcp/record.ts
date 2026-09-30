@@ -3,8 +3,14 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import type { RecordingV2 } from '../shared/schema';
+import { INJECT_KEY, type InjectConfig } from '../shared/inject';
+import { ScriptCatalog, type CdpLike } from '../sources/scripts';
+import { summarizeCpu, type CpuInput } from '../vite/cpu';
+import { ownRoot } from '../vite/cpu/symbols';
+import { SessionStore } from '../vite/middleware';
+import { ENDPOINT, type RecordingV2 } from '../shared/schema';
 import { placeholderTyping, type ReplayPlan } from '../shared/replay';
+import { cpuLine } from '../shared/cpu';
 import { wastingRoots, type WastingRoot } from '../shared/summary';
 import { safeUrl } from '../shared/url';
 import { ON_LOAD_KEY } from '../ui/storage';
@@ -35,6 +41,11 @@ export interface RecordPageOptions {
   sample?: boolean;
   /** CPU slowdown through CDP, the way a profiler does it: 4 means four times slower. */
   throttle?: number;
+  /**
+   * Profile the page's JS through CDP while recording (every 0.5 ms by default): where the CPU went, by package,
+   * function, component render and entry point. `raw` keeps the profile beside the recording, to open in DevTools.
+   */
+  cpu?: boolean | { intervalUs?: number; raw?: boolean };
   /** Cookies and storage saved by `login`, so a page behind a sign-in records as the signed-in person. */
   state?: string;
   /** Record in a browser that is already running with `--remote-debugging-port`, as the person who owns it. */
@@ -43,6 +54,14 @@ export interface RecordPageOptions {
   via?: string;
   headed?: boolean;
   timeoutMs?: number;
+  /**
+   * Put the recorder into the page from outside when the dev server has no Vite plugin (`auto`, by default): any
+   * React dev server, with less than the plugin gives. `never` records only through the plugin; `always` skips
+   * asking the dev server.
+   */
+  inject?: 'auto' | 'always' | 'never';
+  /** The app's folder, for file names and source lines when the recorder is put in from outside; the working directory by default. */
+  root?: string;
 }
 
 export interface RecordPageResult {
@@ -58,6 +77,10 @@ export interface RecordPageResult {
   topRoot: string | null;
   /** Roots whose renders mostly changed nothing: after a fix, what is left to look at. */
   wasting: WastingRoot[];
+  /** Busy time and the packages that took most of it, when `cpu` was on; the rest is in section cpu. */
+  cpu?: string;
+  /** `injected`: no Vite plugin on the dev server, record_page brought the recorder in itself. */
+  recorder: 'plugin' | 'injected';
   warnings: string[];
 }
 
@@ -113,7 +136,7 @@ interface PageLike {
   waitForFunction(fn: string, arg?: unknown, options?: unknown): Promise<unknown>;
   evaluate<T>(fn: string | ((arg: never) => T), arg?: unknown): Promise<T>;
   waitForTimeout(ms: number): Promise<void>;
-  addInitScript<T>(fn: (arg: T) => void, arg: T): Promise<void>;
+  addInitScript<T>(fn: ((arg: T) => void) | { content: string }, arg?: T): Promise<void>;
   setDefaultTimeout(ms: number): void;
   on(event: 'domcontentloaded', listener: () => void): void;
   screenshot(options: { path: string }): Promise<unknown>;
@@ -250,6 +273,78 @@ async function explainFailure(error: unknown, page: PageLike, navigatedTo: strin
   return new Error([message, ...hints, where.join('; ')].join('\n'));
 }
 
+/** The Vite plugin answers at `<base>/__react-perf-recorder/health`: every folder of the url could be the base. */
+export function healthUrls(url: string): string[] {
+  const parsed = new URL(url);
+  const parts = parsed.pathname.split('/').filter(Boolean);
+  const out: string[] = [];
+  for (let n = parts.length; n >= 0; n--) out.push(`${parsed.origin}/${[...parts.slice(0, n), ENDPOINT, 'health'].join('/')}`);
+  return out;
+}
+
+interface RequestLike {
+  get(url: string, options?: { timeout?: number; failOnStatusCode?: boolean }): Promise<{ ok(): boolean; text(): Promise<string> }>;
+}
+
+/** Whether the page's dev server has the plugin: then it records exactly as it always has. */
+async function hasPlugin(request: RequestLike, url: string): Promise<boolean> {
+  for (const candidate of healthUrls(url).slice(0, 6)) {
+    const answer = await request.get(candidate, { timeout: 3000, failOnStatusCode: false }).catch(() => null);
+    if (!answer?.ok()) continue;
+    const body = await answer.text().catch(() => '');
+    try {
+      if ((JSON.parse(body) as { ok?: boolean }).ok === true) return true;
+    } catch {
+      // An app's own page for any path: not the plugin.
+    }
+  }
+  return false;
+}
+
+/** The recorder as record_page puts it into a page, built beside this module (or in the package's dist/ from source). */
+function recorderScript(): string {
+  const candidates = [
+    ...(ownRoot ? [path.join(ownRoot, 'dist', 'recorder.iife.js')] : []),
+    path.join(path.dirname(new URL(import.meta.url).pathname), 'recorder.iife.js'),
+  ];
+  const file = candidates.find((f) => fs.existsSync(f));
+  if (!file) throw new Error(`recorder.iife.js is not built (looked in ${candidates.join(', ')}): run npm run build`);
+  return fs.readFileSync(file, 'utf8');
+}
+
+/** Its frames read as the recorder's own, not the app's, wherever a stack is taken. */
+const RECORDER_URL = 'react-perf-recorder://recorder/dist/recorder.iife.js';
+
+const injectedScript = (config: InjectConfig) =>
+  `window[${JSON.stringify(INJECT_KEY)}] = ${JSON.stringify(config)};\n${recorderScript()}\n//# sourceURL=${RECORDER_URL}\n`;
+
+/** What a recording made without the plugin lacks, so nobody reads its absence as a finding. */
+export const INJECTED_NOTE =
+  'recorded without the Vite plugin (the recorder was put into the page): memo components written as arrow functions show as Anonymous, ' +
+  'zustand stores without the devtools middleware have no store or action names, proxy-memoize is not seen; the Vite plugin gives all of it';
+
+/** No dev server stores this recording: it is saved from here, its positions mapped by the maps the page loaded. */
+async function saveOutside(recording: RecordingV2, cpu: CpuInput | undefined, dir: string, root: string, catalog: ScriptCatalog): Promise<string> {
+  const store = new SessionStore({
+    dir,
+    maxBytes: 256 * 1024 * 1024,
+    retain: { sessions: 100, bytes: 500 * 1024 * 1024 },
+    gitignore: !path.relative(root, dir).startsWith('..'),
+    mapSite: (url, line, column, hooks) => catalog.mapSite(url, line, column, hooks),
+    summarizeCpu: (input) => summarizeCpu(input, catalog.moduleSource()),
+  });
+  const { id } = store.open({
+    source: recording.tool.source,
+    label: recording.label,
+    page: recording.page,
+    scope: recording.scope,
+    conditions: recording.conditions,
+    plugins: recording.tool.plugins,
+  });
+  await store.finish(id, recording, cpu);
+  return id;
+}
+
 /**
  * Opens the page in its own browser (or in one already running, over CDP), records, and returns what the session
  * says about itself. The browser it launched is always closed; a browser it only connected to never is.
@@ -284,15 +379,53 @@ export async function recordPage(options: RecordPageOptions, sessionsDir: string
         });
     page = (await context.newPage()) as unknown as PageLike;
     page.setDefaultTimeout(timeout);
-    let cdp: { send(method: string, params?: object): Promise<unknown> } | null = null;
+    let cdp: CdpLike | null = null;
     const session = async () => (cdp ??= await context.newCDPSession(page as never));
     if (options.throttle && options.throttle > 1) await (await session()).send('Emulation.setCPUThrottlingRate', { rate: options.throttle });
+    const cpuAsked = options.cpu ? { intervalUs: 500, raw: false, ...(options.cpu === true ? {} : options.cpu) } : null;
+    const cpu = cpuAsked && { ...cpuAsked, intervalUs: Math.max(50, Math.round(cpuAsked.intervalUs)) };
+    let profiling = false;
+    const startProfile = async () => {
+      if (!cpu || profiling) return;
+      const s = await session();
+      await s.send('Profiler.enable');
+      await s.send('Profiler.setSamplingInterval', { interval: cpu.intervalUs });
+      await s.send('Profiler.start');
+      profiling = true;
+    };
+    const stopProfile = async () => {
+      if (!profiling) return null;
+      profiling = false;
+      const { profile } = (await (await session()).send('Profiler.stop')) as { profile: unknown };
+      return profile;
+    };
     // Before Stop, so the components still in memory are the ones something holds, not garbage not yet collected.
     const collect = () =>
       session()
         .then((s) => s.send('HeapProfiler.collectGarbage'))
         .then(() => true)
         .catch(() => false);
+    const root = path.resolve(options.root ?? process.cwd());
+    const request = (context as unknown as { request: RequestLike }).request;
+    // Asked before anything opens: a recorder put in from outside has to be there before the page's first script.
+    const probeAt = stay ? options.via : url;
+    const served = Boolean(probeAt && /^https?:/.test(probeAt));
+    let injected = options.inject === 'always' || (options.inject !== 'never' && served && !(await hasPlugin(request, probeAt!)));
+    let catalog = injected
+      ? new ScriptCatalog({
+          root,
+          fetchText: async (at) => {
+            const answer = await request.get(at, { timeout: 10_000, failOnStatusCode: false }).catch(() => null);
+            return answer?.ok() ? answer.text() : null;
+          },
+        })
+      : null;
+    if (catalog) {
+      await page.addInitScript({ content: injectedScript({ projectRoot: root.replace(/\\/g, '/') }) });
+      // Every script's source map, as the page loads it: there is no dev server to ask for them afterwards, and the
+      // page learns whose code each line of a bundled chunk is.
+      await catalog.attach(await session(), { tables: true });
+    }
     // A link that signs the browser in — `/debug/<jwt>`, a magic link — is opened first and is never recorded.
     if (options.via) await page.goto(options.via, { waitUntil: 'load' });
     if (options.setup) await runModule(options.setup, page, sessionsDir);
@@ -307,12 +440,19 @@ export async function recordPage(options: RecordPageOptions, sessionsDir: string
       );
     // A name is the form an agent has at hand: it read the component's file, so it knows what the component is called.
     const scope = typeof options.scope === 'string' ? { names: [options.scope] } : options.scope;
+    // What the page cannot see about itself goes into its conditions, so a comparison says when two runs differ in it.
+    const conditions = {
+      ...(injected ? { recorder: 'injected' } : {}),
+      ...(options.throttle && options.throttle > 1 ? { throttle: options.throttle } : {}),
+      ...(cpu ? { cpu: `sampled every ${cpu.intervalUs / 1000}ms` } : {}),
+    };
     const start = {
       source: 'script:record',
       ...(options.label ? { label: options.label } : {}),
       ...(scope ? { scope } : {}),
       ...(options.watch?.length ? { watch: options.watch } : {}),
       ...(options.sample ? { sampleReasons: true } : {}),
+      ...(Object.keys(conditions).length ? { conditions } : {}),
       highlight: false,
     };
     // A recording from the load starts in the page before this script can say anything: what it should be about
@@ -328,7 +468,10 @@ export async function recordPage(options: RecordPageOptions, sessionsDir: string
         },
         { key: ON_LOAD_KEY, value: JSON.stringify(start) }
       );
-    const requested = options.fromLoad ? withLoadFlag(url) : url;
+    // The injected recorder reads the same storage; the app's url stays the app's.
+    const requested = options.fromLoad && !injected ? withLoadFlag(url) : url;
+    // Starting the profiler takes V8 a moment (120-200 ms on a small app): before the load it records, else outside.
+    if (options.fromLoad) await startProfile();
     if (!stay) await page.goto(requested, { waitUntil: 'load' });
     try {
       // The client script is injected at the top of <head>, so by `load` it has either booted or never will:
@@ -339,13 +482,22 @@ export async function recordPage(options: RecordPageOptions, sessionsDir: string
       const landed = page.url();
       throw new Error(
         samePage(url, landed)
-          ? `the recorder is not on ${landed}: the Vite plugin is not in this dev server, or the page is a production build`
+          ? injected
+            ? `the recorder put into ${landed} did not start`
+            : `the recorder is not on ${landed}: the Vite plugin is not in this dev server, or the page is a production build`
           : `${safeUrl(url)} went to ${safeUrl(landed)} — it is behind a sign-in. Open it through a link that signs in ` +
             '(`via`), with a session saved once by `react-perf-recorder login <url>`, or with `cdp` against a browser you are ' +
             'already signed in to — or ask the person to record it from the panel.'
       );
     }
     if (!samePage(url, page.url())) warnings.push(`asked for ${safeUrl(url)}, recorded ${safeUrl(page.url())}`);
+    // The plugin's recorder was there after all (a build made with it, no dev server to ask): it records as always.
+    if (injected && (await page.evaluate<boolean>(`window[${JSON.stringify(INJECT_KEY)}]?.state === 'aside'`))) {
+      injected = false;
+      await catalog?.release();
+      catalog = null;
+      delete (start.conditions as Record<string, unknown> | undefined)?.recorder;
+    }
 
     // A page-load recording starts once its area is mounted; one that never does is the same dead end as below.
     if (options.fromLoad) {
@@ -364,10 +516,13 @@ export async function recordPage(options: RecordPageOptions, sessionsDir: string
     } else {
       // The engine is in the page before the app: an app still loading has no React root yet to record.
       await page.waitForFunction(`${ENGINE}.engine.componentNames(1).length > 0`, undefined, { timeout: Math.min(timeout, 15_000) }).catch(() => {});
+      await startProfile();
       try {
         await page.evaluate(`${ENGINE}.engine.start(${JSON.stringify(start)})`);
       } catch (error) {
         const message = messageOf(error);
+        if (injected && /root not found/.test(message))
+          throw new Error(`no React root in development mode on ${safeUrl(page.url())}: the recorder reads React's dev build, not a production one`);
         // An area that is not on the page is a dead end unless the answer says what is: the names it could have meant.
         if (!/is not mounted|no element matches|does not own/.test(message)) throw error;
         const names = await page.evaluate<string[]>(`${ENGINE}.engine.componentNames()`).catch(() => []);
@@ -395,8 +550,20 @@ export async function recordPage(options: RecordPageOptions, sessionsDir: string
       } else {
         await page.waitForTimeout(ms);
       }
+      // Stopped before the garbage is collected: a forced GC is not the page's work.
+      const profile = await stopProfile();
       const collected = await collect();
-      saved = await page.evaluate<Stopped>(`${ENGINE}.engine.stop({ collected: ${collected} }).then((r) => ({ id: r.id ?? null, recording: r }))`);
+      const cpuInput = profile && cpu ? ({ format: 'cdp', profile, intervalMs: cpu.intervalUs / 1000, keep: cpu.raw } as CpuInput) : undefined;
+      const stopped = await page.evaluate<Promise<Stopped>>(
+        ([collected, cpu]: [boolean, unknown]) =>
+          (
+            globalThis as unknown as { __REACT_PERF_RECORDER__: { engine: { stop(o: object): Promise<RecordingV2 & { id?: string }> } } }
+          ).__REACT_PERF_RECORDER__.engine
+            .stop({ collected, cpu })
+            .then((r) => ({ id: r.id ?? null, recording: r })),
+        [collected, injected ? undefined : cpuInput]
+      );
+      saved = catalog ? { id: await saveOutside(stopped.recording, cpuInput, sessionsDir, root, catalog), recording: stopped.recording } : stopped;
     } catch (error) {
       throw options.script || options.replay ? await explainFailure(error, page, navigatedTo, url, sessionsDir) : error;
     }
@@ -416,7 +583,16 @@ export async function recordPage(options: RecordPageOptions, sessionsDir: string
       rendersPerCommit: rec.totals.rendersPerScopeCommit,
       topRoot: rec.roots[0] ? `${rec.roots[0].name} ×${rec.roots[0].hits}` : null,
       wasting: wastingRoots(rec),
-      warnings: [...warnings, ...rec.warnings],
+      ...(rec.cpu ? { cpu: cpuLine(rec.cpu) } : {}),
+      recorder: injected ? 'injected' : 'plugin',
+      warnings: [
+        ...warnings,
+        ...(injected ? [INJECTED_NOTE] : []),
+        ...(cpu && !rec.cpu && !rec.warnings.some((w) => w.startsWith('CPU'))
+          ? ['CPU profile not saved: the page has no dev server to read it']
+          : []),
+        ...rec.warnings,
+      ],
     };
   } finally {
     if (connected) await page?.close().catch(() => {});

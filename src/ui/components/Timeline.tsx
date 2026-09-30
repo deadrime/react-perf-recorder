@@ -3,7 +3,9 @@ import type { JSX } from 'preact';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { ActionRecord, CommitRecord, RecordingV2 } from '../../shared/schema';
 import { actionText, cascadeOf, hookOf, reasonsById, type CascadeNode } from '../../shared/summary';
+import { causeText, commitCausesOf, moveOf, moveText, nearMissOf, nodeText, runMoves, type ShiftRun } from '../../shared/shifts';
 import { Flame } from './Flame';
+import { CountedBadge, runWhen, ShiftLegend, shiftValue, type ShiftFound } from './Shifts';
 import { ReasonLine, StepView } from './Stats';
 
 /**
@@ -43,6 +45,7 @@ const TICK_STEPS = [50, 100, 200, 500, 1000, 2000, 5000, 10_000, 30_000, 60_000]
 const ROOT_LANES = 8;
 const COMMITS_LANE_H = 18;
 const ROOT_LANE_H = 13;
+const SHIFTS_LANE_H = 12;
 /** Drawn a little beyond the edges, so a scroll of a few pixels does not show an empty strip. */
 const VIEW_MARGIN_PX = 200;
 
@@ -426,6 +429,40 @@ function WindowDetail({ rec, window: shown }: { rec: RecordingV2; window: { from
   );
 }
 
+/** A run of layout shifts: what moved from where to where, what moved it, and the commit to open for more. */
+function ShiftDetail({ rec, run, onCommit }: { rec: RecordingV2; run: ShiftRun; onCommit: (i: number) => void }): JSX.Element {
+  const cause = run.first.cause;
+  const since = run.first.sinceInputMs;
+  const commit = 'commit' in cause ? cause.commit : null;
+  return (
+    <div class="tl-detail" data-rpr="shift-detail">
+      <div class="tl-head">
+        <b>{runWhen(run)}</b>
+        <span class="badge" data-tone={run.excluded < run.count ? 'warn' : undefined}>{`shift ${shiftValue(run.value)}`}</span>
+        <CountedBadge run={run} />
+        {since !== undefined && since < 5000 ? <span class="muted">{`${since}ms after the last input`}</span> : null}
+      </div>
+      {runMoves(run).map((m, i) => (
+        <div class="tl-row" key={i}>
+          <span class="tl-row-label">moved</span>
+          <span>{`${nodeText(m)} ${moveOf(m.from, m.to)}`}</span>
+        </div>
+      ))}
+      <div class="tl-row">
+        <span class="tl-row-label">by</span>
+        <span>
+          {causeText(cause, commitCausesOf(rec), run.count)}
+          {commit !== null && rec.commits.list[commit] ? (
+            <button type="button" class="tl-link" data-rpr="shift-commit" onClick={() => onCommit(commit)}>
+              open the commit
+            </button>
+          ) : null}
+        </span>
+      </div>
+    </div>
+  );
+}
+
 /**
  * The whole recording in one row, whatever the zoom: the density of commits, and a box around the part the tracks
  * are showing. Dragging across it picks a range to look at, the way the overview of a profiler does.
@@ -512,6 +549,10 @@ export function Timeline({
   litCause = null,
   onReset,
   onOutline,
+  runs = [],
+  pickedRun = null,
+  onPickRun,
+  runOutlined = null,
 }: {
   rec: RecordingV2;
   litCause?: number | null;
@@ -519,6 +560,12 @@ export function Timeline({
   onReset?: () => void;
   /** Outlines on the page the roots of what is picked, or nothing with null; answers how many it found there. */
   onOutline?: (entries: Array<{ i: number; hits: number }> | null) => number;
+  /** Runs of layout shifts: a lane of their own, picked here or in their section of the report. */
+  runs?: ShiftRun[];
+  pickedRun?: number | null;
+  onPickRun?: (i: number | null) => void;
+  /** What of the picked run is on the page now. */
+  runOutlined?: ShiftFound | null;
 }): JSX.Element | null {
   const [picked, setPicked] = useState<number | null>(null);
   const [pickedAction, setPickedAction] = useState<number | null>(null);
@@ -699,6 +746,23 @@ export function Timeline({
     setOutlined(entries?.length ? onOutline(entries) : (onOutline(null), null));
   }, [picked, pickedAction]);
   useEffect(() => () => void onOutline?.(null), []);
+  // One thing is picked at a time: a shift picked in its section takes the place of a commit picked here.
+  useEffect(() => {
+    if (pickedRun === null) return;
+    setPicked(null);
+    setPickedAction(null);
+  }, [pickedRun]);
+  const shiftMarks = useMemo(() => {
+    const peak = runs.reduce((most, run) => Math.max(most, run.value), 0.001);
+    return runs.map((run, i) => ({
+      i,
+      run,
+      x: px(run.atMs * scale),
+      w: Math.max(3, px((run.endMs - run.atMs) * scale)),
+      h: Math.max(4, Math.round(SHIFTS_LANE_H * Math.sqrt(run.value / peak))),
+      tone: run.excluded < run.count ? 'counted' : run.shifts.some((s) => nearMissOf(s, run.count === 1)) ? 'near' : 'excluded',
+    }));
+  }, [runs, scale]);
   if (!rec.commits.list.length) return null;
   /**
    * Zooming holds one moment still: the one under the pointer when the wheel turns, the middle of the view when a
@@ -722,6 +786,8 @@ export function Timeline({
   };
   const commit = picked === null ? null : rec.commits.list[picked];
   const action = pickedAction === null ? null : rec.actions.find((a) => a.id === pickedAction) ?? null;
+  const run = pickedRun === null ? undefined : runs[pickedRun];
+  const pickedMark = pickedRun === null ? undefined : shiftMarks[pickedRun];
   // What is lit up: the commits of the action picked, or else the commits of the cause picked in the legend.
   const causeLit = litCause === null ? null : new Set(rec.commits.list.filter((c) => c.causeIds?.includes(litCause)).map((c) => c.i));
   const lit = action ? new Set(action.commitIds ?? []) : causeLit ?? new Set<number>();
@@ -750,12 +816,13 @@ export function Timeline({
   const inBar = pickedBar?.ids.length ?? 1;
   const onView = (x: number, w = 0) => x + w >= view.from - VIEW_MARGIN_PX && x <= view.to + VIEW_MARGIN_PX;
   /** Back to the whole recording with nothing picked: what the tracks showed when the report opened. */
-  const narrowed = zoom > MIN_ZOOM || picked !== null || pickedAction !== null || litCause !== null;
+  const narrowed = zoom > MIN_ZOOM || picked !== null || pickedAction !== null || litCause !== null || pickedRun !== null;
   const showAll = () => {
     scrollTo.current = null;
     setZoom(MIN_ZOOM);
     setPicked(null);
     setPickedAction(null);
+    onPickRun?.(null);
     onReset?.();
     requestAnimationFrame(() => {
       const el = scroll.current;
@@ -766,6 +833,7 @@ export function Timeline({
     });
   };
   const pickCommit = (i: number) => {
+    onPickRun?.(null);
     setPicked(i);
     const owner = rec.commits.list[i]?.actionId;
     setPickedAction(owner !== undefined ? owner : null);
@@ -809,6 +877,16 @@ export function Timeline({
           <div class="tl-label" style="height:14px">
             Actions
           </div>
+          {runs.length ? (
+            <div
+              class="tl-label"
+              style={`height:${SHIFTS_LANE_H}px`}
+              title="Layout shifts: red counted, amber near misses, grey left out after an input"
+            >
+              <span class="tl-name">Shifts</span>
+              <span class="muted">{rec.shifts ? shiftValue(rec.shifts.cls.value) : ''}</span>
+            </div>
+          ) : null}
           {lanes.map((lane) => (
             <div class="tl-label" key={lane.key} style={`height:${lane.height}px`} title={lane.label}>
               <span class="tl-name">{lane.label}</span>
@@ -848,6 +926,9 @@ export function Timeline({
                 <span class="tl-cursor" style={`left:${(pickedBar?.x ?? commit.atMs * scale) + (pickedBar?.w ?? 0) / 2}px`} />
               </>
             ) : null}
+            {run && pickedMark ? (
+              <span class="tl-band" style={`left:${pickedMark.x + pickedMark.w / 2}px;width:${Math.max(8, pickedMark.w + 6)}px`} />
+            ) : null}
             <div class="tl-lane tl-actions" style="height:14px">
               {actions
                 .filter(({ x, w }) => onView(x, w))
@@ -860,12 +941,33 @@ export function Timeline({
                     title={actionText(a)}
                     onClick={() => {
                       if (panned.current) return;
+                      onPickRun?.(null);
                       setPickedAction(a.id);
                       setPicked(null);
                     }}
                   />
                 ))}
             </div>
+            {runs.length ? (
+              <div class="tl-lane tl-shifts" data-rpr="tl-shifts" style={`height:${SHIFTS_LANE_H}px`}>
+                {shiftMarks
+                  .filter(({ x, w }) => onView(x, w))
+                  .map((m) => (
+                    <button
+                      key={m.i}
+                      class="tl-shift"
+                      data-rpr="tl-shift"
+                      data-tone={m.tone}
+                      data-picked={pickedRun === m.i ? 'true' : undefined}
+                      style={`left:${m.x}px;width:${m.w}px;height:${m.h}px`}
+                      title={`${shiftValue(m.run.value)} · ${m.run.first.sources[0] ? nodeText(m.run.first.sources[0]) : 'an element'} ${moveText(
+                        m.run
+                      )}`}
+                      onClick={() => !panned.current && onPickRun?.(pickedRun === m.i ? null : m.i)}
+                    />
+                  ))}
+              </div>
+            ) : null}
             {lanes.map((lane) => (
               <div class="tl-lane" key={lane.key} style={`height:${lane.height}px`}>
                 {lane.bars
@@ -898,12 +1000,18 @@ export function Timeline({
           </div>
         </div>
       </div>
-      {outlined !== null ? (
+      {run ? (
+        runOutlined ? (
+          <ShiftLegend run={run} found={runOutlined} id="tl-outlined" />
+        ) : null
+      ) : outlined !== null ? (
         <p class="tl-outlined" data-rpr="tl-outlined" data-found={outlined}>
           {outlined ? `◻ outlined on the page: ${outlined}` : 'not on the page now'}
         </p>
       ) : null}
-      {commit ? (
+      {run ? (
+        <ShiftDetail rec={rec} run={run} onCommit={pickCommit} />
+      ) : commit ? (
         <CommitDetail rec={rec} commit={commit} more={inBar - 1} />
       ) : action ? (
         <ActionDetail rec={rec} action={action} onCommit={pickCommit} />

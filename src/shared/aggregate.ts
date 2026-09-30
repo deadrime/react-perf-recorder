@@ -1,9 +1,11 @@
 import { medianGap, topEntries, topReasons } from './stats';
 import { buildSegments } from './segments';
+import { clsOf, linkInteractions, MAX_SHIFTS } from './shifts';
 import {
   RECORDING_SCHEMA,
   type ActionRecord,
   type LatencyEntry,
+  type LayoutShift,
   type LongFrame,
   type Navigation,
   type RecordingV2,
@@ -41,6 +43,8 @@ export function aggregateEvents(meta: SessionMeta, events: SessionEvent[]): Reco
   const actions: ActionRecord[] = [];
   const latency: LatencyEntry[] = [];
   const loaf: LongFrame[] = [];
+  const shifts: LayoutShift[] = [];
+  let shiftsSeen = false;
   const navigations: Navigation[] = [];
   const hmr: RecordingV2['hmr'] = [];
   const commits: CommitRecord[] = [];
@@ -123,6 +127,10 @@ export function aggregateEvents(meta: SessionMeta, events: SessionEvent[]): Reco
         break;
       case 'frame':
         loaf.push(e.frame);
+        break;
+      case 'shift':
+        shiftsSeen = true;
+        shifts.push(e.shift);
         break;
       case 'nav':
         navigations.push(e.nav);
@@ -217,6 +225,16 @@ export function aggregateEvents(meta: SessionMeta, events: SessionEvent[]): Reco
     bigCommits: [],
     frames: { longTasks: { count: 0, maxMs: 0, totalMs: 0 }, loaf },
     dom: { text: 0 },
+    // Without a shift streamed, a session cannot say whether the browser reports them at all.
+    ...(shiftsSeen
+      ? {
+          shifts: {
+            list: linkInteractions(shifts, latency),
+            ...(shifts.length >= MAX_SHIFTS ? { truncated: true as const } : {}),
+            cls: clsOf(shifts),
+          },
+        }
+      : {}),
     navigations,
     hmr,
     conditions: meta.conditions,

@@ -53,6 +53,10 @@ export interface RecordOnLoad {
   source?: string;
   highlight?: boolean;
   sampleReasons?: boolean;
+  /** Sample the page's JS from the load on; record_page samples through CDP instead and leaves it off. */
+  cpu?: boolean;
+  /** What the page cannot see about how it is recorded: CPU throttling, how CPU is sampled. */
+  conditions?: Record<string, string | number | boolean | null>;
   /** The steps of a recording to do again once the page is up. */
   replay?: ReplayPlan;
 }

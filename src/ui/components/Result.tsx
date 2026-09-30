@@ -1,12 +1,16 @@
 /** @jsxImportSource preact */
 import type { ComponentChildren, JSX } from 'preact';
-import { useMemo, useState } from 'preact/hooks';
+import { useEffect, useMemo, useState } from 'preact/hooks';
 import type { Saved } from '../../core/engine';
 import { GROWTH_KEYS, type GrowthKey, type GrowthMetric, type GrowthOrigin, type GrowthStats, type RootStat } from '../../shared/schema';
 import { hookOf, reasonsById, summarize, waysOf } from '../../shared/summary';
 import { downloadJson } from '../download';
 import { Compare, compareNote, type Comparison } from './Compare';
+import { Cpu } from './Cpu';
 import { Memos } from './Memos';
+import type { ShiftOutline } from './PanelView';
+import { Shifts, shiftValue, type ShiftFound } from './Shifts';
+import { runMoves, shiftRuns, type ShiftRun } from '../../shared/shifts';
 import { planReplay } from '../../shared/replay';
 import { Kpis, Notice, ReasonLine, StatCard, type Badge, type Kpi, type StatReason } from './Stats';
 import { causeColour, Timeline } from './Timeline';
@@ -49,6 +53,7 @@ export function Result({
   compared,
   onRepeat,
   onOutline,
+  onOutlineShift,
   onDismiss,
   wide,
   onWide,
@@ -57,6 +62,7 @@ export function Result({
   compared?: Comparison | null;
   onRepeat?: () => void;
   onOutline?: (entries: Array<{ i: number; hits: number }> | null) => number;
+  onOutlineShift?: (shift: ShiftOutline | null) => ShiftFound;
   onDismiss: () => void;
   wide: boolean;
   onWide: () => void;
@@ -66,6 +72,28 @@ export function Result({
   const roots = useMemo(() => [...rec.roots, ...rec.outsideRoots], [rec]);
   const reasons = useMemo(() => reasonsById(rec.reasons), [rec]);
   const [litCause, setLitCause] = useState<number | null>(null);
+  const runs = useMemo(() => shiftRuns(rec.shifts?.list ?? []), [rec]);
+  // A run of layout shifts picked in its section or on the timeline, and how much of it is on the page now.
+  // Kept with the runs it indexes: a new recording in the same report must not outline the old pick's index.
+  const [pick, setPick] = useState<{ runs: ShiftRun[]; i: number } | null>(null);
+  const pickedRun = pick?.runs === runs ? pick.i : null;
+  const setPickedRun = (i: number | null) => setPick(i === null ? null : { runs, i });
+  const [shiftOutlined, setShiftOutlined] = useState<ShiftFound | null>(null);
+  useEffect(() => {
+    if (!onOutlineShift) return;
+    const run = pickedRun === null ? undefined : runs[pickedRun];
+    const cause = run?.first.cause;
+    setShiftOutlined(
+      run
+        ? onOutlineShift({
+            moved: runMoves(run),
+            ...(cause && 'by' in cause && cause.by ? { by: cause.by } : {}),
+            ...(run.last.scroll ? { scroll: run.last.scroll } : {}),
+          })
+        : (onOutlineShift(null), null)
+    );
+  }, [pickedRun, runs]);
+  useEffect(() => () => void onOutlineShift?.(null), []);
 
   // A component's reasons carry no hooks of their own; the root of the same name knows which hook each one came from.
   const rootByName = useMemo(() => new Map(roots.map((r) => [r.name, r])), [roots]);
@@ -99,6 +127,7 @@ export function Result({
   const otherRoots = rec.roots.filter((r) => r !== lead).slice(0, 4);
   const otherOutside = rec.outsideRoots.filter((r) => r !== lead).slice(0, 3);
   const slowest = Math.max(0, ...s.actions.map((a) => a.latencyMs ?? 0));
+  const cls = rec.shifts?.cls;
   const kpis: Kpi[] = [
     { value: String(t.commitsInScope), label: s.scope ? 'commits in area' : 'commits', title: `${t.commits} in the whole app` },
     { value: String(t.renders), label: 'renders', title: `${t.rendersPerScopeCommit} per commit` },
@@ -110,6 +139,19 @@ export function Result({
       title: 'Renders after which nothing in the DOM of the component changed',
     },
     ...(slowest ? [{ value: `${slowest}ms`, label: 'slowest action', tone: slowest > SLOW_MS ? ('warn' as const) : undefined }] : []),
+    ...(cls && runs.length
+      ? [
+          {
+            value: shiftValue(cls.value),
+            label: cls.nearMiss >= 0.01 ? `CLS · near miss ${shiftValue(cls.nearMiss)}` : 'CLS',
+            // Chrome's own line between good and needs improvement.
+            tone: cls.value >= 0.1 || cls.nearMiss >= 0.1 ? ('warn' as const) : undefined,
+            title: `Cumulative layout shift: the worst window of shifts, as Chrome counts it. ${cls.count} shifts, ${shiftValue(
+              cls.excluded
+            )} left out after inputs`,
+          },
+        ]
+      : []),
     { value: `${s.durationSec}s`, label: 'recorded' },
   ];
 
@@ -192,6 +234,18 @@ export function Result({
         </Fold>
       ) : null}
 
+      {cls && runs.length ? (
+        <Fold
+          id="shifts"
+          title="Layout shifts"
+          note={`CLS ${shiftValue(cls.value)}${cls.nearMiss ? ` · near miss ${shiftValue(cls.nearMiss)}` : ''} · ${cls.count}`}
+          // Below a hundredth nothing is worth reading first, as in the summary line.
+          open={cls.value >= 0.01 || cls.nearMiss >= 0.01}
+        >
+          <Shifts rec={rec} runs={runs} picked={pickedRun} onPick={setPickedRun} outlined={shiftOutlined} />
+        </Fold>
+      ) : null}
+
       {rec.watch && Object.keys(rec.watch).length ? (
         <Fold id="watched" title="Watched">
           {Object.entries(rec.watch).map(([name, w]) => (
@@ -244,8 +298,19 @@ export function Result({
             ))}
           </div>
         ) : null}
-        <Timeline rec={rec} litCause={litCause} onReset={() => setLitCause(null)} onOutline={onOutline} />
+        <Timeline
+          rec={rec}
+          litCause={litCause}
+          onReset={() => setLitCause(null)}
+          onOutline={onOutline}
+          runs={runs}
+          pickedRun={pickedRun}
+          onPickRun={setPickedRun}
+          runOutlined={shiftOutlined}
+        />
       </Fold>
+
+      {rec.cpu ? <Cpu cpu={rec.cpu} open={rec.cpu.busyMs > rec.cpu.wallMs * 0.15} /> : null}
 
       {rec.growth ? <Growth growth={rec.growth} /> : null}
 

@@ -75,13 +75,13 @@ function sitesOf(error: Error) {
   // frames[0] is `jsxDEV` or `createElement` itself: the element was written one frame below it, or below a
   // package's own JSX runtime that hands it on (`jsxImportSource: '@emotion/react'`).
   let at = 1;
-  while (frames[at] && JSX_RUNTIME.test(frames[at].fn) && libraryOf(frames[at].url) !== null) at++;
+  while (frames[at] && JSX_RUNTIME.test(frames[at].fn) && libraryOf(frames[at].url, frames[at].line) !== null) at++;
   const own = frames[at] && !BOTTOM_FRAME.test(frames[at].fn) ? siteAt(frames[at]) : null;
   let shown = own;
-  if (own && libraryOf(own.url) !== null)
+  if (own && libraryOf(own.url, own.line) !== null)
     for (const frame of frames.slice(at + 1)) {
       if (BOTTOM_FRAME.test(frame.fn)) break;
-      if (libraryOf(frame.url) === null) {
+      if (libraryOf(frame.url, frame.line) === null) {
         shown = siteAt(frame);
         break;
       }
@@ -150,7 +150,8 @@ const LANES_19: LaneTable = [
   [0b1000, 'InputContinuous'],
   [0b10000, 'DefaultHydration'],
   [0b100000, 'Default'],
-  [0b1000000, 'TransitionHydration'],
+  [0b1000000, 'Gesture'],
+  [0b10000000, 'TransitionHydration'],
   [261888, 'Transition'],
   [3932160, 'TransitionDeferred'],
   [62914560, 'Retry'],
@@ -243,6 +244,17 @@ export function reactVersion(): string | null {
 
 export function renderer(): Renderer | null {
   return knownRenderers().find((r) => r.currentDispatcherRef) ?? null;
+}
+
+/** Every React's dispatcher: a page may carry two (Next.js has its dev overlay's own), a component calls its own. */
+export function dispatcherRefs(): Array<{ current?: unknown; H?: unknown }> {
+  return [
+    ...new Set(
+      knownRenderers()
+        .map((r) => r.currentDispatcherRef)
+        .filter(Boolean)
+    ),
+  ] as Array<{ current?: unknown; H?: unknown }>;
 }
 
 function majorVersion(): number {

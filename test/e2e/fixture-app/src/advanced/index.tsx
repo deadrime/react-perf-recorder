@@ -11,6 +11,7 @@ import { Measure } from './Measure';
 import { PropGetters } from './PropGetters';
 import { QueryFields } from './QueryFields';
 import { ReduxFavorites } from './ReduxFavorites';
+import { SortInRender } from './SortInRender';
 import { WholeCopy } from './WholeCopy';
 import { Windowed } from './Windowed';
 
@@ -36,6 +37,11 @@ export const ADVANCED: Record<string, AdvancedCase> = {
     title: 'a slow list filtered as you type',
     what: 'Two thousand rows filtered with every letter make typing stutter; useDeferredValue keeps the field ahead of the list.',
     element: HeavyList,
+  },
+  sort: {
+    title: 'a list sorted again on every render',
+    what: 'A sort left in the render runs over all fifteen hundred contacts with every letter typed: renders as often as with useMemo, each one slow.',
+    element: SortInRender,
   },
   window: {
     title: 'a virtualized list of ten thousand rows',

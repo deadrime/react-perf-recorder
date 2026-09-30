@@ -7,7 +7,7 @@ export const touchedHas = (touched: Set<Fiber>, f: Fiber) => touched.has(f) || (
  * The component whose render made a node's element — its owner in a development build, whatever wraps the element
  * where it is mounted (a provider, a Card) — else the nearest component above it. A text node goes by its element.
  */
-function ownerOf(node: Node): Fiber | null {
+export function ownerOf(node: Node): Fiber | null {
   let f = fiberFromNode(node);
   while (f && f.tag === Tag.HostText) f = f.return;
   // React 19 can put a server component's info here instead of a fiber.
@@ -55,6 +55,8 @@ export class DomWatcher {
   readonly counts: DomCounts = { text: 0, attr: 0, child: 0 };
   private observer: MutationObserver | null = null;
   private scopeHosts: Element[] | null = null;
+  /** Handed every batch as it is taken: `commit` when a commit took it, else it came between commits. */
+  onRecords: ((records: MutationRecord[], commit: boolean) => void) | null = null;
 
   setScopeHosts(hosts: Element[] | null) {
     this.scopeHosts = hosts;
@@ -140,8 +142,10 @@ export class DomWatcher {
       const key = this.recordKey(m);
       if (!perNode.has(key)) perNode.set(key, m.oldValue);
     }
-    for (const m of records) {
-      if (!this.changedSomething(m, before)) continue;
+    const changed = records.filter((m) => this.changedSomething(m, before));
+    // A write of the value already there moves nothing, and must not outrank the change that did.
+    if (records.length) this.onRecords?.(changed, touched !== null);
+    for (const m of changed) {
       if (touched) {
         this.mark(m.target, touched);
         if (m.type === 'childList') {

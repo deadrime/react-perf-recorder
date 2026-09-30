@@ -211,6 +211,33 @@ test('a commit picked on the timeline outlines its components on the page, until
   await expect.poll(live).toBe(true);
 });
 
+test('a commit picked on the timeline outlines only the instances inside the recorded area', async ({ page }) => {
+  // Three lists of the same Row: the area is one of them, the other two are outside it.
+  await page.goto('/basics/keys?rpr=panel');
+  await page.locator('[data-rpr="pick"]').click();
+  await page.getByTestId('list-id').click({ position: { x: 2, y: 2 } });
+  await page.locator('[data-rpr="tree"] li[data-name="List"]').first().click();
+  await page.keyboard.press('Enter');
+  await expect(page.locator('[data-rpr="scope"]')).toHaveText('List');
+  await page.locator('[data-rpr="record"]').click();
+  await page.getByTestId('list-id').getByTestId('task-t1').locator('input').check();
+  await page.locator('[data-rpr="stop"]').click();
+  await expect(page.locator('[data-rpr="result"]')).toContainText('saved');
+
+  await page.locator('.tl-bar').last().click();
+  await expect(page.locator('[data-rpr="tl-outlined"]')).toBeVisible();
+  const outlined = await page.evaluate(() => {
+    const pinned = (window as any).__REACT_PERF_RECORDER__.panel.highlighter.pinned as Array<{ fiber: { stateNode: unknown; child: any } }>;
+    return pinned.map(({ fiber }) => {
+      let f = fiber;
+      while (f && !(f.stateNode instanceof Element)) f = f.child;
+      return (f?.stateNode as Element | undefined)?.closest('[data-testid^="list-"]')?.getAttribute('data-testid') ?? null;
+    });
+  });
+  expect(outlined.length).toBeGreaterThan(0);
+  expect(new Set(outlined)).toEqual(new Set(['list-id']));
+});
+
 test('Repeat replays in the area the report was recorded in, not the one the panel shows now', async ({ page }) => {
   await page.goto('/app?rpr=panel&tick=150');
   await expect(page.getByTestId('unread')).toBeVisible();
@@ -301,4 +328,27 @@ test('what kept growing opens by itself, with the line that left the listeners b
   await expect(growth.locator('[data-key="styleElements"]')).toHaveCount(0);
   await expect(growth.locator('[data-key="cssRules"]')).toContainText('in 100 new <style>');
   await expect(growth.locator('.growth-still')).toContainText('unchanged:');
+});
+
+test('the report shows where the CPU went, the page having profiled itself', async ({ page }) => {
+  // Samples come every 10 ms in the page: slowed down, the slow render is sampled for sure.
+  await page.goto('/basics/init?rpr=panel');
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send('Emulation.setCPUThrottlingRate', { rate: 6 });
+  await page.locator('[data-rpr="record"]').click();
+  for (let i = 0; i < 40; i++) await page.getByTestId('render').first().click();
+  await page.locator('[data-rpr="stop"]').click();
+  await expect(page.locator('[data-rpr="result"]')).toContainText('saved');
+  const cpu = page.locator('[data-rpr="cpu"]');
+  await expect(cpu).toBeVisible();
+  if (!(await cpu.evaluate((e) => (e as HTMLDetailsElement).open))) await cpu.locator('summary').click();
+  const rows = cpu.locator('[data-rpr="cpu-render"]');
+  await expect(rows.filter({ hasText: 'NotesEager' })).toContainText('parseNotes');
+  // A sample every 10 ms sees a few ms of React's own work per render too: the rank that holds is against the lazy
+  // twin, which renders as often. The exact order is record_page's test, sampled every 0.5 ms.
+  const names = await rows.allInnerTexts();
+  const rank = (name: string) => names.findIndex((text) => text.startsWith(name));
+  expect(rank('NotesEager')).toBeGreaterThanOrEqual(0);
+  if (rank('NotesLazy') >= 0) expect(rank('NotesEager')).toBeLessThan(rank('NotesLazy'));
+  await expect(cpu).toContainText('sampled every 10ms');
 });

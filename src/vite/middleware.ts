@@ -2,8 +2,18 @@ import { randomBytes } from 'node:crypto';
 import fs from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import path from 'node:path';
+import type { CpuInput, CpuProfile, CpuSummary } from '../shared/cpu';
 import { listingOf } from '../shared/listing';
-import { CLIENT_HEADER, ENDPOINT, growthOrigins, SESSION_SCHEMA, type RecordingV2, type SessionEvent, type SessionMeta } from '../shared/schema';
+import {
+  CLIENT_HEADER,
+  ENDPOINT,
+  growthOrigins,
+  SESSION_SCHEMA,
+  shiftNodes,
+  type RecordingV2,
+  type SessionEvent,
+  type SessionMeta,
+} from '../shared/schema';
 
 export interface SessionStoreOptions {
   dir: string;
@@ -13,7 +23,12 @@ export interface SessionStoreOptions {
   gitignore: boolean;
   /** Turns a generated call site into `src/file.ts:line` and the source line; set by the Vite plugin. */
   mapSite?: (url: string, line: number, column: number, hooks?: string[]) => Promise<{ site: string; code?: string; deps?: string[] } | null>;
+  /** Symbolizes and sums up a CPU profile sent with a recording; set by the Vite plugin. */
+  summarizeCpu?: (input: CpuInput) => Promise<{ summary: CpuSummary; profile: CpuProfile } | { error: string }>;
 }
+
+/** Beside recording.json when asked for: the profile itself, to open in DevTools' Performance panel. */
+export const CPU_PROFILE_FILE = 'cpu.cpuprofile';
 
 const ID = /^\d{8}-\d{6}-[\w.-]+$/;
 
@@ -115,10 +130,27 @@ export class SessionStore {
 
   async finish(
     id: string,
-    recording: RecordingV2
-  ): Promise<{ id: string; dir: string; sites: Record<string, { site: string; code?: string; deps?: string[] }> }> {
+    recording: RecordingV2,
+    cpu?: CpuInput
+  ): Promise<{
+    id: string;
+    dir: string;
+    sites: Record<string, { site: string; code?: string; deps?: string[] }>;
+    cpu?: CpuSummary;
+    cpuError?: string;
+  }> {
     const dir = this.sessionDir(id);
     const sites = await this.mapSites(recording);
+    let cpuError: string | undefined;
+    if (cpu) {
+      const summed = this.options.summarizeCpu
+        ? await this.options.summarizeCpu(cpu).catch((error) => ({ error: String(error?.message ?? error) }))
+        : null;
+      if (summed && 'summary' in summed) {
+        recording.cpu = summed.summary;
+        if (cpu.keep) writeAtomic(path.join(dir, CPU_PROFILE_FILE), JSON.stringify(summed.profile));
+      } else recording.warnings.push((cpuError = `CPU profile not read: ${summed?.error ?? 'this dev server does not read profiles'}`));
+    }
     writeAtomic(path.join(dir, 'recording.json'), JSON.stringify({ ...recording, id }, null, 1));
     // Read after the wait: events may have been appended to the session while the sites were mapped.
     const meta = this.readMeta(dir);
@@ -128,7 +160,7 @@ export class SessionStore {
     writeAtomic(path.join(dir, 'session.json'), JSON.stringify(meta, null, 2));
     this.tokens.delete(id);
     // The page keeps its own copy of the recording: it gets the mapped call sites back to show them too.
-    return { id, dir, sites };
+    return { id, dir, sites, ...(recording.cpu ? { cpu: recording.cpu } : {}), ...(cpuError ? { cpuError } : {}) };
   }
 
   /** The panel asking outside a recording: React 19 gives a component's site as a built position, and only the dev server can map it. */
@@ -200,6 +232,13 @@ export class SessionStore {
         if (mapped.code) origin.code = mapped.code;
       }
       delete origin.generated;
+    }
+    for (const node of shiftNodes(recording)) {
+      const g = node.generated;
+      if (!g) continue;
+      const mapped = await map(g);
+      if (mapped) node.file = mapped.site;
+      delete node.generated;
     }
     for (const memo of recording.memos ?? []) {
       const g = memo.info?.generated;
@@ -295,7 +334,7 @@ export function createMiddleware(store: SessionStore, base: string, version: str
         return send(res, 200, { ok: true });
       }
       if (body.recording?.schema !== 'react-perf-recorder/recording') return send(res, 400, { error: 'not a recording' });
-      return send(res, 200, await store.finish(id, body.recording));
+      return send(res, 200, await store.finish(id, body.recording, body.cpu ?? undefined));
     } catch (error) {
       const status = (error as { status?: number }).status ?? (error instanceof SyntaxError ? 400 : 500);
       return send(res, status, { error: String((error as Error).message ?? error) });

@@ -60,7 +60,7 @@ export default defineConfig([
     define,
   },
   {
-    entry: { 'engine.iife': 'src/iife/engine.ts' },
+    entry: { 'engine.iife': 'src/iife/engine.ts', 'recorder.iife': 'src/iife/recorder.ts' },
     outDir: 'dist',
     format: ['iife'],
     platform: 'browser',

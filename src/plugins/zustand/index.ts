@@ -57,7 +57,7 @@ export function zustand(options: ZustandOptions = {}): PerfRecorderPlugin {
   const functions = options.functions ?? ['create', 'createStore', 'createWithEqualityFn'];
   let context: BuildContext | null = null;
   const root = () => context?.root() ?? process.cwd();
-  const filter = createFilter(root, options.include ?? ['src/**/*.{ts,tsx,js,jsx}'], options.exclude);
+  const filter = createFilter(root, options.include ?? ['**/*.{ts,tsx,js,jsx}'], options.exclude);
   const wrap = (source: string, lines: string[]) =>
     proxyModule('zustand', {
       source,

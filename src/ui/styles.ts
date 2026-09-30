@@ -70,7 +70,7 @@ export const STYLES = `
 .rpr { font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; }
 .box .tag { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 /* Whatever is a name, a number or a piece of code reads in the monospace face: it is copied, compared and searched. */
-code, input[type="text"], .who, .what, .n, .badge, .kind, .flag, .sel, .chain, .site, .code, .stat-name, .stat-src,
+code, input[type="text"], .who, .what, .n, .badge, .kind, .flag, .sel, .chain, .site, .code, .stat-name, .stat-src, .cpu-name, .cpu-where,
 .scope, .cause-key, .way-name, .way-cause, .cascade-n, .cause-chip, .kpi-value, .saved, .action-at, header .live, .picker li, [class^="tl-"], .tl-detail * {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
@@ -165,6 +165,13 @@ header .live { flex: 1; color: var(--muted-soft); white-space: nowrap; overflow:
 /* An action runs for seconds and its bar can be the width of the tracks: picked, it takes the accent, not white. */
 .tl-mark:hover { background: color-mix(in srgb, var(--mark) 70%, var(--text-strong)); }
 .tl-mark[data-picked="true"] { background: color-mix(in srgb, var(--accent) 70%, transparent); }
+/* A shift stands on the lane's floor as tall as its score: red counted, amber a near miss, grey left out. */
+.tl-shift { position: absolute; bottom: 0; min-width: 3px; padding: 0; border: 0; border-radius: 1px 1px 0 0; background: var(--mark); cursor: pointer; }
+.tl-shift::before { content: ''; position: absolute; inset: -2px -3px 0; }
+.tl-shift[data-tone="counted"] { background: var(--flash-hot); }
+.tl-shift[data-tone="near"] { background: var(--warn); }
+.tl-shift[data-picked="true"] { outline: 1px solid var(--text-strong); }
+@media (pointer: coarse) { .tl-shift::before { inset: -4px -8px 0; } }
 .tl-axis { position: relative; height: 12px; }
 .tl-tick { position: absolute; top: 1px; color: var(--faint); font-size: 9px; transform: translateX(-50%); white-space: nowrap; }
 .tl-tick[data-first="true"] { transform: none; }
@@ -289,6 +296,27 @@ details.fold[open] > summary::before { content: '▾'; }
 .action-what { color: var(--text); margin-right: 2px; }
 .action .reason { margin-left: 10px; }
 .watched { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px; margin: 3px 0; }
+.shift { border-bottom: 1px solid var(--rule-soft); }
+.shift:last-of-type { border-bottom: 0; }
+.shift-row { display: flex; flex-direction: column; gap: 2px; width: 100%; padding: 5px 4px; border: 1px solid transparent; border-radius: 6px; background: none; text-align: left; }
+.shift-row:hover { background: var(--hover); }
+.shift-row[aria-pressed="true"] { border-color: color-mix(in srgb, var(--pick) 55%, transparent); background: var(--chip); }
+.shift-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px; }
+.shift-move { color: var(--text); }
+.shift-at { color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.shift-head .badge:last-child { margin-left: auto; }
+.shift-cause { color: var(--text-2); }
+.shift-where { color: var(--muted); overflow-wrap: anywhere; }
+.shift .tl-outlined { margin: 0 0 4px 4px; }
+.shift-hint { margin: 0 0 4px; font-size: 11px; }
+/* The key to the page's drawing: the same colours and strokes as the canvas. */
+.shift-legend { display: flex; flex-wrap: wrap; gap: 4px 12px; margin: 4px 0 6px 4px; font-size: 11px; color: var(--text-2); }
+.shift-legend .lg { display: inline-flex; align-items: center; gap: 5px; }
+.shift-legend i { flex: none; width: 16px; height: 10px; box-sizing: border-box; border-radius: 2px; }
+.lg-now { border: 2px solid var(--pick); background: color-mix(in srgb, var(--pick) 15%, transparent); }
+.lg-was { border: 2px dashed var(--pick); }
+.lg-cause { border: 1.5px solid var(--flash-hot);
+  background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--muted) 45%, transparent) 0 1.5px, transparent 1.5px 5px); }
 .growth-row { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; margin: 3px 0; }
 .growth-row .who { min-width: 72px; }
 .growth-find { display: flex; align-items: baseline; gap: 8px; padding: 5px 0; border-bottom: 1px solid var(--rule-soft); }
@@ -299,6 +327,21 @@ details.fold[open] > summary::before { content: '▾'; }
 /* Wrapped, not cut: the end of a path or a call is the part that says where. */
 .growth-where, .growth-code { color: var(--muted); overflow-wrap: anywhere; white-space: pre-wrap; }
 .growth-still { margin: 3px 0; }
+.cpu-bar { display: flex; height: 10px; border-radius: 3px; overflow: hidden; gap: 1px; margin: 4px 0; }
+.cpu-bar i { min-width: 2px; }
+.cpu-legend { display: flex; flex-wrap: wrap; gap: 2px 10px; margin-bottom: 4px; font-size: 11px; }
+.cpu-key { display: inline-flex; align-items: baseline; gap: 4px; }
+.cpu-head { margin: 8px 0 2px; font-size: 11px; font-weight: 600; color: var(--label); }
+.cpu-render { padding: 3px 0; border-bottom: 1px solid var(--rule-soft); }
+.cpu-render:last-of-type { border-bottom: 0; }
+.cpu-row { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; margin: 2px 0; }
+.cpu-row .badge { flex: none; min-width: 38px; text-align: right; }
+.cpu-hot { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; padding-left: 12px; }
+.cpu-hot .muted { min-width: 30px; text-align: right; font-variant-numeric: tabular-nums; }
+.cpu-name { color: var(--text); }
+/* Wrapped, not cut: the end of a path is the part that says where. */
+.cpu-where { color: var(--muted); overflow-wrap: anywhere; }
+.cpu-note { margin: 6px 0 0; font-size: 11px; }
 .plugin { padding: 5px 0; border-top: 1px solid var(--rule-soft); }
 .plugin:first-child { border-top: 0; }
 .plugin-name { font-size: 11px; font-weight: 600; color: var(--label); margin-bottom: 2px; }
@@ -419,13 +462,14 @@ button[data-copied="true"] { color: var(--good); }
 .box { position: fixed; pointer-events: none; border: 2px solid var(--pick); background: color-mix(in srgb, var(--pick) 8%, transparent); z-index: 2147483646; border-radius: 3px; }
 .box .tag { position: absolute; left: -2px; top: -18px; background: var(--pick); color: var(--text-strong); padding: 0 5px; border-radius: 3px 3px 0 0; font-size: 11px; white-space: nowrap; }
 
-/* The picker's buttons: what Esc and Enter do, for a finger. */
-.pick-bar { display: inline-flex; gap: 6px; margin-left: auto; }
+/* The picker's buttons: what Esc and Enter do, for a finger. With a mouse the keys and the hint are enough. */
+.pick-bar { display: none; gap: 6px; margin-left: auto; }
 .pick-bar .confirm { color: var(--text-strong); background: var(--accent-fill); border-color: var(--accent-strong); }
 .pick-bar .confirm:hover { background: var(--accent-strong); }
 
 /* A finger has no hover: the row's buttons show all the time, and everything tapped is at least 32px tall. */
 @media (pointer: coarse) {
+  .pick-bar { display: inline-flex; }
   header button, .controls button, .pick-bar button, .result-bar button { min-height: 32px; padding: 4px 10px; }
   .area-pill > button.icon { width: 36px; padding: 4px 0; }
   label.toggle { min-height: 32px; }
