@@ -363,23 +363,25 @@ export class Panel {
   }
 
   /** A layout shift of the report on the page as it is now: each moved element, where it was, and the culprit. */
-  private outlineShift(shift: ShiftOutline | null): number {
+  private outlineShift(shift: ShiftOutline | null): ShiftFound {
     this.setOutlining('shift', Boolean(shift));
     if (!shift) {
       this.highlighter?.pinShift(null);
-      return 0;
+      return { moved: 0, culprit: false };
     }
     const moved: ShiftPin['moved'] = [];
     for (const m of shift.moved) {
       const el = this.nearestAt(m.node, (r) => boxGap(r, m.to[2] || m.to[3] ? m.to : m.from));
       if (!el || moved.some((x) => x.el === el)) continue;
       const was = m.from[2] && m.from[3] ? m.from : null;
+      const name = m.component ?? m.node;
       moved.push({
         el,
         dx: was ? m.from[0] - m.to[0] : 0,
         dy: was ? m.from[1] - m.to[1] : 0,
         was: was ? [was[2], was[3]] : null,
-        label: `${m.component ?? m.node} ${moveOf(m.from, m.to)}`,
+        // Solid is where it is now and dashed where it was; the arrow carries the distance.
+        label: was && (m.from[0] !== m.to[0] || m.from[1] !== m.to[1]) ? `${name} · now` : `${name} ${moveOf(m.from, m.to)}`,
       });
     }
     const by = shift.by;
@@ -390,11 +392,35 @@ export class Panel {
       const el = this.nearestAt(by.node, (r) => (anchor ? Math.abs(r.top + r.height / 2 - anchor.top - anchor.height / 2) : 0));
       const label = changeText(by);
       const self = moved.find((m) => m.el === el);
-      if (self) self.label += ` · ${label}`;
-      else if (el) culprit = { el, label: `${by.component ?? by.node} · ${label}` };
+      if (self) self.label += ` · ${label}, the cause`;
+      else if (el) culprit = { el, label: `${by.component ?? by.node} ${label} · the cause` };
     }
     this.highlighter?.pinShift({ moved, culprit });
-    return moved.length + (culprit ? 1 : 0);
+    this.reveal([...moved.map((m) => m.el), ...(culprit ? [culprit.el] : [])], moved);
+    return { moved: moved.length, culprit: Boolean(culprit) };
+  }
+
+  /**
+   * Scrolls the shift into sight when it is off the screen or under the panel: picking it is asking to see it. On a
+   * phone the panel is a sheet over the bottom of the page, so only the part above it counts as seen.
+   */
+  private reveal(els: Element[], moved: ShiftPin['moved']) {
+    if (!els.length) return;
+    // Where each moved element was counts too: the arrow starts there.
+    const extent = () => {
+      const boxes = els.map((el) => el.getBoundingClientRect());
+      for (const m of moved) if (m.was) boxes.push(new DOMRect(0, m.el.getBoundingClientRect().top + m.dy, 0, m.was[1]));
+      return { top: Math.min(...boxes.map((b) => b.top)), bottom: Math.max(...boxes.map((b) => b.bottom)) };
+    };
+    const { top, bottom } = extent();
+    const card = this.shadow.querySelector('.rpr')?.getBoundingClientRect();
+    const sheet = card && card.width > innerWidth * 0.8 && card.top > innerHeight * 0.2;
+    const seenBottom = sheet ? card.top : innerHeight;
+    // Only the top of a tall element has to show: that is where the move is.
+    if (top >= 0 && Math.min(bottom, top + 160) <= seenBottom) return;
+    // A scrolled container first, then the page, so the shift's top sits just under the top of the window.
+    moved[0]?.el.scrollIntoView?.({ block: 'nearest' });
+    window.scrollBy({ top: extent().top - 48 });
   }
 
   /** Of the elements on the page at a recorded DOM path, the one the score likes best; none with no box. */
@@ -678,6 +704,8 @@ export class Panel {
     saveState(this.state);
   }
 }
+
+type ShiftFound = ReturnType<PanelHandlers['outlineShift']>;
 
 /** How far a box on the page now is from one recorded in a shift; the page may have scrolled since, so size weighs in. */
 const boxGap = (r: DOMRect, to: ShiftRect) =>

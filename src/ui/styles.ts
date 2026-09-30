@@ -309,6 +309,14 @@ details.fold[open] > summary::before { content: '▾'; }
 .shift-where { color: var(--muted); overflow-wrap: anywhere; }
 .shift .tl-outlined { margin: 0 0 4px 4px; }
 .shift-hint { margin: 0 0 4px; font-size: 11px; }
+/* The key to the page's drawing: the same colours and strokes as the canvas. */
+.shift-legend { display: flex; flex-wrap: wrap; gap: 4px 12px; margin: 4px 0 6px 4px; font-size: 11px; color: var(--text-2); }
+.shift-legend .lg { display: inline-flex; align-items: center; gap: 5px; }
+.shift-legend i { flex: none; width: 16px; height: 10px; box-sizing: border-box; border-radius: 2px; }
+.lg-now { border: 2px solid var(--pick); background: color-mix(in srgb, var(--pick) 15%, transparent); }
+.lg-was { border: 2px dashed var(--pick); }
+.lg-cause { border: 2px solid var(--flash-hot);
+  background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--flash-hot) 55%, transparent) 0 2px, transparent 2px 5px); }
 .growth-row { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; margin: 3px 0; }
 .growth-row .who { min-width: 72px; }
 .growth-find { display: flex; align-items: baseline; gap: 8px; padding: 5px 0; border-bottom: 1px solid var(--rule-soft); }

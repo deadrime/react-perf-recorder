@@ -5,6 +5,54 @@ import { causeText, commitCausesOf, moveText, nearMissOf, type ShiftRun } from '
 
 const SHOWN = 8;
 
+/** What of a picked shift was found on the page now. */
+export interface ShiftFound {
+  moved: number;
+  culprit: boolean;
+}
+
+/**
+ * The key to what a picked shift draws on the page, in the page's own colours and names: blue is what moved, solid
+ * where it is and dashed where it was, red stripes the cause.
+ */
+export function ShiftLegend({ run, found, id }: { run: ShiftRun; found: ShiftFound; id: string }): JSX.Element {
+  const total = found.moved + (found.culprit ? 1 : 0);
+  if (!total)
+    return (
+      <p class="tl-outlined" data-rpr={id} data-found={0}>
+        not on the page now
+      </p>
+    );
+  const source = run.first.sources[0];
+  const cause = run.first.cause;
+  const by = 'by' in cause ? cause.by : undefined;
+  const moved = source && source.from[2] && source.from[3] && (source.from[0] !== source.to[0] || source.from[1] !== source.to[1]);
+  return (
+    <p class="shift-legend" data-rpr={id} data-found={total}>
+      {found.moved ? (
+        <span class="lg">
+          <i class="lg-now" />
+          {`${source?.component ?? source?.node ?? 'moved'} now`}
+        </span>
+      ) : null}
+      {found.moved && moved ? (
+        <span class="lg">
+          <i class="lg-was" />
+          where it was
+        </span>
+      ) : null}
+      {found.culprit && by ? (
+        <span class="lg">
+          <i class="lg-cause" />
+          {`${by.component ?? by.node}, the cause`}
+        </span>
+      ) : by?.change === 'removed' ? (
+        <span class="muted">the cause was removed</span>
+      ) : null}
+    </p>
+  );
+}
+
 export const shiftValue = (value: number) => String(+value.toFixed(3));
 
 /** When a run happened: one frame, or the span of the frames it took. */
@@ -50,8 +98,8 @@ export function Shifts({
   runs: ShiftRun[];
   picked: number | null;
   onPick: (i: number | null) => void;
-  /** How many of the picked run's elements were found on the page now. */
-  outlined: number | null;
+  /** What of the picked run was found on the page now. */
+  outlined: ShiftFound | null;
 }): JSX.Element {
   const cls = rec.shifts!.cls;
   const commitCauses = commitCausesOf(rec);
@@ -87,11 +135,7 @@ export function Shifts({
               <span class="shift-cause">{causeText(run.first.cause, commitCauses)}</span>
               {source?.file ? <code class="shift-where">{source.file}</code> : null}
             </button>
-            {picked === i && outlined !== null ? (
-              <p class="tl-outlined" data-rpr="shift-outlined" data-found={outlined}>
-                {outlined ? `◻ outlined on the page: ${outlined}` : 'not on the page now'}
-              </p>
-            ) : null}
+            {picked === i && outlined ? <ShiftLegend run={run} found={outlined} id="shift-outlined" /> : null}
           </div>
         );
       })}

@@ -5,7 +5,7 @@ import type { ActionRecord, CommitRecord, RecordingV2 } from '../../shared/schem
 import { actionText, cascadeOf, hookOf, reasonsById, type CascadeNode } from '../../shared/summary';
 import { causeText, commitCausesOf, moveOf, moveText, nearMissOf, nodeText, runMoves, type ShiftRun } from '../../shared/shifts';
 import { Flame } from './Flame';
-import { CountedBadge, runWhen, shiftValue } from './Shifts';
+import { CountedBadge, runWhen, ShiftLegend, shiftValue, type ShiftFound } from './Shifts';
 import { ReasonLine, StepView } from './Stats';
 
 /**
@@ -564,8 +564,8 @@ export function Timeline({
   runs?: ShiftRun[];
   pickedRun?: number | null;
   onPickRun?: (i: number | null) => void;
-  /** How many of the picked run's elements are on the page now. */
-  runOutlined?: number | null;
+  /** What of the picked run is on the page now. */
+  runOutlined?: ShiftFound | null;
 }): JSX.Element | null {
   const [picked, setPicked] = useState<number | null>(null);
   const [pickedAction, setPickedAction] = useState<number | null>(null);
@@ -1001,10 +1001,8 @@ export function Timeline({
         </div>
       </div>
       {run ? (
-        runOutlined !== null ? (
-          <p class="tl-outlined" data-rpr="tl-outlined" data-found={runOutlined}>
-            {runOutlined ? `◻ outlined on the page: ${runOutlined}` : 'not on the page now'}
-          </p>
+        runOutlined ? (
+          <ShiftLegend run={run} found={runOutlined} id="tl-outlined" />
         ) : null
       ) : outlined !== null ? (
         <p class="tl-outlined" data-rpr="tl-outlined" data-found={outlined}>

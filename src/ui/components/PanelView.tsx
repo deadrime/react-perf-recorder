@@ -44,8 +44,8 @@ export interface PanelHandlers {
    * outlines away with null. Says how many components it found on the page now.
    */
   outlineRoots(entries: Array<{ i: number; hits: number }> | null): number;
-  /** Outlines a layout shift on the page, or takes it away with null. Says how many of its elements are there now. */
-  outlineShift(shift: ShiftOutline | null): number;
+  /** Outlines a layout shift on the page, or takes it away with null. Says which of its elements are there now. */
+  outlineShift(shift: ShiftOutline | null): { moved: number; culprit: boolean };
 }
 
 /** What moved, from where to where, and what moved it: a run of the report's layout shifts. */

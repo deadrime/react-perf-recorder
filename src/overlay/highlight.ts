@@ -24,6 +24,9 @@ const FADE_MS = 420;
 /** Renders closer together than this are one streak, and the count keeps rising. */
 const STREAK_MS = LIT_MS + FADE_MS;
 const MAX_FLASHES = 300;
+/** A picked shift plays again every this long: a still, the move, then the result held. */
+const SHIFT_LOOP_MS = 2200;
+const ease = (k: number) => (k < 0.5 ? 2 * k * k : 1 - (-2 * k + 2) ** 2 / 2);
 
 /** A closed menu or popover often stays in the DOM, unpositioned in the top-left: outlining it stacks boxes there. */
 /** A layout shift picked in the report: where each moved element was and is, and what moved it. */
@@ -74,6 +77,7 @@ export class Highlighter implements HighlightSink {
   /** Components picked on the report's timeline: outlined until the pick changes, whatever the highlight toggle says. */
   private pinned: Array<{ fiber: Fiber; label: string }> = [];
   private shift: ShiftPin | null = null;
+  private shiftSince = 0;
 
   constructor(parent: ShadowRoot | Element) {
     const host = parent instanceof ShadowRoot ? parent.host : parent;
@@ -102,6 +106,7 @@ export class Highlighter implements HighlightSink {
   /** Outlines a layout shift until the next call; null takes it away. */
   pinShift(pin: ShiftPin | null) {
     this.shift = pin;
+    this.shiftSince = performance.now();
     this.redraw();
   }
 
@@ -242,7 +247,8 @@ export class Highlighter implements HighlightSink {
     this.drawPinned(ctx);
     this.drawShift(ctx);
     this.costMs += performance.now() - started;
-    if (this.flashes.size) requestAnimationFrame(() => this.draw());
+    // A picked shift plays its move in a loop, so the canvas keeps drawing while it is picked.
+    if (this.flashes.size || (this.shift && !this.reducedMotion)) requestAnimationFrame(() => this.draw());
     else this.drawing = false;
   }
 
@@ -295,73 +301,143 @@ export class Highlighter implements HighlightSink {
   }
 
   /**
-   * The moved elements where they are now, a dashed box where they were before the shift and an arrow between; the
-   * culprit filled in red. Read from the elements every frame, as the pinned roots are, so scrolling keeps them on.
+   * A picked shift, drawn to be read at a glance: the culprit striped red, each moved element outlined blue where it
+   * is, a dashed box where it was, a thick arrow between with the distance, and the move itself played again in a
+   * loop. Boxes are read from the elements every frame, so scrolling keeps them on.
    */
   private drawShift(ctx: CanvasRenderingContext2D) {
     const pin = this.shift;
     if (!pin) return;
-    const label = (text: string, x: number, y: number, rgb: Rgb) => {
-      const width = ctx.measureText(text).width + 8;
-      const top = y > 16 ? y - 16 : y;
-      ctx.fillStyle = `rgb(${rgb.join(',')})`;
-      ctx.fillRect(x, top, width, 16);
-      ctx.fillStyle = '#fff';
-      ctx.fillText(text, x + 4, top + 12);
-    };
-    ctx.font = '11px ui-monospace, SFMono-Regular, Menlo, monospace';
+    const blue = this.colours[4];
+    const red = this.colours[3];
+    const rgba = ([r, g, b]: Rgb, a = 1) => `rgba(${r},${g},${b},${a})`;
+    const labels: Array<() => void> = [];
+    ctx.font = '600 12px ui-monospace, SFMono-Regular, Menlo, monospace';
+
     const culprit = pin.culprit?.el.isConnected ? pin.culprit : null;
     if (culprit) {
-      const r = culprit.el.getBoundingClientRect();
-      const [red, green, blue] = this.colours[3];
-      ctx.fillStyle = `rgba(${red},${green},${blue},0.14)`;
-      ctx.fillRect(r.left, r.top, r.width, r.height);
-      ctx.strokeStyle = `rgb(${red},${green},${blue})`;
+      const box = culprit.el.getBoundingClientRect();
+      this.stripes(ctx, box, rgba(red, 0.4));
+      ctx.strokeStyle = rgba(red);
       ctx.lineWidth = 2;
-      ctx.strokeRect(r.left + 1, r.top + 1, Math.max(0, r.width - 2), Math.max(0, r.height - 2));
+      ctx.strokeRect(box.left + 1, box.top + 1, Math.max(0, box.width - 2), Math.max(0, box.height - 2));
+      labels.push(() => this.tag(ctx, culprit.label, box.left, box.top - 20, red));
     }
-    const [r, g, b] = this.colours[4];
+
+    const t = (performance.now() - this.shiftSince) % SHIFT_LOOP_MS;
     for (const moved of pin.moved) {
       if (!moved.el.isConnected) continue;
       const now = moved.el.getBoundingClientRect();
-      if (moved.was) {
-        const [x, y] = [now.left + moved.dx, now.top + moved.dy];
-        ctx.strokeStyle = `rgba(${r},${g},${b},0.7)`;
-        ctx.lineWidth = 1.5;
-        ctx.setLineDash([5, 3]);
-        ctx.strokeRect(x + 0.5, y + 0.5, Math.max(0, moved.was[0] - 1), Math.max(0, moved.was[1] - 1));
+      const was = moved.was && { left: now.left + moved.dx, top: now.top + moved.dy, width: moved.was[0], height: moved.was[1] };
+      if (was) {
+        ctx.strokeStyle = rgba(blue, 0.9);
+        ctx.lineWidth = 2;
+        ctx.setLineDash([6, 4]);
+        ctx.strokeRect(was.left + 1, was.top + 1, Math.max(0, was.width - 2), Math.max(0, was.height - 2));
         ctx.setLineDash([]);
-        if (Math.hypot(moved.dx, moved.dy) > 6) this.arrow(ctx, x + 12, y + 8, now.left + 12, now.top + 8, `rgb(${r},${g},${b})`);
       }
-      ctx.fillStyle = `rgba(${r},${g},${b},0.08)`;
+      ctx.fillStyle = rgba(blue, 0.1);
       ctx.fillRect(now.left, now.top, now.width, now.height);
-      ctx.strokeStyle = `rgb(${r},${g},${b})`;
+      ctx.strokeStyle = rgba(blue);
       ctx.lineWidth = 2;
       ctx.strokeRect(now.left + 1, now.top + 1, Math.max(0, now.width - 2), Math.max(0, now.height - 2));
-      label(moved.label, now.left, now.top, [r, g, b]);
+      if (was && Math.hypot(moved.dx, moved.dy) > 4) {
+        // The move once more, from where it was to where it is: the eye follows motion before it reads boxes.
+        if (!this.reducedMotion) {
+          const k = t < 500 ? 0 : t < 900 ? ease((t - 500) / 400) : 1;
+          const fade = t < 900 ? 1 : Math.max(0, 1 - (t - 900) / 600);
+          if (fade > 0) {
+            ctx.fillStyle = rgba(blue, 0.28 * fade);
+            ctx.fillRect(was.left + (now.left - was.left) * k, was.top + (now.top - was.top) * k, now.width, now.height);
+          }
+        }
+        const vertical = Math.abs(moved.dy) >= Math.abs(moved.dx);
+        // Along the side the labels leave free: the right edge for a move up or down, the top for one sideways.
+        const x = Math.min(now.right, innerWidth) - 28;
+        const y = Math.max(now.top, 0) + 28;
+        const [x1, y1, x2, y2] = vertical ? [x, was.top, x, now.top] : [was.left, y, now.left, y];
+        this.arrow(ctx, x1, y1, x2, y2, rgba(blue));
+        const distance = `${vertical ? (moved.dy < 0 ? '↓' : '↑') : moved.dx < 0 ? '→' : '←'} ${Math.round(Math.hypot(moved.dx, moved.dy))}px`;
+        labels.push(() => {
+          const w = ctx.measureText(distance).width + 12;
+          if (vertical) this.tag(ctx, distance, x1 - w - 8, (y1 + y2) / 2 - 10, blue);
+          else this.tag(ctx, distance, (x1 + x2) / 2 - w / 2, y1 + 8, blue);
+        });
+        labels.push(() => {
+          const w = ctx.measureText('before').width + 12;
+          this.tag(ctx, 'before', was.left + was.width - w, was.top, blue, true);
+        });
+      }
+      labels.push(() => this.tag(ctx, moved.label, now.left, now.top - 20 >= 0 ? now.top - 20 : now.top, blue));
     }
-    // Last, so the culprit's name is not under the box of what it pushed.
-    if (culprit) {
-      const box = culprit.el.getBoundingClientRect();
-      label(culprit.label, box.left, box.top, this.colours[3]);
-    }
+    // Labels last, over every box, so none of them is buried under the box of another element.
+    for (const draw of labels) draw();
   }
 
+  private readonly reducedMotion = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  /** A label on a solid tab; `outline` draws it as a dashed tab, for the box of where something was. */
+  private tag(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, [r, g, b]: Rgb, outline = false) {
+    const w = ctx.measureText(text).width + 12;
+    const left = Math.max(0, Math.min(x, innerWidth - w));
+    const top = Math.max(0, y);
+    ctx.fillStyle = outline ? 'rgba(20,20,26,0.85)' : `rgb(${r},${g},${b})`;
+    ctx.fillRect(left, top, w, 20);
+    if (outline) {
+      ctx.strokeStyle = `rgb(${r},${g},${b})`;
+      ctx.lineWidth = 1;
+      ctx.setLineDash([4, 3]);
+      ctx.strokeRect(left + 0.5, top + 0.5, w - 1, 19);
+      ctx.setLineDash([]);
+    }
+    ctx.fillStyle = '#fff';
+    ctx.fillText(text, left + 6, top + 14);
+  }
+
+  /** Red stripes across a box: an element that pushed another reads as something put in, not as one more outline. */
+  private stripes(ctx: CanvasRenderingContext2D, box: DOMRect, colour: string) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(box.left, box.top, box.width, box.height);
+    ctx.clip();
+    ctx.strokeStyle = colour;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    for (let d = -box.height; d < box.width; d += 12) {
+      ctx.moveTo(box.left + d, box.bottom);
+      ctx.lineTo(box.left + d + box.height, box.top);
+    }
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  /** A thick arrow with a dark rim, readable on a light page and a dark one. */
   private arrow(ctx: CanvasRenderingContext2D, x1: number, y1: number, x2: number, y2: number, colour: string) {
     const angle = Math.atan2(y2 - y1, x2 - x1);
+    const head = 12;
+    const [bx, by] = [x2 - head * 0.8 * Math.cos(angle), y2 - head * 0.8 * Math.sin(angle)];
+    const shape = () => {
+      ctx.beginPath();
+      ctx.moveTo(x1, y1);
+      ctx.lineTo(bx, by);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(x2, y2);
+      ctx.lineTo(x2 - head * Math.cos(angle - 0.5), y2 - head * Math.sin(angle - 0.5));
+      ctx.lineTo(x2 - head * Math.cos(angle + 0.5), y2 - head * Math.sin(angle + 0.5));
+      ctx.closePath();
+    };
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = 'rgba(0,0,0,0.55)';
+    ctx.lineWidth = 6;
+    shape();
+    ctx.stroke();
     ctx.strokeStyle = colour;
     ctx.fillStyle = colour;
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    ctx.moveTo(x1, y1);
-    ctx.lineTo(x2, y2);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(x2, y2);
-    ctx.lineTo(x2 - 7 * Math.cos(angle - 0.45), y2 - 7 * Math.sin(angle - 0.45));
-    ctx.lineTo(x2 - 7 * Math.cos(angle + 0.45), y2 - 7 * Math.sin(angle + 0.45));
-    ctx.closePath();
+    ctx.lineWidth = 3;
+    shape();
     ctx.fill();
+    ctx.lineCap = 'butt';
   }
 
   /** Grey when the render changed nothing; otherwise green, amber and red by how often it came. */

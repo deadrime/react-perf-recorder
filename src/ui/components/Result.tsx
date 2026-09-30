@@ -9,7 +9,7 @@ import { Compare, compareNote, type Comparison } from './Compare';
 import { Cpu } from './Cpu';
 import { Memos } from './Memos';
 import type { ShiftOutline } from './PanelView';
-import { Shifts, shiftValue } from './Shifts';
+import { Shifts, shiftValue, type ShiftFound } from './Shifts';
 import { runMoves, shiftRuns } from '../../shared/shifts';
 import { planReplay } from '../../shared/replay';
 import { Kpis, Notice, ReasonLine, StatCard, type Badge, type Kpi, type StatReason } from './Stats';
@@ -62,7 +62,7 @@ export function Result({
   compared?: Comparison | null;
   onRepeat?: () => void;
   onOutline?: (entries: Array<{ i: number; hits: number }> | null) => number;
-  onOutlineShift?: (shift: ShiftOutline | null) => number;
+  onOutlineShift?: (shift: ShiftOutline | null) => ShiftFound;
   onDismiss: () => void;
   wide: boolean;
   onWide: () => void;
@@ -75,7 +75,7 @@ export function Result({
   const runs = useMemo(() => shiftRuns(rec.shifts?.list ?? []), [rec]);
   // A run of layout shifts picked in its section or on the timeline, and how much of it is on the page now.
   const [pickedRun, setPickedRun] = useState<number | null>(null);
-  const [shiftOutlined, setShiftOutlined] = useState<number | null>(null);
+  const [shiftOutlined, setShiftOutlined] = useState<ShiftFound | null>(null);
   useEffect(() => {
     if (!onOutlineShift) return;
     const run = pickedRun === null ? undefined : runs[pickedRun];

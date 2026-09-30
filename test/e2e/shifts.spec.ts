@@ -92,8 +92,15 @@ test('the panel shows the shift: CLS in the numbers, a row, a mark on the timeli
       const shift = (window as any).__REACT_PERF_RECORDER__.panel.highlighter.shift;
       return shift && { moved: shift.moved.map((m: any) => [m.el.className, m.dy]), culprit: shift.culprit?.el.className ?? null };
     });
+  // Scrolled away from it, picking it brings the shift back into sight.
+  await page.evaluate(() => {
+    document.body.style.paddingBottom = '3000px';
+    window.scrollTo(0, 2500);
+  });
   await row.click();
   await expect(row).toHaveAttribute('aria-pressed', 'true');
+  await expect.poll(() => page.evaluate(() => scrollY)).toBeLessThan(100);
+  await expect(page.locator('[data-rpr="shift-outlined"]')).toContainText('PromoBanner, the cause');
   await expect(page.locator('[data-rpr="shift-outlined"]')).toHaveAttribute('data-found', '2');
   expect(await pin()).toEqual({ moved: [['orders', -120]], culprit: 'promo' });
 
