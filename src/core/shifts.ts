@@ -290,7 +290,7 @@ export class ShiftWatcher {
         const gone = m.removedNodes[0];
         if (!gone) continue;
         // Named now: by the time the shift is reported React has let go of the removed nodes' fibers.
-        const removed = named++ < MAX_NAMED ? this.named(gone) : { node: nodePath(m.target) };
+        const removed = named++ < MAX_NAMED ? this.removedName(gone, m.target) : { node: nodePath(m.target) };
         items.push(m.nextSibling ? { node: m.nextSibling, how: 'removed', removed } : { node: m.target, how: 'removed', atEnd: true, removed });
       }
     }
@@ -319,15 +319,20 @@ export class ShiftWatcher {
     if (stale) changes.splice(0, stale);
   }
 
+  /** One timer at a time, armed again while changes remain: not a timer per DOM batch. */
+  private armPrune() {
+    this.pruneTimer = setTimeout(() => {
+      this.pruneTimer = null;
+      this.prune(performance.now());
+      if (this.changes.length) this.armPrune();
+    }, KEEP_MS + 100);
+  }
+
   private add(change: Change) {
     this.prune(change.t);
     this.changes.push(change);
     // An idle page gets no next change to prune on: what was added stays reachable no longer than it is useful.
-    if (this.pruneTimer) clearTimeout(this.pruneTimer);
-    this.pruneTimer = setTimeout(() => {
-      this.pruneTimer = null;
-      this.prune(performance.now());
-    }, KEEP_MS + 100);
+    if (!this.pruneTimer) this.armPrune();
     this.pending.push(change);
     if (this.framePending) return;
     this.framePending = true;
@@ -393,8 +398,11 @@ export class ShiftWatcher {
       ...(this.lastInput !== null && this.lastInput <= at ? { sinceInputMs: Math.round(at - this.lastInput) } : {}),
       cause: this.blame(moved, frame),
       sources: raw.map((s) => ({ ...this.sourceName(s.node, s.currentRect), from: rect(s.previousRect), to: rect(s.currentRect) })),
+      ...(scrollX || scrollY ? { scroll: [Math.round(scrollX), Math.round(scrollY)] as [number, number] } : {}),
     };
     this.list.push(shift);
+    // Marked at the cap, as a partial recording rebuilt from the stream can tell no more than that.
+    if (this.list.length >= MAX_SHIFTS) this.truncated = true;
     this.options.onShift(shift);
   }
 
@@ -446,7 +454,7 @@ export class ShiftWatcher {
     const { change, how, name, removed: gone } = candidate;
     const media = how === 'added' && isMedia(candidate.node) && !sized(candidate.node as Element);
     const by: ShiftCulprit = {
-      ...(gone?.component ? gone : this.named(candidate.node)),
+      ...(gone ?? this.named(candidate.node)),
       where,
       change: how,
       ...(name ? { name } : {}),
@@ -467,7 +475,7 @@ export class ShiftWatcher {
     const running: Array<{ css: boolean; node: Node; how: How; property: string }> = all
       .map((animation) => {
         const target = (animation.effect as KeyframeEffect | null)?.target;
-        const property = target && animation.playState === 'running' ? layoutPropertyOf(animation) : null;
+        const property = target && animation.playState === 'running' && !this.isOwn(target) ? layoutPropertyOf(animation) : null;
         const css = typeof CSSTransition !== 'undefined' && (animation instanceof CSSTransition || animation instanceof CSSAnimation);
         return target && property ? { css, node: target as Node, how: 'animated' as How, property } : null;
       })
@@ -484,6 +492,12 @@ export class ShiftWatcher {
       };
     }
     return null;
+  }
+
+  /** A removed node's own component, or its parent's with the path it had: `node` of the record is often the victim. */
+  private removedName(gone: Node, parent: Node): ShiftNode {
+    const own = this.named(gone);
+    return own.component ? own : { ...this.named(parent), node: `${nodePath(parent)} > ${nodePath(gone)}` };
   }
 
   /** The nearest app component that rendered the node, skipping wrappers, providers and packages. */

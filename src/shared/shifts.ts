@@ -11,14 +11,21 @@ export function linkInteractions(list: LayoutShift[], latency: LatencyEntry[]): 
     let follows: LatencyEntry | undefined;
     for (const entry of latency)
       if (entry.atMs <= shift.atMs && shift.atMs - entry.atMs <= 5000 && (!follows || entry.atMs > follows.atMs)) follows = entry;
-    if (follows) shift.interactionId = follows.interactionId;
+    // Event Timing leaves out inputs under 16 ms: a faster one after `follows` is the one the shift followed.
+    const inputAt = shift.sinceInputMs === undefined ? null : shift.atMs - shift.sinceInputMs;
+    if (follows && (inputAt === null || follows.atMs >= inputAt - 2)) shift.interactionId = follows.interactionId;
   }
   return list;
 }
 
-/** Left out by the browser, but likely counted on a slower device: an animation's frames run later there. */
-export const nearMissOf = (s: LayoutShift) =>
-  s.hadRecentInput && ('animation' in s.cause || (s.sinceInputMs !== undefined && s.sinceInputMs >= 300 && s.sinceInputMs <= 500));
+/**
+ * Left out by the browser, but likely counted on a slower device: an animation's frames run later there. `alone`: the
+ * shift's run has one frame, so a style written from script was one write, not an animation.
+ */
+export const nearMissOf = (s: LayoutShift, alone = false) =>
+  s.hadRecentInput &&
+  (('animation' in s.cause && !(alone && s.cause.animation === 'inline-style')) ||
+    (s.sinceInputMs !== undefined && s.sinceInputMs >= 300 && s.sinceInputMs <= 500));
 
 /** CLS by session windows, as web-vitals counts it: a gap under 1 s keeps a window open, for at most 5 s. */
 export function clsOf(list: LayoutShift[]): ClsTotals {
@@ -29,10 +36,11 @@ export function clsOf(list: LayoutShift[]): ClsTotals {
   let last = -Infinity;
   let nearMiss = 0;
   let excluded = 0;
+  const alone = new Set(shiftRuns(list).flatMap((run) => (run.count === 1 ? [run.first] : [])));
   for (const s of [...list].sort((a, b) => a.atMs - b.atMs)) {
     if (s.hadRecentInput) {
       excluded += s.value;
-      if (nearMissOf(s)) nearMiss += s.value;
+      if (nearMissOf(s, alone.has(s))) nearMiss += s.value;
       continue;
     }
     if (s.atMs - last < 1000 && s.atMs - start < 5000) current += s.value;
@@ -156,7 +164,8 @@ function culpritText(by: ShiftCulprit): string {
   }
 }
 
-export function causeText(cause: ShiftCause, commitCauses?: (id: number) => string[]): string {
+/** `frames`: how many frames the run took; a style written once is not called an animation. */
+export function causeText(cause: ShiftCause, commitCauses?: (id: number) => string[], frames?: number): string {
   if ('commit' in cause) {
     const why = cause.commit !== null ? commitCauses?.(cause.commit) ?? [] : [];
     const commit = cause.commit !== null ? `commit ${cause.commit}` : `a commit at ${(cause.atMs / 1000).toFixed(2)}s`;
@@ -170,7 +179,8 @@ export function causeText(cause: ShiftCause, commitCauses?: (id: number) => stri
       ? ' on it'
       : ` on ${nodeText(by)}${by.where === 'before' ? ' above it' : ` (${by.where === 'ancestor' ? 'an ancestor' : 'inside it'})`}`;
     const what = by?.name ? ` of ${by.name}` : '';
-    if (cause.animation === 'inline-style') return `style written${on} from script frame after frame: an animation of layout outside CSS`;
+    if (cause.animation === 'inline-style')
+      return frames === 1 ? `style written${on} from script` : `style written${on} from script frame after frame: an animation of layout outside CSS`;
     return `${cause.animation === 'css' ? 'a CSS animation' : 'element.animate()'}${what}${on}`;
   }
   if ('dom' in cause) return `${cause.by ? culpritText(cause.by) : 'a DOM change'} outside a React commit (an effect, a timer or a library)`;
@@ -223,7 +233,7 @@ export function runText(run: ShiftRun, rec?: Pick<RecordingV2, 'commits' | 'caus
       : `${run.count - run.excluded} counted, ${run.excluded} excluded after an input`;
   const since = run.first.sinceInputMs;
   const input = since !== undefined && since < 5000 ? `; began ${since}ms after the last input` : '';
-  return `${run.value} ${what} ${moveText(run)} ${when}: ${causeText(run.first.cause, commitCauses)}; ${counted}${input}`;
+  return `${run.value} ${what} ${moveText(run)} ${when}: ${causeText(run.first.cause, commitCauses, run.count)}; ${counted}${input}`;
 }
 
 /** The summary's line, when there is something to say; the rest is in section shifts. */

@@ -301,6 +301,8 @@ export interface LayoutShift {
   cause: ShiftCause;
   /** The elements that moved, largest first, as the browser lists them (five at most). */
   sources: Array<ShiftNode & { from: ShiftRect; to: ShiftRect }>;
+  /** The window's scroll then, when not at the top: the rects are in the viewport. */
+  scroll?: [number, number];
 }
 
 /** CLS the way web-vitals counts it, so the number matches field data. */

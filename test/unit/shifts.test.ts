@@ -43,11 +43,16 @@ describe('CLS as web-vitals counts it', () => {
     const animated: ShiftCause = { animation: 'inline-style' };
     const totals = clsOf([
       shift(0, 0.05, { hadRecentInput: true, sinceInputMs: 40, cause: animated }),
+      shift(16, 0.01, { hadRecentInput: true, sinceInputMs: 56, cause: animated }),
       shift(20, 0.04, { hadRecentInput: true, sinceInputMs: 60 }),
       shift(400, 0.03, { hadRecentInput: true, sinceInputMs: 420 }),
     ]);
-    expect(totals.nearMiss).toBe(0.08);
-    expect(totals.excluded).toBe(0.12);
+    expect(totals.nearMiss).toBe(0.09);
+    expect(totals.excluded).toBe(0.13);
+    // Style written once from a handler is no animation: only its timing can make it a near miss.
+    const once = [shift(0, 0.05, { hadRecentInput: true, sinceInputMs: 120, cause: animated })];
+    expect(clsOf(once).nearMiss).toBe(0);
+    expect(runText(shiftRuns(once)[0])).not.toContain('frame after frame');
   });
 });
 
@@ -210,7 +215,8 @@ describe('the watcher on a page', () => {
       by: { node: 'div#sheet', where: 'self', change: 'attribute', name: 'style' },
     });
     const stats = watcher.result([]);
-    expect(stats.cls).toMatchObject({ value: 0.08, excluded: 0.02, nearMiss: 0.02 });
+    // One write is no animation, so it is no near miss either.
+    expect(stats.cls).toMatchObject({ value: 0.08, excluded: 0.02, nearMiss: 0 });
     watcher.stop();
   });
 
@@ -235,8 +241,8 @@ describe('the watcher on a page', () => {
       },
     ]);
     watcher.stop();
-    // A removed element with no component is named by where it was.
-    expect(shifts[0].cause).toMatchObject({ commit: 3, by: { node: 'div#slot', where: 'before', change: 'removed' } });
+    // Named by the path it had, not by the list after it, which is what moved.
+    expect(shifts[0].cause).toMatchObject({ commit: 3, by: { node: 'div#slot > div.promo', where: 'before', change: 'removed' } });
   });
 
   it('blames an image with no size when it loads a frame after it was mounted', async () => {
@@ -293,6 +299,13 @@ describe('shifts in a partial recording and in a comparison', () => {
     ]);
     expect(before.shifts?.cls.value).toBe(0.004);
     expect(before.shifts?.list[0].interactionId).toBe(7);
+    // A tap under 16 ms is not in latency: the shift after it is not tied to the slow click before.
+    const fast = aggregateEvents(meta, [
+      { k: 'latency', entry: click },
+      { k: 'shift', shift: shift(2100, 0.004, { hadRecentInput: true, sinceInputMs: 100 }) },
+      { k: 'end', atMs: 3000 },
+    ]);
+    expect(fast.shifts?.list[0].interactionId).toBeUndefined();
     const diff = compareRecordings(before, after);
     expect(diff.shifts?.cls).toMatchObject({ before: 0.004, after: 0.0015, delta: -0.0025 });
     expect(diff.shifts?.moved).toHaveLength(1);
