@@ -10,7 +10,7 @@ import { Cpu } from './Cpu';
 import { Memos } from './Memos';
 import type { ShiftOutline } from './PanelView';
 import { Shifts, shiftValue, type ShiftFound } from './Shifts';
-import { runMoves, shiftRuns } from '../../shared/shifts';
+import { runMoves, shiftRuns, type ShiftRun } from '../../shared/shifts';
 import { planReplay } from '../../shared/replay';
 import { Kpis, Notice, ReasonLine, StatCard, type Badge, type Kpi, type StatReason } from './Stats';
 import { causeColour, Timeline } from './Timeline';
@@ -74,14 +74,23 @@ export function Result({
   const [litCause, setLitCause] = useState<number | null>(null);
   const runs = useMemo(() => shiftRuns(rec.shifts?.list ?? []), [rec]);
   // A run of layout shifts picked in its section or on the timeline, and how much of it is on the page now.
-  const [pickedRun, setPickedRun] = useState<number | null>(null);
+  // Kept with the runs it indexes: a new recording in the same report must not outline the old pick's index.
+  const [pick, setPick] = useState<{ runs: ShiftRun[]; i: number } | null>(null);
+  const pickedRun = pick?.runs === runs ? pick.i : null;
+  const setPickedRun = (i: number | null) => setPick(i === null ? null : { runs, i });
   const [shiftOutlined, setShiftOutlined] = useState<ShiftFound | null>(null);
   useEffect(() => {
     if (!onOutlineShift) return;
     const run = pickedRun === null ? undefined : runs[pickedRun];
     const cause = run?.first.cause;
     setShiftOutlined(
-      run ? onOutlineShift({ moved: runMoves(run), ...(cause && 'by' in cause && cause.by ? { by: cause.by } : {}) }) : (onOutlineShift(null), null)
+      run
+        ? onOutlineShift({
+            moved: runMoves(run),
+            ...(cause && 'by' in cause && cause.by ? { by: cause.by } : {}),
+            ...(run.last.scroll ? { scroll: run.last.scroll } : {}),
+          })
+        : (onOutlineShift(null), null)
     );
   }, [pickedRun, runs]);
   useEffect(() => () => void onOutlineShift?.(null), []);

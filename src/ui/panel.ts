@@ -372,7 +372,7 @@ export class Panel {
     }
     const moved: ShiftPin['moved'] = [];
     for (const m of shift.moved) {
-      const el = this.nearestAt(m.node, (r) => boxGap(r, m.to[2] || m.to[3] ? m.to : m.from));
+      const el = this.nearestAt(m.node, (r) => boxGap(r, m.to[2] || m.to[3] ? m.to : m.from, shift.scroll));
       if (!el || moved.some((x) => x.el === el)) continue;
       const was = m.from[2] && m.from[3] ? m.from : null;
       const name = m.component ?? m.node;
@@ -706,9 +706,9 @@ export class Panel {
   }
 }
 
-/** How far a box on the page now is from one recorded in a shift; the page may have scrolled since, so size weighs in. */
-const boxGap = (r: DOMRect, to: ShiftRect) =>
-  Math.abs(r.left - to[0]) + Math.abs(r.top - to[1]) + 4 * (Math.abs(r.width - to[2]) + Math.abs(r.height - to[3]));
+/** How far a box on the page now is from one recorded in a shift, both in page coords; size weighs in too. */
+const boxGap = (r: DOMRect, to: ShiftRect, [sx, sy] = [0, 0]) =>
+  Math.abs(r.left + scrollX - to[0] - sx) + Math.abs(r.top + scrollY - to[1] - sy) + 4 * (Math.abs(r.width - to[2]) + Math.abs(r.height - to[3]));
 
 /** The picker's hint in the words of the device: keys where there is a keyboard, taps where there is a finger. */
 function pickHint(what: string, why: string, tapWhat = what) {

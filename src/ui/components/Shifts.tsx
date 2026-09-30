@@ -67,7 +67,7 @@ export function CountedBadge({ run }: { run: ShiftRun }): JSX.Element {
         counted
       </span>
     );
-  const near = run.shifts.some(nearMissOf);
+  const near = run.shifts.some((s) => nearMissOf(s, run.count === 1));
   return (
     <span
       class="badge"
@@ -132,7 +132,7 @@ export function Shifts({
                 <span class="shift-at">{runWhen(run)}</span>
                 <CountedBadge run={run} />
               </span>
-              <span class="shift-cause">{causeText(run.first.cause, commitCauses)}</span>
+              <span class="shift-cause">{causeText(run.first.cause, commitCauses, run.count)}</span>
               {source?.file ? <code class="shift-where">{source.file}</code> : null}
             </button>
             {picked === i && outlined ? <ShiftLegend run={run} found={outlined} id="shift-outlined" /> : null}

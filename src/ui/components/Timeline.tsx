@@ -451,7 +451,7 @@ function ShiftDetail({ rec, run, onCommit }: { rec: RecordingV2; run: ShiftRun; 
       <div class="tl-row">
         <span class="tl-row-label">by</span>
         <span>
-          {causeText(cause, commitCausesOf(rec))}
+          {causeText(cause, commitCausesOf(rec), run.count)}
           {commit !== null && rec.commits.list[commit] ? (
             <button type="button" class="tl-link" data-rpr="shift-commit" onClick={() => onCommit(commit)}>
               open the commit
@@ -760,7 +760,7 @@ export function Timeline({
       x: px(run.atMs * scale),
       w: Math.max(3, px((run.endMs - run.atMs) * scale)),
       h: Math.max(4, Math.round(SHIFTS_LANE_H * Math.sqrt(run.value / peak))),
-      tone: run.counted ? 'counted' : run.shifts.some(nearMissOf) ? 'near' : 'excluded',
+      tone: run.counted ? 'counted' : run.shifts.some((s) => nearMissOf(s, run.count === 1)) ? 'near' : 'excluded',
     }));
   }, [runs, scale]);
   if (!rec.commits.list.length) return null;

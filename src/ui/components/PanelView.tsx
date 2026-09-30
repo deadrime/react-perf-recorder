@@ -53,6 +53,8 @@ export interface PanelHandlers {
 export interface ShiftOutline {
   moved: Array<ShiftNode & { from: ShiftRect; to: ShiftRect }>;
   by?: ShiftCulprit;
+  /** The window's scroll when the boxes were taken. */
+  scroll?: [number, number];
 }
 
 export interface PanelViewProps {
