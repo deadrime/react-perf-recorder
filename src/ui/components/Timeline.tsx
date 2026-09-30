@@ -5,7 +5,7 @@ import type { ActionRecord, CommitRecord, RecordingV2 } from '../../shared/schem
 import { actionText, cascadeOf, hookOf, reasonsById, type CascadeNode } from '../../shared/summary';
 import { causeText, commitCausesOf, moveOf, moveText, nearMissOf, nodeText, runMoves, type ShiftRun } from '../../shared/shifts';
 import { Flame } from './Flame';
-import { CountedBadge, runWhen, ShiftLegend, shiftValue, type ShiftFound } from './Shifts';
+import { CountedBadge, runValue, runWhen, ShiftLegend, shiftValue, type ShiftFound } from './Shifts';
 import { ReasonLine, StepView } from './Stats';
 import { LcpFound, lcpWho } from './Lcp';
 import { mountText, phasesText, secs } from '../../shared/lcp';
@@ -440,7 +440,7 @@ function ShiftDetail({ rec, run, onCommit }: { rec: RecordingV2; run: ShiftRun; 
     <div class="tl-detail" data-rpr="shift-detail">
       <div class="tl-head">
         <b>{runWhen(run)}</b>
-        <span class="badge" data-tone={run.excluded < run.count ? 'warn' : undefined}>{`shift ${shiftValue(run.value)}`}</span>
+        <span class="badge" data-tone={run.excluded < run.count ? 'warn' : undefined}>{`shift ${runValue(run.value)}`}</span>
         <CountedBadge run={run} />
         {since !== undefined && since < 5000 ? <span class="muted">{`${since}ms after the last input`}</span> : null}
       </div>
@@ -453,7 +453,7 @@ function ShiftDetail({ rec, run, onCommit }: { rec: RecordingV2; run: ShiftRun; 
       <div class="tl-row">
         <span class="tl-row-label">by</span>
         <span>
-          {causeText(cause, commitCausesOf(rec), run.count)}
+          {causeText(cause, commitCausesOf(rec), run.count, run.first.sources[0])}
           {commit !== null && rec.commits.list[commit] ? (
             <button type="button" class="tl-link" data-rpr="shift-commit" onClick={() => onCommit(commit)}>
               open the commit
@@ -1021,7 +1021,7 @@ export function Timeline({
                       data-tone={m.tone}
                       data-picked={pickedRun === m.i ? 'true' : undefined}
                       style={`left:${m.x}px;width:${m.w}px;height:${m.h}px`}
-                      title={`${shiftValue(m.run.value)} · ${m.run.first.sources[0] ? nodeText(m.run.first.sources[0]) : 'an element'} ${moveText(
+                      title={`${runValue(m.run.value)} · ${m.run.first.sources[0] ? nodeText(m.run.first.sources[0]) : 'an element'} ${moveText(
                         m.run
                       )}`}
                       onClick={() => !panned.current && onPickRun?.(pickedRun === m.i ? null : m.i)}

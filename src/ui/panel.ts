@@ -399,10 +399,13 @@ export class Panel {
         dx: was ? m.from[0] - m.to[0] : 0,
         dy: was ? m.from[1] - m.to[1] : 0,
         was: was ? [was[2], was[3]] : null,
-        // Solid is where it is now and dashed where it was; the arrow carries the distance.
-        label: was && (m.from[0] !== m.to[0] || m.from[1] !== m.to[1]) ? `${name} · now` : `${name} ${moveOf(m.from, m.to)}`,
+        // Solid is where it is now and dashed where it was; the distance has a tag of its own.
+        label: was && (m.from[0] !== m.to[0] || m.from[1] !== m.to[1]) ? name : `${name} ${moveOf(m.from, m.to)}`,
       });
     }
+    // Avatars inside the stack that moved moved with it: one box says it, five stacked labels hide it.
+    const outer = moved.filter((m) => !moved.some((o) => o !== m && o.el.contains(m.el)));
+    moved.splice(0, moved.length, ...outer);
     const by = shift.by;
     // A removed element is not on the page to point at; the moved one's own label says what happened to it.
     let culprit: ShiftPin['culprit'] = null;
@@ -411,8 +414,8 @@ export class Panel {
       const el = this.nearestAt(by.node, (r) => (anchor ? Math.abs(r.top + r.height / 2 - anchor.top - anchor.height / 2) : 0));
       const label = changeText(by);
       const self = moved.find((m) => m.el === el);
-      if (self) self.label += ` · ${label}, the cause`;
-      else if (el) culprit = { el, label: `${by.component ?? by.node} ${label} · the cause` };
+      if (self) self.label += ` · ${label}`;
+      else if (el) culprit = { el, label: `${by.component ?? by.node} ${label}` };
     }
     this.highlighter?.pinShift({ moved, culprit });
     this.reveal([...moved.map((m) => m.el), ...(culprit ? [culprit.el] : [])], moved);

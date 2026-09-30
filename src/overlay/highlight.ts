@@ -34,6 +34,28 @@ const ease = (k: number) => (k < 0.5 ? 2 * k * k : 1 - (-2 * k + 2) ** 2 / 2);
 /** Then it holds still: a loop left running draws every frame for as long as the report stays open. */
 const SHIFT_REPLAYS = 3;
 
+interface Box {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+}
+
+const overlap = (a: Box, b: Box) =>
+  Math.max(0, Math.min(a.right, b.right) - Math.max(a.left, b.left)) * Math.max(0, Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top));
+
+/** Where a tag of width `w` may go by a box: above it, below it, then to its sides, then above or below where it was. */
+function around(box: Box, w: number, was?: { left: number; top: number; width: number; height: number } | null): Array<[number, number]> {
+  const spots: Array<[number, number]> = [
+    [box.left, box.top - 22],
+    [box.left, box.bottom + 2],
+    [box.right + 4, box.top],
+    [box.left - w - 4, box.top],
+  ];
+  if (was) spots.push([was.left, was.top - 22], [was.left, was.top + was.height + 2]);
+  return spots;
+}
+
 /** A layout shift picked in the report: where each moved element was and is, and what moved it. */
 export interface ShiftPin {
   /** `dx`, `dy`: from its box now to where it was before the shift; `was` is the size it had then. */
@@ -338,23 +360,28 @@ export class Highlighter implements HighlightSink {
     const blue = this.colours[4];
     const red = this.colours[3];
     const rgba = ([r, g, b]: Rgb, a = 1) => `rgba(${r},${g},${b},${a})`;
-    const labels: Array<() => void> = [];
     ctx.font = '600 12px ui-monospace, SFMono-Regular, Menlo, monospace';
+    // Tags go where they cover neither an element that moved nor the cause, nor another tag: each is tried in a
+    // few places and put in the freest one.
+    const tags: Array<{ text: string; colour: Rgb; at: (w: number) => Array<[number, number]>; optional?: boolean; outline?: boolean }> = [];
+    const keepClear: Box[] = [];
 
     const culprit = pin.culprit?.el.isConnected ? pin.culprit : null;
     if (culprit) {
       const box = culprit.el.getBoundingClientRect();
+      keepClear.push(box);
       this.stripes(ctx, box, 'rgba(110,110,122,0.28)');
       ctx.strokeStyle = rgba(red, 0.9);
       ctx.lineWidth = 1.5;
       ctx.strokeRect(box.left + 0.75, box.top + 0.75, Math.max(0, box.width - 1.5), Math.max(0, box.height - 1.5));
-      labels.push(() => this.tag(ctx, culprit.label, box.left, box.top - 20, red));
+      tags.push({ text: culprit.label, colour: red, at: (w) => around(box, w) });
     }
 
     const t = (performance.now() - this.shiftSince) % SHIFT_LOOP_MS;
     for (const moved of pin.moved) {
       if (!moved.el.isConnected) continue;
       const now = moved.el.getBoundingClientRect();
+      keepClear.push(now);
       const was = moved.was && { left: now.left + moved.dx, top: now.top + moved.dy, width: moved.was[0], height: moved.was[1] };
       if (was) {
         ctx.strokeStyle = rgba(blue, 0.9);
@@ -368,7 +395,10 @@ export class Highlighter implements HighlightSink {
       ctx.strokeStyle = rgba(blue);
       ctx.lineWidth = 2;
       ctx.strokeRect(now.left + 1, now.top + 1, Math.max(0, now.width - 2), Math.max(0, now.height - 2));
-      if (was && Math.hypot(moved.dx, moved.dy) > 4) {
+      // Rows of one list move together: one name and one distance say it for all of them.
+      if (!tags.some((tag) => tag.text === moved.label)) tags.push({ text: moved.label, colour: blue, at: (w) => around(now, w, was) });
+      const distance = Math.hypot(moved.dx, moved.dy);
+      if (was && distance > 4) {
         // The move once more, from where it was to where it is: the eye follows motion before it reads boxes.
         if (this.replaying()) {
           const k = t < 500 ? 0 : t < 900 ? ease((t - 500) / 400) : 1;
@@ -379,24 +409,50 @@ export class Highlighter implements HighlightSink {
           }
         }
         const vertical = Math.abs(moved.dy) >= Math.abs(moved.dx);
-        // Along the side the labels leave free: the right edge for a move up or down, the top for one sideways.
-        const x = Math.min(now.right, innerWidth) - 28;
-        const y = Math.max(now.top, 0) + 28;
-        const [x1, y1, x2, y2] = vertical ? [x, was.top, x, now.top] : [was.left, y, now.left, y];
-        this.arrow(ctx, x1, y1, x2, y2, rgba(blue));
-        const distance = `${vertical ? (moved.dy < 0 ? '↓' : '↑') : moved.dx < 0 ? '→' : '←'} ${Math.round(Math.hypot(moved.dx, moved.dy))}px`;
-        labels.push(() => {
-          const w = ctx.measureText(distance).width + 12;
-          if (vertical) this.tag(ctx, distance, x1 - w - 8, (y1 + y2) / 2 - 10, blue);
-          else this.tag(ctx, distance, (x1 + x2) / 2 - w / 2, y1 + 8, blue);
+        // Through the element, near its end: a short one is crossed in the middle, not below it.
+        const x = now.width > 56 ? Math.min(now.right, innerWidth) - 28 : now.left + now.width / 2;
+        const y = now.height > 56 ? Math.max(now.top, 0) + 28 : now.top + now.height / 2;
+        const [x1, y1, x2, y2] = vertical ? [x, was.top + (y - now.top), x, y] : [was.left + (x - now.left), y, x, y];
+        // Shorter than its own head, an arrow is a blot: the tag says the distance.
+        if (distance >= 16) this.arrow(ctx, x1, y1, x2, y2, rgba(blue));
+        const text = `${vertical ? (moved.dy < 0 ? '↓' : '↑') : moved.dx < 0 ? '→' : '←'} ${Math.round(distance)}px`;
+        if (tags.some((tag) => tag.text === text)) continue;
+        tags.push({
+          text,
+          colour: blue,
+          at: (w) =>
+            vertical
+              ? [
+                  [x1 - w - 8, (y1 + y2) / 2 - 10],
+                  [x1 + 8, (y1 + y2) / 2 - 10],
+                ]
+              : [
+                  [(x1 + x2) / 2 - w / 2, Math.max(now.bottom, was.top + was.height) + 4],
+                  [(x1 + x2) / 2 - w / 2, Math.min(now.top, was.top) - 24],
+                ],
         });
-        // Inside the old box's top left: the arrow's start dot is on its right, the cause's name above it.
-        labels.push(() => this.tag(ctx, 'before', was.left + 4, was.top + 4, blue, true));
+        tags.push({ text: 'before', colour: blue, outline: true, optional: true, at: () => [[was.left + 4, was.top + 4]] });
       }
-      labels.push(() => this.tag(ctx, moved.label, now.left, now.top - 20 >= 0 ? now.top - 20 : now.top, blue));
     }
-    // Labels last, over every box, so none of them is buried under the box of another element.
-    for (const draw of labels) draw();
+    // Tags last, over every box, so none of them is buried under the box of another element.
+    const placed: Box[] = [];
+    for (const tag of tags) {
+      const w = ctx.measureText(tag.text).width + 12;
+      let best: Box | null = null;
+      let cost = Infinity;
+      for (const [x, y] of tag.at(w)) {
+        const left = Math.max(0, Math.min(x, innerWidth - w));
+        const top = Math.max(0, Math.min(y, innerHeight - 20));
+        const box = { left, top, right: left + w, bottom: top + 20 };
+        // Over another tag is worse than over an element: that one cannot be read at all.
+        const c = placed.reduce((sum, p) => sum + 4 * overlap(box, p), 0) + keepClear.reduce((sum, k) => sum + overlap(box, k), 0);
+        if (c < cost) [best, cost] = [box, c];
+        if (!c) break;
+      }
+      if (!best || (tag.optional && cost > 0)) continue;
+      placed.push(best);
+      this.tag(ctx, tag.text, best.left, best.top, tag.colour, tag.outline);
+    }
   }
 
   private readonly reducedMotion = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;

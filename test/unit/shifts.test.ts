@@ -106,6 +106,17 @@ describe('reading shifts', () => {
       '0.089 List (src/List.tsx:4) moved down 120px at 1.21s: PromoBanner (src/PromoBanner.tsx:2) mounted above it in commit 3 (react-query:fetch products); counted'
     );
   });
+
+  it('calls a row mounted above the rows that moved another of them', () => {
+    const cause: ShiftCause = {
+      commit: 10,
+      atMs: 2863,
+      by: { component: 'IssueRow', file: 'src/IssueTable.tsx:37', node: 'div.row', where: 'before', change: 'added' },
+    };
+    const sources = [{ component: 'IssueRow', file: 'src/IssueTable.tsx:37', node: 'div.row', from: [0, 102, 900, 38], to: [0, 140, 900, 38] }];
+    const line = runText(shiftRuns([shift(2867, 0.019, { cause, sources } as Partial<LayoutShift>)])[0]);
+    expect(line).toContain('moved down 38px at 2.87s: another IssueRow (src/IssueTable.tsx:37) mounted above it in commit 10');
+  });
 });
 
 describe('where a change is from the element that moved', () => {
@@ -222,6 +233,37 @@ describe('the watcher on a page', () => {
     // One write is no animation, so it is no near miss either.
     expect(stats.cls).toMatchObject({ value: 0.08, excluded: 0.02, nearMiss: 0 });
     watcher.stop();
+  });
+
+  it('blames the text a moved element got over a mount above another of the moved, as avatars given their initials', async () => {
+    document.body.innerHTML =
+      '<aside><nav id="links"></nav></aside><header><span class="stack"><span class="avatar"></span><span class="avatar"></span></span></header>';
+    const shifts: LayoutShift[] = [];
+    const watcher = new ShiftWatcher({ t0: 0, projectRoot: '', wrapperPattern: /^$/, ownHost: null, onShift: (s) => shifts.push(s) });
+    watcher.start();
+    const observer = new MutationObserver(() => {});
+    observer.observe(document.body, { subtree: true, childList: true, characterData: true });
+    // One commit: links mounted in the sidebar, and the avatars' empty text set, as React puts a text node in.
+    document.getElementById('links')!.innerHTML = '<a>Project</a>';
+    document.querySelectorAll('.avatar').forEach((a) => a.appendChild(document.createTextNode('AR')));
+    watcher.noteRecords(observer.takeRecords(), true);
+    watcher.commitDone(2);
+    observer.disconnect();
+    await nextFrame();
+    const [stack, avatar] = [document.querySelector('.stack'), document.querySelector('.avatar')];
+    deliver!([
+      {
+        startTime: performance.now(),
+        value: 0.001,
+        hadRecentInput: false,
+        sources: [
+          { node: stack, previousRect: rect(12), currentRect: rect(16) },
+          { node: avatar, previousRect: rect(11), currentRect: rect(14) },
+        ],
+      },
+    ]);
+    watcher.stop();
+    expect(shifts[0].cause).toMatchObject({ commit: 2, by: { node: expect.stringContaining('span.avatar'), where: 'self', change: 'text' } });
   });
 
   it('blames an element removed above the one that moved', async () => {

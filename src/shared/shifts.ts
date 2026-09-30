@@ -134,7 +134,7 @@ export function moveOf(from: ShiftRect, to: ShiftRect): string {
   return Math.abs(dy) >= Math.abs(dx) ? `moved ${dy > 0 ? 'down' : 'up'} ${Math.abs(dy)}px` : `moved ${dx > 0 ? 'right' : 'left'} ${Math.abs(dx)}px`;
 }
 
-function culpritText(by: ShiftCulprit): string {
+function culpritText(by: ShiftCulprit, moved?: ShiftNode): string {
   const who = nodeText(by);
   const name = by.name ? ` ${by.name}` : '';
   switch (by.change) {
@@ -142,11 +142,15 @@ function culpritText(by: ShiftCulprit): string {
       // Mounted without a size, it took its space from the file: the size is the fix, not the mount.
       const tag = by.node.split(' > ').pop();
       const what = by.unsized ? `, ${tag} with no size set,` : '';
-      return by.where === 'inside' ? `${who}${what} added inside it` : `${who}${what} mounted above it`;
+      // A row put above the rows that moved is one more of the same, not the one that moved.
+      const another = by.where === 'before' && by.component && by.component === moved?.component ? 'another ' : '';
+      return by.where === 'inside' ? `${who}${what} added inside it` : `${another}${who}${what} mounted above it`;
     }
     case 'removed':
       return by.where === 'inside' ? `an element removed inside it (${who})` : `an element removed above it (${who})`;
     case 'text':
+      // Its own text: the row already names the component and its line.
+      if (by.where === 'self' && by.component && by.component === moved?.component) return 'its text changed';
       return by.where === 'self' || by.where === 'inside' ? `its text changed (${who})` : `text changed above it (${who})`;
     case 'loaded': {
       const what = by.component ? `${by.node.split(' > ').pop()} in ${who}` : by.node;
@@ -168,11 +172,11 @@ function culpritText(by: ShiftCulprit): string {
 }
 
 /** `frames`: how many frames the run took; a style written once is not called an animation. */
-export function causeText(cause: ShiftCause, commitCauses?: (id: number) => string[], frames?: number): string {
+export function causeText(cause: ShiftCause, commitCauses?: (id: number) => string[], frames?: number, moved?: ShiftNode): string {
   if ('commit' in cause) {
     const why = cause.commit !== null ? commitCauses?.(cause.commit) ?? [] : [];
     const commit = cause.commit !== null ? `commit ${cause.commit}` : `a commit at ${(cause.atMs / 1000).toFixed(2)}s`;
-    return `${cause.by ? culpritText(cause.by) : 'a DOM change'} in ${commit}${why.length ? ` (${why.slice(0, 2).join(', ')})` : ''}`;
+    return `${cause.by ? culpritText(cause.by, moved) : 'a DOM change'} in ${commit}${why.length ? ` (${why.slice(0, 2).join(', ')})` : ''}`;
   }
   if ('animation' in cause) {
     const by = cause.by;
@@ -186,7 +190,7 @@ export function causeText(cause: ShiftCause, commitCauses?: (id: number) => stri
       return frames === 1 ? `style written${on} from script` : `style written${on} from script frame after frame: an animation of layout outside CSS`;
     return `${cause.animation === 'css' ? 'a CSS animation' : 'element.animate()'}${what}${on}`;
   }
-  if ('dom' in cause) return `${cause.by ? culpritText(cause.by) : 'a DOM change'} outside a React commit (an effect, a timer or a library)`;
+  if ('dom' in cause) return `${cause.by ? culpritText(cause.by, moved) : 'a DOM change'} outside a React commit (an effect, a timer or a library)`;
   if ('resource' in cause) {
     if (cause.resource === 'font') return 'a web font arrived and replaced the fallback';
     if (cause.resource === 'css') return `a stylesheet arrived${cause.by ? ` (${cause.by.node})` : ''}`;
@@ -238,7 +242,12 @@ export function runText(run: ShiftRun, rec?: Pick<RecordingV2, 'commits' | 'caus
       : `${run.count - run.excluded} counted, ${run.excluded} excluded after an input`;
   const since = run.first.sinceInputMs;
   const input = since !== undefined && since < 5000 ? `; began ${since}ms after the last input` : '';
-  return `${run.value} ${what} ${moveText(run)} ${when}: ${causeText(run.first.cause, commitCauses, run.count)}; ${counted}${input}`;
+  return `${run.value} ${what} ${moveText(run)} ${when}: ${causeText(
+    run.first.cause,
+    commitCauses,
+    run.count,
+    run.first.sources[0]
+  )}; ${counted}${input}`;
 }
 
 /** The summary's line, when there is something to say; the rest is in section shifts. */

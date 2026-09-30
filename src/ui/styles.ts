@@ -314,6 +314,7 @@ details.fold[open] > summary::before { content: '▾'; }
 .shift-where { color: var(--muted); overflow-wrap: anywhere; }
 .shift .tl-outlined { margin: 0 0 4px 4px; }
 .shift-hint { margin: 0 0 4px; font-size: 11px; }
+.shift-tiny { display: block; margin: 4px 0 0 2px; font-size: 11px; }
 .lcp .shift { border-bottom: 0; }
 .lcp .shift-move { overflow-wrap: anywhere; }
 .lcp-phases { margin: 4px 4px 6px; }
