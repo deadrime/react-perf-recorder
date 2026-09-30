@@ -68,3 +68,51 @@ test('a drawer slid in with a transform shifts nothing', async ({ baseURL }) => 
   const rec = await record(baseURL, 'slide', 'slide');
   expect(rec.shifts).toMatchObject({ list: [], cls: { value: 0, nearMiss: 0 } });
 });
+
+test('the panel shows the shift: CLS in the numbers, a row, a mark on the timeline and outlines on the page', async ({ page }) => {
+  await page.goto('/test/shifts?case=late&rpr=panel');
+  await page.locator('[data-rpr="record"]').click();
+  await page.getByTestId('load').click();
+  await page.waitForTimeout(1500);
+  await page.locator('[data-rpr="stop"]').click();
+  await expect(page.locator('[data-rpr="result"]')).toContainText('saved');
+
+  await expect(page.locator('[data-rpr="verdict"] .kpi', { hasText: 'CLS' })).toBeVisible();
+  await expect(page.locator('details[data-fold="shifts"]')).toHaveAttribute('open', '');
+  // The panel's own rows moved as the recording started; those are not the page's.
+  await expect(page.locator('[data-rpr="shift"]')).toHaveCount(1);
+  const row = page.locator('[data-rpr="shift"]').first();
+  await expect(row).toContainText('OrderList');
+  await expect(row).toContainText('moved down 120px');
+  await expect(row).toContainText(/PromoBanner .*mounted above it in commit \d+/);
+
+  // Picked, the list is outlined where it is and where it was, and the banner as what pushed it.
+  const pin = () =>
+    page.evaluate(() => {
+      const shift = (window as any).__REACT_PERF_RECORDER__.panel.highlighter.shift;
+      return shift && { moved: shift.moved.map((m: any) => [m.el.className, m.dy]), culprit: shift.culprit?.el.className ?? null };
+    });
+  // Scrolled away from it, picking it brings the shift back into sight.
+  await page.evaluate(() => {
+    document.body.style.paddingBottom = '3000px';
+    window.scrollTo(0, 2500);
+  });
+  await row.click();
+  await expect(row).toHaveAttribute('aria-pressed', 'true');
+  await expect.poll(() => page.evaluate(() => scrollY)).toBeLessThan(100);
+  await expect(page.locator('[data-rpr="shift-outlined"]')).toContainText('PromoBanner, the cause');
+  await expect(page.locator('[data-rpr="shift-outlined"]')).toHaveAttribute('data-found', '2');
+  expect(await pin()).toEqual({ moved: [['orders', -120]], culprit: 'promo' });
+
+  // The timeline has picked it too, and opens the commit that mounted the banner; the shift's outlines go.
+  await expect(page.locator('[data-rpr="tl-shift"][data-picked="true"]')).toHaveCount(1);
+  await page.locator('[data-rpr="shift-commit"]').click();
+  await expect(page.locator('[data-rpr="shift-detail"]')).toHaveCount(0);
+  await expect(row).toHaveAttribute('aria-pressed', 'false');
+  expect(await pin()).toBeNull();
+
+  // A mark on the timeline picks the same row.
+  await page.locator('[data-rpr="tl-shift"]').first().click();
+  await expect(page.locator('[data-rpr="shift-detail"]')).toContainText('moved down 120px');
+  await expect(page.locator('[data-rpr="shift"][aria-pressed="true"]')).toHaveCount(1);
+});

@@ -1,8 +1,11 @@
 import type { Engine, Owner, Saved } from '../core/engine';
 import { currentOf, type Fiber, type FiberRoot } from '../core/fiber';
 import { scopeNames, type ScopeHandle } from '../core/scope';
-import type { Highlighter } from '../overlay/highlight';
-import { NOTE_IN_PANEL, renderPanel, type PanelHandlers, type PanelViewProps } from './components/PanelView';
+import type { Highlighter, ShiftPin } from '../overlay/highlight';
+import { changeText, moveOf } from '../shared/shifts';
+import type { ShiftRect } from '../shared/schema';
+import { NOTE_IN_PANEL, renderPanel, type PanelHandlers, type PanelViewProps, type ShiftOutline } from './components/PanelView';
+import type { ShiftFound } from './components/Shifts';
 import { rowCopyKey, type TreeProps } from './components/Tree';
 import { describeArea } from './describe';
 import { Picker, type TreeActions, type TreeRow } from './picker';
@@ -44,8 +47,8 @@ export class Panel {
   private result: Saved | null = null;
   private message: Message = { text: '', kind: 'muted' };
   private highlighter: Highlighter | null = null;
-  /** A commit or action picked on the timeline: its outlines alone are on the page until the pick is undone. */
-  private outlining = false;
+  /** A commit, action or layout shift picked in the report: its outlines alone are on the page until the pick is undone. */
+  private outlining = { roots: false, shift: false };
   /** The pointer that just finished a drag of the dot; its click opens nothing. */
   private dragged = false;
   private readonly handlers: PanelHandlers;
@@ -120,7 +123,7 @@ export class Panel {
     const on = this.visible && !this.suppressed && this.state.highlight;
     // A hidden panel draws nothing, so an automated browser gets clean screenshots.
     if (this.highlighter) this.highlighter.enabled = on;
-    this.engine.highlightWhenIdle(on && !this.outlining, this.scope);
+    this.engine.highlightWhenIdle(on && !this.outlining.roots && !this.outlining.shift, this.scope);
   }
 
   private initialVisibility() {
@@ -173,8 +176,10 @@ export class Panel {
       },
       dragStart: (event) => this.onDragStart(event),
       outlineRoots: (entries) => this.outlineRoots(entries),
+      outlineShift: (shift) => this.outlineShift(shift),
       dismissResult: () => {
         this.outlineRoots(null);
+        this.outlineShift(null);
         this.result = null;
         this.compared = null;
         this.sync();
@@ -330,13 +335,7 @@ export class Panel {
   /** The roots of a picked commit or action, on the page as it is now: every instance of each, labelled with its hits. */
   private outlineRoots(entries: Array<{ i: number; hits: number }> | null): number {
     const rec = this.result;
-    const outlining = Boolean(entries && rec);
-    if (outlining !== this.outlining) {
-      this.outlining = outlining;
-      // The fading render boxes would bury the picked ones.
-      if (outlining) this.highlighter?.reset();
-      this.syncIdleHighlight();
-    }
+    this.setOutlining('roots', Boolean(entries && rec));
     if (!entries || !rec) {
       this.highlighter?.pin([]);
       return 0;
@@ -354,6 +353,96 @@ export class Panel {
     });
     this.highlighter?.pin(items);
     return items.length;
+  }
+
+  private setOutlining(what: 'roots' | 'shift', on: boolean) {
+    if (this.outlining[what] === on) return;
+    this.outlining[what] = on;
+    // The fading render boxes would bury the picked ones.
+    if (on) this.highlighter?.reset();
+    this.syncIdleHighlight();
+  }
+
+  /** A layout shift of the report on the page as it is now: each moved element, where it was, and the culprit. */
+  private outlineShift(shift: ShiftOutline | null): ShiftFound {
+    this.setOutlining('shift', Boolean(shift));
+    if (!shift) {
+      this.highlighter?.pinShift(null);
+      return { moved: 0, culprit: false };
+    }
+    const moved: ShiftPin['moved'] = [];
+    for (const m of shift.moved) {
+      const el = this.nearestAt(m.node, (r) => boxGap(r, m.to[2] || m.to[3] ? m.to : m.from, Boolean(m.fixed), shift.scroll));
+      if (!el || moved.some((x) => x.el === el)) continue;
+      // Gone from view by the end, it was found by where it was: there is no second box to draw.
+      const was = m.from[2] && m.from[3] && m.to[2] && m.to[3] ? m.from : null;
+      const name = m.component ?? m.node;
+      moved.push({
+        el,
+        dx: was ? m.from[0] - m.to[0] : 0,
+        dy: was ? m.from[1] - m.to[1] : 0,
+        was: was ? [was[2], was[3]] : null,
+        // Solid is where it is now and dashed where it was; the arrow carries the distance.
+        label: was && (m.from[0] !== m.to[0] || m.from[1] !== m.to[1]) ? `${name} · now` : `${name} ${moveOf(m.from, m.to)}`,
+      });
+    }
+    const by = shift.by;
+    // A removed element is not on the page to point at; the moved one's own label says what happened to it.
+    let culprit: ShiftPin['culprit'] = null;
+    if (by && by.change !== 'removed') {
+      const anchor = moved[0]?.el.getBoundingClientRect();
+      const el = this.nearestAt(by.node, (r) => (anchor ? Math.abs(r.top + r.height / 2 - anchor.top - anchor.height / 2) : 0));
+      const label = changeText(by);
+      const self = moved.find((m) => m.el === el);
+      if (self) self.label += ` · ${label}, the cause`;
+      else if (el) culprit = { el, label: `${by.component ?? by.node} ${label} · the cause` };
+    }
+    this.highlighter?.pinShift({ moved, culprit });
+    this.reveal([...moved.map((m) => m.el), ...(culprit ? [culprit.el] : [])], moved);
+    return { moved: moved.length, culprit: Boolean(culprit) };
+  }
+
+  /**
+   * Scrolls the shift into sight when it is off the screen or under the panel: picking it is asking to see it. On a
+   * phone the panel is a sheet over the bottom of the page, so only the part above it counts as seen.
+   */
+  private reveal(els: Element[], moved: ShiftPin['moved']) {
+    if (!els.length) return;
+    // Where each moved element was counts too: the arrow starts there.
+    const extent = () => {
+      const boxes = els.map((el) => el.getBoundingClientRect());
+      for (const m of moved) if (m.was) boxes.push(new DOMRect(0, m.el.getBoundingClientRect().top + m.dy, 0, m.was[1]));
+      return { top: Math.min(...boxes.map((b) => b.top)), bottom: Math.max(...boxes.map((b) => b.bottom)) };
+    };
+    const { top, bottom } = extent();
+    const card = this.shadow.querySelector('.rpr')?.getBoundingClientRect();
+    const sheet = card && card.width > innerWidth * 0.8 && card.top > innerHeight * 0.2;
+    const seenBottom = sheet ? card.top : innerHeight;
+    // Only the top of a tall element has to show: that is where the move is.
+    if (top >= 0 && Math.min(bottom, top + 160) <= seenBottom) return;
+    // A scrolled container first, then the page, so the shift's top sits just under the top of the window.
+    moved[0]?.el.scrollIntoView?.({ block: 'nearest' });
+    window.scrollBy({ top: extent().top - 48 });
+  }
+
+  /** Of the elements on the page at a recorded DOM path, the one the score likes best; none with no box. */
+  private nearestAt(path: string, score: (rect: DOMRect) => number): Element | null {
+    let found: Element[];
+    try {
+      found = [...document.querySelectorAll(path)].slice(0, 1000);
+    } catch {
+      return null;
+    }
+    let best: Element | null = null;
+    let bestScore = Infinity;
+    for (const el of found) {
+      if (el === this.host) continue;
+      const rect = el.getBoundingClientRect();
+      if (!rect.width && !rect.height) continue;
+      const s = score(rect);
+      if (s < bestScore) [best, bestScore] = [el, s];
+    }
+    return best;
   }
 
   /** Reloads and does the actions of the report again, recording: the same scenario after a change of the code. */
@@ -617,6 +706,12 @@ export class Panel {
     saveState(this.state);
   }
 }
+
+/** How far a box now is from one recorded in a shift: in the page, or in the window for a fixed one; size weighs in. */
+const boxGap = (r: DOMRect, to: ShiftRect, fixed: boolean, [sx, sy] = [0, 0]) => {
+  const [x, y] = fixed ? [r.left - to[0], r.top - to[1]] : [r.left + scrollX - to[0] - sx, r.top + scrollY - to[1] - sy];
+  return Math.abs(x) + Math.abs(y) + 4 * (Math.abs(r.width - to[2]) + Math.abs(r.height - to[3]));
+};
 
 /** The picker's hint in the words of the device: keys where there is a keyboard, taps where there is a finger. */
 function pickHint(what: string, why: string, tapWhat = what) {

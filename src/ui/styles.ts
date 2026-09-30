@@ -165,6 +165,13 @@ header .live { flex: 1; color: var(--muted-soft); white-space: nowrap; overflow:
 /* An action runs for seconds and its bar can be the width of the tracks: picked, it takes the accent, not white. */
 .tl-mark:hover { background: color-mix(in srgb, var(--mark) 70%, var(--text-strong)); }
 .tl-mark[data-picked="true"] { background: color-mix(in srgb, var(--accent) 70%, transparent); }
+/* A shift stands on the lane's floor as tall as its score: red counted, amber a near miss, grey left out. */
+.tl-shift { position: absolute; bottom: 0; min-width: 3px; padding: 0; border: 0; border-radius: 1px 1px 0 0; background: var(--mark); cursor: pointer; }
+.tl-shift::before { content: ''; position: absolute; inset: -2px -3px 0; }
+.tl-shift[data-tone="counted"] { background: var(--flash-hot); }
+.tl-shift[data-tone="near"] { background: var(--warn); }
+.tl-shift[data-picked="true"] { outline: 1px solid var(--text-strong); }
+@media (pointer: coarse) { .tl-shift::before { inset: -4px -8px 0; } }
 .tl-axis { position: relative; height: 12px; }
 .tl-tick { position: absolute; top: 1px; color: var(--faint); font-size: 9px; transform: translateX(-50%); white-space: nowrap; }
 .tl-tick[data-first="true"] { transform: none; }
@@ -289,6 +296,27 @@ details.fold[open] > summary::before { content: '▾'; }
 .action-what { color: var(--text); margin-right: 2px; }
 .action .reason { margin-left: 10px; }
 .watched { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px; margin: 3px 0; }
+.shift { border-bottom: 1px solid var(--rule-soft); }
+.shift:last-of-type { border-bottom: 0; }
+.shift-row { display: flex; flex-direction: column; gap: 2px; width: 100%; padding: 5px 4px; border: 1px solid transparent; border-radius: 6px; background: none; text-align: left; }
+.shift-row:hover { background: var(--hover); }
+.shift-row[aria-pressed="true"] { border-color: color-mix(in srgb, var(--pick) 55%, transparent); background: var(--chip); }
+.shift-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px; }
+.shift-move { color: var(--text); }
+.shift-at { color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.shift-head .badge:last-child { margin-left: auto; }
+.shift-cause { color: var(--text-2); }
+.shift-where { color: var(--muted); overflow-wrap: anywhere; }
+.shift .tl-outlined { margin: 0 0 4px 4px; }
+.shift-hint { margin: 0 0 4px; font-size: 11px; }
+/* The key to the page's drawing: the same colours and strokes as the canvas. */
+.shift-legend { display: flex; flex-wrap: wrap; gap: 4px 12px; margin: 4px 0 6px 4px; font-size: 11px; color: var(--text-2); }
+.shift-legend .lg { display: inline-flex; align-items: center; gap: 5px; }
+.shift-legend i { flex: none; width: 16px; height: 10px; box-sizing: border-box; border-radius: 2px; }
+.lg-now { border: 2px solid var(--pick); background: color-mix(in srgb, var(--pick) 15%, transparent); }
+.lg-was { border: 2px dashed var(--pick); }
+.lg-cause { border: 1.5px solid var(--flash-hot);
+  background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--muted) 45%, transparent) 0 1.5px, transparent 1.5px 5px); }
 .growth-row { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; margin: 3px 0; }
 .growth-row .who { min-width: 72px; }
 .growth-find { display: flex; align-items: baseline; gap: 8px; padding: 5px 0; border-bottom: 1px solid var(--rule-soft); }

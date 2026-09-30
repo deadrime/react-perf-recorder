@@ -133,7 +133,6 @@ export class DomWatcher {
   }
 
   private consume(records: MutationRecord[], touched: Set<Fiber> | null) {
-    if (records.length) this.onRecords?.(records, touched !== null);
     // What each node held before this batch touched it: the old value of the first write to reach it.
     const before = new Map<Node, Map<string, string | null>>();
     for (const m of records) {
@@ -143,8 +142,10 @@ export class DomWatcher {
       const key = this.recordKey(m);
       if (!perNode.has(key)) perNode.set(key, m.oldValue);
     }
-    for (const m of records) {
-      if (!this.changedSomething(m, before)) continue;
+    const changed = records.filter((m) => this.changedSomething(m, before));
+    // A write of the value already there moves nothing, and must not outrank the change that did.
+    if (records.length) this.onRecords?.(changed, touched !== null);
+    for (const m of changed) {
       if (touched) {
         this.mark(m.target, touched);
         if (m.type === 'childList') {

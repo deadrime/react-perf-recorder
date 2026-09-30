@@ -1,10 +1,31 @@
-import type { ClsTotals, LayoutShift, RecordingV2, ShiftCause, ShiftCulprit, ShiftNode, ShiftRect } from './schema';
+import type { ClsTotals, LatencyEntry, LayoutShift, RecordingV2, ShiftCause, ShiftCulprit, ShiftNode, ShiftRect } from './schema';
 
 const round = (n: number) => +n.toFixed(4);
 
-/** Left out by the browser, but likely counted on a slower device: an animation's frames run later there. */
-export const nearMissOf = (s: LayoutShift) =>
-  s.hadRecentInput && ('animation' in s.cause || (s.sinceInputMs !== undefined && s.sinceInputMs >= 300 && s.sinceInputMs <= 500));
+/** Past this many shifts a recording keeps no more: an endless animation must not grow it without bound. */
+export const MAX_SHIFTS = 1000;
+
+/** Ties each shift to the latest input before it, within 5 s: the interaction it followed. */
+export function linkInteractions(list: LayoutShift[], latency: LatencyEntry[]): LayoutShift[] {
+  for (const shift of list) {
+    let follows: LatencyEntry | undefined;
+    for (const entry of latency)
+      if (entry.atMs <= shift.atMs && shift.atMs - entry.atMs <= 5000 && (!follows || entry.atMs > follows.atMs)) follows = entry;
+    // Event Timing leaves out inputs under 16 ms: a faster one after `follows` is the one the shift followed.
+    const inputAt = shift.sinceInputMs === undefined ? null : shift.atMs - shift.sinceInputMs;
+    if (follows && (inputAt === null || follows.atMs >= inputAt - 2)) shift.interactionId = follows.interactionId;
+  }
+  return list;
+}
+
+/**
+ * Left out by the browser, but likely counted on a slower device: an animation's frames run later there. `alone`: the
+ * shift's run has one frame, so a style written from script was one write, not an animation.
+ */
+export const nearMissOf = (s: LayoutShift, alone = false) =>
+  s.hadRecentInput &&
+  (('animation' in s.cause && !(alone && s.cause.animation === 'inline-style')) ||
+    (s.sinceInputMs !== undefined && s.sinceInputMs >= 300 && s.sinceInputMs <= 500));
 
 /** CLS by session windows, as web-vitals counts it: a gap under 1 s keeps a window open, for at most 5 s. */
 export function clsOf(list: LayoutShift[]): ClsTotals {
@@ -15,10 +36,11 @@ export function clsOf(list: LayoutShift[]): ClsTotals {
   let last = -Infinity;
   let nearMiss = 0;
   let excluded = 0;
+  const alone = new Set(shiftRuns(list).flatMap((run) => (run.count === 1 ? [run.first] : [])));
   for (const s of [...list].sort((a, b) => a.atMs - b.atMs)) {
     if (s.hadRecentInput) {
       excluded += s.value;
-      if (nearMissOf(s)) nearMiss += s.value;
+      if (nearMissOf(s, alone.has(s))) nearMiss += s.value;
       continue;
     }
     if (s.atMs - last < 1000 && s.atMs - start < 5000) current += s.value;
@@ -45,6 +67,7 @@ export interface ShiftRun {
   excluded: number;
   first: LayoutShift;
   last: LayoutShift;
+  shifts: LayoutShift[];
 }
 
 const causeKind = (c: ShiftCause) => Object.keys(c)[0];
@@ -59,7 +82,7 @@ export function shiftRuns(list: LayoutShift[]): ShiftRun[] {
     const key = runKey(s);
     let run = open.get(key);
     if (!run || s.atMs - run.endMs > 250) {
-      run = { atMs: s.atMs, endMs: s.atMs, count: 0, value: 0, counted: 0, excluded: 0, first: s, last: s };
+      run = { atMs: s.atMs, endMs: s.atMs, count: 0, value: 0, counted: 0, excluded: 0, first: s, last: s, shifts: [] };
       open.set(key, run);
       runs.push(run);
     }
@@ -69,6 +92,7 @@ export function shiftRuns(list: LayoutShift[]): ShiftRun[] {
     if (s.hadRecentInput) run.excluded++;
     else run.counted += s.value;
     run.last = s;
+    run.shifts.push(s);
   }
   for (const run of runs) {
     run.value = round(run.value);
@@ -81,12 +105,28 @@ export const nodeText = (n: ShiftNode) => (n.component ? `${n.component}${n.file
 
 const empty = (r: ShiftRect) => r[2] === 0 || r[3] === 0;
 
+/** Each element the run moved, from its box in the first frame to its box in the last one. */
+export function runMoves(run: ShiftRun): Array<ShiftNode & { from: ShiftRect; to: ShiftRect; fixed?: true }> {
+  // Two list rows named alike are told apart by their order among the ones named so.
+  const nth = (sources: ShiftNode[], i: number) => sources.slice(0, i).filter((s) => nodeKey(s) === nodeKey(sources[i])).length;
+  // Rects are in the viewport: both boxes go into the last frame's, or the window's scroll during the run reads as a move.
+  const [dx, dy] = [0, 1].map((k) => (run.first.scroll?.[k] ?? 0) - (run.last.scroll?.[k] ?? 0));
+  const moved = (r: ShiftRect, fixed?: true): ShiftRect => (fixed || empty(r) ? r : [r[0] + dx, r[1] + dy, r[2], r[3]]);
+  return run.first.sources.map((source, i) => {
+    const n = nth(run.first.sources, i);
+    const end = run.last.sources.filter((s) => nodeKey(s) === nodeKey(source))[n];
+    return { ...source, from: moved(source.from, source.fixed), to: end ? end.to : moved(source.to, source.fixed) };
+  });
+}
+
 /** `moved up 300px`, `appeared`: from the first box of the run to the last one of the same element. */
-function moveText(run: ShiftRun): string {
-  const source = run.first.sources[0];
-  if (!source) return 'moved';
-  const end = run.last.sources.find((s) => s.node === source.node && s.component === source.component) ?? source;
-  const [from, to] = [source.from, end.to];
+export function moveText(run: ShiftRun): string {
+  const moved = runMoves(run)[0];
+  return moved ? moveOf(moved.from, moved.to) : 'moved';
+}
+
+/** The words for one element's boxes before and after. */
+export function moveOf(from: ShiftRect, to: ShiftRect): string {
   if (empty(from) && !empty(to)) return 'appeared';
   if (!empty(from) && empty(to)) return 'disappeared';
   const [dx, dy] = [to[0] - from[0], to[1] - from[1]];
@@ -127,7 +167,8 @@ function culpritText(by: ShiftCulprit): string {
   }
 }
 
-export function causeText(cause: ShiftCause, commitCauses?: (id: number) => string[]): string {
+/** `frames`: how many frames the run took; a style written once is not called an animation. */
+export function causeText(cause: ShiftCause, commitCauses?: (id: number) => string[], frames?: number): string {
   if ('commit' in cause) {
     const why = cause.commit !== null ? commitCauses?.(cause.commit) ?? [] : [];
     const commit = cause.commit !== null ? `commit ${cause.commit}` : `a commit at ${(cause.atMs / 1000).toFixed(2)}s`;
@@ -141,7 +182,8 @@ export function causeText(cause: ShiftCause, commitCauses?: (id: number) => stri
       ? ' on it'
       : ` on ${nodeText(by)}${by.where === 'before' ? ' above it' : ` (${by.where === 'ancestor' ? 'an ancestor' : 'inside it'})`}`;
     const what = by?.name ? ` of ${by.name}` : '';
-    if (cause.animation === 'inline-style') return `style written${on} from script frame after frame: an animation of layout outside CSS`;
+    if (cause.animation === 'inline-style')
+      return frames === 1 ? `style written${on} from script` : `style written${on} from script frame after frame: an animation of layout outside CSS`;
     return `${cause.animation === 'css' ? 'a CSS animation' : 'element.animate()'}${what}${on}`;
   }
   if ('dom' in cause) return `${cause.by ? culpritText(cause.by) : 'a DOM change'} outside a React commit (an effect, a timer or a library)`;
@@ -153,17 +195,41 @@ export function causeText(cause: ShiftCause, commitCauses?: (id: number) => stri
   return 'nothing changed in its frame that the recorder saw: a resize, scroll anchoring, or a frame of another origin';
 }
 
+/** The causes of a commit by its id, by key: what `causeText` names after `commit N`. */
+export function commitCausesOf(rec: Pick<RecordingV2, 'commits' | 'causes'>): (id: number) => string[] {
+  const causeKeys = new Map(rec.causes.map((c) => [c.i, c.key]));
+  const commits = new Map(rec.commits.list.map((c) => [c.i, c]));
+  return (id) => (commits.get(id)?.causeIds ?? []).map((i) => causeKeys.get(i)).filter((k): k is string => Boolean(k));
+}
+
+/** What the culprit did, in a word or two: its label on the page. */
+export function changeText(by: ShiftCulprit): string {
+  switch (by.change) {
+    case 'added':
+      return by.unsized ? 'mounted, no size' : 'mounted';
+    case 'removed':
+      return 'removed';
+    case 'text':
+      return 'text changed';
+    case 'loaded':
+      return 'loaded, no size';
+    case 'animated':
+      return `animates${by.name ? ` ${by.name}` : ''}`;
+    default:
+      return `changed${by.name ? ` ${by.name}` : ''}`;
+  }
+}
+
 /** One line in words: how much, what moved and where, what moved it, and whether the browser counted it. */
-export function runText(run: ShiftRun, rec?: Pick<RecordingV2, 'commits' | 'causes'>): string {
+/** `rec`, or its `commitCausesOf` made once when many runs are written. */
+export function runText(run: ShiftRun, rec?: Pick<RecordingV2, 'commits' | 'causes'> | ((id: number) => string[])): string {
   const source = run.first.sources[0];
   const what = source ? nodeText(source) : 'an element';
   const when =
     run.count > 1
       ? `over ${run.count} frames, ${(run.atMs / 1000).toFixed(2)}–${(run.endMs / 1000).toFixed(2)}s`
       : `at ${(run.atMs / 1000).toFixed(2)}s`;
-  const causeKeys = rec ? new Map(rec.causes.map((c) => [c.i, c.key])) : null;
-  const commitCauses = (id: number) =>
-    (rec?.commits.list.find((c) => c.i === id)?.causeIds ?? []).map((i) => causeKeys?.get(i)).filter((k): k is string => Boolean(k));
+  const commitCauses = typeof rec === 'function' ? rec : rec ? commitCausesOf(rec) : undefined;
   const counted =
     run.excluded === 0
       ? 'counted'
@@ -172,7 +238,7 @@ export function runText(run: ShiftRun, rec?: Pick<RecordingV2, 'commits' | 'caus
       : `${run.count - run.excluded} counted, ${run.excluded} excluded after an input`;
   const since = run.first.sinceInputMs;
   const input = since !== undefined && since < 5000 ? `; began ${since}ms after the last input` : '';
-  return `${run.value} ${what} ${moveText(run)} ${when}: ${causeText(run.first.cause, commitCauses)}; ${counted}${input}`;
+  return `${run.value} ${what} ${moveText(run)} ${when}: ${causeText(run.first.cause, commitCauses, run.count)}; ${counted}${input}`;
 }
 
 /** The summary's line, when there is something to say; the rest is in section shifts. */
@@ -196,7 +262,8 @@ export function shiftsByElement(list: LayoutShift[]): Map<string, { counted: num
   for (const s of list) {
     const source = s.sources[0];
     if (!source) continue;
-    const key = nodeText(source);
+    // Without the line: an edit above the component must not make it a new element in the comparison.
+    const key = nodeText({ ...source, file: source.file?.replace(/(:\d+){1,2}$/, '') });
     const entry = out.get(key) ?? { counted: 0, total: 0 };
     entry.total = round(entry.total + s.value);
     if (!s.hadRecentInput) entry.counted = round(entry.counted + s.value);

@@ -438,11 +438,6 @@ export class Recorder {
     this.deps.plugins.start(this.pluginSession(), this.t0);
     if (this.scope) this.dom.setScopeHosts(this.scopeHosts());
     this.dom.start();
-    if (this.shifts) {
-      const shifts = this.shifts;
-      this.dom.onRecords = (records, commit) => shifts.noteRecords(records, commit);
-      shifts.start();
-    }
     this.hook = hookCommits(
       this.roots,
       this.options.source ?? 'panel',
@@ -450,6 +445,12 @@ export class Recorder {
       (fiber, lane) => this.noteUpdate(fiber, lane),
       withUpdaters
     );
+    // After the hook, which can throw: nothing stops listeners and observers of a start that failed.
+    if (this.shifts) {
+      const shifts = this.shifts;
+      this.dom.onRecords = (records, commit) => shifts.noteRecords(records, commit);
+      shifts.start();
+    }
     this.updaters = this.hook.updaters ? new Map() : null;
     // A store or query notifies its subscribers before the recorder hears about it, so the fibers React just
     // marked are the ones this event updated.
@@ -524,6 +525,8 @@ export class Recorder {
   /** `collected`: the page's garbage was collected just before, so what is still in memory is held by something. */
   stop(collected = false): RecordingV2 {
     if (this.stopped) throw new RecorderError('NOT_RECORDING', 'recording already stopped');
+    // Shifts the observer still holds must stream out before emit stops taking events.
+    this.shifts?.flush();
     this.stopped = true;
     setTimerSink(null);
     this.deps.plugins.targets = null;

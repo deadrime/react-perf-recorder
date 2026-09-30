@@ -1,7 +1,7 @@
 import { aggregateEvents } from '../../src/shared/aggregate';
 import { compareRecordings } from '../../src/shared/compare';
 import type { LayoutShift, SessionMeta, ShiftCause } from '../../src/shared/schema';
-import { clsOf, runText, shiftRuns } from '../../src/shared/shifts';
+import { changeText, clsOf, runMoves, runText, shiftRuns } from '../../src/shared/shifts';
 import { nearest, nodePath, ShiftWatcher, whereOf } from '../../src/core/shifts';
 
 const shift = (atMs: number, value: number, more: Partial<LayoutShift> = {}): LayoutShift => ({
@@ -43,11 +43,16 @@ describe('CLS as web-vitals counts it', () => {
     const animated: ShiftCause = { animation: 'inline-style' };
     const totals = clsOf([
       shift(0, 0.05, { hadRecentInput: true, sinceInputMs: 40, cause: animated }),
+      shift(16, 0.01, { hadRecentInput: true, sinceInputMs: 56, cause: animated }),
       shift(20, 0.04, { hadRecentInput: true, sinceInputMs: 60 }),
       shift(400, 0.03, { hadRecentInput: true, sinceInputMs: 420 }),
     ]);
-    expect(totals.nearMiss).toBe(0.08);
-    expect(totals.excluded).toBe(0.12);
+    expect(totals.nearMiss).toBe(0.09);
+    expect(totals.excluded).toBe(0.13);
+    // Style written once from a handler is no animation: only its timing can make it a near miss.
+    const once = [shift(0, 0.05, { hadRecentInput: true, sinceInputMs: 120, cause: animated })];
+    expect(clsOf(once).nearMiss).toBe(0);
+    expect(runText(shiftRuns(once)[0])).not.toContain('frame after frame');
   });
 });
 
@@ -80,6 +85,10 @@ describe('reading shifts', () => {
     expect(line).toContain('Sheet (src/Sheet.tsx:9) moved up 240px over 12 frames');
     expect(line).toContain('style written on it from script frame after frame');
     expect(line).toContain('4 counted, 8 excluded after an input');
+    // The panel outlines the run from the element's box in its first frame to the one in its last.
+    expect(runs[0].shifts).toHaveLength(12);
+    expect(runMoves(runs[0])).toEqual([expect.objectContaining({ node: 'div.sheet', from: [0, 800, 400, 20], to: [0, 560, 400, 260] })]);
+    expect(changeText(cause.by!)).toBe('changed style');
   });
 
   it('names the component a commit mounted above the element, and the commit with its causes', () => {
@@ -135,6 +144,10 @@ describe('where a change is from the element that moved', () => {
   it('writes a short DOM path without hashed class names', () => {
     document.body.innerHTML = '<main><div class="css-1x2y3z sheet"><p data-testid="note">x</p></div></main>';
     expect(nodePath(document.querySelector('p'))).toBe('main > div.sheet > p[data-testid="note"]');
+    // The path is a selector the panel looks the element up by again.
+    document.body.innerHTML = '<ul><li data-testid=\'row "1"\'></li></ul><svg><foreignObject></foreignObject></svg>';
+    expect(nodePath(document.querySelector('li'))).toBe('ul > li[data-testid="row \\"1\\""]');
+    expect(nodePath(document.querySelector('foreignObject'))).toBe('svg > foreignObject');
   });
 });
 
@@ -206,8 +219,34 @@ describe('the watcher on a page', () => {
       by: { node: 'div#sheet', where: 'self', change: 'attribute', name: 'style' },
     });
     const stats = watcher.result([]);
-    expect(stats.cls).toMatchObject({ value: 0.08, excluded: 0.02, nearMiss: 0.02 });
+    // One write is no animation, so it is no near miss either.
+    expect(stats.cls).toMatchObject({ value: 0.08, excluded: 0.02, nearMiss: 0 });
     watcher.stop();
+  });
+
+  it('blames an element removed above the one that moved', async () => {
+    document.body.innerHTML = '<div id="slot"><div class="promo">sale</div></div><ul id="list"></ul>';
+    const shifts: LayoutShift[] = [];
+    const watcher = new ShiftWatcher({ t0: 0, projectRoot: '', wrapperPattern: /^$/, ownHost: null, onShift: (s) => shifts.push(s) });
+    watcher.start();
+    const observer = new MutationObserver(() => {});
+    observer.observe(document.body, { subtree: true, childList: true });
+    document.querySelector('.promo')!.remove();
+    watcher.noteRecords(observer.takeRecords(), true);
+    watcher.commitDone(3);
+    observer.disconnect();
+    await nextFrame();
+    deliver!([
+      {
+        startTime: performance.now(),
+        value: 0.06,
+        hadRecentInput: false,
+        sources: [{ node: document.getElementById('list'), previousRect: rect(40), currentRect: rect(0) }],
+      },
+    ]);
+    watcher.stop();
+    // Named by the path it had, not by the list after it, which is what moved.
+    expect(shifts[0].cause).toMatchObject({ commit: 3, by: { node: 'div#slot > div.promo', where: 'before', change: 'removed' } });
   });
 
   it('blames an image with no size when it loads a frame after it was mounted', async () => {
@@ -229,6 +268,58 @@ describe('the watcher on a page', () => {
     expect(shifts[0].cause).toMatchObject({ resource: 'image', by: { node: 'div#slot > img.photo', where: 'before', change: 'loaded' } });
     expect(runText(shiftRuns(shifts)[0])).toContain('div#slot > img.photo loaded with no size set above it');
   });
+
+  it('blames the mount over the <style> CSS-in-JS puts in with it, and leaves the panel out of the value', async () => {
+    document.body.innerHTML = '<div id="slot"></div><ul id="list"></ul><div id="panel"></div>';
+    const panel = document.getElementById('panel')!;
+    const shifts: LayoutShift[] = [];
+    const watcher = new ShiftWatcher({ t0: 0, projectRoot: '', wrapperPattern: /^$/, ownHost: panel, onShift: (s) => shifts.push(s) });
+    watcher.start();
+    const observer = new MutationObserver(() => {});
+    observer.observe(document.body, { subtree: true, childList: true });
+    document.head.appendChild(document.createElement('style')).textContent = '.promo{height:40px}';
+    document.getElementById('slot')!.innerHTML = '<div class="promo">sale</div>';
+    watcher.noteRecords(observer.takeRecords(), true);
+    watcher.commitDone(4);
+    observer.disconnect();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await nextFrame();
+    deliver!([
+      {
+        startTime: performance.now(),
+        value: 0.1,
+        hadRecentInput: false,
+        sources: [
+          { node: document.getElementById('list'), previousRect: rect(0), currentRect: rect(40) },
+          { node: panel, previousRect: rect(600), currentRect: rect(560) },
+        ],
+      },
+    ]);
+    watcher.stop();
+    document.head.innerHTML = '';
+    expect(shifts[0].cause).toMatchObject({ commit: 4, by: { node: 'div#slot > div.promo', change: 'added' } });
+    expect(shifts[0].value).toBe(0.05);
+    expect(shifts[0].sources).toHaveLength(1);
+  });
+
+  it('takes height: auto for no size', async () => {
+    document.body.innerHTML = '<div id="slot"><img class="photo" alt="" style="width: 100%; height: auto"></div><ul id="list"></ul>';
+    const shifts: LayoutShift[] = [];
+    const watcher = new ShiftWatcher({ t0: 0, projectRoot: '', wrapperPattern: /^$/, ownHost: null, onShift: (s) => shifts.push(s) });
+    watcher.start();
+    document.querySelector('img')!.dispatchEvent(new Event('load'));
+    await nextFrame();
+    deliver!([
+      {
+        startTime: performance.now(),
+        value: 0.05,
+        hadRecentInput: false,
+        sources: [{ node: document.getElementById('list'), previousRect: rect(0), currentRect: rect(160) }],
+      },
+    ]);
+    watcher.stop();
+    expect(shifts[0].cause).toMatchObject({ resource: 'image' });
+  });
 });
 
 describe('shifts in a partial recording and in a comparison', () => {
@@ -249,18 +340,56 @@ describe('shifts in a partial recording and in a comparison', () => {
   };
 
   it('rebuilds them from streamed events, and compares CLS and each element that moved', () => {
+    const click = { atMs: 50, type: 'click', duration: 40, inputDelay: 2, processing: 30, presentation: 8, interactionId: 7 };
     const before = aggregateEvents(meta, [
-      { k: 'shift', shift: shift(100, 0.2) },
+      { k: 'latency', entry: click },
+      { k: 'shift', shift: shift(100, 0.004) },
       { k: 'end', atMs: 1000 },
     ]);
+    // The fix added lines above the component: the same element, not a new one.
+    const moved = shift(100, 0.0015);
+    moved.sources[0] = { ...moved.sources[0], file: 'src/List.tsx:9' };
     const after = aggregateEvents(meta, [
-      { k: 'shift', shift: shift(100, 0.02) },
+      { k: 'shift', shift: moved },
       { k: 'end', atMs: 1000 },
     ]);
-    expect(before.shifts?.cls.value).toBe(0.2);
+    expect(before.shifts?.cls.value).toBe(0.004);
+    expect(before.shifts?.list[0].interactionId).toBe(7);
+    // A tap under 16 ms is not in latency: the shift after it is not tied to the slow click before.
+    const fast = aggregateEvents(meta, [
+      { k: 'latency', entry: click },
+      { k: 'shift', shift: shift(2100, 0.004, { hadRecentInput: true, sinceInputMs: 100 }) },
+      { k: 'end', atMs: 3000 },
+    ]);
+    expect(fast.shifts?.list[0].interactionId).toBeUndefined();
     const diff = compareRecordings(before, after);
-    expect(diff.shifts?.cls).toMatchObject({ before: 0.2, after: 0.02 });
-    expect(diff.shifts?.moved[0]).toMatchObject({ key: 'List (src/List.tsx:4)', before: 0.2, after: 0.02 });
+    expect(diff.shifts?.cls).toMatchObject({ before: 0.004, after: 0.0015, delta: -0.0025 });
+    expect(diff.shifts?.moved).toHaveLength(1);
+    expect(diff.shifts?.moved[0]).toMatchObject({ key: 'List (src/List.tsx)', before: 0.004, after: 0.0015 });
     expect(aggregateEvents(meta, [{ k: 'end', atMs: 1000 }]).shifts).toBeUndefined();
+  });
+
+  it('takes the window scroll out of the move of a run, except for a fixed box', () => {
+    const first = shift(0, 0.01, { scroll: [0, 0] });
+    const last = shift(100, 0.01, { scroll: [0, 120], sources: [{ ...first.sources[0], from: [0, 100, 300, 400], to: [0, 100, 300, 400] }] });
+    // Scrolled 120 px down, the list stayed where it was on the page: in the last frame's viewport it was at -20.
+    expect(runMoves(shiftRuns([first, last])[0])[0]).toMatchObject({ from: [0, -20, 300, 400], to: [0, 100, 300, 400] });
+    const header = (s: LayoutShift) => ({ ...s, sources: s.sources.map((x) => ({ ...x, fixed: true as const })) });
+    expect(runMoves(shiftRuns([header(first), header(last)])[0])[0]).toMatchObject({ from: [0, 100, 300, 400] });
+  });
+
+  it('pairs list rows named alike by their order in the run', () => {
+    const row = (y: number) => ({
+      node: 'ul > li',
+      from: [0, y, 300, 40] as [number, number, number, number],
+      to: [0, y + 50, 300, 40] as [number, number, number, number],
+    });
+    const first = shift(0, 0.01, { sources: [row(100), row(140)] });
+    const last = shift(100, 0.01, { sources: [row(150), row(190)] });
+    const moves = runMoves(shiftRuns([first, last])[0]);
+    expect(moves.map((m) => [m.from[1], m.to[1]])).toEqual([
+      [100, 200],
+      [140, 240],
+    ]);
   });
 });
