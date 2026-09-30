@@ -5,6 +5,7 @@ import type { Highlighter, ShiftPin } from '../overlay/highlight';
 import { changeText, moveOf } from '../shared/shifts';
 import type { ShiftRect } from '../shared/schema';
 import { NOTE_IN_PANEL, renderPanel, type PanelHandlers, type PanelViewProps, type ShiftOutline } from './components/PanelView';
+import type { ShiftFound } from './components/Shifts';
 import { rowCopyKey, type TreeProps } from './components/Tree';
 import { describeArea } from './describe';
 import { Picker, type TreeActions, type TreeRow } from './picker';
@@ -704,8 +705,6 @@ export class Panel {
     saveState(this.state);
   }
 }
-
-type ShiftFound = ReturnType<PanelHandlers['outlineShift']>;
 
 /** How far a box on the page now is from one recorded in a shift; the page may have scrolled since, so size weighs in. */
 const boxGap = (r: DOMRect, to: ShiftRect) =>

@@ -442,8 +442,8 @@ function ShiftDetail({ rec, run, onCommit }: { rec: RecordingV2; run: ShiftRun; 
         <CountedBadge run={run} />
         {since !== undefined && since < 5000 ? <span class="muted">{`${since}ms after the last input`}</span> : null}
       </div>
-      {runMoves(run).map((m) => (
-        <div class="tl-row" key={m.node}>
+      {runMoves(run).map((m, i) => (
+        <div class="tl-row" key={i}>
           <span class="tl-row-label">moved</span>
           <span>{`${nodeText(m)} ${moveOf(m.from, m.to)}`}</span>
         </div>

@@ -7,6 +7,7 @@ import type { Corner, Offset } from '../storage';
 import { Controls, FastToggle, HighlightToggle } from './Controls';
 import type { Comparison } from './Compare';
 import { Result } from './Result';
+import type { ShiftFound } from './Shifts';
 import { whatOf } from './Stats';
 import { Tree, type TreeProps } from './Tree';
 
@@ -45,7 +46,7 @@ export interface PanelHandlers {
    */
   outlineRoots(entries: Array<{ i: number; hits: number }> | null): number;
   /** Outlines a layout shift on the page, or takes it away with null. Says which of its elements are there now. */
-  outlineShift(shift: ShiftOutline | null): { moved: number; culprit: boolean };
+  outlineShift(shift: ShiftOutline | null): ShiftFound;
 }
 
 /** What moved, from where to where, and what moved it: a run of the report's layout shifts. */

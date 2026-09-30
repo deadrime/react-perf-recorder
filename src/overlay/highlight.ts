@@ -31,7 +31,9 @@ const rounded = (ctx: CanvasRenderingContext2D, x: number, y: number, w: number,
   typeof ctx.roundRect === 'function' ? ctx.roundRect(x, y, w, h, r) : ctx.rect(x, y, w, h);
 const ease = (k: number) => (k < 0.5 ? 2 * k * k : 1 - (-2 * k + 2) ** 2 / 2);
 
-/** A closed menu or popover often stays in the DOM, unpositioned in the top-left: outlining it stacks boxes there. */
+/** Then it holds still: a loop left running draws every frame for as long as the report stays open. */
+const SHIFT_REPLAYS = 3;
+
 /** A layout shift picked in the report: where each moved element was and is, and what moved it. */
 export interface ShiftPin {
   /** `dx`, `dy`: from its box now to where it was before the shift; `was` is the size it had then. */
@@ -39,6 +41,7 @@ export interface ShiftPin {
   culprit: { el: Element; label: string } | null;
 }
 
+/** A closed menu or popover often stays in the DOM, unpositioned in the top-left: outlining it stacks boxes there. */
 const shown = (el: Element) => el.checkVisibility?.({ opacityProperty: true, visibilityProperty: true, contentVisibilityAuto: true }) ?? true;
 
 type Rgb = [number, number, number];
@@ -248,10 +251,11 @@ export class Highlighter implements HighlightSink {
       if (flash.scroller) ctx.restore();
     }
     this.drawPinned(ctx);
-    this.drawShift(ctx);
+    // Only render outlines count as overhead: a picked shift is drawn from the report, not while the app works.
     this.costMs += performance.now() - started;
-    // A picked shift plays its move in a loop, so the canvas keeps drawing while it is picked.
-    if (this.flashes.size || (this.shift && !this.reducedMotion)) requestAnimationFrame(() => this.draw());
+    this.drawShift(ctx);
+    // A picked shift plays its move a few times, so the canvas keeps drawing until then.
+    if (this.flashes.size || this.replaying()) requestAnimationFrame(() => this.draw());
     else this.drawing = false;
   }
 
@@ -346,7 +350,7 @@ export class Highlighter implements HighlightSink {
       ctx.strokeRect(now.left + 1, now.top + 1, Math.max(0, now.width - 2), Math.max(0, now.height - 2));
       if (was && Math.hypot(moved.dx, moved.dy) > 4) {
         // The move once more, from where it was to where it is: the eye follows motion before it reads boxes.
-        if (!this.reducedMotion) {
+        if (this.replaying()) {
           const k = t < 500 ? 0 : t < 900 ? ease((t - 500) / 400) : 1;
           const fade = t < 900 ? 1 : Math.max(0, 1 - (t - 900) / 600);
           if (fade > 0) {
@@ -376,6 +380,10 @@ export class Highlighter implements HighlightSink {
   }
 
   private readonly reducedMotion = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  private replaying() {
+    return Boolean(this.shift) && !this.reducedMotion && performance.now() - this.shiftSince < SHIFT_REPLAYS * SHIFT_LOOP_MS;
+  }
 
   /** A label on a rounded tab; `outline` draws it as a dashed tab, for the box of where something was. */
   private tag(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, [r, g, b]: Rgb, outline = false) {
