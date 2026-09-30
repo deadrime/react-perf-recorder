@@ -106,3 +106,17 @@ own share is counted apart: it is the measurement's cost, not the page's. The nu
 build, where React and CSS-in-JS libraries do extra work: read their share as an upper bound; the app's own functions
 and a before/after taken the same way hold. The panel samples every 10 ms: a line saying there were few samples means
 rough shares — record longer, or with `throttle`.
+
+## Layout shifts
+
+`section: shifts` (Chromium) lists what moved on the page, worst first, one line per element and reason: an
+animation that shifts every frame is one line. Each line names the element that moved and which way, and what moved
+it: the component a commit mounted, removed or changed above it (with the commit's causes — follow them like any
+commit's), a style written from script frame after frame, a CSS animation of a property that takes space, an image
+with no size, a font or a stylesheet that arrived. The fix is at what moved it: space kept for content that comes
+late (a fixed height, a skeleton of the same size, `width`/`height` on the image), an animation of `transform`
+instead of `height` or `top`. `cls` is CLS counted the way Chrome and web-vitals count it; shifts less than 500 ms
+after an input are excluded. `nearMiss` is the part of the excluded ones a slower phone would likely count — an
+animation that fits inside 500 ms on this machine starts later there: with a `hint` about it, record again with
+`throttle: 4` or `6` and the same shifts show up counted. A viewport resize (a phone keyboard, the URL bar) is no
+shift, so field data stays the only source for those.

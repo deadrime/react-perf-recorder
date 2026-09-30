@@ -15,6 +15,7 @@ import {
   type RootStat,
 } from './schema';
 import { cpuLine, placeText, type CpuSummary } from './cpu';
+import { shiftsSummaryLine } from './shifts';
 
 export interface RootLine {
   root: string;
@@ -81,6 +82,8 @@ export interface Summary {
   memos?: string[];
   /** Busy time and the packages that took it, when the recording was profiled; the rest is in section cpu. */
   cpu?: string;
+  /** CLS, what a slower device would add, and the worst shift with what moved it; the rest is in section shifts. */
+  shifts?: string;
   frames: { longTasks: number; maxLongTaskMs: number; longFrames: number; worstFrameMs: number };
   overhead: RecordingV2['overhead'];
   warnings: string[];
@@ -638,6 +641,10 @@ export function summarize(rec: RecordingV2 & { id?: string; status?: string }, t
     overhead: rec.overhead,
     ...(rec.memos?.length ? { memos: rec.memos.slice(0, 5).map(memoLine) } : {}),
     ...(rec.cpu ? { cpu: cpuSummaryLine(rec.cpu) } : {}),
+    ...(() => {
+      const line = shiftsSummaryLine(rec);
+      return line ? { shifts: line } : {};
+    })(),
     warnings: [...rec.warnings, ...rec.errors.map((e) => `error: ${e}`)].slice(0, 10),
   };
 }

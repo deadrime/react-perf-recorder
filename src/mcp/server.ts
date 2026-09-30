@@ -21,6 +21,7 @@ import {
   type HookMode,
 } from '../shared/summary';
 import { CPU_CAVEAT, cpuLine, placeText } from '../shared/cpu';
+import { runText, shiftRuns } from '../shared/shifts';
 import { GROWTH_KEYS, type RecordingV2 } from '../shared/schema';
 import { listingOf } from '../shared/listing';
 import { planReplay } from '../shared/replay';
@@ -45,6 +46,7 @@ const SECTIONS = [
   'frames',
   'growth',
   'cpu',
+  'shifts',
   'navigations',
   'conditions',
   'warnings',
@@ -52,6 +54,11 @@ const SECTIONS = [
 ] as const;
 
 // No indentation: an agent reads compact JSON as well, and indented answers cost it a fifth more.
+const SHIFTS_NOTE =
+  'Counted the way Chrome counts CLS. Resizing the viewport (a phone keyboard, the URL bar), scrolling and transform ' +
+  'animations are not shifts, so field data stays the only source for those. A dev build loads CSS through JS and may ' +
+  'get its data in another order than production: a shift on page load may not happen there.';
+
 const json = (value: unknown) => ({ content: [{ type: 'text' as const, text: JSON.stringify(value) }] });
 
 /** The setup record_page ran before a recording: its replay needs the same mocks, storage or sign-in. */
@@ -203,6 +210,25 @@ export function section(rec: RecordingV2 & { id?: string; status?: string }, nam
         entries: page(entries.map((e) => `${e.ms}ms  ${placeText(e)}`)),
       };
     }
+    case 'shifts': {
+      const shifts = rec.shifts;
+      if (!shifts)
+        return {
+          note: 'no layout shifts recorded: the browser does not report them (Firefox, Safari), the recording was made with shifts: false, or by an older version',
+        };
+      return {
+        cls: shifts.cls,
+        ...(shifts.truncated ? { truncated: true } : {}),
+        ...(shifts.cls.nearMiss && !rec.conditions.throttle
+          ? {
+              hint: 'excluded shifts driven by an animation, or late after an input, would likely count on a slower device: record again with throttle: 4 or 6 to see them counted',
+            }
+          : {}),
+        note: SHIFTS_NOTE,
+        // One line per element and reason: an animation shifts every frame, and fifty lines of one drawer help no one.
+        ...page(shiftRuns(shifts.list).map((run) => runText(run, rec))),
+      };
+    }
     case 'navigations':
       return page(rec.navigations);
     case 'conditions':
@@ -321,7 +347,10 @@ export function createServer(dir: string) {
               'observers left behind were added, and the components unmounted but still in memory after a garbage collection ' +
               '(record_page collects before Stop) — for a leak. cpu: where the CPU went, when it was profiled — busy time, packages, ' +
               'the hottest functions with file:line, component renders with what inside them took the time, and work outside renders ' +
-              'by the function that started it.'
+              'by the function that started it. shifts: layout shifts (Chromium) worst first, grouped per element and reason — what ' +
+              'moved, which way and how far, what moved it (the component a commit mounted or changed above it, a style written ' +
+              'every frame, a CSS animation, an image with no size, a font), and whether the browser counted it; CLS by session ' +
+              'windows and the near miss a slower device would add.'
           ),
         top: z.number().int().min(1).max(100).optional().describe('How many entries of a long section, 10 by default.'),
         offset: z.number().int().min(0).optional().describe('Where to start in a long section, to page through it.'),
