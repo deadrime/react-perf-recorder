@@ -85,13 +85,16 @@ const sized = (el: Element) => {
 /** React keeps its fiber on the node it made; a node put into a React element by hand has none of its own. */
 const madeByReact = (node: Node) => Object.keys(node).some((k) => k.startsWith('__reactFiber$'));
 
-/** Fixed, or inside a fixed box: its offsetParent chain stops at a fixed element short of body. */
+/** Fixed or sticky, or inside such a box: it stays in the window as the page scrolls. */
 const inFixed = (node: Node) => {
-  const el = elementOf(node);
-  if (!(el instanceof HTMLElement)) return false;
-  let top: HTMLElement = el;
-  while (top.offsetParent instanceof HTMLElement) top = top.offsetParent;
-  return top !== document.body && top !== document.documentElement && getComputedStyle(top).position === 'fixed';
+  let el = elementOf(node);
+  while (el && !(el instanceof HTMLElement)) el = el.parentElement;
+  // Fixed and sticky boxes are positioned, so they are on their descendants' offsetParent chain.
+  for (let e: Element | null = el; e instanceof HTMLElement; e = e.offsetParent) {
+    const position = getComputedStyle(e).position;
+    if (position === 'fixed' || position === 'sticky') return true;
+  }
+  return false;
 };
 const area = (r: DOMRectReadOnly) => Math.max(0, r.width) * Math.max(0, r.height);
 const rect = (r: DOMRectReadOnly): ShiftRect => [Math.round(r.x), Math.round(r.y), Math.round(r.width), Math.round(r.height)];
@@ -284,6 +287,7 @@ export class ShiftWatcher {
     const t = performance.now();
     const items: Item[] = [];
     let named = 0;
+    const spots = new Map<Node, ShiftNode>();
     for (const m of records) {
       if (this.isOwn(m.target)) continue;
       if (m.type === 'attributes') {
@@ -299,8 +303,10 @@ export class ShiftWatcher {
         const gone = m.removedNodes[0];
         if (!gone) continue;
         // Named now: by the time the shift is reported React has let go of the removed nodes' fibers.
-        // Past the cap only its path: the next sibling, which marks the spot, is not what was removed.
-        const removed = named++ < MAX_NAMED ? this.removedName(gone, m.target) : { node: `${nodePath(m.target)} > ${nodePath(gone)}` };
+        // Past the cap, named once per parent: a list replaced at once is one culprit, not a thousand names.
+        let spot = spots.get(m.target);
+        if (!spot && named >= MAX_NAMED) spots.set(m.target, (spot = this.named(m.target)));
+        const removed = named++ < MAX_NAMED ? this.removedName(gone, m.target) : spot!;
         items.push(m.nextSibling ? { node: m.nextSibling, how: 'removed', removed } : { node: m.target, how: 'removed', atEnd: true, removed });
       }
     }
