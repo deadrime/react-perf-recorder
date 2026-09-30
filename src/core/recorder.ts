@@ -470,7 +470,8 @@ export class Recorder {
         lcp?.noteRecords(records, commit);
       };
       shifts?.start();
-      lcp?.start();
+      // A root with a child has committed: what the page holds did not all come in the HTML.
+      lcp?.start(this.roots.every((root) => !root.current.child));
     }
     this.updaters = this.hook.updaters ? new Map() : null;
     // A store or query notifies its subscribers before the recorder hears about it, so the fibers React just

@@ -19,7 +19,12 @@ interface Batch {
   first?: boolean;
 }
 
-/** The last change that could have made a node's content appear. */
+/** A node's last insertion, and its last source, style or text written: one does not overwrite the other. */
+interface Marks {
+  added?: Batch;
+  content?: { batch: Batch; how: 'attribute' | 'text'; name?: string };
+}
+
 interface Stamp {
   batch: Batch;
   how: 'added' | 'attribute' | 'text';
@@ -41,6 +46,9 @@ const MAX_CANDIDATES = 10;
 // Attributes that change what an element paints: an image's source, a background in its style.
 const CONTENT_ATTR = /^(src|srcset|poster|style|href|xlink:href)$/;
 const FONT_URL = /\.(woff2?|ttf|otf|eot)([?#]|$)/i;
+// Requests that never paint: a dev server's modules would crowd out the images.
+const NOT_PAINTED = /^(script|fetch|xmlhttprequest|beacon)$/;
+const MAX_RESOURCES = 2000;
 
 export const lcpSupported = () =>
   typeof PerformanceObserver !== 'undefined' && (PerformanceObserver.supportedEntryTypes ?? []).includes('largest-contentful-paint');
@@ -66,7 +74,12 @@ export function shortUrl(url: string): string {
 /** The largest contentful paint, its element's component, and what put that element on the page when. */
 export class LcpWatcher {
   private candidates: Array<{ candidate: LcpCandidate; el: WeakRef<Element> | null; stats: LcpStats }> = [];
-  private stamps = new WeakMap<Node, Stamp>();
+  private marks = new WeakMap<Node, Marks>();
+  /** Noting changes pays only in a recording that began before React's first commit, and only until an input. */
+  private stamping = false;
+  /** Seen as they come: the page's own buffer stops at 250 entries, which a dev server's modules fill first. */
+  private resources: PerformanceResourceTiming[] = [];
+  private resourceObserver: PerformanceObserver | null = null;
   private open: Batch | null = null;
   private commits = 0;
   /** What the page held when a recording from the load started: the HTML, before React's first commit. */
@@ -78,20 +91,32 @@ export class LcpWatcher {
 
   constructor(private options: LcpOptions) {}
 
-  start() {
-    if (this.options.fromLoad) this.initial = new WeakSet(document.body ? document.body.getElementsByTagName('*') : []);
-    // The browser looks for no larger paint after these, and the recorder need not note what appears after them.
+  /** `fresh`: React has committed nothing yet, so what is on the page came in the HTML. */
+  start(fresh: boolean) {
+    this.stamping = this.options.fromLoad && fresh;
+    if (this.stamping) this.initial = new WeakSet(document.body ? document.body.getElementsByTagName('*') : []);
+    // The browser looks for no larger paint after a person's input: a scroll by script or a synthetic key stops nothing.
     const input = (e: Event) => {
-      if (this.inputAt !== null) return;
-      // The window's own scroll only: a list scrolled inside the page stops nothing.
-      if (e.type === 'scroll' && e.target !== document && e.target !== window) return;
+      if (this.inputAt !== null || !e.isTrusted) return;
       this.inputAt = e.timeStamp;
+      this.stamping = false;
+      this.resourceObserver?.disconnect();
+      this.resourceObserver = null;
       this.off.forEach((off) => off());
       this.off = [];
     };
-    for (const type of ['pointerdown', 'keydown', 'scroll']) {
+    for (const type of ['pointerdown', 'keydown', 'wheel']) {
       window.addEventListener(type, input, true);
       this.off.push(() => window.removeEventListener(type, input, true));
+    }
+    try {
+      this.resourceObserver = new PerformanceObserver((list) => {
+        for (const r of list.getEntries() as PerformanceResourceTiming[])
+          if (!NOT_PAINTED.test(r.initiatorType) && this.resources.length < MAX_RESOURCES) this.resources.push(r);
+      });
+      this.resourceObserver.observe({ type: 'resource', buffered: true });
+    } catch {
+      this.resourceObserver = null;
     }
     try {
       this.observer = new PerformanceObserver((list) => list.getEntries().forEach((entry) => this.onEntry(entry as LcpEntry)));
@@ -103,6 +128,7 @@ export class LcpWatcher {
   }
 
   flush() {
+    this.resourceObserver?.takeRecords().forEach((r) => this.resources.push(r as PerformanceResourceTiming));
     this.observer?.takeRecords().forEach((entry) => this.onEntry(entry as LcpEntry));
   }
 
@@ -110,6 +136,9 @@ export class LcpWatcher {
     this.flush();
     this.observer?.disconnect();
     this.observer = null;
+    this.resourceObserver?.disconnect();
+    this.resourceObserver = null;
+    this.stamping = false;
     this.off.forEach((off) => off());
     this.off = [];
     this.open = null;
@@ -118,8 +147,7 @@ export class LcpWatcher {
 
   /** What the DOM watcher saw change: nodes put in, sources and styles written, text changed. */
   noteRecords(records: MutationRecord[], commit: boolean) {
-    // After an input no paint can become the largest: nothing more to stamp.
-    if (this.inputAt !== null || !records.length) return;
+    if (!this.stamping || !records.length) return;
     const batch: Batch = { t: performance.now(), frame: NaN, commit };
     this.pending.push(batch);
     if (this.pending.length === 1)
@@ -127,11 +155,21 @@ export class LcpWatcher {
         for (const b of this.pending) b.frame = ts;
         this.pending = [];
       });
+    const marksOf = (node: Node) => {
+      let marks = this.marks.get(node);
+      if (!marks) this.marks.set(node, (marks = {}));
+      return marks;
+    };
     for (const m of records) {
-      if (m.type === 'childList') m.addedNodes.forEach((node) => this.stamps.set(node, { batch, how: 'added' }));
+      if (m.type === 'childList')
+        m.addedNodes.forEach((node) => {
+          marksOf(node).added = batch;
+          // New text in an element is that element's content changing.
+          if (node.nodeType === Node.TEXT_NODE) marksOf(m.target).content = { batch, how: 'text' };
+        });
       else if (m.type === 'attributes') {
-        if (m.attributeName && CONTENT_ATTR.test(m.attributeName)) this.stamps.set(m.target, { batch, how: 'attribute', name: m.attributeName });
-      } else if (m.target.parentNode) this.stamps.set(m.target.parentNode, { batch, how: 'text' });
+        if (m.attributeName && CONTENT_ATTR.test(m.attributeName)) marksOf(m.target).content = { batch, how: 'attribute', name: m.attributeName };
+      } else if (m.target.parentNode) marksOf(m.target.parentNode).content = { batch, how: 'text' };
     }
     if (commit) this.open = batch;
   }
@@ -141,7 +179,7 @@ export class LcpWatcher {
     if (this.open) {
       this.open.id = id;
       // React's first only when the recording began before it.
-      this.open.first = this.options.fromLoad && this.commits === 0;
+      this.open.first = Boolean(this.initial) && this.commits === 0;
     }
     this.open = null;
     this.commits++;
@@ -186,9 +224,8 @@ export class LcpWatcher {
     // The panel's own text is not the page's paint. The browser names no element in its shadow tree, so with the panel
     // on the page a paint of no element is taken for the panel's: a removed skeleton goes with it.
     if (el ? inOwn(this.options.ownHost, el) : this.options.ownHost?.isConnected) return;
-    const activation = (performance.getEntriesByType?.('navigation')[0] as PerformanceNavigationTiming & { activationStart?: number })
-      ?.activationStart;
-    const since = (t: number) => round(Math.max(0, t - (activation ?? 0)));
+    const nav = performance.getEntriesByType?.('navigation')[0] as (PerformanceNavigationTiming & { activationStart?: number }) | undefined;
+    const since = (t: number) => round(Math.max(0, t - (nav?.activationStart ?? 0)));
     const kind: LcpElement['kind'] =
       el && /^(IMG|IMAGE)$/i.test(el.nodeName) ? 'image' : el?.nodeName === 'VIDEO' ? 'video' : entry.url ? 'background' : 'text';
     const element: LcpElement = {
@@ -199,16 +236,14 @@ export class LcpWatcher {
       ...(el?.isConnected ? { rect: rect(el.getBoundingClientRect()) } : {}),
     };
     const candidate: LcpCandidate = { ms: since(entry.startTime), atMs: round(entry.startTime - this.options.t0), size: entry.size, element };
-    const stats = this.statsFor(entry, candidate, el, since);
+    const stats = this.statsFor(entry, candidate, el, since, since(nav?.responseStart ?? 0));
     this.candidates.push({ candidate, el: el && typeof WeakRef === 'function' ? new WeakRef(el) : null, stats });
     // The first ones are kept: the skeleton or the text that was the largest before the content came.
     if (this.candidates.length > MAX_CANDIDATES + 1) this.candidates.splice(MAX_CANDIDATES, 1);
     if (this.shown()) this.options.onLcp(this.statsOf());
   }
 
-  private statsFor(entry: LcpEntry, candidate: LcpCandidate, el: Element | null, since: (t: number) => number): LcpStats {
-    const nav = performance.getEntriesByType?.('navigation')[0] as PerformanceNavigationTiming | undefined;
-    const ttfb = since(nav?.responseStart ?? 0);
+  private statsFor(entry: LcpEntry, candidate: LcpCandidate, el: Element | null, since: (t: number) => number, ttfb: number): LcpStats {
     const resource = entry.url ? this.resourceOf(entry.url, entry.startTime) : null;
     // As web-vitals splits it: https://web.dev/articles/optimize-lcp
     const requestAt = resource ? Math.max(ttfb, since(resource.requestStart || resource.startTime)) : ttfb;
@@ -222,7 +257,7 @@ export class LcpWatcher {
       ...candidate,
       phases: { ttfb, loadDelay: requestAt - ttfb, loadDuration: responseEnd - requestAt, renderDelay: paint - responseEnd },
       ...(mount ? { mount } : {}),
-      ...(entry.url && candidate.element.kind !== 'text'
+      ...(entry.url
         ? {
             image: {
               ...(lazy ? { lazy: true as const } : {}),
@@ -240,11 +275,19 @@ export class LcpWatcher {
   private mountOf(el: Element, since: (t: number) => number): LcpMount | undefined {
     let best: { stamp: Stamp; node: Node } | null = null;
     for (let n: Node | null = el; n; n = n.parentNode) {
-      const stamp = this.stamps.get(n);
-      // An ancestor's style or text is not the element's content. A change not painted yet is not this paint's; the
-      // paint's own time cannot tell, as after a long task it can be earlier than the change it painted (by 100 ms).
-      if (!stamp || (n !== el && stamp.how !== 'added') || Number.isNaN(stamp.batch.frame)) continue;
-      if (!best || stamp.batch.t > best.stamp.batch.t) best = { stamp, node: n };
+      const marks = this.marks.get(n);
+      if (!marks) continue;
+      // An ancestor's style or text is not the element's content.
+      const stamps: Stamp[] = [
+        ...(marks.added ? [{ batch: marks.added, how: 'added' as const }] : []),
+        ...(marks.content && n === el ? [marks.content] : []),
+      ];
+      for (const stamp of stamps) {
+        // A change not painted yet is not this paint's; the paint's own time cannot tell, as after a long task it can
+        // be earlier than the change it painted (by 100 ms).
+        if (Number.isNaN(stamp.batch.frame)) continue;
+        if (!best || stamp.batch.t > best.stamp.batch.t) best = { stamp, node: n };
+      }
     }
     // Nothing seen put it in: in the HTML only if it was there at the start, else the recorder came after its commit.
     if (!best) return this.initial?.has(el) ? { before: true } : undefined;
@@ -262,18 +305,22 @@ export class LcpWatcher {
       : { dom: true, ...common };
   }
 
+  /** Seen by the observer, and the page's buffer for a recording that did not see them come. */
+  private allResources(): PerformanceResourceTiming[] {
+    const buffered = (performance.getEntriesByType?.('resource') ?? []) as PerformanceResourceTiming[];
+    return this.resources.length ? [...this.resources, ...buffered] : buffered;
+  }
+
   private resourceOf(url: string, before: number): PerformanceResourceTiming | null {
-    const list = performance.getEntriesByName?.(url, 'resource') as PerformanceResourceTiming[] | undefined;
     let found: PerformanceResourceTiming | null = null;
-    for (const r of list ?? []) if (r.startTime <= before && (!found || r.startTime > found.startTime)) found = r;
+    for (const r of this.allResources()) if (r.name === url && r.startTime <= before && (!found || r.startTime > found.startTime)) found = r;
     return found;
   }
 
   /** A font that arrived between the text's mount and its paint: the text waited for it or was painted again with it. */
   private fontBefore(from: number, paint: number, since: (t: number) => number): { url: string; ms: number } | null {
     let found: { url: string; ms: number } | null = null;
-    for (const r of performance.getEntriesByType?.('resource') ?? []) {
-      const res = r as PerformanceResourceTiming;
+    for (const res of this.allResources()) {
       if (!FONT_URL.test(res.name)) continue;
       const end = since(res.responseEnd);
       if (end >= from && end <= paint && (!found || end > found.ms)) found = { url: shortUrl(res.name), ms: end };

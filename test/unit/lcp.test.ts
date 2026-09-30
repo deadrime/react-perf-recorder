@@ -8,15 +8,18 @@ const nextFrame = () => new Promise((resolve) => requestAnimationFrame(() => set
 
 describe('the LCP watcher on a page', () => {
   let deliver: ((entries: unknown[]) => void) | null = null;
+  let deliverResources: ((entries: unknown[]) => void) | null = null;
   const original = globalThis.PerformanceObserver;
 
   beforeEach(() => {
     class FakeObserver {
-      static supportedEntryTypes = ['largest-contentful-paint'];
-      constructor(callback: (list: { getEntries(): unknown[] }) => void) {
-        deliver = (entries) => callback({ getEntries: () => entries });
+      static supportedEntryTypes = ['largest-contentful-paint', 'resource'];
+      constructor(private callback: (list: { getEntries(): unknown[] }) => void) {}
+      observe({ type }: { type: string }) {
+        const give = (entries: unknown[]) => this.callback({ getEntries: () => entries });
+        if (type === 'resource') deliverResources = give;
+        else deliver = give;
       }
-      observe() {}
       disconnect() {}
       takeRecords() {
         return [];
@@ -27,6 +30,7 @@ describe('the LCP watcher on a page', () => {
   afterEach(() => {
     globalThis.PerformanceObserver = original;
     deliver = null;
+    deliverResources = null;
   });
 
   const paint = (element: Element | null, startTime: number, size = 1000, url = '') => ({
@@ -37,7 +41,7 @@ describe('the LCP watcher on a page', () => {
     renderTime: startTime,
     loadTime: 0,
   });
-  const watcher = (more: { fromLoad?: boolean; t0?: number; ownHost?: Element | null } = {}) => {
+  const watcher = (more: { fromLoad?: boolean; t0?: number; ownHost?: Element | null; fresh?: boolean } = {}) => {
     const streamed: LcpStats[] = [];
     const w = new LcpWatcher({
       t0: more.t0 ?? 0,
@@ -47,7 +51,7 @@ describe('the LCP watcher on a page', () => {
       fromLoad: more.fromLoad ?? true,
       onLcp: (lcp) => streamed.push(lcp),
     });
-    w.start();
+    w.start(more.fresh ?? true);
     return { w, streamed };
   };
 
@@ -130,7 +134,12 @@ describe('the LCP watcher on a page', () => {
   it('stops noting changes at the first input, and says when it came', async () => {
     document.body.innerHTML = '<div id="slot"></div>';
     const { w } = watcher();
-    window.dispatchEvent(new Event('pointerdown'));
+    // A scroll by script and a synthetic key stop nothing; a person's tap does.
+    window.dispatchEvent(new Event('wheel'));
+    window.dispatchEvent(new KeyboardEvent('keydown'));
+    const tap = new Event('pointerdown');
+    Object.defineProperty(tap, 'isTrusted', { value: true });
+    window.dispatchEvent(tap);
     const observer = new MutationObserver(() => {});
     observer.observe(document.body, { subtree: true, childList: true });
     document.getElementById('slot')!.innerHTML = '<p>Late text</p>';
@@ -164,6 +173,63 @@ describe('the LCP watcher on a page', () => {
     const lcp = w.result()!;
     expect(lcp.element.node).toBe('p#p14');
     expect(lcp.candidates.map((c) => c.element.node)).toEqual(Array.from({ length: 10 }, (_, i) => `p#p${i}`));
+    w.stop();
+  });
+
+  it('keeps an insertion when a style is written on the inserted node later, and takes new text for the content', async () => {
+    document.body.innerHTML = '<div id="slot"></div><h1 id="title"></h1>';
+    const { w } = watcher();
+    w.commitDone(0);
+    const observer = new MutationObserver(() => {});
+    observer.observe(document.body, { subtree: true, childList: true, attributes: true, characterData: true });
+    const wrap = document.createElement('div');
+    wrap.className = 'wrap';
+    wrap.innerHTML = '<img alt="" src="/hero.jpg">';
+    document.getElementById('slot')!.appendChild(wrap);
+    w.noteRecords(observer.takeRecords(), true);
+    w.commitDone(5);
+    await nextFrame();
+    wrap.style.opacity = '1';
+    document.getElementById('title')!.appendChild(document.createTextNode('Kitchen'));
+    w.noteRecords(observer.takeRecords(), true);
+    w.commitDone(6);
+    observer.disconnect();
+    await nextFrame();
+    deliver!([paint(document.querySelector('img'), performance.now(), 5000, '/hero.jpg')]);
+    expect(w.result()!.mount).toMatchObject({ commit: 5, change: 'added', by: { node: 'div#slot > div.wrap' } });
+    deliver!([paint(document.getElementById('title'), performance.now(), 9000)]);
+    expect(w.result()!.mount).toMatchObject({ commit: 6, change: 'text' });
+    w.stop();
+  });
+
+  it('notes nothing in a recording that began after React committed, and claims no HTML', async () => {
+    document.body.innerHTML = '<div id="slot"></div><h1>Rendered</h1>';
+    const { w } = watcher({ fresh: false });
+    const observer = new MutationObserver(() => {});
+    observer.observe(document.body, { subtree: true, childList: true });
+    document.getElementById('slot')!.innerHTML = '<p>Late</p>';
+    w.noteRecords(observer.takeRecords(), true);
+    w.commitDone(0);
+    observer.disconnect();
+    await nextFrame();
+    deliver!([paint(document.querySelector('h1'), performance.now(), 800), paint(document.querySelector('p'), performance.now(), 900)]);
+    expect(w.result()!.mount).toBeUndefined();
+    expect(w.result()!.candidates[0].element.node).toBe('h1');
+    w.stop();
+  });
+
+  it('times an image by the requests it saw come, past the page buffer a dev server fills', () => {
+    document.body.innerHTML = '<img id="hero" alt="" src="/hero.jpg">';
+    const { w } = watcher();
+    const url = `${location.origin}/hero.jpg`;
+    deliverResources!([
+      { name: `${location.origin}/src/main.tsx`, initiatorType: 'script', startTime: 5, requestStart: 5, responseEnd: 9 },
+      { name: url, initiatorType: 'img', startTime: 300, requestStart: 310, responseEnd: 700 },
+    ]);
+    deliver!([paint(document.getElementById('hero'), 720, 5000, url)]);
+    const lcp = w.result()!;
+    expect(lcp.image).toMatchObject({ initiator: 'img', responseEndMs: 700 });
+    expect(lcp.phases.loadDuration).toBe(390);
     w.stop();
   });
 });
