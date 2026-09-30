@@ -7,6 +7,8 @@ import { causeText, commitCausesOf, moveOf, moveText, nearMissOf, nodeText, runM
 import { Flame } from './Flame';
 import { CountedBadge, runWhen, ShiftLegend, shiftValue, type ShiftFound } from './Shifts';
 import { ReasonLine, StepView } from './Stats';
+import { LcpFound, lcpWho } from './Lcp';
+import { mountText, phasesText, secs } from '../../shared/lcp';
 
 /**
  * The colour says what woke the commit; the eye finds the rhythm of one store or one timer faster than a list does.
@@ -463,6 +465,39 @@ function ShiftDetail({ rec, run, onCommit }: { rec: RecordingV2; run: ShiftRun; 
   );
 }
 
+/** The largest paint: its element, its phases, and what put it on the page, with the commit to open for more. */
+function LcpDetail({ rec, onCommit }: { rec: RecordingV2; onCommit: (i: number) => void }): JSX.Element | null {
+  const lcp = rec.lcp;
+  if (!lcp) return null;
+  const mount = lcp.mount;
+  const commit = mount && 'commit' in mount ? mount.commit : null;
+  return (
+    <div class="tl-detail" data-rpr="lcp-detail">
+      <div class="tl-head">
+        <b title={`${secs(lcp.atMs)} into the recording`}>{`LCP ${secs(lcp.ms)}`}</b>
+        <span>{lcpWho(lcp)}</span>
+      </div>
+      <div class="tl-row">
+        <span class="tl-row-label">phases</span>
+        <span>{phasesText(lcp.phases)}</span>
+      </div>
+      {mount ? (
+        <div class="tl-row">
+          <span class="tl-row-label">mount</span>
+          <span>
+            {mountText(mount, commitCausesOf(rec))}
+            {commit !== null && rec.commits.list[commit] ? (
+              <button type="button" class="tl-link" data-rpr="lcp-commit" onClick={() => onCommit(commit)}>
+                open the commit
+              </button>
+            ) : null}
+          </span>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 /**
  * The whole recording in one row, whatever the zoom: the density of commits, and a box around the part the tracks
  * are showing. Dragging across it picks a range to look at, the way the overview of a profiler does.
@@ -553,6 +588,9 @@ export function Timeline({
   pickedRun = null,
   onPickRun,
   runOutlined = null,
+  lcpPicked = false,
+  onPickLcp,
+  lcpFound = null,
 }: {
   rec: RecordingV2;
   litCause?: number | null;
@@ -566,6 +604,10 @@ export function Timeline({
   onPickRun?: (i: number | null) => void;
   /** What of the picked run is on the page now. */
   runOutlined?: ShiftFound | null;
+  /** The largest paint, marked on the tracks and picked here or in its section. */
+  lcpPicked?: boolean;
+  onPickLcp?: (on: boolean) => void;
+  lcpFound?: boolean | null;
 }): JSX.Element | null {
   const [picked, setPicked] = useState<number | null>(null);
   const [pickedAction, setPickedAction] = useState<number | null>(null);
@@ -748,10 +790,10 @@ export function Timeline({
   useEffect(() => () => void onOutline?.(null), []);
   // One thing is picked at a time: a shift picked in its section takes the place of a commit picked here.
   useEffect(() => {
-    if (pickedRun === null) return;
+    if (pickedRun === null && !lcpPicked) return;
     setPicked(null);
     setPickedAction(null);
-  }, [pickedRun]);
+  }, [pickedRun, lcpPicked]);
   const shiftMarks = useMemo(() => {
     const peak = runs.reduce((most, run) => Math.max(most, run.value), 0.001);
     return runs.map((run, i) => ({
@@ -764,6 +806,8 @@ export function Timeline({
     }));
   }, [runs, scale]);
   if (!rec.commits.list.length) return null;
+  // Painted before the recording began, it has no place on its tracks.
+  const lcpX = rec.lcp && rec.lcp.atMs >= 0 && rec.lcp.atMs <= rec.durationMs ? px(rec.lcp.atMs * scale) : null;
   /**
    * Zooming holds one moment still: the one under the pointer when the wheel turns, the middle of the view when a
    * button is pressed. Without that, every step throws away the place being looked at.
@@ -816,13 +860,14 @@ export function Timeline({
   const inBar = pickedBar?.ids.length ?? 1;
   const onView = (x: number, w = 0) => x + w >= view.from - VIEW_MARGIN_PX && x <= view.to + VIEW_MARGIN_PX;
   /** Back to the whole recording with nothing picked: what the tracks showed when the report opened. */
-  const narrowed = zoom > MIN_ZOOM || picked !== null || pickedAction !== null || litCause !== null || pickedRun !== null;
+  const narrowed = zoom > MIN_ZOOM || picked !== null || pickedAction !== null || litCause !== null || pickedRun !== null || lcpPicked;
   const showAll = () => {
     scrollTo.current = null;
     setZoom(MIN_ZOOM);
     setPicked(null);
     setPickedAction(null);
     onPickRun?.(null);
+    onPickLcp?.(false);
     onReset?.();
     requestAnimationFrame(() => {
       const el = scroll.current;
@@ -834,6 +879,7 @@ export function Timeline({
   };
   const pickCommit = (i: number) => {
     onPickRun?.(null);
+    onPickLcp?.(false);
     setPicked(i);
     const owner = rec.commits.list[i]?.actionId;
     setPickedAction(owner !== undefined ? owner : null);
@@ -929,6 +975,7 @@ export function Timeline({
             {run && pickedMark ? (
               <span class="tl-band" style={`left:${pickedMark.x + pickedMark.w / 2}px;width:${Math.max(8, pickedMark.w + 6)}px`} />
             ) : null}
+            {lcpX !== null ? <span class="tl-lcp" data-picked={lcpPicked ? 'true' : undefined} style={`left:${lcpX}px`} /> : null}
             <div class="tl-lane tl-actions" style="height:14px">
               {actions
                 .filter(({ x, w }) => onView(x, w))
@@ -942,11 +989,25 @@ export function Timeline({
                     onClick={() => {
                       if (panned.current) return;
                       onPickRun?.(null);
+                      onPickLcp?.(false);
                       setPickedAction(a.id);
                       setPicked(null);
                     }}
                   />
                 ))}
+              {lcpX !== null && rec.lcp ? (
+                <button
+                  type="button"
+                  class="tl-lcp-tag"
+                  data-rpr="tl-lcp"
+                  data-picked={lcpPicked ? 'true' : undefined}
+                  style={`left:${lcpX}px`}
+                  title={`Largest paint, LCP ${secs(rec.lcp.ms)}: ${lcpWho(rec.lcp)}`}
+                  onClick={() => !panned.current && onPickLcp?.(!lcpPicked)}
+                >
+                  LCP
+                </button>
+              ) : null}
             </div>
             {runs.length ? (
               <div class="tl-lane tl-shifts" data-rpr="tl-shifts" style={`height:${SHIFTS_LANE_H}px`}>
@@ -1000,7 +1061,11 @@ export function Timeline({
           </div>
         </div>
       </div>
-      {run ? (
+      {lcpPicked ? (
+        lcpFound !== null ? (
+          <LcpFound found={lcpFound} id="tl-lcp-outlined" />
+        ) : null
+      ) : run ? (
         runOutlined ? (
           <ShiftLegend run={run} found={runOutlined} id="tl-outlined" />
         ) : null
@@ -1009,7 +1074,9 @@ export function Timeline({
           {outlined ? `◻ outlined on the page: ${outlined}` : 'not on the page now'}
         </p>
       ) : null}
-      {run ? (
+      {lcpPicked ? (
+        <LcpDetail rec={rec} onCommit={pickCommit} />
+      ) : run ? (
         <ShiftDetail rec={rec} run={run} onCommit={pickCommit} />
       ) : commit ? (
         <CommitDetail rec={rec} commit={commit} more={inBar - 1} />

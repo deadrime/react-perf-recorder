@@ -155,6 +155,17 @@ describe('the LCP watcher on a page', () => {
     w.stop();
   });
 
+  it("takes no click on the panel, its Stop, for the page's input", () => {
+    document.body.innerHTML = '<div id="host"><button>Stop</button></div><h1>Title</h1>';
+    const { w } = watcher({ ownHost: document.getElementById('host') });
+    const click = new Event('pointerdown', { bubbles: true });
+    Object.defineProperty(click, 'isTrusted', { value: true });
+    document.querySelector('button')!.dispatchEvent(click);
+    deliver!([paint(document.querySelector('h1'), performance.now(), 9000)]);
+    expect(w.result()!.inputAtMs).toBeUndefined();
+    w.stop();
+  });
+
   it("leaves out the panel's own paints: its elements, and a paint of no element while it is on the page", () => {
     document.body.innerHTML = '<div id="host"></div><h1>Title</h1>';
     const host = document.getElementById('host')!;

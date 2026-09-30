@@ -102,7 +102,8 @@ export class LcpWatcher {
     if (this.stamping) this.initial = new WeakSet(document.body ? document.body.getElementsByTagName('*') : []);
     // The browser looks for no larger paint after a person's input: a scroll by script or a synthetic key stops nothing.
     const input = (e: Event) => {
-      if (this.inputAt !== null || !e.isTrusted) return;
+      // A click on the panel is its Stop, not the page's input.
+      if (this.inputAt !== null || !e.isTrusted || inOwn(this.options.ownHost, e.target as Node | null)) return;
       this.inputAt = e.timeStamp;
       this.stamping = false;
       this.resourceObserver?.disconnect();

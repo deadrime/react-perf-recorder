@@ -171,6 +171,11 @@ header .live { flex: 1; color: var(--muted-soft); white-space: nowrap; overflow:
 .tl-shift[data-tone="counted"] { background: var(--flash-hot); }
 .tl-shift[data-tone="near"] { background: var(--warn); }
 .tl-shift[data-picked="true"] { outline: 1px solid var(--text-strong); }
+/* The largest paint: a line down the tracks, and its tag on the actions lane to pick it by. */
+.tl-lcp { position: absolute; top: 0; bottom: 12px; width: 0; border-left: 1px dashed color-mix(in srgb, var(--pick) 70%, transparent); pointer-events: none; }
+.tl-lcp[data-picked="true"] { border-left-style: solid; }
+.tl-lcp-tag { position: absolute; top: 1px; transform: translateX(-50%); padding: 0 3px; border: 0; border-radius: 3px; background: var(--pick); color: #fff; font-size: 9px; line-height: 12px; cursor: pointer; }
+.tl-lcp-tag[data-picked="true"] { outline: 1px solid var(--text-strong); }
 @media (pointer: coarse) { .tl-shift::before { inset: -4px -8px 0; } }
 .tl-axis { position: relative; height: 12px; }
 .tl-tick { position: absolute; top: 1px; color: var(--faint); font-size: 9px; transform: translateX(-50%); white-space: nowrap; }
@@ -309,6 +314,23 @@ details.fold[open] > summary::before { content: '▾'; }
 .shift-where { color: var(--muted); overflow-wrap: anywhere; }
 .shift .tl-outlined { margin: 0 0 4px 4px; }
 .shift-hint { margin: 0 0 4px; font-size: 11px; }
+.lcp .shift { border-bottom: 0; }
+.lcp .shift-move { overflow-wrap: anywhere; }
+.lcp-phases { margin: 4px 4px 6px; }
+.lcp-bar { display: flex; gap: 1px; height: 8px; border-radius: 2px; overflow: hidden; }
+.lcp-bar .lcp-part { flex-basis: 0; min-width: 2px; }
+.lcp-part[data-phase="ttfb"] { background: var(--flash-wasted); }
+.lcp-part[data-phase="loadDelay"] { background: var(--warn); }
+.lcp-part[data-phase="loadDuration"] { background: var(--pick); }
+.lcp-part[data-phase="renderDelay"] { background: var(--flash-hot); }
+.lcp-legend { display: flex; flex-wrap: wrap; gap: 2px 12px; margin-top: 4px; font-size: 11px; color: var(--text-2); font-variant-numeric: tabular-nums; }
+.lcp-legend .lg { display: inline-flex; align-items: center; gap: 5px; }
+.lcp-legend i { flex: none; width: 10px; height: 8px; border-radius: 2px; }
+.lcp-legend .lg[data-largest="true"] { color: var(--text-strong); font-weight: 600; }
+.lcp-findings { margin: 0 4px 4px; padding-left: 16px; color: var(--text-2); }
+.lcp-findings li { margin: 2px 0; }
+.lcp-findings li:first-child { color: var(--text); }
+.lcp > .muted { margin: 2px 4px 4px; font-size: 11px; }
 /* The key to the page's drawing: the same colours and strokes as the canvas. */
 .shift-legend { display: flex; flex-wrap: wrap; gap: 4px 12px; margin: 4px 0 6px 4px; font-size: 11px; color: var(--text-2); }
 .shift-legend .lg { display: inline-flex; align-items: center; gap: 5px; }

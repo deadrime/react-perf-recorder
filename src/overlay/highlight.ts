@@ -84,6 +84,7 @@ export class Highlighter implements HighlightSink {
   private pinned: Array<{ fiber: Fiber; label: string }> = [];
   private shift: ShiftPin | null = null;
   private shiftSince = 0;
+  private element: { el: Element; label: string } | null = null;
 
   constructor(parent: ShadowRoot | Element) {
     const host = parent instanceof ShadowRoot ? parent.host : parent;
@@ -106,6 +107,12 @@ export class Highlighter implements HighlightSink {
   /** Outlines these components until the next call; an empty list takes them away. */
   pin(items: Array<{ fiber: Fiber; label: string }>) {
     this.pinned = items;
+    this.redraw();
+  }
+
+  /** Outlines one element of the page, the largest paint's, until the next call; null takes it away. */
+  pinElement(pin: { el: Element; label: string } | null) {
+    this.element = pin;
     this.redraw();
   }
 
@@ -290,8 +297,7 @@ export class Highlighter implements HighlightSink {
 
   /** A box around everything a picked component draws, in the colour of picking, and its label above. */
   private drawPinned(ctx: CanvasRenderingContext2D) {
-    if (!this.pinned.length) return;
-    const [r, g, b] = this.colours[4];
+    if (!this.pinned.length && !this.element) return;
     ctx.font = '11px ui-monospace, SFMono-Regular, Menlo, monospace';
     for (const { fiber, label } of this.pinned) {
       const rects = nearestHosts(currentOf(fiber), 200)
@@ -301,20 +307,28 @@ export class Highlighter implements HighlightSink {
       if (!rects.length) continue;
       const x = Math.min(...rects.map((rect) => rect.left));
       const y = Math.min(...rects.map((rect) => rect.top));
-      const w = Math.max(...rects.map((rect) => rect.right)) - x;
-      const h = Math.max(...rects.map((rect) => rect.bottom)) - y;
-      ctx.fillStyle = `rgba(${r},${g},${b},0.08)`;
-      ctx.fillRect(x, y, w, h);
-      ctx.strokeStyle = `rgb(${r},${g},${b})`;
-      ctx.lineWidth = 2;
-      ctx.strokeRect(x + 1, y + 1, Math.max(0, w - 2), Math.max(0, h - 2));
-      const width = ctx.measureText(label).width + 8;
-      const top = y > 16 ? y - 16 : y;
-      ctx.fillStyle = `rgb(${r},${g},${b})`;
-      ctx.fillRect(x, top, width, 16);
-      ctx.fillStyle = '#fff';
-      ctx.fillText(label, x + 4, top + 12);
+      this.drawPick(ctx, x, y, Math.max(...rects.map((rect) => rect.right)) - x, Math.max(...rects.map((rect) => rect.bottom)) - y, label);
     }
+    const pinned = this.element;
+    if (pinned?.el.isConnected) {
+      const rect = pinned.el.getBoundingClientRect();
+      this.drawPick(ctx, rect.left, rect.top, rect.width, rect.height, pinned.label);
+    }
+  }
+
+  private drawPick(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, label: string) {
+    const [r, g, b] = this.colours[4];
+    ctx.fillStyle = `rgba(${r},${g},${b},0.08)`;
+    ctx.fillRect(x, y, w, h);
+    ctx.strokeStyle = `rgb(${r},${g},${b})`;
+    ctx.lineWidth = 2;
+    ctx.strokeRect(x + 1, y + 1, Math.max(0, w - 2), Math.max(0, h - 2));
+    const width = ctx.measureText(label).width + 8;
+    const top = y > 16 ? y - 16 : y;
+    ctx.fillStyle = `rgb(${r},${g},${b})`;
+    ctx.fillRect(x, top, width, 16);
+    ctx.fillStyle = '#fff';
+    ctx.fillText(label, x + 4, top + 12);
   }
 
   /** A picked shift: the culprit hatched in a red frame, each moved element blue now and dashed where it was, an arrow between. */
