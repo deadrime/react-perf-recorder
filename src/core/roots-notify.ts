@@ -9,8 +9,8 @@ const listeners = new Set<Listener>();
  * root itself: it is found wherever the app mounted it, not only where a search of the page would look.
  */
 export function noteRoot(root?: { _internalRoot?: FiberRoot | null }) {
-  if (root?._internalRoot) registerRoot(root._internalRoot);
-  const created = root?._internalRoot ?? undefined;
+  const created = root?._internalRoot || undefined;
+  if (created) registerRoot(created);
   listeners.forEach((listener) => listener(created));
 }
 

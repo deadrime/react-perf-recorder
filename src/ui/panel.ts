@@ -1,5 +1,6 @@
 import type { Engine, Owner, Saved } from '../core/engine';
 import { currentOf, isHydrating, type Fiber, type FiberRoot } from '../core/fiber';
+import { reactVersion } from '../core/react-compat';
 import { scopeNames, type ScopeHandle } from '../core/scope';
 import type { Highlighter } from '../overlay/highlight';
 import { NOTE_IN_PANEL, renderPanel, type PanelHandlers, type PanelViewProps } from './components/PanelView';
@@ -90,13 +91,16 @@ export class Panel {
   }
 
   /**
-   * Keeps the host out of the page while `root` hydrates the whole document: React 18 takes a node on <html> it did
-   * not render for a mismatch and renders the page again on the client, the host gone with it.
+   * Keeps the host off the page while `root` hydrates the whole document: React 18 takes a node on <html> it did
+   * not render for a mismatch and renders the page again on the client. React 19 steps over it.
    */
   awaitHydration(root: FiberRoot) {
-    if (!this.host.isConnected || !isHydrating(root) || !(root.containerInfo as Node)?.contains?.(document.documentElement)) return;
+    if (Number.parseInt(reactVersion() ?? '', 10) >= 19 || !this.host.isConnected || !isHydrating(root)) return;
+    if (!(root.containerInfo as Node)?.contains?.(document.documentElement)) return;
     this.host.remove();
-    const back = () => (isHydrating(root) ? setTimeout(back, 20) : this.mount());
+    // A root that never commits must not keep the panel away, or the timer running, for good.
+    const until = Date.now() + 10_000;
+    const back = () => (isHydrating(root) && Date.now() < until ? setTimeout(back, 20) : this.mount());
     setTimeout(back, 20);
   }
 

@@ -1,8 +1,9 @@
-import { act } from 'react';
+import { act, version } from 'react';
 import { hydrateRoot } from 'react-dom/client';
 import { renderToString } from 'react-dom/server';
 import { boot } from '../../src/client';
 import { noteRoot } from '../../src/core/roots-notify';
+import { GLOBAL_KEY } from '../../src/shared/schema';
 
 /** React Router and Remix render the whole document on the server and hydrate `document` itself. */
 const Document = () => (
@@ -42,13 +43,14 @@ describe('a page React hydrates whole', () => {
     await act(async () => {
       root = hydrateRoot(document, <Document />, { onRecoverableError: (error) => errors.push(error) });
       noteRoot(root as unknown as { _internalRoot?: never });
-      // React 18 would take a node it did not render on <html> for a mismatch and render the page on the client.
-      expect(host.isConnected).toBe(false);
+      // React 18 takes a node it did not render on <html> for a mismatch; React 19 steps over it.
+      expect(host.isConnected).toBe(Number.parseInt(version, 10) >= 19);
     });
     expect(errors).toEqual([]);
 
-    await new Promise((resolve) => setTimeout(resolve, 50));
-    expect(host.parentNode).toBe(document.documentElement);
+    await vi.waitFor(() => expect(host.parentNode).toBe(document.documentElement));
     act(() => root.unmount());
+    host.remove();
+    delete window[GLOBAL_KEY];
   });
 });
