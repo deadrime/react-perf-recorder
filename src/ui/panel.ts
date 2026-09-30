@@ -1,5 +1,6 @@
 import type { Engine, Owner, Saved } from '../core/engine';
-import { currentOf, type Fiber, type FiberRoot } from '../core/fiber';
+import { currentOf, isHydrating, type Fiber, type FiberRoot } from '../core/fiber';
+import { reactVersion } from '../core/react-compat';
 import { scopeNames, type ScopeHandle } from '../core/scope';
 import type { Highlighter, ShiftPin } from '../overlay/highlight';
 import { changeText, moveOf } from '../shared/shifts';
@@ -90,6 +91,20 @@ export class Panel {
   mount() {
     document.documentElement.appendChild(this.host);
     this.syncIdleHighlight();
+  }
+
+  /**
+   * Keeps the host off the page while `root` hydrates the whole document: React 18 takes a node on <html> it did
+   * not render for a mismatch and renders the page again on the client. React 19 steps over it.
+   */
+  awaitHydration(root: FiberRoot) {
+    if (Number.parseInt(reactVersion() ?? '', 10) >= 19 || !this.host.isConnected || !isHydrating(root)) return;
+    if (!(root.containerInfo as Node)?.contains?.(document.documentElement)) return;
+    this.host.remove();
+    // A root that never commits must not keep the panel away, or the timer running, for good.
+    const until = Date.now() + 10_000;
+    const back = () => (isHydrating(root) && Date.now() < until ? setTimeout(back, 20) : this.mount());
+    setTimeout(back, 20);
   }
 
   get shadowRoot() {

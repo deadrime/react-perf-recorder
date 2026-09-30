@@ -7,6 +7,7 @@ import type { VitePluginLike } from './plugin-api';
 import { ENDPOINT, type JsonValue } from '../shared/schema';
 import { addComponentNames, DEFAULT_WRAPPERS, type ComponentNamesOptions } from './component-names';
 import { ENTRY_ID, entryCode, RESOLVED_ENTRY_ID, runtimeSpecifier } from './entry';
+import { fixJsxLines } from './jsx-lines';
 import { optimizeDepsFor, transformServedDep } from './helpers/dep-transform';
 import { cleanId, createFilter } from './helpers/filter';
 import { proxyModule } from './helpers/proxy-module';
@@ -53,6 +54,16 @@ function resolvable(specifier: string, root = process.cwd()): boolean {
     return true;
   } catch {
     return false;
+  }
+}
+
+/** The app's React major; 0 when there is none to find. */
+function reactMajor(root: string): number {
+  try {
+    const pkg = createRequire(path.join(path.resolve(root), 'package.json'))('react/package.json') as { version?: string };
+    return Number.parseInt(pkg.version ?? '', 10) || 0;
+  } catch {
+    return 0;
   }
 }
 
@@ -235,6 +246,27 @@ export function perfRecorder(options: PerfRecorderOptions = {}): VitePluginLike[
     },
   };
 
+  // After esbuild (no `enforce`): it is esbuild that writes the element lines React 18 reports; React 19 reads its
+  // own stack through the map instead.
+  let react18 = true;
+  const jsxLines: Plugin = {
+    name: 'react-perf-recorder:jsx-lines',
+    apply,
+    configResolved(config) {
+      react18 = reactMajor(config.root) < 19;
+    },
+    transform(code, id, opts) {
+      if (!react18 || onServer(this, opts) || id.startsWith('\0') || id.includes('/node_modules/') || !code.includes('jsxDEV(')) return null;
+      try {
+        const fixed = fixJsxLines(code, cleanId(id), () => this.getCombinedSourcemap() as unknown as ReturnType<Parameters<typeof fixJsxLines>[2]>);
+        return fixed ? { code: fixed, map: null } : null;
+      } catch {
+        // A map it cannot read: the lines stay as they were, the module still loads.
+        return null;
+      }
+    },
+  };
+
   const wrapped: Plugin[] = plugins
     .filter((p) => p.vite)
     .map((p) => {
@@ -275,7 +307,7 @@ export function perfRecorder(options: PerfRecorderOptions = {}): VitePluginLike[
       } satisfies Plugin;
     });
 
-  return [core, ...wrapped] as unknown as VitePluginLike[];
+  return [core, ...wrapped, jsxLines] as unknown as VitePluginLike[];
 }
 
 export { definePerfRecorderPlugin, type BuildContext, type PerfRecorderPlugin, type VitePluginLike } from './plugin-api';

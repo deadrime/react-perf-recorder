@@ -124,6 +124,7 @@ export function boot(config: ClientConfig, plugins: PluginEntry[], hot?: HotCont
     panel.setHighlighter(highlighter);
     engine.attachUi(highlighter, panel.host);
     panel.mount();
+    onRootCreated((root) => root && panel?.awaitHydration(root));
     onSitesMapped(() => panel?.redraw());
   }
   const pending = takeRecordOnLoad();

@@ -247,6 +247,11 @@ export function registerRoot(root: FiberRoot) {
   created.add(new WeakRef(root));
 }
 
+/** A root made by hydrateRoot that has not committed its first render yet. */
+export function isHydrating(root: FiberRoot): boolean {
+  return (root.current?.memoizedState as { isDehydrated?: boolean } | null)?.isDehydrated === true;
+}
+
 /** A framework's own dev overlay, a React root of its own: Next.js renders its into `<nextjs-portal>`. */
 export function isDevOverlay(container: Node | null | undefined): boolean {
   const host = (container?.getRootNode?.() as ShadowRoot | undefined)?.host;
