@@ -7,7 +7,7 @@ export const touchedHas = (touched: Set<Fiber>, f: Fiber) => touched.has(f) || (
  * The component whose render made a node's element — its owner in a development build, whatever wraps the element
  * where it is mounted (a provider, a Card) — else the nearest component above it. A text node goes by its element.
  */
-function ownerOf(node: Node): Fiber | null {
+export function ownerOf(node: Node): Fiber | null {
   let f = fiberFromNode(node);
   while (f && f.tag === Tag.HostText) f = f.return;
   // React 19 can put a server component's info here instead of a fiber.
@@ -55,6 +55,8 @@ export class DomWatcher {
   readonly counts: DomCounts = { text: 0, attr: 0, child: 0 };
   private observer: MutationObserver | null = null;
   private scopeHosts: Element[] | null = null;
+  /** Handed every batch as it is taken: `commit` when a commit took it, else it came between commits. */
+  onRecords: ((records: MutationRecord[], commit: boolean) => void) | null = null;
 
   setScopeHosts(hosts: Element[] | null) {
     this.scopeHosts = hosts;
@@ -131,6 +133,7 @@ export class DomWatcher {
   }
 
   private consume(records: MutationRecord[], touched: Set<Fiber> | null) {
+    if (records.length) this.onRecords?.(records, touched !== null);
     // What each node held before this batch touched it: the old value of the first write to reach it.
     const before = new Map<Node, Map<string, string | null>>();
     for (const m of records) {

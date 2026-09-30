@@ -21,7 +21,8 @@ numbers belong in the answer.
 2. **Read** the `get_recording` summary. Follow the hook chain to the app's own code, left of `[package]`, and ask for
    another section only for what the summary left open. When the page is slow while it renders little — a render that
    takes long rather than comes often, work outside React — the time is the question, not the count: record with
-   `cpu` and read section `cpu` (`references/reading-a-recording.md`).
+   `cpu` and read section `cpu` (`references/reading-a-recording.md`). When the page jumps rather than lags — content
+   pushed down, a sheet that moves the layout — read section `shifts`.
 3. **Check before you conclude.** A reason line summarizes the recording; it is not a proof. Open the code at its
    `file:line` and find the mechanism there: the `setState`, the selector, the prop built in render. A claim about
    one component — it re-renders, `memo` holds, the fix helped — stands on that component's own counts in
@@ -55,7 +56,7 @@ Work through the `react-perf-recorder` MCP tools: each one says in its descripti
 
 - `references/recording-yourself.md` — no recording of the person's: their steps as a scenario of your own.
 - `references/measuring-a-fix.md` — before and after: replay or script, a worktree for the change, reading the result.
-- `references/reading-a-recording.md` — roots, reasons, hook chains, components and their ways, memos, growth (leaks), CPU.
+- `references/reading-a-recording.md` — roots, reasons, hook chains, components and their ways, memos, growth (leaks), CPU, layout shifts.
 - `references/causes-and-actions.md` — what scheduled each commit, the person's actions, plugin sections, traps.
 - `references/panel.md` — the panel, for guiding a person who records it themselves.
 - `references/from-scripts.md` — the page API for a script of your own, and the CLI when the MCP tools are missing.

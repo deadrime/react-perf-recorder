@@ -1,4 +1,5 @@
 import { GROWTH_KEYS, type ActionRecord, type RecordingV2, type RootStat } from './schema';
+import { shiftsByElement } from './shifts';
 import { actionText, wastingRoots } from './summary';
 import { pageAddress } from './url';
 
@@ -345,6 +346,22 @@ export function compareRecordings(a: RecordingV2, b: RecordingV2, options: Compa
             ...(a.growth.retained?.collected && b.growth.retained?.collected
               ? { retained: delta(a.growth.retained.retained ?? 0, b.growth.retained.retained ?? 0) }
               : {}),
+          },
+        }
+      : {}),
+    // CLS and what a slower device would add, and each element that moved: "the drawer no longer shifts" is one line.
+    ...(a.shifts && b.shifts
+      ? {
+          shifts: {
+            cls: delta(a.shifts.cls.value, b.shifts.cls.value),
+            nearMiss: delta(a.shifts.cls.nearMiss, b.shifts.cls.nearMiss),
+            moved: (() => {
+              const [x, y] = [shiftsByElement(a.shifts!.list), shiftsByElement(b.shifts!.list)];
+              return [...new Set([...x.keys(), ...y.keys()])]
+                .map((key) => ({ key, ...delta(x.get(key)?.total ?? 0, y.get(key)?.total ?? 0) }))
+                .sort((p, q) => Math.abs(q.delta ?? 0) - Math.abs(p.delta ?? 0))
+                .slice(0, top);
+            })(),
           },
         }
       : {}),

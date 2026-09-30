@@ -9,6 +9,7 @@ import { app } from './app-router';
 import { BASE } from './base';
 import { Catalogue } from './Demo';
 import { DocsPage } from './Docs';
+import { ShiftsPage } from './shifts/ShiftsPage';
 
 const client = new QueryClient();
 // `/` is the demo: the cards that lead into the app, each on the page of one seeded bug.
@@ -21,6 +22,7 @@ const router = createBrowserRouter(
     { path: '/case/:n', element: <Layout /> },
     { path: '/basics/:id', element: <BasicsPage /> },
     { path: '/advanced/:id', element: <AdvancedPage /> },
+    { path: '/test/shifts', element: <ShiftsPage /> },
   ],
   { basename: BASE.replace(/\/$/, '') || '/' }
 );

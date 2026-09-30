@@ -48,6 +48,9 @@ an area of the page to record alone.
 - **CPU** — where the time went when renders are few but slow: busy time by package, the slowest renders with the
   function inside them that took it, the hottest functions with their line, and the work outside renders
   (`record_page` with `cpu`, or the panel in Chromium).
+- **Layout shifts** — what jumped on the page and what moved it: the component a commit mounted above it, a style
+  written every frame, a CSS animation, an image with no size, a font; CLS counted as Chrome counts it, and the
+  shifts a slower phone would likely count (Chromium; read through the MCP server for now).
 - **Before → after** — `↻ Repeat` reloads the page and does the same actions again, so a fix is measured.
 
 ## With an assistant

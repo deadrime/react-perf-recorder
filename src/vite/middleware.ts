@@ -4,7 +4,16 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import path from 'node:path';
 import type { CpuInput, CpuProfile, CpuSummary } from '../shared/cpu';
 import { listingOf } from '../shared/listing';
-import { CLIENT_HEADER, ENDPOINT, growthOrigins, SESSION_SCHEMA, type RecordingV2, type SessionEvent, type SessionMeta } from '../shared/schema';
+import {
+  CLIENT_HEADER,
+  ENDPOINT,
+  growthOrigins,
+  SESSION_SCHEMA,
+  shiftNodes,
+  type RecordingV2,
+  type SessionEvent,
+  type SessionMeta,
+} from '../shared/schema';
 
 export interface SessionStoreOptions {
   dir: string;
@@ -223,6 +232,13 @@ export class SessionStore {
         if (mapped.code) origin.code = mapped.code;
       }
       delete origin.generated;
+    }
+    for (const node of shiftNodes(recording)) {
+      const g = node.generated;
+      if (!g) continue;
+      const mapped = await map(g);
+      if (mapped) node.file = mapped.site;
+      delete node.generated;
     }
     for (const memo of recording.memos ?? []) {
       const g = memo.info?.generated;
