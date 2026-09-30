@@ -144,6 +144,10 @@ describe('where a change is from the element that moved', () => {
   it('writes a short DOM path without hashed class names', () => {
     document.body.innerHTML = '<main><div class="css-1x2y3z sheet"><p data-testid="note">x</p></div></main>';
     expect(nodePath(document.querySelector('p'))).toBe('main > div.sheet > p[data-testid="note"]');
+    // The path is a selector the panel looks the element up by again.
+    document.body.innerHTML = '<ul><li data-testid=\'row "1"\'></li></ul><svg><foreignObject></foreignObject></svg>';
+    expect(nodePath(document.querySelector('li'))).toBe('ul > li[data-testid="row \\"1\\""]');
+    expect(nodePath(document.querySelector('foreignObject'))).toBe('svg > foreignObject');
   });
 });
 
@@ -263,6 +267,25 @@ describe('the watcher on a page', () => {
     watcher.stop();
     expect(shifts[0].cause).toMatchObject({ resource: 'image', by: { node: 'div#slot > img.photo', where: 'before', change: 'loaded' } });
     expect(runText(shiftRuns(shifts)[0])).toContain('div#slot > img.photo loaded with no size set above it');
+  });
+
+  it('takes height: auto for no size', async () => {
+    document.body.innerHTML = '<div id="slot"><img class="photo" alt="" style="width: 100%; height: auto"></div><ul id="list"></ul>';
+    const shifts: LayoutShift[] = [];
+    const watcher = new ShiftWatcher({ t0: 0, projectRoot: '', wrapperPattern: /^$/, ownHost: null, onShift: (s) => shifts.push(s) });
+    watcher.start();
+    document.querySelector('img')!.dispatchEvent(new Event('load'));
+    await nextFrame();
+    deliver!([
+      {
+        startTime: performance.now(),
+        value: 0.05,
+        hadRecentInput: false,
+        sources: [{ node: document.getElementById('list'), previousRect: rect(0), currentRect: rect(160) }],
+      },
+    ]);
+    watcher.stop();
+    expect(shifts[0].cause).toMatchObject({ resource: 'image' });
   });
 });
 

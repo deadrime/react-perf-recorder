@@ -195,7 +195,8 @@ export function causeText(cause: ShiftCause, commitCauses?: (id: number) => stri
 /** The causes of a commit by its id, by key: what `causeText` names after `commit N`. */
 export function commitCausesOf(rec: Pick<RecordingV2, 'commits' | 'causes'>): (id: number) => string[] {
   const causeKeys = new Map(rec.causes.map((c) => [c.i, c.key]));
-  return (id) => (rec.commits.list.find((c) => c.i === id)?.causeIds ?? []).map((i) => causeKeys.get(i)).filter((k): k is string => Boolean(k));
+  const commits = new Map(rec.commits.list.map((c) => [c.i, c]));
+  return (id) => (commits.get(id)?.causeIds ?? []).map((i) => causeKeys.get(i)).filter((k): k is string => Boolean(k));
 }
 
 /** What the culprit did, in a word or two: its label on the page. */
@@ -217,14 +218,15 @@ export function changeText(by: ShiftCulprit): string {
 }
 
 /** One line in words: how much, what moved and where, what moved it, and whether the browser counted it. */
-export function runText(run: ShiftRun, rec?: Pick<RecordingV2, 'commits' | 'causes'>): string {
+/** `rec`, or its `commitCausesOf` made once when many runs are written. */
+export function runText(run: ShiftRun, rec?: Pick<RecordingV2, 'commits' | 'causes'> | ((id: number) => string[])): string {
   const source = run.first.sources[0];
   const what = source ? nodeText(source) : 'an element';
   const when =
     run.count > 1
       ? `over ${run.count} frames, ${(run.atMs / 1000).toFixed(2)}–${(run.endMs / 1000).toFixed(2)}s`
       : `at ${(run.atMs / 1000).toFixed(2)}s`;
-  const commitCauses = rec ? commitCausesOf(rec) : undefined;
+  const commitCauses = typeof rec === 'function' ? rec : rec ? commitCausesOf(rec) : undefined;
   const counted =
     run.excluded === 0
       ? 'counted'

@@ -83,7 +83,7 @@ const isMedia = (n: Node) => /^(IMG|VIDEO|IMAGE)$/i.test(n.nodeName);
 const sized = (el: Element) => {
   if (el.hasAttribute('width') && el.hasAttribute('height')) return true;
   const style = (el as HTMLElement).style;
-  if (style?.height || (style?.aspectRatio && style.aspectRatio !== 'auto')) return true;
+  if ((style?.height && style.height !== 'auto') || (style?.aspectRatio && style.aspectRatio !== 'auto')) return true;
   const ratio = typeof getComputedStyle === 'function' ? getComputedStyle(el).aspectRatio : '';
   return Boolean(ratio) && !/^auto$/.test(ratio);
 };
@@ -96,9 +96,10 @@ const elementOf = (node: Node): Element | null => (node.nodeType === Node.ELEMEN
 /** `main > ul.list > li`: a tag with an id, a test id or a readable class; hashed names say nothing. */
 export function nodePath(node: Node | null): string {
   const one = (e: Element) => {
-    const tag = e.tagName.toLowerCase();
+    // localName keeps `foreignObject` as a selector matches it.
+    const tag = e.localName;
     const testId = e.getAttribute('data-testid');
-    if (testId) return `${tag}[data-testid="${testId}"]`;
+    if (testId) return `${tag}[data-testid="${testId.replace(/["\\]/g, '\\$&')}"]`;
     if (e.id && /^[a-zA-Z][\w-]{0,30}$/.test(e.id)) return `${tag}#${e.id}`;
     const cls = [...e.classList].find((c) => /^[a-zA-Z][a-zA-Z-]{1,23}$/.test(c) && !/^(css|sc|jsx|emotion)-/.test(c));
     return cls ? `${tag}.${cls}` : tag;
@@ -106,7 +107,7 @@ export function nodePath(node: Node | null): string {
   const parts: string[] = [];
   for (let e = node && elementOf(node); e && parts.length < 3 && e !== document.body && e !== document.documentElement; e = e.parentElement)
     parts.unshift(one(e));
-  return parts.join(' > ') || (node && elementOf(node)?.tagName.toLowerCase()) || '?';
+  return parts.join(' > ') || (node && elementOf(node)?.localName) || '?';
 }
 
 /**
@@ -183,11 +184,7 @@ function layoutPropertyOf(animation: Animation): string | null {
   return null;
 }
 
-/**
- * Layout shifts with what moved them. The browser names the elements that moved; what moved them is looked for among
- * what changed in the same frame: a React commit (with the component whose elements it changed), a style written from
- * script, a running animation, an image or stylesheet or font that arrived.
- */
+/** Layout shifts with what moved them: a commit, a style written from script, an animation, or a resource that arrived. */
 export class ShiftWatcher {
   readonly list: LayoutShift[] = [];
   private truncated = false;
@@ -196,6 +193,8 @@ export class ShiftWatcher {
   private framePending = false;
   private openCommit: Change | null = null;
   private lastInput: number | null = null;
+  /** Window scroll positions with when they began, the last few: an entry arrives after the page may have scrolled on. */
+  private scrolls: Array<[number, number, number]> = [];
   private lastShiftAt = -Infinity;
   private observer: PerformanceObserver | null = null;
   private head: MutationObserver | null = null;
@@ -213,6 +212,12 @@ export class ShiftWatcher {
     const input = (e: Event) => {
       if (!this.isOwn(e.target as Node | null)) this.lastInput = e.timeStamp;
     };
+    this.scrolls = [[-Infinity, Math.round(scrollX), Math.round(scrollY)]];
+    listen(window, 'scroll', (e) => {
+      if (e.target !== document && e.target !== window) return;
+      this.scrolls.push([e.timeStamp, Math.round(scrollX), Math.round(scrollY)]);
+      if (this.scrolls.length > 16) this.scrolls.shift();
+    });
     listen(window, 'pointerdown', input);
     listen(window, 'keydown', input);
     const loaded = (e: Event) => {
@@ -317,6 +322,8 @@ export class ShiftWatcher {
     let stale = 0;
     while (stale < changes.length && changes[stale].t < now - KEEP_MS) stale++;
     if (stale) changes.splice(0, stale);
+    // A hidden tab runs no rAF to stamp them: what waits for a frame must not pile up either.
+    if (this.pending.length && this.pending[0].t < now - KEEP_MS) this.pending = this.pending.filter((c) => c.t >= now - KEEP_MS);
   }
 
   /** One timer at a time, armed again while changes remain: not a timer per DOM batch. */
@@ -398,7 +405,7 @@ export class ShiftWatcher {
       ...(this.lastInput !== null && this.lastInput <= at ? { sinceInputMs: Math.round(at - this.lastInput) } : {}),
       cause: this.blame(moved, frame),
       sources: raw.map((s) => ({ ...this.sourceName(s.node, s.currentRect), from: rect(s.previousRect), to: rect(s.currentRect) })),
-      ...(scrollX || scrollY ? { scroll: [Math.round(scrollX), Math.round(scrollY)] as [number, number] } : {}),
+      ...this.scrollAt(at),
     };
     this.list.push(shift);
     // Marked at the cap, as a partial recording rebuilt from the stream can tell no more than that.
@@ -440,12 +447,13 @@ export class ShiftWatcher {
       else inside ??= found;
     }
     const animated = moved.length ? this.animation(moved, ended) : null;
-    if (animated) return animated;
+    if (animated && !animated.distant) return animated.cause;
     if (distant && !global.length) return this.causeOf(distant.candidate, distant.where);
     const sheet = global.find((c) => c.kind === 'sheet');
     if (sheet) return { resource: 'css', ...(sheet.node ? { by: { node: nodePath(sheet.node), where: 'before', change: 'added' } } : {}) };
     if (global.some((c) => c.kind === 'font')) return { resource: 'font' };
     if (distant) return this.causeOf(distant.candidate, distant.where);
+    if (animated) return animated.cause;
     if (inside) return this.causeOf(inside.candidate, inside.where);
     return { unknown: true };
   }
@@ -470,7 +478,7 @@ export class ShiftWatcher {
   }
 
   /** A running animation of a property that takes space, on the moved element, above it, or around it. */
-  private animation(moved: Node[], ended: Change[]): ShiftCause | null {
+  private animation(moved: Node[], ended: Change[]): { cause: ShiftCause; distant: boolean } | null {
     const all = typeof document.getAnimations === 'function' ? document.getAnimations() : [];
     const running: Array<{ css: boolean; node: Node; how: How; property: string }> = all
       .map((animation) => {
@@ -482,16 +490,32 @@ export class ShiftWatcher {
       .filter((a): a is NonNullable<typeof a> => a !== null);
     for (const c of ended) running.push({ css: true, node: c.node!, how: 'animated', property: c.property! });
     if (!running.length) return null;
+    let distant: { cause: ShiftCause; distant: boolean } | null = null;
     for (const node of moved) {
       const found = nearest(running, node);
       if (!found) continue;
       const { css, property } = found.candidate;
-      return {
+      const cause: ShiftCause = {
         animation: css ? 'css' : 'web-animations',
         by: { ...this.named(found.candidate.node), where: found.where, change: 'animated', name: property },
       };
+      // A spinner looping at the page's top moves nothing further down.
+      if (found.where !== 'before' || depthBelow(found.candidate.node, node) > TOP_DEPTH) return { cause, distant: false };
+      distant ??= { cause, distant: true };
     }
-    return null;
+    return distant;
+  }
+
+  private scrollAt(at: number): { scroll?: [number, number] } {
+    let x = Math.round(scrollX);
+    let y = Math.round(scrollY);
+    // A scroll before the shift's frame fires its event in that same frame, a few ms after its start.
+    for (let i = this.scrolls.length - 1; i >= 0; i--)
+      if (this.scrolls[i][0] <= at + 4) {
+        [, x, y] = this.scrolls[i];
+        break;
+      }
+    return x || y ? { scroll: [x, y] } : {};
   }
 
   /** A removed node's own component, or its parent's with the path it had: `node` of the record is often the victim. */

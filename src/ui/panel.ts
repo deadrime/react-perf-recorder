@@ -374,7 +374,8 @@ export class Panel {
     for (const m of shift.moved) {
       const el = this.nearestAt(m.node, (r) => boxGap(r, m.to[2] || m.to[3] ? m.to : m.from, shift.scroll));
       if (!el || moved.some((x) => x.el === el)) continue;
-      const was = m.from[2] && m.from[3] ? m.from : null;
+      // Gone from view by the end, it was found by where it was: there is no second box to draw.
+      const was = m.from[2] && m.from[3] && m.to[2] && m.to[3] ? m.from : null;
       const name = m.component ?? m.node;
       moved.push({
         el,

@@ -21,7 +21,7 @@ import {
   type HookMode,
 } from '../shared/summary';
 import { CPU_CAVEAT, cpuLine, placeText } from '../shared/cpu';
-import { runText, shiftRuns } from '../shared/shifts';
+import { commitCausesOf, runText, shiftRuns } from '../shared/shifts';
 import { GROWTH_KEYS, type RecordingV2 } from '../shared/schema';
 import { listingOf } from '../shared/listing';
 import { planReplay } from '../shared/replay';
@@ -226,7 +226,10 @@ export function section(rec: RecordingV2 & { id?: string; status?: string }, nam
           : {}),
         note: SHIFTS_NOTE,
         // One line per element and reason: an animation shifts every frame, and fifty lines of one drawer help no one.
-        ...page(shiftRuns(shifts.list).map((run) => runText(run, rec))),
+        ...(() => {
+          const causes = commitCausesOf(rec);
+          return page(shiftRuns(shifts.list).map((run) => runText(run, causes)));
+        })(),
       };
     }
     case 'navigations':

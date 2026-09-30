@@ -438,7 +438,7 @@ function ShiftDetail({ rec, run, onCommit }: { rec: RecordingV2; run: ShiftRun; 
     <div class="tl-detail" data-rpr="shift-detail">
       <div class="tl-head">
         <b>{runWhen(run)}</b>
-        <span class="badge" data-tone={run.counted ? 'warn' : undefined}>{`shift ${shiftValue(run.value)}`}</span>
+        <span class="badge" data-tone={run.excluded < run.count ? 'warn' : undefined}>{`shift ${shiftValue(run.value)}`}</span>
         <CountedBadge run={run} />
         {since !== undefined && since < 5000 ? <span class="muted">{`${since}ms after the last input`}</span> : null}
       </div>
@@ -760,7 +760,7 @@ export function Timeline({
       x: px(run.atMs * scale),
       w: Math.max(3, px((run.endMs - run.atMs) * scale)),
       h: Math.max(4, Math.round(SHIFTS_LANE_H * Math.sqrt(run.value / peak))),
-      tone: run.counted ? 'counted' : run.shifts.some((s) => nearMissOf(s, run.count === 1)) ? 'near' : 'excluded',
+      tone: run.excluded < run.count ? 'counted' : run.shifts.some((s) => nearMissOf(s, run.count === 1)) ? 'near' : 'excluded',
     }));
   }, [runs, scale]);
   if (!rec.commits.list.length) return null;

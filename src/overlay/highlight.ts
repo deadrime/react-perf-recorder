@@ -307,11 +307,7 @@ export class Highlighter implements HighlightSink {
     }
   }
 
-  /**
-   * A picked shift, drawn to be read at a glance: the culprit hatched grey in a red frame, each moved element outlined blue where it
-   * is, a dashed box where it was, an arrow between with the distance, and the move itself played again in a
-   * loop. Boxes are read from the elements every frame, so scrolling keeps them on.
-   */
+  /** A picked shift: the culprit hatched in a red frame, each moved element blue now and dashed where it was, an arrow between. */
   private drawShift(ctx: CanvasRenderingContext2D) {
     const pin = this.shift;
     if (!pin) return;

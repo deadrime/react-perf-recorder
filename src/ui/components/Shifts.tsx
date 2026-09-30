@@ -124,7 +124,7 @@ export function Shifts({
               onClick={() => onPick(picked === i ? null : i)}
             >
               <span class="shift-head">
-                <span class="badge" data-tone={run.counted ? 'warn' : undefined}>
+                <span class="badge" data-tone={run.excluded < run.count ? 'warn' : undefined}>
                   {shiftValue(run.value)}
                 </span>
                 <span class="who">{source?.component ?? source?.node ?? 'an element'}</span>
