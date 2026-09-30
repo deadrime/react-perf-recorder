@@ -429,7 +429,7 @@ export class Panel {
   private nearestAt(path: string, score: (rect: DOMRect) => number): Element | null {
     let found: Element[];
     try {
-      found = [...document.querySelectorAll(path)].slice(0, 200);
+      found = [...document.querySelectorAll(path)].slice(0, 1000);
     } catch {
       return null;
     }

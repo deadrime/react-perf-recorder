@@ -90,6 +90,7 @@ const sized = (el: Element) => {
 /** React keeps its fiber on the node it made; a node put into a React element by hand has none of its own. */
 const madeByReact = (node: Node) => Object.keys(node).some((k) => k.startsWith('__reactFiber$'));
 
+const area = (r: DOMRectReadOnly) => Math.max(0, r.width) * Math.max(0, r.height);
 const rect = (r: DOMRectReadOnly): ShiftRect => [Math.round(r.x), Math.round(r.y), Math.round(r.width), Math.round(r.height)];
 const elementOf = (node: Node): Element | null => (node.nodeType === Node.ELEMENT_NODE ? (node as Element) : node.parentElement);
 
@@ -391,16 +392,20 @@ export class ShiftWatcher {
       this.truncated = true;
       return;
     }
-    const raw = (entry.sources ?? []).filter((s) => !this.isOwn(s.node) && (s.node || !this.underOwn(s.currentRect, s.previousRect)));
+    const all = entry.sources ?? [];
+    const raw = all.filter((s) => !this.isOwn(s.node) && (s.node || !this.underOwn(s.currentRect, s.previousRect)));
     // Only the recorder's own panel moved.
-    if (entry.sources?.length && !raw.length) return;
+    if (all.length && !raw.length) return;
+    // The panel's share out of the value, by the area its boxes covered: the page's own CLS has no panel in it.
+    const covered = (list: typeof all) => list.reduce((sum, s) => sum + area(s.previousRect) + area(s.currentRect), 0);
+    const share = raw.length < all.length && covered(all) ? covered(raw) / covered(all) : 1;
     const moved = raw.map((s) => s.node).filter((n): n is Node => n !== null);
     const at = entry.startTime;
     const frame = this.changesOfFrame(at);
     this.lastShiftAt = at;
     const shift: LayoutShift = {
       atMs: Math.round(at - t0),
-      value: +entry.value.toFixed(4),
+      value: +(entry.value * share).toFixed(4),
       hadRecentInput: entry.hadRecentInput,
       ...(this.lastInput !== null && this.lastInput <= at ? { sinceInputMs: Math.round(at - this.lastInput) } : {}),
       cause: this.blame(moved, frame),
@@ -448,7 +453,9 @@ export class ShiftWatcher {
     }
     const animated = moved.length ? this.animation(moved, ended) : null;
     if (animated && !animated.distant) return animated.cause;
-    if (distant && !global.length) return this.causeOf(distant.candidate, distant.where);
+    // A <style> CSS-in-JS puts in comes with the component it styles: the mount is the lead, not the sheet.
+    const loaded = global.some((c) => c.kind === 'font' || c.node?.nodeName === 'LINK');
+    if (distant && !loaded) return this.causeOf(distant.candidate, distant.where);
     const sheet = global.find((c) => c.kind === 'sheet');
     if (sheet) return { resource: 'css', ...(sheet.node ? { by: { node: nodePath(sheet.node), where: 'before', change: 'added' } } : {}) };
     if (global.some((c) => c.kind === 'font')) return { resource: 'font' };
@@ -499,8 +506,9 @@ export class ShiftWatcher {
         animation: css ? 'css' : 'web-animations',
         by: { ...this.named(found.candidate.node), where: found.where, change: 'animated', name: property },
       };
-      // A spinner looping at the page's top moves nothing further down.
-      if (found.where !== 'before' || depthBelow(found.candidate.node, node) > TOP_DEPTH) return { cause, distant: false };
+      // A spinner looping at the page's top moves nothing further down; one inside cannot move the element's corner.
+      const weak = found.where === 'inside' || (found.where === 'before' && depthBelow(found.candidate.node, node) <= TOP_DEPTH);
+      if (!weak) return { cause, distant: false };
       distant ??= { cause, distant: true };
     }
     return distant;

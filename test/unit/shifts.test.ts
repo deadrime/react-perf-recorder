@@ -269,6 +269,39 @@ describe('the watcher on a page', () => {
     expect(runText(shiftRuns(shifts)[0])).toContain('div#slot > img.photo loaded with no size set above it');
   });
 
+  it('blames the mount over the <style> CSS-in-JS puts in with it, and leaves the panel out of the value', async () => {
+    document.body.innerHTML = '<div id="slot"></div><ul id="list"></ul><div id="panel"></div>';
+    const panel = document.getElementById('panel')!;
+    const shifts: LayoutShift[] = [];
+    const watcher = new ShiftWatcher({ t0: 0, projectRoot: '', wrapperPattern: /^$/, ownHost: panel, onShift: (s) => shifts.push(s) });
+    watcher.start();
+    const observer = new MutationObserver(() => {});
+    observer.observe(document.body, { subtree: true, childList: true });
+    document.head.appendChild(document.createElement('style')).textContent = '.promo{height:40px}';
+    document.getElementById('slot')!.innerHTML = '<div class="promo">sale</div>';
+    watcher.noteRecords(observer.takeRecords(), true);
+    watcher.commitDone(4);
+    observer.disconnect();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await nextFrame();
+    deliver!([
+      {
+        startTime: performance.now(),
+        value: 0.1,
+        hadRecentInput: false,
+        sources: [
+          { node: document.getElementById('list'), previousRect: rect(0), currentRect: rect(40) },
+          { node: panel, previousRect: rect(600), currentRect: rect(560) },
+        ],
+      },
+    ]);
+    watcher.stop();
+    document.head.innerHTML = '';
+    expect(shifts[0].cause).toMatchObject({ commit: 4, by: { node: 'div#slot > div.promo', change: 'added' } });
+    expect(shifts[0].value).toBe(0.05);
+    expect(shifts[0].sources).toHaveLength(1);
+  });
+
   it('takes height: auto for no size', async () => {
     document.body.innerHTML = '<div id="slot"><img class="photo" alt="" style="width: 100%; height: auto"></div><ul id="list"></ul>';
     const shifts: LayoutShift[] = [];
@@ -334,6 +367,13 @@ describe('shifts in a partial recording and in a comparison', () => {
     expect(diff.shifts?.moved).toHaveLength(1);
     expect(diff.shifts?.moved[0]).toMatchObject({ key: 'List (src/List.tsx)', before: 0.004, after: 0.0015 });
     expect(aggregateEvents(meta, [{ k: 'end', atMs: 1000 }]).shifts).toBeUndefined();
+  });
+
+  it('takes the window scroll out of the move of a run', () => {
+    const first = shift(0, 0.01, { scroll: [0, 0] });
+    const last = shift(100, 0.01, { scroll: [0, 120], sources: [{ ...first.sources[0], from: [0, 100, 300, 400], to: [0, 100, 300, 400] }] });
+    // Scrolled 120 px down, the list stayed where it was on the page: in the last frame's viewport it was at -20.
+    expect(runMoves(shiftRuns([first, last])[0])[0]).toMatchObject({ from: [0, -20, 300, 400], to: [0, 100, 300, 400] });
   });
 
   it('pairs list rows named alike by their order in the run', () => {

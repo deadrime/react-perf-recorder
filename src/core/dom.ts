@@ -142,14 +142,10 @@ export class DomWatcher {
       const key = this.recordKey(m);
       if (!perNode.has(key)) perNode.set(key, m.oldValue);
     }
+    const changed = records.filter((m) => this.changedSomething(m, before));
     // A write of the value already there moves nothing, and must not outrank the change that did.
-    if (records.length && this.onRecords)
-      this.onRecords(
-        records.filter((m) => this.changedSomething(m, before)),
-        touched !== null
-      );
-    for (const m of records) {
-      if (!this.changedSomething(m, before)) continue;
+    if (records.length) this.onRecords?.(changed, touched !== null);
+    for (const m of changed) {
       if (touched) {
         this.mark(m.target, touched);
         if (m.type === 'childList') {
