@@ -9,6 +9,7 @@ import { app } from './app-router';
 import { BASE } from './base';
 import { Catalogue } from './Demo';
 import { DocsPage } from './Docs';
+import { LcpPage } from './lcp/LcpPage';
 import { ShiftsPage } from './shifts/ShiftsPage';
 
 const client = new QueryClient();
@@ -23,6 +24,7 @@ const router = createBrowserRouter(
     { path: '/basics/:id', element: <BasicsPage /> },
     { path: '/advanced/:id', element: <AdvancedPage /> },
     { path: '/test/shifts', element: <ShiftsPage /> },
+    { path: '/test/lcp', element: <LcpPage /> },
   ],
   { basename: BASE.replace(/\/$/, '') || '/' }
 );

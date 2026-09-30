@@ -329,6 +329,71 @@ export interface ShiftStats {
   cls: ClsTotals;
 }
 
+/** The element a largest paint was of, named as a shift's element is; `rect` is its box in the viewport then. */
+export interface LcpElement extends ShiftNode {
+  kind: 'image' | 'text' | 'video' | 'background';
+  url?: string;
+  rect?: ShiftRect;
+}
+
+export interface LcpCandidate {
+  /** Since the navigation started: the number field data and Lighthouse give. */
+  ms: number;
+  /** On the recording's clock; below zero when it painted before the recording began. */
+  atMs: number;
+  /** Its painted area in px². */
+  size: number;
+  element: LcpElement;
+}
+
+/** The four parts web-vitals splits LCP into, in ms; they add up to `ms`. */
+export interface LcpPhases {
+  ttfb: number;
+  /** From the first byte to the request for its image; none for text. */
+  loadDelay: number;
+  loadDuration: number;
+  /** From the image (or the first byte, for text) to the paint. */
+  renderDelay: number;
+}
+
+/**
+ * What put the element on the page: a commit, a DOM change outside one, or nothing the recording saw, as it was in the
+ * HTML before React's first commit. `by`: the node inserted, when it was an ancestor of the element.
+ */
+export type LcpMount =
+  | {
+      commit: number | null;
+      /** React's first commit in the recording: the app's first render, in a recording from the load. */
+      first?: true;
+      atMs: number;
+      ms: number;
+      change: 'added' | 'attribute' | 'text';
+      name?: string;
+      by?: ShiftNode;
+    }
+  | { dom: true; atMs: number; ms: number; change: 'added' | 'attribute' | 'text'; name?: string; by?: ShiftNode }
+  | { before: true };
+
+export interface LcpStats extends LcpCandidate {
+  phases: LcpPhases;
+  mount?: LcpMount;
+  /** An image's request: when it went out and came back (ms since navigation), how it was asked for. */
+  image?: {
+    lazy?: true;
+    fetchPriority?: string;
+    /** `link` for a preload, `img`, `css` for a background, `other`. */
+    initiator?: string;
+    requestMs?: number;
+    responseEndMs?: number;
+  };
+  /** A web font that arrived after the text was mounted and before it painted. */
+  font?: { url: string; ms: number };
+  /** Earlier candidates, first painted first: what was the largest before the final one came. */
+  candidates: LcpCandidate[];
+  /** The first input or scroll, after which the browser looks for no larger paint. */
+  inputAtMs?: number;
+}
+
 export interface Segment {
   action: number;
   /** Internal wiring while a recording is built; the saved recording keeps these on the action itself. */
@@ -528,6 +593,11 @@ export interface RecordingV2 {
   cpu?: CpuSummary;
   /** Layout shifts and what moved them; absent where the browser does not report them (Firefox, Safari). */
   shifts?: ShiftStats;
+  /**
+   * The largest contentful paint and what put its element on the page; only when the recording began with the page
+   * load, or the paint came during it.
+   */
+  lcp?: LcpStats;
   navigations: Navigation[];
   hmr: Array<{ atMs: number; type: string; paths: string[] }>;
   conditions: Conditions;
@@ -591,18 +661,24 @@ export type SessionEvent =
   | { k: 'latency'; entry: LatencyEntry }
   | { k: 'frame'; frame: LongFrame }
   | { k: 'shift'; shift: LayoutShift }
+  | { k: 'lcp'; lcp: LcpStats }
   | { k: 'nav'; nav: Navigation }
   | { k: 'hmr'; atMs: number; type: string; paths: string[] }
   | { k: 'reload'; atMs: number }
   | { k: 'scope'; atMs: number; state: 'attached' | 'lost' | 'remounted' }
   | { k: 'end'; atMs: number };
 
-/** Everything in `shifts` with a built position the dev server maps into `file`. */
-export function shiftNodes(rec: RecordingV2): ShiftNode[] {
+/** Everything in `shifts` and `lcp` with a built position the dev server maps into `file`. */
+export function pageNodes(rec: RecordingV2): ShiftNode[] {
   const out: ShiftNode[] = [];
   for (const shift of rec.shifts?.list ?? []) {
     out.push(...shift.sources);
     if ('by' in shift.cause && shift.cause.by) out.push(shift.cause.by);
+  }
+  const lcp = rec.lcp;
+  if (lcp) {
+    out.push(lcp.element, ...lcp.candidates.map((c) => c.element));
+    if (lcp.mount && 'by' in lcp.mount && lcp.mount.by) out.push(lcp.mount.by);
   }
   return out;
 }

@@ -52,6 +52,9 @@ an area of the page to record alone.
   written every frame, a CSS animation, an image with no size, a font; CLS counted as Chrome counts it, and the
   shifts a slower phone would likely count. In the panel a shift picked is outlined on the page where the element
   was and where it is, with what moved it (Chromium).
+- **Largest contentful paint** — in a recording from the page load: the element and the component that rendered it,
+  the four web-vitals phases, and what held it back — the commit that mounted it and what scheduled that commit, an
+  image request that waited for it, a lazy image, the long frames that held the paint (Chromium).
 - **Before → after** — `↻ Repeat` reloads the page and does the same actions again, so a fix is measured.
 
 ## With an assistant

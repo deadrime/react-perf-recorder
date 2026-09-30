@@ -6,6 +6,7 @@ import {
   type ActionRecord,
   type LatencyEntry,
   type LayoutShift,
+  type LcpStats,
   type LongFrame,
   type Navigation,
   type RecordingV2,
@@ -45,6 +46,7 @@ export function aggregateEvents(meta: SessionMeta, events: SessionEvent[]): Reco
   const loaf: LongFrame[] = [];
   const shifts: LayoutShift[] = [];
   let shiftsSeen = false;
+  let lcp: LcpStats | undefined;
   const navigations: Navigation[] = [];
   const hmr: RecordingV2['hmr'] = [];
   const commits: CommitRecord[] = [];
@@ -131,6 +133,10 @@ export function aggregateEvents(meta: SessionMeta, events: SessionEvent[]): Reco
       case 'shift':
         shiftsSeen = true;
         shifts.push(e.shift);
+        break;
+      case 'lcp':
+        // Each one streamed has the ones before it: the last is the whole story.
+        lcp = e.lcp;
         break;
       case 'nav':
         navigations.push(e.nav);
@@ -235,6 +241,7 @@ export function aggregateEvents(meta: SessionMeta, events: SessionEvent[]): Reco
           },
         }
       : {}),
+    ...(lcp ? { lcp } : {}),
     navigations,
     hmr,
     conditions: meta.conditions,
