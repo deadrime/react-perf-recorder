@@ -278,6 +278,16 @@ export class ShiftWatcher {
   }
 
   /**
+   * The browser gives no node for an element in a shadow tree, the panel's included: a box with no node that the
+   * panel covers now is taken for the panel's.
+   */
+  private underOwn(now: DOMRectReadOnly, before: DOMRectReadOnly): boolean {
+    const box = now.width && now.height ? now : before;
+    if (!this.options.ownHost || !box.width || !box.height) return false;
+    return document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2) === this.options.ownHost;
+  }
+
+  /**
    * What changed before this frame's layout and after the last frame that shifted: the changes stamped with the
    * frame's rAF, and those made after it (an animation library writing styles in its own rAF).
    */
@@ -295,7 +305,7 @@ export class ShiftWatcher {
       this.truncated = true;
       return;
     }
-    const raw = (entry.sources ?? []).filter((s) => !this.isOwn(s.node));
+    const raw = (entry.sources ?? []).filter((s) => !this.isOwn(s.node) && (s.node || !this.underOwn(s.currentRect, s.previousRect)));
     // Only the recorder's own panel moved.
     if (entry.sources?.length && !raw.length) return;
     const moved = raw.map((s) => s.node).filter((n): n is Node => n !== null);
