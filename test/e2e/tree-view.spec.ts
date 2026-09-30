@@ -218,7 +218,7 @@ test('× clears the area even while the picker waits for a click, with no tree o
   await expect(page.locator('[data-rpr="scope"]')).toBeHidden();
 });
 
-test('Pick with the tree open keeps the area and waits for a click; with the tree open the page still previews', async ({ page }) => {
+test('Pick with the tree open keeps the area and waits for a click; with a component picked the page hover leaves the box', async ({ page }) => {
   await page.goto('/advanced/deferred?rpr=panel');
   await page.locator('[data-rpr="pick"]').click();
   await page.locator('[data-case="broken"] input').click();
@@ -235,15 +235,15 @@ test('Pick with the tree open keeps the area and waits for a click; with the tre
   await expect(page.locator('[data-rpr="scope"]')).toHaveText('Search');
   await page.keyboard.press('Escape');
 
-  // The area's name opens the tree on it; moving over the page outlines what a click there would take.
+  // The area's name opens the tree on it; the page under the pointer no longer moves the box.
   await page.locator('[data-rpr="scope"]').click();
   const tag = page.locator(`${SHADOW} .box .tag`);
   await expect(tag).toHaveText(/Search/);
   const other = (await page.locator('[data-case="fixed"] h2').boundingBox())!;
-  await page.mouse.move(other.x + 20, other.y + 5);
-  await expect(tag).not.toHaveText(/Search/);
-  // Back over the panel, the box is the tree's again.
-  const panel = (await page.locator('[data-rpr="tree"]').boundingBox())!;
-  await page.mouse.move(panel.x + 20, panel.y + 20);
+  await page.mouse.move(other.x + 20, other.y + 5, { steps: 4 });
   await expect(tag).toHaveText(/Search/);
+  // A row of the tree still moves it.
+  const row = page.locator('[data-rpr="tree"] li[data-name]').first();
+  await row.hover();
+  await expect(tag).not.toHaveText(/Search/);
 });

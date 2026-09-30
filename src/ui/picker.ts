@@ -197,7 +197,8 @@ export class Picker {
         this.outline(this.current.owner.fiber, this.current.owner.name);
       return;
     }
-    // With the tree open a click on the page still picks there, so the page still shows what it would pick.
+    // A picked component holds the box: only the tree's rows move it, the page under the pointer does not.
+    if (this.frozen && !this.browsing) return;
     const el = this.elementAt(event.clientX, event.clientY);
     if (!el) return;
     const owner = this.engine.owners(el).find((o) => !this.engine.hidden(o, this.filters()));
