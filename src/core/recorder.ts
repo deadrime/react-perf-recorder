@@ -62,6 +62,7 @@ import { runningTimer, runningTimerLibrary, setTimerSink } from './env/timers';
 import { GrowthWatcher } from './growth';
 import { ShiftWatcher, shiftsSupported } from './shifts';
 import { LcpWatcher, lcpSupported } from './lcp';
+import { FrameClock } from './frame-clock';
 
 export interface EngineConfig {
   version: string;
@@ -307,6 +308,7 @@ export class Recorder {
   private readonly growth: GrowthWatcher | null;
   private readonly shifts: ShiftWatcher | null;
   private readonly lcp: LcpWatcher | null;
+  private readonly frameClock = new FrameClock();
   /** Whether childLanes can be trusted to point at fresh updates; React 19 answers no and the walk widens. */
   private narrowUpdateWalk = true;
   private hook: CommitHook | null = null;
@@ -383,6 +385,7 @@ export class Recorder {
             projectRoot: this.config.projectRoot,
             wrapperPattern: this.wrapperRe,
             ownHost: deps.ownHost,
+            clock: this.frameClock,
             onShift: (shift) => this.emit({ k: 'shift', shift }),
           });
     this.lcp =
@@ -394,6 +397,7 @@ export class Recorder {
             wrapperPattern: this.wrapperRe,
             ownHost: deps.ownHost,
             fromLoad: Boolean(options.fromLoad),
+            clock: this.frameClock,
             onLcp: (lcp) => this.emit({ k: 'lcp', lcp }),
           });
     this.growth =
@@ -559,6 +563,7 @@ export class Recorder {
     this.dom.stop();
     this.shifts?.stop();
     this.lcp?.stop();
+    this.frameClock.stop();
     this.frames.stop();
     this.counting = false;
     this.actions?.stop();

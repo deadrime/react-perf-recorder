@@ -1,5 +1,6 @@
 import type { LcpCandidate, LcpElement, LcpMount, LcpStats, ShiftNode } from '../shared/schema';
 import { inOwn, nodeName, rect } from './shifts';
+import { FrameClock } from './frame-clock';
 
 interface LcpEntry extends PerformanceEntry {
   renderTime: number;
@@ -12,7 +13,7 @@ interface LcpEntry extends PerformanceEntry {
 /** When a batch of DOM changes came, and the commit that made it, once the recorder gave the commit its id. */
 interface Batch {
   t: number;
-  /** Set by the rAF of the frame that painted it; NaN while it waits for that frame. */
+  /** Stamped by the rAF of the frame that painted it; NaN while it waits for that frame. */
   frame: number;
   commit: boolean;
   id?: number | null;
@@ -38,6 +39,8 @@ export interface LcpOptions {
   ownHost: Element | null;
   /** The recording began with the page load: an element on the page at the start came in the HTML. */
   fromLoad: boolean;
+  /** Shared with the layout shift watcher: one rAF a frame. */
+  clock?: FrameClock;
   onLcp(lcp: LcpStats): void;
 }
 
@@ -84,12 +87,14 @@ export class LcpWatcher {
   private commits = 0;
   /** What the page held when a recording from the load started: the HTML, before React's first commit. */
   private initial: WeakSet<Element> | null = null;
-  private pending: Batch[] = [];
+  private readonly clock: FrameClock;
   private inputAt: number | null = null;
   private observer: PerformanceObserver | null = null;
   private off: Array<() => void> = [];
 
-  constructor(private options: LcpOptions) {}
+  constructor(private options: LcpOptions) {
+    this.clock = options.clock ?? new FrameClock();
+  }
 
   /** `fresh`: React has committed nothing yet, so what is on the page came in the HTML. */
   start(fresh: boolean) {
@@ -142,19 +147,13 @@ export class LcpWatcher {
     this.off.forEach((off) => off());
     this.off = [];
     this.open = null;
-    this.pending = [];
   }
 
   /** What the DOM watcher saw change: nodes put in, sources and styles written, text changed. */
   noteRecords(records: MutationRecord[], commit: boolean) {
     if (!this.stamping || !records.length) return;
     const batch: Batch = { t: performance.now(), frame: NaN, commit };
-    this.pending.push(batch);
-    if (this.pending.length === 1)
-      requestAnimationFrame((ts) => {
-        for (const b of this.pending) b.frame = ts;
-        this.pending = [];
-      });
+    this.clock.stamp(batch);
     const marksOf = (node: Node) => {
       let marks = this.marks.get(node);
       if (!marks) this.marks.set(node, (marks = {}));

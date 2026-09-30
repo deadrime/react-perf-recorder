@@ -2,6 +2,7 @@ import type { LatencyEntry, LayoutShift, ShiftCause, ShiftCulprit, ShiftNode, Sh
 import { clsOf, linkInteractions, MAX_SHIFTS } from '../shared/shifts';
 import { ownerOf } from './dom';
 import { generatedSourceOf, isLibraryFiber, isProvider, nameOf, sourceOf, wrapsProvider, type Fiber } from './fiber';
+import { FrameClock } from './frame-clock';
 
 interface ShiftEntry extends PerformanceEntry {
   value: number;
@@ -51,6 +52,8 @@ export interface ShiftOptions {
   projectRoot: string;
   wrapperPattern: RegExp;
   ownHost: Element | null;
+  /** Shared with the largest paint watcher: one rAF a frame. */
+  clock?: FrameClock;
   onShift(shift: LayoutShift): void;
 }
 
@@ -206,8 +209,7 @@ export class ShiftWatcher {
   readonly list: LayoutShift[] = [];
   private truncated = false;
   private changes: Change[] = [];
-  private pending: Change[] = [];
-  private framePending = false;
+  private readonly clock: FrameClock;
   private openCommit: Change | null = null;
   private lastInput: number | null = null;
   /** Window scroll positions with when they began, the last few: an entry arrives after the page may have scrolled on. */
@@ -217,7 +219,9 @@ export class ShiftWatcher {
   private head: MutationObserver | null = null;
   private off: Array<() => void> = [];
 
-  constructor(private options: ShiftOptions) {}
+  constructor(private options: ShiftOptions) {
+    this.clock = options.clock ?? new FrameClock();
+  }
 
   start() {
     const listen = (target: EventTarget | undefined, type: string, fn: (e: Event) => void) => {
@@ -286,7 +290,6 @@ export class ShiftWatcher {
     this.off.forEach((off) => off());
     this.off = [];
     this.changes = [];
-    this.pending = [];
     if (this.pruneTimer) clearTimeout(this.pruneTimer);
     this.pruneTimer = null;
   }
@@ -343,8 +346,6 @@ export class ShiftWatcher {
     let stale = 0;
     while (stale < changes.length && changes[stale].t < now - KEEP_MS) stale++;
     if (stale) changes.splice(0, stale);
-    // A hidden tab runs no rAF to stamp them: what waits for a frame must not pile up either.
-    if (this.pending.length && this.pending[0].t < now - KEEP_MS) this.pending = this.pending.filter((c) => c.t >= now - KEEP_MS);
   }
 
   /** One timer at a time, armed again while changes remain: not a timer per DOM batch. */
@@ -361,16 +362,7 @@ export class ShiftWatcher {
     this.changes.push(change);
     // An idle page gets no next change to prune on: what was added stays reachable no longer than it is useful.
     if (!this.pruneTimer) this.armPrune();
-    this.pending.push(change);
-    if (this.framePending) return;
-    this.framePending = true;
-    // Called before the rendering update that paints the change; the shift's time is that update's layout.
-    requestAnimationFrame(() => {
-      const now = performance.now();
-      for (const c of this.pending) c.frame = now;
-      this.pending = [];
-      this.framePending = false;
-    });
+    this.clock.stamp(change);
   }
 
   private isOwn(node: Node | null): boolean {
