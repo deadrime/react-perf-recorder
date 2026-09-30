@@ -1,8 +1,10 @@
 import type { Engine, Owner, Saved } from '../core/engine';
 import { currentOf, type Fiber, type FiberRoot } from '../core/fiber';
 import { scopeNames, type ScopeHandle } from '../core/scope';
-import type { Highlighter } from '../overlay/highlight';
-import { NOTE_IN_PANEL, renderPanel, type PanelHandlers, type PanelViewProps } from './components/PanelView';
+import type { Highlighter, ShiftPin } from '../overlay/highlight';
+import { changeText, moveOf } from '../shared/shifts';
+import type { ShiftRect } from '../shared/schema';
+import { NOTE_IN_PANEL, renderPanel, type PanelHandlers, type PanelViewProps, type ShiftOutline } from './components/PanelView';
 import { rowCopyKey, type TreeProps } from './components/Tree';
 import { describeArea } from './describe';
 import { Picker, type TreeActions, type TreeRow } from './picker';
@@ -44,8 +46,8 @@ export class Panel {
   private result: Saved | null = null;
   private message: Message = { text: '', kind: 'muted' };
   private highlighter: Highlighter | null = null;
-  /** A commit or action picked on the timeline: its outlines alone are on the page until the pick is undone. */
-  private outlining = false;
+  /** A commit, action or layout shift picked in the report: its outlines alone are on the page until the pick is undone. */
+  private outlining = { roots: false, shift: false };
   /** The pointer that just finished a drag of the dot; its click opens nothing. */
   private dragged = false;
   private readonly handlers: PanelHandlers;
@@ -120,7 +122,7 @@ export class Panel {
     const on = this.visible && !this.suppressed && this.state.highlight;
     // A hidden panel draws nothing, so an automated browser gets clean screenshots.
     if (this.highlighter) this.highlighter.enabled = on;
-    this.engine.highlightWhenIdle(on && !this.outlining, this.scope);
+    this.engine.highlightWhenIdle(on && !this.outlining.roots && !this.outlining.shift, this.scope);
   }
 
   private initialVisibility() {
@@ -173,8 +175,10 @@ export class Panel {
       },
       dragStart: (event) => this.onDragStart(event),
       outlineRoots: (entries) => this.outlineRoots(entries),
+      outlineShift: (shift) => this.outlineShift(shift),
       dismissResult: () => {
         this.outlineRoots(null);
+        this.outlineShift(null);
         this.result = null;
         this.compared = null;
         this.sync();
@@ -330,13 +334,7 @@ export class Panel {
   /** The roots of a picked commit or action, on the page as it is now: every instance of each, labelled with its hits. */
   private outlineRoots(entries: Array<{ i: number; hits: number }> | null): number {
     const rec = this.result;
-    const outlining = Boolean(entries && rec);
-    if (outlining !== this.outlining) {
-      this.outlining = outlining;
-      // The fading render boxes would bury the picked ones.
-      if (outlining) this.highlighter?.reset();
-      this.syncIdleHighlight();
-    }
+    this.setOutlining('roots', Boolean(entries && rec));
     if (!entries || !rec) {
       this.highlighter?.pin([]);
       return 0;
@@ -354,6 +352,69 @@ export class Panel {
     });
     this.highlighter?.pin(items);
     return items.length;
+  }
+
+  private setOutlining(what: 'roots' | 'shift', on: boolean) {
+    if (this.outlining[what] === on) return;
+    this.outlining[what] = on;
+    // The fading render boxes would bury the picked ones.
+    if (on) this.highlighter?.reset();
+    this.syncIdleHighlight();
+  }
+
+  /** A layout shift of the report on the page as it is now: each moved element, where it was, and the culprit. */
+  private outlineShift(shift: ShiftOutline | null): number {
+    this.setOutlining('shift', Boolean(shift));
+    if (!shift) {
+      this.highlighter?.pinShift(null);
+      return 0;
+    }
+    const moved: ShiftPin['moved'] = [];
+    for (const m of shift.moved) {
+      const el = this.nearestAt(m.node, (r) => boxGap(r, m.to[2] || m.to[3] ? m.to : m.from));
+      if (!el || moved.some((x) => x.el === el)) continue;
+      const was = m.from[2] && m.from[3] ? m.from : null;
+      moved.push({
+        el,
+        dx: was ? m.from[0] - m.to[0] : 0,
+        dy: was ? m.from[1] - m.to[1] : 0,
+        was: was ? [was[2], was[3]] : null,
+        label: `${m.component ?? m.node} ${moveOf(m.from, m.to)}`,
+      });
+    }
+    const by = shift.by;
+    // A removed element is not on the page to point at; the moved one's own label says what happened to it.
+    let culprit: ShiftPin['culprit'] = null;
+    if (by && by.change !== 'removed') {
+      const anchor = moved[0]?.el.getBoundingClientRect();
+      const el = this.nearestAt(by.node, (r) => (anchor ? Math.abs(r.top + r.height / 2 - anchor.top - anchor.height / 2) : 0));
+      const label = changeText(by);
+      const self = moved.find((m) => m.el === el);
+      if (self) self.label += ` · ${label}`;
+      else if (el) culprit = { el, label: `${by.component ?? by.node} · ${label}` };
+    }
+    this.highlighter?.pinShift({ moved, culprit });
+    return moved.length + (culprit ? 1 : 0);
+  }
+
+  /** Of the elements on the page at a recorded DOM path, the one the score likes best; none with no box. */
+  private nearestAt(path: string, score: (rect: DOMRect) => number): Element | null {
+    let found: Element[];
+    try {
+      found = [...document.querySelectorAll(path)].slice(0, 200);
+    } catch {
+      return null;
+    }
+    let best: Element | null = null;
+    let bestScore = Infinity;
+    for (const el of found) {
+      if (el === this.host) continue;
+      const rect = el.getBoundingClientRect();
+      if (!rect.width && !rect.height) continue;
+      const s = score(rect);
+      if (s < bestScore) [best, bestScore] = [el, s];
+    }
+    return best;
   }
 
   /** Reloads and does the actions of the report again, recording: the same scenario after a change of the code. */
@@ -617,6 +678,10 @@ export class Panel {
     saveState(this.state);
   }
 }
+
+/** How far a box on the page now is from one recorded in a shift; the page may have scrolled since, so size weighs in. */
+const boxGap = (r: DOMRect, to: ShiftRect) =>
+  Math.abs(r.left - to[0]) + Math.abs(r.top - to[1]) + 4 * (Math.abs(r.width - to[2]) + Math.abs(r.height - to[3]));
 
 /** The picker's hint in the words of the device: keys where there is a keyboard, taps where there is a finger. */
 function pickHint(what: string, why: string, tapWhat = what) {

@@ -1,7 +1,7 @@
 import { aggregateEvents } from '../../src/shared/aggregate';
 import { compareRecordings } from '../../src/shared/compare';
 import type { LayoutShift, SessionMeta, ShiftCause } from '../../src/shared/schema';
-import { clsOf, runText, shiftRuns } from '../../src/shared/shifts';
+import { changeText, clsOf, runMoves, runText, shiftRuns } from '../../src/shared/shifts';
 import { nearest, nodePath, ShiftWatcher, whereOf } from '../../src/core/shifts';
 
 const shift = (atMs: number, value: number, more: Partial<LayoutShift> = {}): LayoutShift => ({
@@ -80,6 +80,10 @@ describe('reading shifts', () => {
     expect(line).toContain('Sheet (src/Sheet.tsx:9) moved up 240px over 12 frames');
     expect(line).toContain('style written on it from script frame after frame');
     expect(line).toContain('4 counted, 8 excluded after an input');
+    // The panel outlines the run from the element's box in its first frame to the one in its last.
+    expect(runs[0].shifts).toHaveLength(12);
+    expect(runMoves(runs[0])).toEqual([expect.objectContaining({ node: 'div.sheet', from: [0, 800, 400, 20], to: [0, 560, 400, 260] })]);
+    expect(changeText(cause.by!)).toBe('changed style');
   });
 
   it('names the component a commit mounted above the element, and the commit with its causes', () => {

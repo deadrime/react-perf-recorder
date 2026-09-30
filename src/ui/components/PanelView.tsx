@@ -2,6 +2,7 @@
 import { render, type JSX } from 'preact';
 import type { Engine, Saved } from '../../core/engine';
 import { dockStyle } from '../dock';
+import type { ShiftCulprit, ShiftNode, ShiftRect } from '../../shared/schema';
 import type { Corner, Offset } from '../storage';
 import { Controls, FastToggle, HighlightToggle } from './Controls';
 import type { Comparison } from './Compare';
@@ -43,6 +44,14 @@ export interface PanelHandlers {
    * outlines away with null. Says how many components it found on the page now.
    */
   outlineRoots(entries: Array<{ i: number; hits: number }> | null): number;
+  /** Outlines a layout shift on the page, or takes it away with null. Says how many of its elements are there now. */
+  outlineShift(shift: ShiftOutline | null): number;
+}
+
+/** What moved, from where to where, and what moved it: a run of the report's layout shifts. */
+export interface ShiftOutline {
+  moved: Array<ShiftNode & { from: ShiftRect; to: ShiftRect }>;
+  by?: ShiftCulprit;
 }
 
 export interface PanelViewProps {
@@ -210,6 +219,7 @@ const View = (p: PanelViewProps): JSX.Element => (
             compared={p.compared}
             onRepeat={p.on.repeat}
             onOutline={p.on.outlineRoots}
+            onOutlineShift={p.on.outlineShift}
             onDismiss={p.on.dismissResult}
             wide={p.wide}
             onWide={() => p.on.setWide(!p.wide)}

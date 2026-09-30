@@ -26,6 +26,13 @@ const STREAK_MS = LIT_MS + FADE_MS;
 const MAX_FLASHES = 300;
 
 /** A closed menu or popover often stays in the DOM, unpositioned in the top-left: outlining it stacks boxes there. */
+/** A layout shift picked in the report: where each moved element was and is, and what moved it. */
+export interface ShiftPin {
+  /** `dx`, `dy`: from its box now to where it was before the shift; `was` is the size it had then. */
+  moved: Array<{ el: Element; dx: number; dy: number; was: [number, number] | null; label: string }>;
+  culprit: { el: Element; label: string } | null;
+}
+
 const shown = (el: Element) => el.checkVisibility?.({ opacityProperty: true, visibilityProperty: true, contentVisibilityAuto: true }) ?? true;
 
 type Rgb = [number, number, number];
@@ -66,6 +73,7 @@ export class Highlighter implements HighlightSink {
   private colours: Rgb[] = PALETTE.map(([, fallback]) => fallback);
   /** Components picked on the report's timeline: outlined until the pick changes, whatever the highlight toggle says. */
   private pinned: Array<{ fiber: Fiber; label: string }> = [];
+  private shift: ShiftPin | null = null;
 
   constructor(parent: ShadowRoot | Element) {
     const host = parent instanceof ShadowRoot ? parent.host : parent;
@@ -88,6 +96,12 @@ export class Highlighter implements HighlightSink {
   /** Outlines these components until the next call; an empty list takes them away. */
   pin(items: Array<{ fiber: Fiber; label: string }>) {
     this.pinned = items;
+    this.redraw();
+  }
+
+  /** Outlines a layout shift until the next call; null takes it away. */
+  pinShift(pin: ShiftPin | null) {
+    this.shift = pin;
     this.redraw();
   }
 
@@ -226,6 +240,7 @@ export class Highlighter implements HighlightSink {
       if (flash.scroller) ctx.restore();
     }
     this.drawPinned(ctx);
+    this.drawShift(ctx);
     this.costMs += performance.now() - started;
     if (this.flashes.size) requestAnimationFrame(() => this.draw());
     else this.drawing = false;
@@ -277,6 +292,76 @@ export class Highlighter implements HighlightSink {
       ctx.fillStyle = '#fff';
       ctx.fillText(label, x + 4, top + 12);
     }
+  }
+
+  /**
+   * The moved elements where they are now, a dashed box where they were before the shift and an arrow between; the
+   * culprit filled in red. Read from the elements every frame, as the pinned roots are, so scrolling keeps them on.
+   */
+  private drawShift(ctx: CanvasRenderingContext2D) {
+    const pin = this.shift;
+    if (!pin) return;
+    const label = (text: string, x: number, y: number, rgb: Rgb) => {
+      const width = ctx.measureText(text).width + 8;
+      const top = y > 16 ? y - 16 : y;
+      ctx.fillStyle = `rgb(${rgb.join(',')})`;
+      ctx.fillRect(x, top, width, 16);
+      ctx.fillStyle = '#fff';
+      ctx.fillText(text, x + 4, top + 12);
+    };
+    ctx.font = '11px ui-monospace, SFMono-Regular, Menlo, monospace';
+    const culprit = pin.culprit?.el.isConnected ? pin.culprit : null;
+    if (culprit) {
+      const r = culprit.el.getBoundingClientRect();
+      const [red, green, blue] = this.colours[3];
+      ctx.fillStyle = `rgba(${red},${green},${blue},0.14)`;
+      ctx.fillRect(r.left, r.top, r.width, r.height);
+      ctx.strokeStyle = `rgb(${red},${green},${blue})`;
+      ctx.lineWidth = 2;
+      ctx.strokeRect(r.left + 1, r.top + 1, Math.max(0, r.width - 2), Math.max(0, r.height - 2));
+    }
+    const [r, g, b] = this.colours[4];
+    for (const moved of pin.moved) {
+      if (!moved.el.isConnected) continue;
+      const now = moved.el.getBoundingClientRect();
+      if (moved.was) {
+        const [x, y] = [now.left + moved.dx, now.top + moved.dy];
+        ctx.strokeStyle = `rgba(${r},${g},${b},0.7)`;
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([5, 3]);
+        ctx.strokeRect(x + 0.5, y + 0.5, Math.max(0, moved.was[0] - 1), Math.max(0, moved.was[1] - 1));
+        ctx.setLineDash([]);
+        if (Math.hypot(moved.dx, moved.dy) > 6) this.arrow(ctx, x + 12, y + 8, now.left + 12, now.top + 8, `rgb(${r},${g},${b})`);
+      }
+      ctx.fillStyle = `rgba(${r},${g},${b},0.08)`;
+      ctx.fillRect(now.left, now.top, now.width, now.height);
+      ctx.strokeStyle = `rgb(${r},${g},${b})`;
+      ctx.lineWidth = 2;
+      ctx.strokeRect(now.left + 1, now.top + 1, Math.max(0, now.width - 2), Math.max(0, now.height - 2));
+      label(moved.label, now.left, now.top, [r, g, b]);
+    }
+    // Last, so the culprit's name is not under the box of what it pushed.
+    if (culprit) {
+      const box = culprit.el.getBoundingClientRect();
+      label(culprit.label, box.left, box.top, this.colours[3]);
+    }
+  }
+
+  private arrow(ctx: CanvasRenderingContext2D, x1: number, y1: number, x2: number, y2: number, colour: string) {
+    const angle = Math.atan2(y2 - y1, x2 - x1);
+    ctx.strokeStyle = colour;
+    ctx.fillStyle = colour;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x2, y2);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(x2, y2);
+    ctx.lineTo(x2 - 7 * Math.cos(angle - 0.45), y2 - 7 * Math.sin(angle - 0.45));
+    ctx.lineTo(x2 - 7 * Math.cos(angle + 0.45), y2 - 7 * Math.sin(angle + 0.45));
+    ctx.closePath();
+    ctx.fill();
   }
 
   /** Grey when the render changed nothing; otherwise green, amber and red by how often it came. */

@@ -45,6 +45,7 @@ export interface ShiftRun {
   excluded: number;
   first: LayoutShift;
   last: LayoutShift;
+  shifts: LayoutShift[];
 }
 
 const causeKind = (c: ShiftCause) => Object.keys(c)[0];
@@ -59,7 +60,7 @@ export function shiftRuns(list: LayoutShift[]): ShiftRun[] {
     const key = runKey(s);
     let run = open.get(key);
     if (!run || s.atMs - run.endMs > 250) {
-      run = { atMs: s.atMs, endMs: s.atMs, count: 0, value: 0, counted: 0, excluded: 0, first: s, last: s };
+      run = { atMs: s.atMs, endMs: s.atMs, count: 0, value: 0, counted: 0, excluded: 0, first: s, last: s, shifts: [] };
       open.set(key, run);
       runs.push(run);
     }
@@ -69,6 +70,7 @@ export function shiftRuns(list: LayoutShift[]): ShiftRun[] {
     if (s.hadRecentInput) run.excluded++;
     else run.counted += s.value;
     run.last = s;
+    run.shifts.push(s);
   }
   for (const run of runs) {
     run.value = round(run.value);
@@ -81,12 +83,22 @@ export const nodeText = (n: ShiftNode) => (n.component ? `${n.component}${n.file
 
 const empty = (r: ShiftRect) => r[2] === 0 || r[3] === 0;
 
+/** Each element the run moved, from its box in the first frame to its box in the last one. */
+export function runMoves(run: ShiftRun): Array<ShiftNode & { from: ShiftRect; to: ShiftRect }> {
+  return run.first.sources.map((source) => {
+    const end = run.last.sources.find((s) => s.node === source.node && s.component === source.component) ?? source;
+    return { ...source, to: end.to };
+  });
+}
+
 /** `moved up 300px`, `appeared`: from the first box of the run to the last one of the same element. */
-function moveText(run: ShiftRun): string {
-  const source = run.first.sources[0];
-  if (!source) return 'moved';
-  const end = run.last.sources.find((s) => s.node === source.node && s.component === source.component) ?? source;
-  const [from, to] = [source.from, end.to];
+export function moveText(run: ShiftRun): string {
+  const moved = runMoves(run)[0];
+  return moved ? moveOf(moved.from, moved.to) : 'moved';
+}
+
+/** The words for one element's boxes before and after. */
+export function moveOf(from: ShiftRect, to: ShiftRect): string {
   if (empty(from) && !empty(to)) return 'appeared';
   if (!empty(from) && empty(to)) return 'disappeared';
   const [dx, dy] = [to[0] - from[0], to[1] - from[1]];
@@ -153,6 +165,30 @@ export function causeText(cause: ShiftCause, commitCauses?: (id: number) => stri
   return 'nothing changed in its frame that the recorder saw: a resize, scroll anchoring, or a frame of another origin';
 }
 
+/** The causes of a commit by its id, by key: what `causeText` names after `commit N`. */
+export function commitCausesOf(rec: Pick<RecordingV2, 'commits' | 'causes'>): (id: number) => string[] {
+  const causeKeys = new Map(rec.causes.map((c) => [c.i, c.key]));
+  return (id) => (rec.commits.list.find((c) => c.i === id)?.causeIds ?? []).map((i) => causeKeys.get(i)).filter((k): k is string => Boolean(k));
+}
+
+/** What the culprit did, in a word or two: its label on the page. */
+export function changeText(by: ShiftCulprit): string {
+  switch (by.change) {
+    case 'added':
+      return by.unsized ? 'mounted, no size' : 'mounted';
+    case 'removed':
+      return 'removed';
+    case 'text':
+      return 'text changed';
+    case 'loaded':
+      return 'loaded, no size';
+    case 'animated':
+      return `animates${by.name ? ` ${by.name}` : ''}`;
+    default:
+      return `changed${by.name ? ` ${by.name}` : ''}`;
+  }
+}
+
 /** One line in words: how much, what moved and where, what moved it, and whether the browser counted it. */
 export function runText(run: ShiftRun, rec?: Pick<RecordingV2, 'commits' | 'causes'>): string {
   const source = run.first.sources[0];
@@ -161,9 +197,7 @@ export function runText(run: ShiftRun, rec?: Pick<RecordingV2, 'commits' | 'caus
     run.count > 1
       ? `over ${run.count} frames, ${(run.atMs / 1000).toFixed(2)}–${(run.endMs / 1000).toFixed(2)}s`
       : `at ${(run.atMs / 1000).toFixed(2)}s`;
-  const causeKeys = rec ? new Map(rec.causes.map((c) => [c.i, c.key])) : null;
-  const commitCauses = (id: number) =>
-    (rec?.commits.list.find((c) => c.i === id)?.causeIds ?? []).map((i) => causeKeys?.get(i)).filter((k): k is string => Boolean(k));
+  const commitCauses = rec ? commitCausesOf(rec) : undefined;
   const counted =
     run.excluded === 0
       ? 'counted'

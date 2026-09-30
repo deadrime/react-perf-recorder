@@ -50,7 +50,8 @@ an area of the page to record alone.
   (`record_page` with `cpu`, or the panel in Chromium).
 - **Layout shifts** — what jumped on the page and what moved it: the component a commit mounted above it, a style
   written every frame, a CSS animation, an image with no size, a font; CLS counted as Chrome counts it, and the
-  shifts a slower phone would likely count (Chromium; read through the MCP server for now).
+  shifts a slower phone would likely count. In the panel a shift picked is outlined on the page where the element
+  was and where it is, with what moved it (Chromium).
 - **Before → after** — `↻ Repeat` reloads the page and does the same actions again, so a fix is measured.
 
 ## With an assistant
