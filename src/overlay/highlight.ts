@@ -200,10 +200,7 @@ export class Highlighter implements HighlightSink {
         if (this.flashes.size <= MAX_FLASHES) break;
         this.flashes.delete(el);
       }
-      if (!this.drawing) {
-        this.drawing = true;
-        requestAnimationFrame(() => this.draw());
-      }
+      this.redraw();
     });
     targets.forEach((el) => observer.observe(el));
     this.costMs += performance.now() - started;

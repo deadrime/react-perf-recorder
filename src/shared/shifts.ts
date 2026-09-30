@@ -106,13 +106,16 @@ export const nodeText = (n: ShiftNode) => (n.component ? `${n.component}${n.file
 const empty = (r: ShiftRect) => r[2] === 0 || r[3] === 0;
 
 /** Each element the run moved, from its box in the first frame to its box in the last one. */
-export function runMoves(run: ShiftRun): Array<ShiftNode & { from: ShiftRect; to: ShiftRect }> {
+export function runMoves(run: ShiftRun): Array<ShiftNode & { from: ShiftRect; to: ShiftRect; fixed?: true }> {
   // Two list rows named alike are told apart by their order among the ones named so.
   const nth = (sources: ShiftNode[], i: number) => sources.slice(0, i).filter((s) => nodeKey(s) === nodeKey(sources[i])).length;
+  // Rects are in the viewport: both boxes go into the last frame's, or the window's scroll during the run reads as a move.
+  const [dx, dy] = [0, 1].map((k) => (run.first.scroll?.[k] ?? 0) - (run.last.scroll?.[k] ?? 0));
+  const moved = (r: ShiftRect, fixed?: true): ShiftRect => (fixed || empty(r) ? r : [r[0] + dx, r[1] + dy, r[2], r[3]]);
   return run.first.sources.map((source, i) => {
     const n = nth(run.first.sources, i);
-    const end = run.last.sources.filter((s) => nodeKey(s) === nodeKey(source))[n] ?? source;
-    return { ...source, to: end.to };
+    const end = run.last.sources.filter((s) => nodeKey(s) === nodeKey(source))[n];
+    return { ...source, from: moved(source.from, source.fixed), to: end ? end.to : moved(source.to, source.fixed) };
   });
 }
 

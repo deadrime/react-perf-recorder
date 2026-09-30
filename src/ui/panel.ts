@@ -372,7 +372,7 @@ export class Panel {
     }
     const moved: ShiftPin['moved'] = [];
     for (const m of shift.moved) {
-      const el = this.nearestAt(m.node, (r, found) => boxGap(found, r, m.to[2] || m.to[3] ? m.to : m.from, shift.scroll));
+      const el = this.nearestAt(m.node, (r) => boxGap(r, m.to[2] || m.to[3] ? m.to : m.from, Boolean(m.fixed), shift.scroll));
       if (!el || moved.some((x) => x.el === el)) continue;
       // Gone from view by the end, it was found by where it was: there is no second box to draw.
       const was = m.from[2] && m.from[3] && m.to[2] && m.to[3] ? m.from : null;
@@ -426,7 +426,7 @@ export class Panel {
   }
 
   /** Of the elements on the page at a recorded DOM path, the one the score likes best; none with no box. */
-  private nearestAt(path: string, score: (rect: DOMRect, el: Element) => number): Element | null {
+  private nearestAt(path: string, score: (rect: DOMRect) => number): Element | null {
     let found: Element[];
     try {
       found = [...document.querySelectorAll(path)].slice(0, 1000);
@@ -439,7 +439,7 @@ export class Panel {
       if (el === this.host) continue;
       const rect = el.getBoundingClientRect();
       if (!rect.width && !rect.height) continue;
-      const s = score(rect, el);
+      const s = score(rect);
       if (s < bestScore) [best, bestScore] = [el, s];
     }
     return best;
@@ -707,17 +707,9 @@ export class Panel {
   }
 }
 
-/** A fixed box, or one inside it, stays put in the window as the page scrolls: its offsetParent chain stops short of body. */
-const inFixed = (el: Element) => {
-  if (!(el instanceof HTMLElement)) return false;
-  let top: HTMLElement = el;
-  while (top.offsetParent instanceof HTMLElement) top = top.offsetParent;
-  return top !== document.body && top !== document.documentElement;
-};
-
 /** How far a box now is from one recorded in a shift: in the page, or in the window for a fixed one; size weighs in. */
-const boxGap = (el: Element, r: DOMRect, to: ShiftRect, [sx, sy] = [0, 0]) => {
-  const [x, y] = inFixed(el) ? [r.left - to[0], r.top - to[1]] : [r.left + scrollX - to[0] - sx, r.top + scrollY - to[1] - sy];
+const boxGap = (r: DOMRect, to: ShiftRect, fixed: boolean, [sx, sy] = [0, 0]) => {
+  const [x, y] = fixed ? [r.left - to[0], r.top - to[1]] : [r.left + scrollX - to[0] - sx, r.top + scrollY - to[1] - sy];
   return Math.abs(x) + Math.abs(y) + 4 * (Math.abs(r.width - to[2]) + Math.abs(r.height - to[3]));
 };
 

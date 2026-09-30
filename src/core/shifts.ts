@@ -85,6 +85,14 @@ const sized = (el: Element) => {
 /** React keeps its fiber on the node it made; a node put into a React element by hand has none of its own. */
 const madeByReact = (node: Node) => Object.keys(node).some((k) => k.startsWith('__reactFiber$'));
 
+/** Fixed, or inside a fixed box: its offsetParent chain stops at a fixed element short of body. */
+const inFixed = (node: Node) => {
+  const el = elementOf(node);
+  if (!(el instanceof HTMLElement)) return false;
+  let top: HTMLElement = el;
+  while (top.offsetParent instanceof HTMLElement) top = top.offsetParent;
+  return top !== document.body && top !== document.documentElement && getComputedStyle(top).position === 'fixed';
+};
 const area = (r: DOMRectReadOnly) => Math.max(0, r.width) * Math.max(0, r.height);
 const rect = (r: DOMRectReadOnly): ShiftRect => [Math.round(r.x), Math.round(r.y), Math.round(r.width), Math.round(r.height)];
 const elementOf = (node: Node): Element | null => (node.nodeType === Node.ELEMENT_NODE ? (node as Element) : node.parentElement);
@@ -291,9 +299,9 @@ export class ShiftWatcher {
         const gone = m.removedNodes[0];
         if (!gone) continue;
         // Named now: by the time the shift is reported React has let go of the removed nodes' fibers.
-        // Past the cap it is named later by where it was, which still has its component.
-        const removed = named++ < MAX_NAMED ? { removed: this.removedName(gone, m.target) } : {};
-        items.push(m.nextSibling ? { node: m.nextSibling, how: 'removed', ...removed } : { node: m.target, how: 'removed', atEnd: true, ...removed });
+        // Past the cap only its path: the next sibling, which marks the spot, is not what was removed.
+        const removed = named++ < MAX_NAMED ? this.removedName(gone, m.target) : { node: `${nodePath(m.target)} > ${nodePath(gone)}` };
+        items.push(m.nextSibling ? { node: m.nextSibling, how: 'removed', removed } : { node: m.target, how: 'removed', atEnd: true, removed });
       }
     }
     const change: Change = { t, frame: NaN, kind: commit ? 'commit' : 'dom', items };
@@ -405,7 +413,12 @@ export class ShiftWatcher {
       hadRecentInput: entry.hadRecentInput,
       ...(this.lastInput !== null && this.lastInput <= at ? { sinceInputMs: Math.round(at - this.lastInput) } : {}),
       cause: this.blame(moved, frame),
-      sources: raw.map((s) => ({ ...this.sourceName(s.node, s.currentRect), from: rect(s.previousRect), to: rect(s.currentRect) })),
+      sources: raw.map((s) => ({
+        ...this.sourceName(s.node, s.currentRect),
+        from: rect(s.previousRect),
+        to: rect(s.currentRect),
+        ...(s.node && inFixed(s.node) ? { fixed: true as const } : {}),
+      })),
       ...this.scrollAt(at),
     };
     this.list.push(shift);

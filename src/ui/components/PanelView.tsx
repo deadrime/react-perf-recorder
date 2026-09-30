@@ -51,7 +51,7 @@ export interface PanelHandlers {
 
 /** What moved, from where to where, and what moved it: a run of the report's layout shifts. */
 export interface ShiftOutline {
-  moved: Array<ShiftNode & { from: ShiftRect; to: ShiftRect }>;
+  moved: Array<ShiftNode & { from: ShiftRect; to: ShiftRect; fixed?: true }>;
   by?: ShiftCulprit;
   /** The window's scroll when the boxes were taken. */
   scroll?: [number, number];

@@ -299,8 +299,11 @@ export interface LayoutShift {
   /** The interaction in `latency` the shift followed, within a few seconds. */
   interactionId?: number;
   cause: ShiftCause;
-  /** The elements that moved, largest first, as the browser lists them (five at most). */
-  sources: Array<ShiftNode & { from: ShiftRect; to: ShiftRect }>;
+  /**
+   * The elements that moved, largest first, as the browser lists them (five at most). `fixed`: it stays put in the
+   * window as the page scrolls.
+   */
+  sources: Array<ShiftNode & { from: ShiftRect; to: ShiftRect; fixed?: true }>;
   /** The window's scroll then, when not at the top: the rects are in the viewport. */
   scroll?: [number, number];
 }
