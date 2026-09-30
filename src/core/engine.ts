@@ -345,14 +345,15 @@ export class Engine {
 
   /**
    * Every instance of a component on the page now, found by its name and file. A line that moved since the
-   * recording (the code was edited) still finds it by the file; failing that, by the name alone.
+   * recording (the code was edited) still finds it by the file; failing that, by the name alone. `within`: only
+   * the instances inside that component.
    */
-  findComponents(name: string, source?: string, limit = 50): Fiber[] {
+  findComponents(name: string, source?: string, limit = 50, within?: Fiber): Fiber[] {
     const named: Fiber[] = [];
     eachFiber((f) => {
       // `memo(Row, areEqual)` and `memo(forwardRef(Row))` are two fibers of one instance, both called Row.
       const inner = f.return !== null && isComposite(f.return) && nameOf(f.return) === name;
-      if (nameOf(f) === name && isComposite(f) && !inner) named.push(f);
+      if (nameOf(f) === name && isComposite(f) && !inner && (!within || isWithin(f, within))) named.push(f);
       return named.length < limit * 4;
     });
     if (!source) return named.slice(0, limit);
@@ -451,4 +452,9 @@ export class Engine {
     }
     return this.scopeFromElement(el, spec.level ?? 0);
   }
+}
+
+function isWithin(fiber: Fiber, area: Fiber) {
+  for (let f: Fiber | null = fiber; f; f = f.return) if (f === area || f === area.alternate) return true;
+  return false;
 }

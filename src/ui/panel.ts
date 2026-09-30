@@ -342,10 +342,15 @@ export class Panel {
       return 0;
     }
     const roots = [...rec.roots, ...rec.outsideRoots];
+    // `null`: the report's area is not on the page now, and nothing of it can be outlined.
+    const area = this.resultArea ? this.areaOnPage(this.resultArea) : undefined;
     const items = entries.flatMap(({ i, hits }) => {
       const root = roots[i];
       if (!root) return [];
-      return this.engine.findComponents(root.name, root.source).map((fiber) => ({ fiber, label: `${root.name} ×${hits}` }));
+      // A root of the area has instances elsewhere on the page too; those were not recorded.
+      const within = i < rec.roots.length ? area : undefined;
+      if (within === null) return [];
+      return this.engine.findComponents(root.name, root.source, 50, within).map((fiber) => ({ fiber, label: `${root.name} ×${hits}` }));
     });
     this.highlighter?.pin(items);
     return items.length;
@@ -380,6 +385,16 @@ export class Panel {
     this.result = saved;
     this.compared = compareWithPrevious(saved);
     this.sync();
+  }
+
+  /** The report's area on the page now: the panel's own when it is the same one, else found again by its path. */
+  private areaOnPage(names: string[]): Fiber | null {
+    if (this.scope && scopeNames(this.scope).join('>') === names.join('>')) return this.scopeTarget();
+    try {
+      return this.engine.scopeFromNames(names).chain.at(-1) ?? null;
+    } catch {
+      return null;
+    }
   }
 
   /** The component path of the area the report was recorded in. */
