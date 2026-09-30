@@ -524,6 +524,8 @@ export class Recorder {
   /** `collected`: the page's garbage was collected just before, so what is still in memory is held by something. */
   stop(collected = false): RecordingV2 {
     if (this.stopped) throw new RecorderError('NOT_RECORDING', 'recording already stopped');
+    // Shifts the observer still holds must stream out before emit stops taking events.
+    this.shifts?.flush();
     this.stopped = true;
     setTimerSink(null);
     this.deps.plugins.targets = null;

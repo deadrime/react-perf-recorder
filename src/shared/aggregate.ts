@@ -1,6 +1,6 @@
 import { medianGap, topEntries, topReasons } from './stats';
 import { buildSegments } from './segments';
-import { clsOf } from './shifts';
+import { clsOf, linkInteractions, MAX_SHIFTS } from './shifts';
 import {
   RECORDING_SCHEMA,
   type ActionRecord,
@@ -226,7 +226,15 @@ export function aggregateEvents(meta: SessionMeta, events: SessionEvent[]): Reco
     frames: { longTasks: { count: 0, maxMs: 0, totalMs: 0 }, loaf },
     dom: { text: 0 },
     // Without a shift streamed, a session cannot say whether the browser reports them at all.
-    ...(shiftsSeen ? { shifts: { list: shifts, cls: clsOf(shifts) } } : {}),
+    ...(shiftsSeen
+      ? {
+          shifts: {
+            list: linkInteractions(shifts, latency),
+            ...(shifts.length >= MAX_SHIFTS ? { truncated: true as const } : {}),
+            cls: clsOf(shifts),
+          },
+        }
+      : {}),
     navigations,
     hmr,
     conditions: meta.conditions,

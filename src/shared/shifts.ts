@@ -1,6 +1,20 @@
-import type { ClsTotals, LayoutShift, RecordingV2, ShiftCause, ShiftCulprit, ShiftNode, ShiftRect } from './schema';
+import type { ClsTotals, LatencyEntry, LayoutShift, RecordingV2, ShiftCause, ShiftCulprit, ShiftNode, ShiftRect } from './schema';
 
 const round = (n: number) => +n.toFixed(4);
+
+/** Past this many shifts a recording keeps no more: an endless animation must not grow it without bound. */
+export const MAX_SHIFTS = 1000;
+
+/** Ties each shift to the latest input before it, within 5 s: the interaction it followed. */
+export function linkInteractions(list: LayoutShift[], latency: LatencyEntry[]): LayoutShift[] {
+  for (const shift of list) {
+    let follows: LatencyEntry | undefined;
+    for (const entry of latency)
+      if (entry.atMs <= shift.atMs && shift.atMs - entry.atMs <= 5000 && (!follows || entry.atMs > follows.atMs)) follows = entry;
+    if (follows) shift.interactionId = follows.interactionId;
+  }
+  return list;
+}
 
 /** Left out by the browser, but likely counted on a slower device: an animation's frames run later there. */
 export const nearMissOf = (s: LayoutShift) =>
@@ -85,8 +99,11 @@ const empty = (r: ShiftRect) => r[2] === 0 || r[3] === 0;
 
 /** Each element the run moved, from its box in the first frame to its box in the last one. */
 export function runMoves(run: ShiftRun): Array<ShiftNode & { from: ShiftRect; to: ShiftRect }> {
-  return run.first.sources.map((source) => {
-    const end = run.last.sources.find((s) => s.node === source.node && s.component === source.component) ?? source;
+  // Two list rows named alike are told apart by their order among the ones named so.
+  const nth = (sources: ShiftNode[], i: number) => sources.slice(0, i).filter((s) => nodeKey(s) === nodeKey(sources[i])).length;
+  return run.first.sources.map((source, i) => {
+    const n = nth(run.first.sources, i);
+    const end = run.last.sources.filter((s) => nodeKey(s) === nodeKey(source))[n] ?? source;
     return { ...source, to: end.to };
   });
 }
@@ -230,7 +247,8 @@ export function shiftsByElement(list: LayoutShift[]): Map<string, { counted: num
   for (const s of list) {
     const source = s.sources[0];
     if (!source) continue;
-    const key = nodeText(source);
+    // Without the line: an edit above the component must not make it a new element in the comparison.
+    const key = nodeText({ ...source, file: source.file?.replace(/(:\d+){1,2}$/, '') });
     const entry = out.get(key) ?? { counted: 0, total: 0 };
     entry.total = round(entry.total + s.value);
     if (!s.hadRecentInput) entry.counted = round(entry.counted + s.value);

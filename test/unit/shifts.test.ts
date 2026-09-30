@@ -214,6 +214,31 @@ describe('the watcher on a page', () => {
     watcher.stop();
   });
 
+  it('blames an element removed above the one that moved', async () => {
+    document.body.innerHTML = '<div id="slot"><div class="promo">sale</div></div><ul id="list"></ul>';
+    const shifts: LayoutShift[] = [];
+    const watcher = new ShiftWatcher({ t0: 0, projectRoot: '', wrapperPattern: /^$/, ownHost: null, onShift: (s) => shifts.push(s) });
+    watcher.start();
+    const observer = new MutationObserver(() => {});
+    observer.observe(document.body, { subtree: true, childList: true });
+    document.querySelector('.promo')!.remove();
+    watcher.noteRecords(observer.takeRecords(), true);
+    watcher.commitDone(3);
+    observer.disconnect();
+    await nextFrame();
+    deliver!([
+      {
+        startTime: performance.now(),
+        value: 0.06,
+        hadRecentInput: false,
+        sources: [{ node: document.getElementById('list'), previousRect: rect(40), currentRect: rect(0) }],
+      },
+    ]);
+    watcher.stop();
+    // A removed element with no component is named by where it was.
+    expect(shifts[0].cause).toMatchObject({ commit: 3, by: { node: 'div#slot', where: 'before', change: 'removed' } });
+  });
+
   it('blames an image with no size when it loads a frame after it was mounted', async () => {
     document.body.innerHTML = '<div id="slot"><img class="photo" alt=""></div><ul id="list"></ul>';
     const shifts: LayoutShift[] = [];
@@ -253,18 +278,40 @@ describe('shifts in a partial recording and in a comparison', () => {
   };
 
   it('rebuilds them from streamed events, and compares CLS and each element that moved', () => {
+    const click = { atMs: 50, type: 'click', duration: 40, inputDelay: 2, processing: 30, presentation: 8, interactionId: 7 };
     const before = aggregateEvents(meta, [
-      { k: 'shift', shift: shift(100, 0.2) },
+      { k: 'latency', entry: click },
+      { k: 'shift', shift: shift(100, 0.004) },
       { k: 'end', atMs: 1000 },
     ]);
+    // The fix added lines above the component: the same element, not a new one.
+    const moved = shift(100, 0.0015);
+    moved.sources[0] = { ...moved.sources[0], file: 'src/List.tsx:9' };
     const after = aggregateEvents(meta, [
-      { k: 'shift', shift: shift(100, 0.02) },
+      { k: 'shift', shift: moved },
       { k: 'end', atMs: 1000 },
     ]);
-    expect(before.shifts?.cls.value).toBe(0.2);
+    expect(before.shifts?.cls.value).toBe(0.004);
+    expect(before.shifts?.list[0].interactionId).toBe(7);
     const diff = compareRecordings(before, after);
-    expect(diff.shifts?.cls).toMatchObject({ before: 0.2, after: 0.02 });
-    expect(diff.shifts?.moved[0]).toMatchObject({ key: 'List (src/List.tsx:4)', before: 0.2, after: 0.02 });
+    expect(diff.shifts?.cls).toMatchObject({ before: 0.004, after: 0.0015, delta: -0.0025 });
+    expect(diff.shifts?.moved).toHaveLength(1);
+    expect(diff.shifts?.moved[0]).toMatchObject({ key: 'List (src/List.tsx)', before: 0.004, after: 0.0015 });
     expect(aggregateEvents(meta, [{ k: 'end', atMs: 1000 }]).shifts).toBeUndefined();
+  });
+
+  it('pairs list rows named alike by their order in the run', () => {
+    const row = (y: number) => ({
+      node: 'ul > li',
+      from: [0, y, 300, 40] as [number, number, number, number],
+      to: [0, y + 50, 300, 40] as [number, number, number, number],
+    });
+    const first = shift(0, 0.01, { sources: [row(100), row(140)] });
+    const last = shift(100, 0.01, { sources: [row(150), row(190)] });
+    const moves = runMoves(shiftRuns([first, last])[0]);
+    expect(moves.map((m) => [m.from[1], m.to[1]])).toEqual([
+      [100, 200],
+      [140, 240],
+    ]);
   });
 });
