@@ -97,8 +97,18 @@ const inFixed = (node: Node) => {
   return false;
 };
 const area = (r: DOMRectReadOnly) => Math.max(0, r.width) * Math.max(0, r.height);
-const rect = (r: DOMRectReadOnly): ShiftRect => [Math.round(r.x), Math.round(r.y), Math.round(r.width), Math.round(r.height)];
+export const rect = (r: DOMRectReadOnly): ShiftRect => [Math.round(r.x), Math.round(r.y), Math.round(r.width), Math.round(r.height)];
 const elementOf = (node: Node): Element | null => (node.nodeType === Node.ELEMENT_NODE ? (node as Element) : node.parentElement);
+
+/** The recorder's panel or one of its nodes: it lives in a shadow root, so its nodes are found by the hosts above them. */
+export function inOwn(host: Element | null, node: Node | null): boolean {
+  for (let n = node; host && n; ) {
+    if (n === host || host.contains(n)) return true;
+    const root = n.getRootNode();
+    n = root instanceof ShadowRoot ? root.host : null;
+  }
+  return false;
+}
 
 /** `main > ul.list > li`: a tag with an id, a test id or a readable class; hashed names say nothing. */
 export function nodePath(node: Node | null): string {
@@ -364,14 +374,7 @@ export class ShiftWatcher {
   }
 
   private isOwn(node: Node | null): boolean {
-    const host = this.options.ownHost;
-    // The panel lives in a shadow root: its nodes are found by the hosts above them.
-    for (let n = node; host && n; ) {
-      if (n === host || host.contains(n)) return true;
-      const root = n.getRootNode();
-      n = root instanceof ShadowRoot ? root.host : null;
-    }
-    return false;
+    return inOwn(this.options.ownHost, node);
   }
 
   /**
@@ -547,21 +550,25 @@ export class ShiftWatcher {
     return own.component ? own : { ...this.named(parent), node: `${nodePath(parent)} > ${nodePath(gone)}` };
   }
 
-  /** The nearest app component that rendered the node, skipping wrappers, providers and packages. */
   private named(node: Node): ShiftNode {
-    const element = elementOf(node);
-    let app: Fiber | null = null;
-    for (let f = element ? ownerOf(element) : null; f; f = f.return) {
-      const name = nameOf(f);
-      if (name && !isProvider(name) && !this.options.wrapperPattern.test(name) && !isLibraryFiber(f) && !wrapsProvider(f)) {
-        app = f;
-        break;
-      }
-    }
-    const path = nodePath(node);
-    if (!app) return { node: path };
-    const file = sourceOf(app, this.options.projectRoot);
-    const generated = generatedSourceOf(app);
-    return { component: nameOf(app)!, ...(file ? { file } : {}), ...(generated ? { generated } : {}), node: path };
+    return nodeName(node, this.options.projectRoot, this.options.wrapperPattern);
   }
+}
+
+/** The nearest app component that rendered the node, skipping wrappers, providers and packages. */
+export function nodeName(node: Node, projectRoot: string, wrapperPattern: RegExp): ShiftNode {
+  const element = elementOf(node);
+  let app: Fiber | null = null;
+  for (let f = element ? ownerOf(element) : null; f; f = f.return) {
+    const name = nameOf(f);
+    if (name && !isProvider(name) && !wrapperPattern.test(name) && !isLibraryFiber(f) && !wrapsProvider(f)) {
+      app = f;
+      break;
+    }
+  }
+  const path = nodePath(node);
+  if (!app) return { node: path };
+  const file = sourceOf(app, projectRoot);
+  const generated = generatedSourceOf(app);
+  return { component: nameOf(app)!, ...(file ? { file } : {}), ...(generated ? { generated } : {}), node: path };
 }

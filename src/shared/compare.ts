@@ -1,5 +1,6 @@
-import { GROWTH_KEYS, type ActionRecord, type RecordingV2, type RootStat } from './schema';
+import { GROWTH_KEYS, type ActionRecord, type LcpElement, type LcpPhases, type RecordingV2, type RootStat } from './schema';
 import { shiftsByElement } from './shifts';
+import { elementText } from './lcp';
 import { actionText, wastingRoots } from './summary';
 import { pageAddress } from './url';
 
@@ -242,6 +243,9 @@ export function compareDigests(a: Digest, b: Digest): DigestComparison {
   };
 }
 
+// Without the line: an edit above the component must not make it another element.
+const lcpKey = (e: LcpElement) => elementText({ ...e, file: e.file?.replace(/(:\d+){1,2}$/, '') });
+
 /** Before/after of two recordings, per second where durations differ; warns when they were not taken alike. */
 export function compareRecordings(a: RecordingV2, b: RecordingV2, options: CompareOptions = {}) {
   const top = options.top ?? 15;
@@ -363,6 +367,20 @@ export function compareRecordings(a: RecordingV2, b: RecordingV2, options: Compa
                 .sort((p, q) => Math.abs(q.delta ?? 0) - Math.abs(p.delta ?? 0))
                 .slice(0, top);
             })(),
+          },
+        }
+      : {}),
+    // The largest paint in both runs from the load: its time, each phase, and whether it is still the same element.
+    ...(a.lcp && b.lcp
+      ? {
+          lcp: {
+            ms: delta(a.lcp.ms, b.lcp.ms, 0),
+            phases: Object.fromEntries(
+              (Object.keys(a.lcp.phases) as Array<keyof LcpPhases>).map((k) => [k, delta(a.lcp!.phases[k], b.lcp!.phases[k], 0)])
+            ),
+            ...(lcpKey(a.lcp.element) !== lcpKey(b.lcp.element)
+              ? { element: { before: elementText(a.lcp.element), after: elementText(b.lcp.element) } }
+              : { element: elementText(b.lcp.element) }),
           },
         }
       : {}),

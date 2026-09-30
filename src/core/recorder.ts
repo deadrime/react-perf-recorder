@@ -61,6 +61,7 @@ import { reactWarningLines } from './env/react-warnings';
 import { runningTimer, runningTimerLibrary, setTimerSink } from './env/timers';
 import { GrowthWatcher } from './growth';
 import { ShiftWatcher, shiftsSupported } from './shifts';
+import { LcpWatcher, lcpSupported } from './lcp';
 
 export interface EngineConfig {
   version: string;
@@ -99,6 +100,10 @@ export interface RecordOptions {
   conditions?: Record<string, Primitive>;
   /** Layout shifts and what moved them, where the browser reports them (Chromium); off leaves `shifts` out. */
   shifts?: boolean;
+  /** The largest contentful paint and what put its element on the page (Chromium); off leaves `lcp` out. */
+  lcp?: boolean;
+  /** Started as the page loads, before React's first commit: what no commit put on the page was in the HTML. */
+  fromLoad?: boolean;
 }
 
 export interface HighlightSink {
@@ -301,6 +306,7 @@ export class Recorder {
   private readonly actions: ActionTracker | null;
   private readonly growth: GrowthWatcher | null;
   private readonly shifts: ShiftWatcher | null;
+  private readonly lcp: LcpWatcher | null;
   /** Whether childLanes can be trusted to point at fresh updates; React 19 answers no and the walk widens. */
   private narrowUpdateWalk = true;
   private hook: CommitHook | null = null;
@@ -379,6 +385,17 @@ export class Recorder {
             ownHost: deps.ownHost,
             onShift: (shift) => this.emit({ k: 'shift', shift }),
           });
+    this.lcp =
+      options.lcp === false || !lcpSupported()
+        ? null
+        : new LcpWatcher({
+            t0: this.t0,
+            projectRoot: this.config.projectRoot,
+            wrapperPattern: this.wrapperRe,
+            ownHost: deps.ownHost,
+            fromLoad: Boolean(options.fromLoad),
+            onLcp: (lcp) => this.emit({ k: 'lcp', lcp }),
+          });
     this.growth =
       options.growth === false
         ? null
@@ -446,10 +463,14 @@ export class Recorder {
       withUpdaters
     );
     // After the hook, which can throw: nothing stops listeners and observers of a start that failed.
-    if (this.shifts) {
-      const shifts = this.shifts;
-      this.dom.onRecords = (records, commit) => shifts.noteRecords(records, commit);
-      shifts.start();
+    if (this.shifts || this.lcp) {
+      const { shifts, lcp } = this;
+      this.dom.onRecords = (records, commit) => {
+        shifts?.noteRecords(records, commit);
+        lcp?.noteRecords(records, commit);
+      };
+      shifts?.start();
+      lcp?.start();
     }
     this.updaters = this.hook.updaters ? new Map() : null;
     // A store or query notifies its subscribers before the recorder hears about it, so the fibers React just
@@ -527,6 +548,7 @@ export class Recorder {
     if (this.stopped) throw new RecorderError('NOT_RECORDING', 'recording already stopped');
     // Shifts the observer still holds must stream out before emit stops taking events.
     this.shifts?.flush();
+    this.lcp?.flush();
     this.stopped = true;
     setTimerSink(null);
     this.deps.plugins.targets = null;
@@ -535,6 +557,7 @@ export class Recorder {
     this.errors.push(...hookErrors);
     this.dom.stop();
     this.shifts?.stop();
+    this.lcp?.stop();
     this.frames.stop();
     this.counting = false;
     this.actions?.stop();
@@ -612,6 +635,7 @@ export class Recorder {
     this.growth?.commit(fiber);
     this.finishCommit(c, causes, lane, event, source, origins, resyncOnly);
     this.shifts?.commitDone(this.commitSeq > seq ? seq : null);
+    this.lcp?.commitDone(this.commitSeq > seq ? seq : null);
   }
 
   private visitChain(f: Fiber, prevs: Array<Snapshot | undefined>) {
@@ -1562,6 +1586,10 @@ export class Recorder {
       dom: { ...this.dom.counts },
       ...(growth ? { growth } : {}),
       ...(this.shifts ? { shifts: this.shifts.result(this.frames.latency) } : {}),
+      ...(() => {
+        const lcp = this.lcp?.result();
+        return lcp ? { lcp } : {};
+      })(),
       navigations: this.navigations,
       hmr: this.hmr,
       conditions: this.conditions,

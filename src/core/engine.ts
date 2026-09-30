@@ -1,4 +1,4 @@
-import { growthOrigins, shiftNodes, type RecordingV2, type SessionEvent } from '../shared/schema';
+import { growthOrigins, pageNodes, type RecordingV2, type SessionEvent } from '../shared/schema';
 import { safeUrl } from '../shared/url';
 import { hookOwner, RecorderError } from './commit-hook';
 import {
@@ -102,7 +102,7 @@ function applySites(recording: RecordingV2, sites: Record<string, { site: string
     }
     delete origin.generated;
   }
-  for (const node of shiftNodes(recording)) {
+  for (const node of pageNodes(recording)) {
     const g = node.generated;
     if (!g) continue;
     const mapped = sites[`${g.url}:${g.line}:${g.column}`];
