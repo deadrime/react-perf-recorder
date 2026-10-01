@@ -44,6 +44,7 @@ import {
   nearestHosts,
   reactVersion,
   siteKeyOf,
+  typeKeyOf,
   sourceOf,
   sourcesUnavailable,
   Tag,
@@ -956,7 +957,7 @@ export class Recorder {
     const generated = generatedSourceOf(f);
     // Two roots of the same name in one file are told apart by the call site, which the source alone carries only
     // on React 18; on 19 it is the built position, and it keys them just as well before the server maps it.
-    const key = `${outside ? 'outside|' : ''}${name}|${siteKeyOf(f, this.config.projectRoot) || source}|${path}`;
+    const key = `${outside ? 'outside|' : ''}${name}|${siteKeyOf(f, this.config.projectRoot) || source}${typeKeyOf(f)}|${path}`;
     let agg = this.rootsByKey.get(key);
     if (!agg) {
       agg = {

@@ -1,4 +1,17 @@
-import { act, useMemo, useCallback, useRef, memo, useContext, useState, createContext, useEffect, Suspense, type ReactNode } from 'react';
+import {
+  act,
+  createElement,
+  useMemo,
+  useCallback,
+  useRef,
+  memo,
+  useContext,
+  useState,
+  createContext,
+  useEffect,
+  Suspense,
+  type ReactNode,
+} from 'react';
 import { createStore, useStore } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
 import { flushSync } from 'react-dom';
@@ -167,6 +180,30 @@ describe('Recorder', () => {
       const root = rec.roots.find((r) => r.name === name)!;
       expect({ name, hits: root.hits, ownDomUnchanged: root.ownDomUnchanged }).toEqual({ name, hits: 2, ownDomUnchanged: undefined });
     }
+  });
+
+  it('keeps two unnamed cells one render helper creates as two roots', () => {
+    const store = createStore(() => ({ price: 1, profit: 1 }));
+    // A table's columns: each cell is an arrow of its own, all created at the one line of `flexRender`.
+    const columns = [{ cell: () => <span>{useStore(store, (s) => s.price)}</span> }, { cell: () => <span>{useStore(store, (s) => s.profit)}</span> }];
+    const flexRender = (cell: () => ReactNode) => createElement(cell);
+    const Row = () => (
+      <div>
+        {columns.map((column, i) => (
+          <i key={i}>{flexRender(column.cell)}</i>
+        ))}
+      </div>
+    );
+    mount(<Row />);
+    const { recorder } = makeRecorder();
+    recorder.start();
+    flush(() => store.setState({ price: 2 }));
+    flush(() => store.setState({ profit: 2 }));
+    flush(() => store.setState({ profit: 3 }));
+    const rec = recorder.stop();
+
+    const cells = rec.roots.filter((r) => r.name !== 'Row');
+    expect(cells.map((r) => r.hits).sort()).toEqual([1, 2]);
   });
 
   it('credits a root with the elements its own render made, under a wrapper or a provider too', () => {
