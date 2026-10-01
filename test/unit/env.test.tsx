@@ -79,6 +79,27 @@ describe('timer causes', () => {
     ]);
     expect(rec.roots[0].causes[0][0]).toMatch(/^core:timer setInterval/);
   });
+
+  it('leaves a timer the update that was waiting for its render before it ran', async () => {
+    let bump!: () => void;
+    const Panel = () => {
+      const [n, setN] = useState(0);
+      bump = () => setN((x) => x + 1);
+      return <b>{n}</b>;
+    };
+    const { unmount } = mount(<Panel />);
+    const { recorder } = makeRecorder();
+    recorder.start();
+    // An effect's setState still waiting, then a frame callback that only scrolls: the update is not the frame's.
+    await act(async () => {
+      bump();
+      await new Promise((resolve) => window.requestAnimationFrame(resolve));
+    });
+    const rec = recorder.stop();
+    unmount();
+    expect(rec.roots[0].hits).toBe(1);
+    expect(rec.causes.map((c) => c.key).filter((k) => k.startsWith('core:timer'))).toEqual([]);
+  });
 });
 
 describe('timers of the recorder itself', () => {

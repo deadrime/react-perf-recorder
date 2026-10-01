@@ -58,7 +58,7 @@ import { ScopeTracker, type ScopeHandle, type ScopeResolution } from './scope';
 import { StoreChecks } from './store-checks';
 import { updateOrigin, type UpdateOrigin } from './env/origin';
 import { reactWarningLines } from './env/react-warnings';
-import { runningTimer, runningTimerLibrary, setTimerSink } from './env/timers';
+import { nextOrder, runningTimer, runningTimerLibrary, setTimerSink } from './env/timers';
 import { GrowthWatcher } from './growth';
 import { ShiftWatcher, shiftsSupported } from './shifts';
 import { LcpWatcher, lcpSupported } from './lcp';
@@ -325,6 +325,8 @@ export class Recorder {
   private claimed = new WeakSet<Fiber>();
   /** Fibers that scheduled an update not committed yet, with its lanes, as React reports them; null walks the tree. */
   private updaters: Map<Fiber, number> | null = null;
+  /** When each of them last scheduled one, in `nextOrder`: a timer names only the updates made inside it. */
+  private updatedAt = new WeakMap<Fiber, number>();
   /** Lanes that already had an update since the last commit: an origin is taken once a lane, as before. */
   private notedLanes = 0;
   /** Which store hook scheduled each update; null when React's updater sets do not say which fiber an update is for. */
@@ -484,11 +486,11 @@ export class Recorder {
     setTimerSink({
       after: (text, ours, library, startedAt) => {
         const plugins = this.deps.plugins;
-        if (!this.freshUpdates(false).size) return;
+        if (!this.updatesSince(startedAt, false).size) return;
         // A timer of the recorder's own — the panel's clock, its outlines — takes no one's updates.
         if (ours()) return;
-        if (plugins.hasWaiting && plugins.deliver(library(), () => this.freshUpdates(), startedAt)) return;
-        plugins.emit('core', { type: text() }, this.freshUpdates());
+        if (plugins.hasWaiting && plugins.deliver(library(), () => this.updatesSince(startedAt), startedAt)) return;
+        plugins.emit('core', { type: text() }, this.updatesSince(startedAt));
       },
     });
     this.frames.start();
@@ -1193,6 +1195,7 @@ export class Recorder {
     }
     if (fiber && this.updaters) {
       this.updaters.set(fiber, (this.updaters.get(fiber) ?? 0) | lane);
+      this.updatedAt.set(fiber, nextOrder());
       if (resync || this.notedLanes & lane) return;
       this.notedLanes |= lane;
     }
@@ -1218,6 +1221,24 @@ export class Recorder {
     const wide = this.scanUpdates(lanes, false, claim);
     if (wide.size) this.narrowUpdateWalk = false;
     return wide;
+  }
+
+  /**
+   * The fresh updates made since `order`. An effect's update still waiting for its render is not the timer's that
+   * ran next; without React's updater sets there is no telling, and all of them go.
+   */
+  private updatesSince(order: number, claim = true): Set<Fiber> {
+    if (!this.updaters) return this.freshUpdates(claim);
+    const out = new Set<Fiber>();
+    for (const f of this.unclaimedUpdaters(false)) {
+      if ((this.updatedAt.get(f) ?? Infinity) < order) continue;
+      out.add(f);
+      if (claim) {
+        this.claimed.add(f);
+        if (f.alternate) this.claimed.add(f.alternate);
+      }
+    }
+    return out;
   }
 
   /** React keeps whichever half the hook was bound to; the commit adds the other. */
