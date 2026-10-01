@@ -206,6 +206,21 @@ describe('Recorder', () => {
     expect(cells.map((r) => r.hits).sort()).toEqual([1, 2]);
   });
 
+  it('keys a root the same way in the next recording, after the page loaded again', () => {
+    // A reload makes every component anew: what pairs a root before and after a fix must not count them.
+    const load = () => {
+      const store = createStore(() => ({ v: 0 }));
+      const Cell = () => <span>{useStore(store, (s) => s.v)}</span>;
+      const Row = () => <div>{createElement(Cell)}</div>;
+      mount(<Row />);
+      const { recorder } = makeRecorder();
+      recorder.start();
+      flush(() => store.setState({ v: 1 }));
+      return recorder.stop().roots.find((r) => r.name === 'Cell')!.key;
+    };
+    expect(load()).toBe(load());
+  });
+
   it('credits a root with the elements its own render made, under a wrapper or a provider too', () => {
     const store = createStore(() => ({ text: 'a' }));
     const Ctx = createContext(0);

@@ -184,19 +184,23 @@ export function generatedSourceOf(f: Fiber): { url: string; line: number; column
   return site && !site.exact ? { url: site.url, line: site.line, column: site.column } : undefined;
 }
 
-const typeIds = new WeakMap<object, number>();
-let nextTypeId = 1;
+const typeKeys = new WeakMap<object, string>();
 
 /**
  * Which component a fiber is, for a root's key: one site — a table's `flexRender`, a render helper — creates every
- * cell, and on React 18 a package's element has none, so name, site and path alone would merge them.
+ * cell, and on React 18 a package's element has none, so name, site and path alone would merge them. The site of the
+ * first element it returned tells them apart and, unlike an id of the type, is the same in the next recording.
  */
-export function typeKeyOf(f: Fiber): string {
+export function typeKeyOf(f: Fiber, root = ''): string {
   const type = f.elementType ?? f.type;
   if (!type || (typeof type !== 'object' && typeof type !== 'function')) return '';
-  let id = typeIds.get(type);
-  if (!id) typeIds.set(type, (id = nextTypeId++));
-  return `#${id}`;
+  let key = typeKeys.get(type);
+  if (key === undefined) {
+    const inner = f.child && siteOf(f.child);
+    key = inner ? `>${relativeFile(inner.url, root, inner.line)}:${inner.line}:${inner.column}` : '';
+    typeKeys.set(type, key);
+  }
+  return key;
 }
 
 /** What tells two call sites apart in a root's key, whether or not the position can be shown yet. */

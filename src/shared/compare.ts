@@ -32,7 +32,7 @@ function rootMetrics(r: RootStat | undefined, ms: number) {
 }
 
 /** A key without its line numbers: the fix edited the file above the root, and the root is still the same one. */
-const withoutLines = (key: string) => key.replace(/:\d+(?::\d+)?(?=\||$)/g, '');
+const withoutLines = (key: string) => key.replace(/:\d+(?::\d+)?(?=[|>]|$)/g, '');
 
 function compareRoots(a: RootStat[], b: RootStat[], msA: number, msB: number, match: 'key' | 'name', top: number) {
   const keyOf = (r: RootStat) => (match === 'name' ? `${r.name}|${r.source}` : r.key);
