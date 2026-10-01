@@ -119,6 +119,9 @@ const withLoadFlag = (url: string) => {
   return parsed.toString();
 };
 
+/** How long a sign-in link gets to finish before the page is opened. */
+const VIA_WAIT_MS = 15_000;
+
 const samePage = (a: string, b: string) => {
   try {
     const one = new URL(a);
@@ -136,6 +139,8 @@ interface PageLike {
   waitForFunction(fn: string, arg?: unknown, options?: unknown): Promise<unknown>;
   evaluate<T>(fn: string | ((arg: never) => T), arg?: unknown): Promise<T>;
   waitForTimeout(ms: number): Promise<void>;
+  waitForURL(url: (at: URL) => boolean, options?: { timeout?: number }): Promise<void>;
+  waitForLoadState(state: 'networkidle', options?: { timeout?: number }): Promise<void>;
   addInitScript<T>(fn: ((arg: T) => void) | { content: string }, arg?: T): Promise<void>;
   setDefaultTimeout(ms: number): void;
   on(event: 'domcontentloaded', listener: () => void): void;
@@ -427,7 +432,17 @@ export async function recordPage(options: RecordPageOptions, sessionsDir: string
       await catalog.attach(await session(), { tables: true });
     }
     // A link that signs the browser in — `/debug/<jwt>`, a magic link — is opened first and is never recorded.
-    if (options.via) await page.goto(options.via, { waitUntil: 'load' });
+    if (options.via) {
+      const via = options.via;
+      await page.goto(via, { waitUntil: 'load' });
+      // A single-page app checks the token with a request after load and only then moves on: leaving at load cuts
+      // the sign-in off, and the page is recorded half signed in.
+      const settled = await Promise.race([
+        page.waitForURL((at) => !samePage(via, at.href), { timeout: VIA_WAIT_MS }).then(() => true),
+        page.waitForLoadState('networkidle', { timeout: VIA_WAIT_MS }).then(() => true),
+      ]).catch(() => false);
+      if (!settled) warnings.push(`${safeUrl(via)} neither moved on nor went quiet in ${VIA_WAIT_MS / 1000}s: the sign-in may not have finished`);
+    }
     if (options.setup) await runModule(options.setup, page, sessionsDir);
     const leftAt = page.url();
     if (stay) {
@@ -587,6 +602,9 @@ export async function recordPage(options: RecordPageOptions, sessionsDir: string
       recorder: injected ? 'injected' : 'plugin',
       warnings: [
         ...warnings,
+        ...(rec.totals.commits === 0
+          ? [`nothing rendered in ${(rec.durationMs / 1000).toFixed(1)}s: the page may still be loading, behind a sign-in, or idle`]
+          : []),
         ...(injected ? [INJECTED_NOTE] : []),
         ...(cpu && !rec.cpu && !rec.warnings.some((w) => w.startsWith('CPU'))
           ? ['CPU profile not saved: the page has no dev server to read it']
