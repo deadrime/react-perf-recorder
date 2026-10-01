@@ -145,6 +145,30 @@ describe('Recorder', () => {
     expect({ hits: hints.hits, ownDomUnchanged: hints.ownDomUnchanged }).toEqual({ hits: 2, ownDomUnchanged: undefined });
   });
 
+  it('credits a root with the text it passed a child as children', () => {
+    const store = createStore(() => ({ text: 'a' }));
+    const Text = ({ children }: { children: ReactNode }) => <p>{children}</p>;
+    // A design system's <Text>: the string is the root's, the element is the wrapper's.
+    const Countdown = () => <Text>{useStore(store, (s) => s.text)}</Text>;
+    const Labelled = () => <Text>left: {useStore(store, (s) => s.text)}</Text>;
+    mount(
+      <>
+        <Countdown />
+        <Labelled />
+      </>
+    );
+    const { recorder } = makeRecorder();
+    recorder.start();
+    flush(() => store.setState({ text: 'b' }));
+    flush(() => store.setState({ text: 'c' }));
+    const rec = recorder.stop();
+
+    for (const name of ['Countdown', 'Labelled']) {
+      const root = rec.roots.find((r) => r.name === name)!;
+      expect({ name, hits: root.hits, ownDomUnchanged: root.ownDomUnchanged }).toEqual({ name, hits: 2, ownDomUnchanged: undefined });
+    }
+  });
+
   it('credits a root with the elements its own render made, under a wrapper or a provider too', () => {
     const store = createStore(() => ({ text: 'a' }));
     const Ctx = createContext(0);
