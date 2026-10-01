@@ -2,6 +2,7 @@ import type { LatencyEntry, LayoutShift, ShiftCause, ShiftCulprit, ShiftNode, Sh
 import { clsOf, linkInteractions, MAX_SHIFTS } from '../shared/shifts';
 import { ownerOf } from './dom';
 import { generatedSourceOf, isLibraryFiber, isProvider, nameOf, sourceOf, wrapsProvider, type Fiber } from './fiber';
+import { FrameClock } from './frame-clock';
 
 interface ShiftEntry extends PerformanceEntry {
   value: number;
@@ -51,6 +52,8 @@ export interface ShiftOptions {
   projectRoot: string;
   wrapperPattern: RegExp;
   ownHost: Element | null;
+  /** Shared with the largest paint watcher: one rAF a frame. */
+  clock?: FrameClock;
   onShift(shift: LayoutShift): void;
 }
 
@@ -97,8 +100,18 @@ const inFixed = (node: Node) => {
   return false;
 };
 const area = (r: DOMRectReadOnly) => Math.max(0, r.width) * Math.max(0, r.height);
-const rect = (r: DOMRectReadOnly): ShiftRect => [Math.round(r.x), Math.round(r.y), Math.round(r.width), Math.round(r.height)];
+export const rect = (r: DOMRectReadOnly): ShiftRect => [Math.round(r.x), Math.round(r.y), Math.round(r.width), Math.round(r.height)];
 const elementOf = (node: Node): Element | null => (node.nodeType === Node.ELEMENT_NODE ? (node as Element) : node.parentElement);
+
+/** The recorder's panel or one of its nodes: it lives in a shadow root, so its nodes are found by the hosts above them. */
+export function inOwn(host: Element | null, node: Node | null): boolean {
+  for (let n = node; host && n; ) {
+    if (n === host || host.contains(n)) return true;
+    const root = n.getRootNode();
+    n = root instanceof ShadowRoot ? root.host : null;
+  }
+  return false;
+}
 
 /** `main > ul.list > li`: a tag with an id, a test id or a readable class; hashed names say nothing. */
 export function nodePath(node: Node | null): string {
@@ -196,8 +209,7 @@ export class ShiftWatcher {
   readonly list: LayoutShift[] = [];
   private truncated = false;
   private changes: Change[] = [];
-  private pending: Change[] = [];
-  private framePending = false;
+  private readonly clock: FrameClock;
   private openCommit: Change | null = null;
   private lastInput: number | null = null;
   /** Window scroll positions with when they began, the last few: an entry arrives after the page may have scrolled on. */
@@ -207,7 +219,9 @@ export class ShiftWatcher {
   private head: MutationObserver | null = null;
   private off: Array<() => void> = [];
 
-  constructor(private options: ShiftOptions) {}
+  constructor(private options: ShiftOptions) {
+    this.clock = options.clock ?? new FrameClock();
+  }
 
   start() {
     const listen = (target: EventTarget | undefined, type: string, fn: (e: Event) => void) => {
@@ -276,7 +290,6 @@ export class ShiftWatcher {
     this.off.forEach((off) => off());
     this.off = [];
     this.changes = [];
-    this.pending = [];
     if (this.pruneTimer) clearTimeout(this.pruneTimer);
     this.pruneTimer = null;
   }
@@ -295,12 +308,15 @@ export class ShiftWatcher {
       } else if (m.type === 'characterData') {
         if (m.target.parentNode) items.push({ node: m.target.parentNode, how: 'text' });
       } else {
+        // Text put in or taken out is the element's text changing, as React does it for a text that was empty.
+        const texts = [...m.addedNodes, ...m.removedNodes].some((node) => node.nodeType === Node.TEXT_NODE);
+        if (texts) items.push({ node: m.target, how: 'text' });
         m.addedNodes.forEach((node) => {
           // A stylesheet put into the page moves everything; it is no one's neighbour. Other links move nothing.
           if (isSheet(node)) this.add({ t, frame: NaN, kind: 'sheet', node });
-          else if (node.nodeName !== 'LINK') items.push({ node, how: 'added' });
+          else if (node.nodeName !== 'LINK' && node.nodeType !== Node.TEXT_NODE) items.push({ node, how: 'added' });
         });
-        const gone = m.removedNodes[0];
+        const gone = [...m.removedNodes].find((node) => node.nodeType !== Node.TEXT_NODE);
         if (!gone) continue;
         // Named now: by the time the shift is reported React has let go of the removed nodes' fibers.
         // Past the cap, named once per parent: a list replaced at once is one culprit, not a thousand names.
@@ -333,8 +349,6 @@ export class ShiftWatcher {
     let stale = 0;
     while (stale < changes.length && changes[stale].t < now - KEEP_MS) stale++;
     if (stale) changes.splice(0, stale);
-    // A hidden tab runs no rAF to stamp them: what waits for a frame must not pile up either.
-    if (this.pending.length && this.pending[0].t < now - KEEP_MS) this.pending = this.pending.filter((c) => c.t >= now - KEEP_MS);
   }
 
   /** One timer at a time, armed again while changes remain: not a timer per DOM batch. */
@@ -351,27 +365,11 @@ export class ShiftWatcher {
     this.changes.push(change);
     // An idle page gets no next change to prune on: what was added stays reachable no longer than it is useful.
     if (!this.pruneTimer) this.armPrune();
-    this.pending.push(change);
-    if (this.framePending) return;
-    this.framePending = true;
-    // Called before the rendering update that paints the change; the shift's time is that update's layout.
-    requestAnimationFrame(() => {
-      const now = performance.now();
-      for (const c of this.pending) c.frame = now;
-      this.pending = [];
-      this.framePending = false;
-    });
+    this.clock.stamp(change);
   }
 
   private isOwn(node: Node | null): boolean {
-    const host = this.options.ownHost;
-    // The panel lives in a shadow root: its nodes are found by the hosts above them.
-    for (let n = node; host && n; ) {
-      if (n === host || host.contains(n)) return true;
-      const root = n.getRootNode();
-      n = root instanceof ShadowRoot ? root.host : null;
-    }
-    return false;
+    return inOwn(this.options.ownHost, node);
   }
 
   /**
@@ -460,12 +458,16 @@ export class ShiftWatcher {
     // A change that shares no more than the page's top with the moved element is a weak lead: a running animation,
     // a stylesheet or a font of the same frame is taken first.
     let distant: { candidate: Candidate; where: Where } | null = null;
+    let before: { candidate: Candidate; where: Where } | null = null;
+    // The rank holds across the moved elements: one's own change beats a change above another.
     for (const node of moved) {
       const found = nearest(candidates, node);
+      if (found && (found.where === 'self' || found.where === 'ancestor')) return this.causeOf(found.candidate, found.where);
       if (found && found.where === 'before' && depthBelow(found.candidate.node, node) <= TOP_DEPTH) distant ??= found;
-      else if (found && found.where !== 'inside') return this.causeOf(found.candidate, found.where);
+      else if (found?.where === 'before') before ??= found;
       else inside ??= found;
     }
+    if (before) return this.causeOf(before.candidate, before.where);
     const animated = moved.length ? this.animation(moved, ended) : null;
     if (animated && !animated.distant) return animated.cause;
     // A <style> CSS-in-JS puts in comes with the component it styles: the mount is the lead, not the sheet.
@@ -547,21 +549,25 @@ export class ShiftWatcher {
     return own.component ? own : { ...this.named(parent), node: `${nodePath(parent)} > ${nodePath(gone)}` };
   }
 
-  /** The nearest app component that rendered the node, skipping wrappers, providers and packages. */
   private named(node: Node): ShiftNode {
-    const element = elementOf(node);
-    let app: Fiber | null = null;
-    for (let f = element ? ownerOf(element) : null; f; f = f.return) {
-      const name = nameOf(f);
-      if (name && !isProvider(name) && !this.options.wrapperPattern.test(name) && !isLibraryFiber(f) && !wrapsProvider(f)) {
-        app = f;
-        break;
-      }
-    }
-    const path = nodePath(node);
-    if (!app) return { node: path };
-    const file = sourceOf(app, this.options.projectRoot);
-    const generated = generatedSourceOf(app);
-    return { component: nameOf(app)!, ...(file ? { file } : {}), ...(generated ? { generated } : {}), node: path };
+    return nodeName(node, this.options.projectRoot, this.options.wrapperPattern);
   }
+}
+
+/** The nearest app component that rendered the node, skipping wrappers, providers and packages. */
+export function nodeName(node: Node, projectRoot: string, wrapperPattern: RegExp): ShiftNode {
+  const element = elementOf(node);
+  let app: Fiber | null = null;
+  for (let f = element ? ownerOf(element) : null; f; f = f.return) {
+    const name = nameOf(f);
+    if (name && !isProvider(name) && !wrapperPattern.test(name) && !isLibraryFiber(f) && !wrapsProvider(f)) {
+      app = f;
+      break;
+    }
+  }
+  const path = nodePath(node);
+  if (!app) return { node: path };
+  const file = sourceOf(app, projectRoot);
+  const generated = generatedSourceOf(app);
+  return { component: nameOf(app)!, ...(file ? { file } : {}), ...(generated ? { generated } : {}), node: path };
 }

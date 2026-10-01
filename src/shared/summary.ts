@@ -16,6 +16,7 @@ import {
 } from './schema';
 import { cpuLine, placeText, type CpuSummary } from './cpu';
 import { shiftsSummaryLine } from './shifts';
+import { lcpSummaryLine } from './lcp';
 
 export interface RootLine {
   root: string;
@@ -84,6 +85,8 @@ export interface Summary {
   cpu?: string;
   /** CLS, what a slower device would add, and the worst shift with what moved it; the rest is in section shifts. */
   shifts?: string;
+  /** The largest contentful paint and the finding for its largest part, in a recording from the page load; the rest is in section lcp. */
+  lcp?: string;
   frames: { longTasks: number; maxLongTaskMs: number; longFrames: number; worstFrameMs: number };
   overhead: RecordingV2['overhead'];
   warnings: string[];
@@ -644,6 +647,10 @@ export function summarize(rec: RecordingV2 & { id?: string; status?: string }, t
     ...(() => {
       const line = shiftsSummaryLine(rec);
       return line ? { shifts: line } : {};
+    })(),
+    ...(() => {
+      const line = lcpSummaryLine(rec);
+      return line ? { lcp: line } : {};
     })(),
     warnings: [...rec.warnings, ...rec.errors.map((e) => `error: ${e}`)].slice(0, 10),
   };

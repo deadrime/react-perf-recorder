@@ -9,7 +9,7 @@ import {
   ENDPOINT,
   growthOrigins,
   SESSION_SCHEMA,
-  shiftNodes,
+  pageNodes,
   type RecordingV2,
   type SessionEvent,
   type SessionMeta,
@@ -233,7 +233,7 @@ export class SessionStore {
       }
       delete origin.generated;
     }
-    for (const node of shiftNodes(recording)) {
+    for (const node of pageNodes(recording)) {
       const g = node.generated;
       if (!g) continue;
       const mapped = await map(g);

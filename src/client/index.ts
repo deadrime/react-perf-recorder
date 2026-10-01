@@ -68,6 +68,7 @@ function recordFromLoad(engine: Engine, pending: RecordOnLoad | null, panel: Pan
     try {
       engine.start({
         source: pending?.source ?? 'load',
+        fromLoad: true,
         label: pending?.label || 'from page load',
         scope: pending?.scope ?? (pending?.names ? { names: pending.names } : null),
         ...(pending?.watch?.length ? { watch: pending.watch } : {}),

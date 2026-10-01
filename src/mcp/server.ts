@@ -22,6 +22,7 @@ import {
 } from '../shared/summary';
 import { CPU_CAVEAT, cpuLine, placeText } from '../shared/cpu';
 import { commitCausesOf, runText, shiftRuns } from '../shared/shifts';
+import { candidateLines, lcpFindings, lcpLine, phasesText, secs } from '../shared/lcp';
 import { GROWTH_KEYS, type RecordingV2 } from '../shared/schema';
 import { listingOf } from '../shared/listing';
 import { planReplay } from '../shared/replay';
@@ -47,6 +48,7 @@ const SECTIONS = [
   'growth',
   'cpu',
   'shifts',
+  'lcp',
   'navigations',
   'conditions',
   'warnings',
@@ -58,6 +60,11 @@ const SHIFTS_NOTE =
   'Counted the way Chrome counts CLS. Resizing the viewport (a phone keyboard, the URL bar), scrolling and transform ' +
   'animations are not shifts, so field data stays the only source for those. A dev build loads CSS through JS and may ' +
   'get its data in another order than production: a shift on page load may not happen there.';
+
+const LCP_NOTE =
+  'Measured the way Chrome reports LCP and split as web-vitals splits it. A dev server sends modules one by one and ' +
+  'images unoptimised: compare recordings with each other, not with field data. Only a page load has an LCP — ' +
+  'navigating inside the app paints none — and the browser stops looking at the first input or scroll.';
 
 const json = (value: unknown) => ({ content: [{ type: 'text' as const, text: JSON.stringify(value) }] });
 
@@ -232,6 +239,21 @@ export function section(rec: RecordingV2 & { id?: string; status?: string }, nam
         })(),
       };
     }
+    case 'lcp': {
+      const lcp = rec.lcp;
+      if (!lcp)
+        return {
+          note: 'no largest contentful paint: it comes with a recording from the page load (record_page fromLoad: true, or ↺ Page load in the panel), where the browser reports it (Chromium), by this version or later',
+        };
+      return {
+        line: lcpLine(lcp),
+        phases: phasesText(lcp.phases),
+        findings: lcpFindings(rec, lcp),
+        ...(lcp.candidates.length ? { before: candidateLines(lcp) } : {}),
+        ...(lcp.inputAtMs !== undefined ? { lookedUntil: `the first input or scroll at ${secs(lcp.inputAtMs)} of the recording` } : {}),
+        note: LCP_NOTE,
+      };
+    }
     case 'navigations':
       return page(rec.navigations);
     case 'conditions':
@@ -353,7 +375,10 @@ export function createServer(dir: string) {
               'by the function that started it. shifts: layout shifts (Chromium) worst first, grouped per element and reason — what ' +
               'moved, which way and how far, what moved it (the component a commit mounted or changed above it, a style written ' +
               'every frame, a CSS animation, an image with no size, a font), and whether the browser counted it; CLS by session ' +
-              'windows and the near miss a slower device would add.'
+              'windows and the near miss a slower device would add. lcp: the largest contentful paint of a recording from the ' +
+              'page load — its element and component, the four web-vitals phases, and what put the element on the page: the ' +
+              'commit that mounted it with its causes, whether its image request waited for that commit, a lazy image, the long ' +
+              'frames and commits that held the paint, a web font.'
           ),
         top: z.number().int().min(1).max(100).optional().describe('How many entries of a long section, 10 by default.'),
         offset: z.number().int().min(0).optional().describe('Where to start in a long section, to page through it.'),
@@ -432,7 +457,10 @@ export function createServer(dir: string) {
           .describe(
             'A recording id (or "latest") whose actions to do again, from the page load, on its page and in its area unless url and scope say otherwise, after the setup it ran: record it after the fix, then compare_recordings with the original. A recording with no actions — the page left alone — is recorded again as it is, for as long.'
           ),
-        fromLoad: z.boolean().optional().describe('Record from the first commit of the page load.'),
+        fromLoad: z
+          .boolean()
+          .optional()
+          .describe('Record from the first commit of the page load; the largest contentful paint (section lcp) comes only with it.'),
         viewport: z.string().optional().describe('1280x800; keep it the same across runs that will be compared.'),
         sample: z
           .boolean()
