@@ -64,3 +64,49 @@ test('a recording started on a page already painted has no largest paint, and sa
   expect(rec.lcp).toBeUndefined();
   expect(section(rec, 'lcp', 10, 0)).toMatchObject({ note: expect.stringContaining('fromLoad') });
 });
+
+test('the panel shows the largest paint: a tile, its phases, a mark on the timeline and the element highlighted', async ({ page }) => {
+  await page.goto('/test/lcp?case=late&rpr=panel');
+  await page.locator('[data-rpr="record-on-load"]').click();
+  await expect(page.locator('img.hero')).toBeVisible();
+  await page.waitForTimeout(1000);
+  await page.locator('[data-rpr="stop"]').click();
+  await expect(page.locator('[data-rpr="result"]')).toContainText('saved');
+
+  await expect(page.locator('[data-rpr="verdict"] .kpi', { hasText: 'LCP' })).toContainText(/\d\.\d\ds/);
+  await expect(page.locator('details[data-fold="lcp"]')).toHaveAttribute('open', '');
+  const row = page.locator('[data-rpr="lcp-element"]');
+  await expect(row).toContainText('HeroImage');
+  await expect(page.locator('[data-rpr="lcp-phases"]')).toContainText('load delay');
+  await expect(page.locator('[data-rpr="lcp-findings"] li').first()).toContainText(
+    /^load delay \d+ms: the image was requested only when it was mounted/
+  );
+
+  const pinned = () =>
+    page.evaluate(() => {
+      const pin = (window as any).__REACT_PERF_RECORDER__.panel.highlighter.element;
+      return pin && { tag: pin.el.tagName, label: pin.label };
+    });
+  // Scrolled away from it, picking it brings the element back into sight.
+  await page.evaluate(() => {
+    document.body.style.paddingBottom = '3000px';
+    window.scrollTo(0, 2500);
+  });
+  await row.click();
+  await expect(row).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('[data-rpr="lcp-outlined"]')).toHaveAttribute('data-found', '1');
+  await expect.poll(() => page.evaluate(() => scrollY)).toBeLessThan(100);
+  expect(await pinned()).toEqual({ tag: 'IMG', label: 'HeroImage · LCP' });
+
+  // The timeline has it picked too, and opens the commit that mounted the image; the highlight goes.
+  await expect(page.locator('[data-rpr="tl-lcp"]')).toHaveAttribute('data-picked', 'true');
+  await expect(page.locator('[data-rpr="lcp-detail"]')).toContainText('load delay');
+  await page.locator('[data-rpr="lcp-commit"]').click();
+  await expect(page.locator('[data-rpr="lcp-detail"]')).toHaveCount(0);
+  await expect(row).toHaveAttribute('aria-pressed', 'false');
+  expect(await pinned()).toBeNull();
+
+  // The mark on the timeline picks it again.
+  await page.locator('[data-rpr="tl-lcp"]').click();
+  await expect(row).toHaveAttribute('aria-pressed', 'true');
+});

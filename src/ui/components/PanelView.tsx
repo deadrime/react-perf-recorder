@@ -47,6 +47,15 @@ export interface PanelHandlers {
   outlineRoots(entries: Array<{ i: number; hits: number }> | null): number;
   /** Outlines a layout shift on the page, or takes it away with null. Says which of its elements are there now. */
   outlineShift(shift: ShiftOutline | null): ShiftFound;
+  /** Highlights the element of the largest paint on the page, or takes it away with null. Says whether it is there now. */
+  outlineLcp(lcp: LcpOutline | null): boolean;
+}
+
+/** The element of the largest paint: found again by its DOM path, the one closest to where it painted. */
+export interface LcpOutline {
+  node: string;
+  rect?: ShiftRect;
+  label: string;
 }
 
 /** What moved, from where to where, and what moved it: a run of the report's layout shifts. */
@@ -223,6 +232,7 @@ const View = (p: PanelViewProps): JSX.Element => (
             onRepeat={p.on.repeat}
             onOutline={p.on.outlineRoots}
             onOutlineShift={p.on.outlineShift}
+            onOutlineLcp={p.on.outlineLcp}
             onDismiss={p.on.dismissResult}
             wide={p.wide}
             onWide={() => p.on.setWide(!p.wide)}

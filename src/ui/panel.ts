@@ -5,7 +5,7 @@ import { scopeNames, type ScopeHandle } from '../core/scope';
 import type { Highlighter, ShiftPin } from '../overlay/highlight';
 import { changeText, moveOf } from '../shared/shifts';
 import type { ShiftRect } from '../shared/schema';
-import { NOTE_IN_PANEL, renderPanel, type PanelHandlers, type PanelViewProps, type ShiftOutline } from './components/PanelView';
+import { NOTE_IN_PANEL, renderPanel, type LcpOutline, type PanelHandlers, type PanelViewProps, type ShiftOutline } from './components/PanelView';
 import type { ShiftFound } from './components/Shifts';
 import { rowCopyKey, type TreeProps } from './components/Tree';
 import { describeArea } from './describe';
@@ -49,7 +49,7 @@ export class Panel {
   private message: Message = { text: '', kind: 'muted' };
   private highlighter: Highlighter | null = null;
   /** A commit, action or layout shift picked in the report: its outlines alone are on the page until the pick is undone. */
-  private outlining = { roots: false, shift: false };
+  private outlining = { roots: false, shift: false, lcp: false };
   /** The pointer that just finished a drag of the dot; its click opens nothing. */
   private dragged = false;
   private readonly handlers: PanelHandlers;
@@ -138,7 +138,7 @@ export class Panel {
     const on = this.visible && !this.suppressed && this.state.highlight;
     // A hidden panel draws nothing, so an automated browser gets clean screenshots.
     if (this.highlighter) this.highlighter.enabled = on;
-    this.engine.highlightWhenIdle(on && !this.outlining.roots && !this.outlining.shift, this.scope);
+    this.engine.highlightWhenIdle(on && !this.outlining.roots && !this.outlining.shift && !this.outlining.lcp, this.scope);
   }
 
   private initialVisibility() {
@@ -192,9 +192,11 @@ export class Panel {
       dragStart: (event) => this.onDragStart(event),
       outlineRoots: (entries) => this.outlineRoots(entries),
       outlineShift: (shift) => this.outlineShift(shift),
+      outlineLcp: (lcp) => this.outlineLcp(lcp),
       dismissResult: () => {
         this.outlineRoots(null);
         this.outlineShift(null);
+        this.outlineLcp(null);
         this.result = null;
         this.compared = null;
         this.sync();
@@ -370,7 +372,7 @@ export class Panel {
     return items.length;
   }
 
-  private setOutlining(what: 'roots' | 'shift', on: boolean) {
+  private setOutlining(what: 'roots' | 'shift' | 'lcp', on: boolean) {
     if (this.outlining[what] === on) return;
     this.outlining[what] = on;
     // The fading render boxes would bury the picked ones.
@@ -397,10 +399,13 @@ export class Panel {
         dx: was ? m.from[0] - m.to[0] : 0,
         dy: was ? m.from[1] - m.to[1] : 0,
         was: was ? [was[2], was[3]] : null,
-        // Solid is where it is now and dashed where it was; the arrow carries the distance.
-        label: was && (m.from[0] !== m.to[0] || m.from[1] !== m.to[1]) ? `${name} · now` : `${name} ${moveOf(m.from, m.to)}`,
+        // Solid is where it is now and dashed where it was; the distance has a tag of its own.
+        label: was && (m.from[0] !== m.to[0] || m.from[1] !== m.to[1]) ? name : `${name} ${moveOf(m.from, m.to)}`,
       });
     }
+    // Avatars inside the stack that moved moved with it: one box says it, five stacked labels hide it.
+    const outer = moved.filter((m) => !moved.some((o) => o !== m && o.el.contains(m.el)));
+    moved.splice(0, moved.length, ...outer);
     const by = shift.by;
     // A removed element is not on the page to point at; the moved one's own label says what happened to it.
     let culprit: ShiftPin['culprit'] = null;
@@ -409,12 +414,22 @@ export class Panel {
       const el = this.nearestAt(by.node, (r) => (anchor ? Math.abs(r.top + r.height / 2 - anchor.top - anchor.height / 2) : 0));
       const label = changeText(by);
       const self = moved.find((m) => m.el === el);
-      if (self) self.label += ` · ${label}, the cause`;
-      else if (el) culprit = { el, label: `${by.component ?? by.node} ${label} · the cause` };
+      if (self) self.label += ` · ${label}`;
+      else if (el) culprit = { el, label: `${by.component ?? by.node} ${label}` };
     }
     this.highlighter?.pinShift({ moved, culprit });
     this.reveal([...moved.map((m) => m.el), ...(culprit ? [culprit.el] : [])], moved);
     return { moved: moved.length, culprit: Boolean(culprit) };
+  }
+
+  /** The element of the largest paint on the page as it is now, highlighted and scrolled into sight; false when gone. */
+  private outlineLcp(lcp: LcpOutline | null): boolean {
+    this.setOutlining('lcp', Boolean(lcp));
+    const rect = lcp?.rect;
+    const el = lcp ? this.nearestAt(lcp.node, (r) => (rect ? boxGap(r, rect, false) : 0)) : null;
+    this.highlighter?.pinElement(el && lcp ? { el, label: lcp.label } : null);
+    if (el) this.reveal([el], []);
+    return Boolean(el);
   }
 
   /**
@@ -436,7 +451,7 @@ export class Panel {
     // Only the top of a tall element has to show: that is where the move is.
     if (top >= 0 && Math.min(bottom, top + 160) <= seenBottom) return;
     // A scrolled container first, then the page, so the shift's top sits just under the top of the window.
-    moved[0]?.el.scrollIntoView?.({ block: 'nearest' });
+    (moved[0]?.el ?? els[0]).scrollIntoView?.({ block: 'nearest' });
     window.scrollBy({ top: extent().top - 48 });
   }
 

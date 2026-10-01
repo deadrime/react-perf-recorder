@@ -8,10 +8,12 @@ import { downloadJson } from '../download';
 import { Compare, compareNote, type Comparison } from './Compare';
 import { Cpu } from './Cpu';
 import { Memos } from './Memos';
-import type { ShiftOutline } from './PanelView';
+import { Lcp, LCP_GOOD_MS, lcpWho } from './Lcp';
+import type { LcpOutline, ShiftOutline } from './PanelView';
 import { Shifts, shiftValue, type ShiftFound } from './Shifts';
 import { runMoves, shiftRuns, type ShiftRun } from '../../shared/shifts';
 import { planReplay } from '../../shared/replay';
+import { elementText, secs } from '../../shared/lcp';
 import { Kpis, Notice, ReasonLine, StatCard, type Badge, type Kpi, type StatReason } from './Stats';
 import { causeColour, Timeline } from './Timeline';
 
@@ -54,6 +56,7 @@ export function Result({
   onRepeat,
   onOutline,
   onOutlineShift,
+  onOutlineLcp,
   onDismiss,
   wide,
   onWide,
@@ -63,6 +66,7 @@ export function Result({
   onRepeat?: () => void;
   onOutline?: (entries: Array<{ i: number; hits: number }> | null) => number;
   onOutlineShift?: (shift: ShiftOutline | null) => ShiftFound;
+  onOutlineLcp?: (lcp: LcpOutline | null) => boolean;
   onDismiss: () => void;
   wide: boolean;
   onWide: () => void;
@@ -77,7 +81,29 @@ export function Result({
   // Kept with the runs it indexes: a new recording in the same report must not outline the old pick's index.
   const [pick, setPick] = useState<{ runs: ShiftRun[]; i: number } | null>(null);
   const pickedRun = pick?.runs === runs ? pick.i : null;
-  const setPickedRun = (i: number | null) => setPick(i === null ? null : { runs, i });
+  // One thing is outlined at a time: the largest paint's element or a run of shifts.
+  const setPickedRun = (i: number | null) => {
+    setPick(i === null ? null : { runs, i });
+    if (i !== null) setLcpPick(null);
+  };
+  const lcp = rec.lcp;
+  // Kept with the recording it was picked in, as a run's pick is.
+  const [lcpPick, setLcpPick] = useState<Saved | null>(null);
+  const lcpPicked = Boolean(lcp) && lcpPick === rec;
+  const pickLcp = (on: boolean) => {
+    setLcpPick(on ? rec : null);
+    if (on) setPick(null);
+  };
+  const [lcpFound, setLcpFound] = useState<boolean | null>(null);
+  useEffect(() => {
+    if (!onOutlineLcp) return;
+    setLcpFound(
+      lcp && lcpPicked
+        ? onOutlineLcp({ node: lcp.element.node, ...(lcp.element.rect ? { rect: lcp.element.rect } : {}), label: `${lcpWho(lcp)} · LCP` })
+        : (onOutlineLcp(null), null)
+    );
+  }, [lcpPicked, lcp]);
+  useEffect(() => () => void onOutlineLcp?.(null), []);
   const [shiftOutlined, setShiftOutlined] = useState<ShiftFound | null>(null);
   useEffect(() => {
     if (!onOutlineShift) return;
@@ -139,6 +165,16 @@ export function Result({
       title: 'Renders after which nothing in the DOM of the component changed',
     },
     ...(slowest ? [{ value: `${slowest}ms`, label: 'slowest action', tone: slowest > SLOW_MS ? ('warn' as const) : undefined }] : []),
+    ...(lcp
+      ? [
+          {
+            value: secs(lcp.ms),
+            label: 'LCP',
+            tone: lcp.ms > LCP_GOOD_MS ? ('warn' as const) : undefined,
+            title: `Largest contentful paint, from the navigation: ${elementText(lcp.element)}`,
+          },
+        ]
+      : []),
     ...(cls && runs.length
       ? [
           {
@@ -234,6 +270,12 @@ export function Result({
         </Fold>
       ) : null}
 
+      {lcp ? (
+        <Fold id="lcp" title="Largest paint" note={`LCP ${secs(lcp.ms)} · ${lcpWho(lcp)}`}>
+          <Lcp rec={rec} lcp={lcp} picked={lcpPicked} onPick={pickLcp} found={lcpFound} />
+        </Fold>
+      ) : null}
+
       {cls && runs.length ? (
         <Fold
           id="shifts"
@@ -307,6 +349,9 @@ export function Result({
           pickedRun={pickedRun}
           onPickRun={setPickedRun}
           runOutlined={shiftOutlined}
+          lcpPicked={lcpPicked}
+          onPickLcp={pickLcp}
+          lcpFound={lcpFound}
         />
       </Fold>
 

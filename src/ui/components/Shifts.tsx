@@ -1,5 +1,6 @@
 /** @jsxImportSource preact */
 import type { JSX } from 'preact';
+import { useState } from 'preact/hooks';
 import type { RecordingV2 } from '../../shared/schema';
 import { causeText, commitCausesOf, moveText, nearMissOf, type ShiftRun } from '../../shared/shifts';
 
@@ -55,6 +56,12 @@ export function ShiftLegend({ run, found, id }: { run: ShiftRun; found: ShiftFou
 
 export const shiftValue = (value: number) => String(+value.toFixed(3));
 
+/** Under a thousandth a shift is a few pixels of a small element: text that grew, an icon that came. */
+const TINY = 0.001;
+
+/** A run's score as its badge shows it: a tiny one is not zero, it is only too small to print. */
+export const runValue = (value: number) => (value < TINY ? `<${TINY}` : shiftValue(value));
+
 /** When a run happened: one frame, or the span of the frames it took. */
 export const runWhen = (run: ShiftRun) =>
   run.count > 1 ? `${(run.atMs / 1000).toFixed(2)}–${(run.endMs / 1000).toFixed(2)}s · ${run.count} frames` : `${(run.atMs / 1000).toFixed(2)}s`;
@@ -103,6 +110,14 @@ export function Shifts({
 }): JSX.Element {
   const cls = rec.shifts!.cls;
   const commitCauses = commitCausesOf(rec);
+  // Tiny ones wait behind a line when there is anything larger to read first; a picked one always shows.
+  const [allTiny, setAllTiny] = useState(false);
+  const tiny = runs.filter((run) => run.value < TINY).length;
+  const folded = tiny < runs.length && !allTiny;
+  const visible = runs.map((run, i) => ({ run, i })).filter(({ run, i }) => !folded || run.value >= TINY || picked === i);
+  const listed = visible.slice(0, SHOWN);
+  const more = visible.length - listed.length;
+  const hidden = runs.length - visible.length;
   return (
     <div class="shifts" data-rpr="shifts">
       {cls.nearMiss && !rec.conditions.throttle ? (
@@ -111,7 +126,7 @@ export function Shifts({
             'Record again with the CPU slowed ×4–6 (DevTools › Performance) to see.'}
         </p>
       ) : null}
-      {runs.slice(0, SHOWN).map((run, i) => {
+      {listed.map(({ run, i }) => {
         const source = run.first.sources[0];
         return (
           <div class="shift" key={`${run.atMs}-${i}`} data-picked={picked === i ? 'true' : undefined}>
@@ -124,22 +139,27 @@ export function Shifts({
               onClick={() => onPick(picked === i ? null : i)}
             >
               <span class="shift-head">
-                <span class="badge" data-tone={run.excluded < run.count ? 'warn' : undefined}>
-                  {shiftValue(run.value)}
+                <span class="badge" data-tone={run.excluded < run.count && run.value >= TINY ? 'warn' : undefined}>
+                  {runValue(run.value)}
                 </span>
                 <span class="who">{source?.component ?? source?.node ?? 'an element'}</span>
                 <span class="shift-move">{moveText(run)}</span>
                 <span class="shift-at">{runWhen(run)}</span>
                 <CountedBadge run={run} />
               </span>
-              <span class="shift-cause">{causeText(run.first.cause, commitCauses, run.count)}</span>
+              <span class="shift-cause">{causeText(run.first.cause, commitCauses, run.count, source)}</span>
               {source?.file ? <code class="shift-where">{source.file}</code> : null}
             </button>
             {picked === i && outlined ? <ShiftLegend run={run} found={outlined} id="shift-outlined" /> : null}
           </div>
         );
       })}
-      {runs.length > SHOWN ? <p class="muted">{`+ ${runs.length - SHOWN} smaller ones`}</p> : null}
+      {more > 0 ? <p class="muted">{`+ ${more} smaller ones`}</p> : null}
+      {hidden ? (
+        <button type="button" class="tl-link shift-tiny" data-rpr="shift-tiny" onClick={() => setAllTiny(true)}>
+          {`+ ${hidden} under ${TINY}: a few pixels each`}
+        </button>
+      ) : null}
     </div>
   );
 }

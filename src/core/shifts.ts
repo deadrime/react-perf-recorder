@@ -308,12 +308,15 @@ export class ShiftWatcher {
       } else if (m.type === 'characterData') {
         if (m.target.parentNode) items.push({ node: m.target.parentNode, how: 'text' });
       } else {
+        // Text put in or taken out is the element's text changing, as React does it for a text that was empty.
+        const texts = [...m.addedNodes, ...m.removedNodes].some((node) => node.nodeType === Node.TEXT_NODE);
+        if (texts) items.push({ node: m.target, how: 'text' });
         m.addedNodes.forEach((node) => {
           // A stylesheet put into the page moves everything; it is no one's neighbour. Other links move nothing.
           if (isSheet(node)) this.add({ t, frame: NaN, kind: 'sheet', node });
-          else if (node.nodeName !== 'LINK') items.push({ node, how: 'added' });
+          else if (node.nodeName !== 'LINK' && node.nodeType !== Node.TEXT_NODE) items.push({ node, how: 'added' });
         });
-        const gone = m.removedNodes[0];
+        const gone = [...m.removedNodes].find((node) => node.nodeType !== Node.TEXT_NODE);
         if (!gone) continue;
         // Named now: by the time the shift is reported React has let go of the removed nodes' fibers.
         // Past the cap, named once per parent: a list replaced at once is one culprit, not a thousand names.
@@ -455,12 +458,16 @@ export class ShiftWatcher {
     // A change that shares no more than the page's top with the moved element is a weak lead: a running animation,
     // a stylesheet or a font of the same frame is taken first.
     let distant: { candidate: Candidate; where: Where } | null = null;
+    let before: { candidate: Candidate; where: Where } | null = null;
+    // The rank holds across the moved elements: one's own change beats a change above another.
     for (const node of moved) {
       const found = nearest(candidates, node);
+      if (found && (found.where === 'self' || found.where === 'ancestor')) return this.causeOf(found.candidate, found.where);
       if (found && found.where === 'before' && depthBelow(found.candidate.node, node) <= TOP_DEPTH) distant ??= found;
-      else if (found && found.where !== 'inside') return this.causeOf(found.candidate, found.where);
+      else if (found?.where === 'before') before ??= found;
       else inside ??= found;
     }
+    if (before) return this.causeOf(before.candidate, before.where);
     const animated = moved.length ? this.animation(moved, ended) : null;
     if (animated && !animated.distant) return animated.cause;
     // A <style> CSS-in-JS puts in comes with the component it styles: the mount is the lead, not the sheet.
