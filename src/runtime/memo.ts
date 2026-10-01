@@ -74,14 +74,29 @@ export function createMemoInstrumentation(): MemoInstrumentation {
   const objectIds = new WeakMap<object, number>();
   let nextId = 1;
 
-  const keyOf = (value: unknown): string => {
-    if (value === null || (typeof value !== 'object' && typeof value !== 'function')) {
-      const text = String(value);
-      return typeof value === 'bigint' ? `${text}n` : text.slice(0, 40);
-    }
-    let id = objectIds.get(value as object);
-    if (!id) objectIds.set(value as object, (id = nextId++));
+  const idOf = (value: object): string => {
+    let id = objectIds.get(value);
+    if (!id) objectIds.set(value, (id = nextId++));
     return `#${id}`;
+  };
+  const isPrimitive = (value: unknown) => value === null || (typeof value !== 'object' && typeof value !== 'function');
+  const primitiveKey = (value: unknown): string => {
+    const text = String(value);
+    return typeof value === 'bigint' ? `${text}n` : text.slice(0, 40);
+  };
+  const fieldKey = (value: unknown) => (isPrimitive(value) ? primitiveKey(value) : idOf(value as object));
+  /**
+   * proxy-memoize compares arguments by what it read of them, so `{ direction, baseAsset }` written anew on each call
+   * is one argument set: a plain object or array goes by its fields, anything nested in it by identity.
+   */
+  const keyOf = (value: unknown): string => {
+    if (isPrimitive(value)) return primitiveKey(value);
+    const proto = typeof value === 'object' ? Object.getPrototypeOf(value) : undefined;
+    if (proto !== Object.prototype && proto !== Array.prototype && proto !== null) return idOf(value as object);
+    const record = value as Record<string, unknown>;
+    const fields = Object.keys(record).sort();
+    if (fields.length > 16) return idOf(record);
+    return `{${fields.map((k) => `${k}:${fieldKey(record[k])}`).join(',')}}`;
   };
   const argsKey = (args: unknown[]) => {
     let key = '';
