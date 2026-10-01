@@ -102,6 +102,124 @@ describe('timer causes', () => {
   });
 });
 
+describe('update origins', () => {
+  it('names each update of one lane by its own code, not by the first', () => {
+    let setPush!: (n: number) => void;
+    let setMedia!: (n: number) => void;
+    const Push = () => {
+      const [n, set] = useState(0);
+      setPush = set;
+      return <b>{n}</b>;
+    };
+    const Media = () => {
+      const [n, set] = useState(0);
+      setMedia = set;
+      return <i>{n}</i>;
+    };
+    // Two effects of one flush: web push asks first, the media query after it, in the same lane.
+    function subscribePush() {
+      setPush(1);
+    }
+    function matchMedia() {
+      setMedia(1);
+    }
+    const { unmount } = mount(
+      <>
+        <Push />
+        <Media />
+      </>
+    );
+    const { recorder } = makeRecorder();
+    recorder.start();
+    flush(() => {
+      subscribePush();
+      matchMedia();
+    });
+    const rec = recorder.stop();
+    unmount();
+    const causesOf = (name: string) => rec.roots.find((r) => r.name === name)!.causes.map(([key]) => key);
+    expect(causesOf('Push')).toEqual([expect.stringMatching(/^core:update subscribePush @/)]);
+    expect(causesOf('Media')).toEqual([expect.stringMatching(/^core:update matchMedia @/)]);
+  });
+
+  it("leaves an update no origin was taken for without the others' causes", () => {
+    // More updates in one flush than the recorder notes origins for: the last ones are told by nothing.
+    const setters: Array<(n: number) => void> = [];
+    const Cell = ({ i }: { i: number }) => {
+      const [n, set] = useState(0);
+      setters[i] = set;
+      return <b>{n}</b>;
+    };
+    const Last = () => {
+      const [n, set] = useState(0);
+      setters[20] = set;
+      return <i>{n}</i>;
+    };
+    const { unmount } = mount(
+      <>
+        {Array.from({ length: 20 }, (_, i) => (
+          <Cell key={i} i={i} />
+        ))}
+        <Last />
+      </>
+    );
+    const { recorder } = makeRecorder();
+    recorder.start();
+    flush(() => setters.forEach((set) => set(1)));
+    const rec = recorder.stop();
+    unmount();
+    expect(rec.roots.find((r) => r.name === 'Last')!.causes.map(([key]) => key)).toEqual(['core:none']);
+  });
+
+  it('does not hand a root the origin of a fiber that rendered under it', () => {
+    const setters: Array<(n: number) => void> = [];
+    let setPwa!: (n: number) => void;
+    let setMedia!: (n: number) => void;
+    const Filler = ({ i }: { i: number }) => {
+      const [n, set] = useState(0);
+      setters[i] = set;
+      return <b>{n}</b>;
+    };
+    const Pwa = () => {
+      const [n, set] = useState(0);
+      setPwa = set;
+      return <u>{n}</u>;
+    };
+    // The page updates itself too, after the recorder stopped noting origins; its child's origin is not its own.
+    const Page = () => {
+      const [n, set] = useState(0);
+      setMedia = set;
+      return (
+        <section>
+          {n}
+          <Pwa />
+        </section>
+      );
+    };
+    const { unmount } = mount(
+      <>
+        {Array.from({ length: 12 }, (_, i) => (
+          <Filler key={i} i={i} />
+        ))}
+        <Page />
+      </>
+    );
+    const { recorder } = makeRecorder();
+    recorder.start();
+    function installPrompt() {
+      setPwa(1);
+    }
+    flush(() => {
+      installPrompt();
+      setters.forEach((set) => set(1));
+      setMedia(1);
+    });
+    const rec = recorder.stop();
+    unmount();
+    expect(rec.roots.find((r) => r.name === 'Page')!.causes.map(([key]) => key)).toEqual(['core:none']);
+  });
+});
+
 describe('timers of the recorder itself', () => {
   it('knows a timer the recorder scheduled from one the app did, by the code that called it', () => {
     // A stack as the wrapper sees it: its own frame first, then whoever called setTimeout.

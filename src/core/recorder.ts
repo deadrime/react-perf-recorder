@@ -328,8 +328,6 @@ export class Recorder {
   private updaters: Map<Fiber, number> | null = null;
   /** When each of them last scheduled one, in `nextOrder`: a timer names only the updates made inside it. */
   private updatedAt = new WeakMap<Fiber, number>();
-  /** Lanes that already had an update since the last commit: an origin is taken once a lane, as before. */
-  private notedLanes = 0;
   /** Which store hook scheduled each update; null when React's updater sets do not say which fiber an update is for. */
   private storeChecks: StoreChecks | null = null;
   /** Fibers React scheduled itself this window, having found a store changed with no notification. */
@@ -593,9 +591,12 @@ export class Recorder {
     const event = currentEventType();
     const source = event === 'message' ? messageSource() : undefined;
     this.claimed = new WeakSet();
-    this.notedLanes = 0;
+    // The fibers whose own update this commit renders: a root among them that no cause names is not explained by
+    // the causes of the others.
+    const updated = this.updaters ? new Set<Fiber>() : null;
     if (this.updaters)
       for (const [f, pending] of this.updaters) {
+        if (pending & lanes) updated!.add(f);
         const left = pending & ~lanes;
         if (left) this.updaters.set(f, left);
         else this.updaters.delete(f);
@@ -642,7 +643,7 @@ export class Recorder {
     }
     this.storeChecks?.commit();
     this.growth?.commit(fiber);
-    this.finishCommit(c, causes, lane, event, source, origins, resyncOnly);
+    this.finishCommit(c, causes, lane, event, source, origins, resyncOnly, updated);
     this.shifts?.commitDone(this.commitSeq > seq ? seq : null);
     this.lcp?.commitDone(this.commitSeq > seq ? seq : null);
   }
@@ -1038,7 +1039,8 @@ export class Recorder {
     event: string | undefined,
     source: string | undefined,
     origins: Array<UpdateOrigin & { fibers: Set<Fiber>; event: string | undefined }>,
-    resyncOnly = false
+    resyncOnly = false,
+    updated: Set<Fiber> | null = null
   ) {
     if (lane) this.totals.lanes[lane] = (this.totals.lanes[lane] ?? 0) + 1;
     if (!c.renders) {
@@ -1085,12 +1087,25 @@ export class Recorder {
       const set = targets.get(key);
       if (!set) return true;
       const f = fiberOf(agg);
-      return (f !== undefined && set.has(f)) || ![...involved].some((other) => set.has(fiberOf(other)!));
+      if (f !== undefined && set.has(f)) return true;
+      // A root that updated itself is not this cause's: the cause names other fibers, rendered under some root.
+      if (f !== undefined && updated && touchedHas(updated, f)) return false;
+      return ![...involved].some((other) => set.has(fiberOf(other)!));
     };
+    let unexplained: string | null = null;
     for (const agg of involved) {
-      const own = [...keys].filter((key) => hits(key, agg));
+      let own = [...keys].filter((key) => hits(key, agg));
+      const f = fiberOf(agg);
       // Aimed causes that missed every root here would leave it without any: a late subscriber, or an event the
-      // recorder could not follow. Then the root takes the commit's causes as they are.
+      // recorder could not follow. Then the root takes the commit's causes as they are — unless it updated itself
+      // and nothing said why: the others' causes are not its.
+      if (!own.length && updated && f && touchedHas(updated, f)) {
+        if (!unexplained) {
+          unexplained = this.attachCause({ plugin: 'core', type: 'none', atMs: c.t });
+          if (!keys.has(unexplained)) this.causeStats.get(unexplained)!.commits++;
+        }
+        own = [unexplained];
+      }
       for (const key of own.length ? own : keys) agg.causes.set(key, (agg.causes.get(key) ?? 0) + 1);
       if (lane && agg.lastCommit === this.totals.commits) agg.lanes.set(lane, (agg.lanes.get(lane) ?? 0) + 1);
     }
@@ -1194,15 +1209,19 @@ export class Recorder {
         if (fiber.alternate) this.claimed.delete(fiber.alternate);
       }
     }
+    let fibers: Set<Fiber> | null = null;
     if (fiber && this.updaters) {
       this.updaters.set(fiber, (this.updaters.get(fiber) ?? 0) | lane);
       this.updatedAt.set(fiber, nextOrder());
-      if (resync || this.notedLanes & lane) return;
-      this.notedLanes |= lane;
+      if (resync) return;
+      // React names the fiber, so the origin is this update's alone: the ones before it, in this lane or another,
+      // came from other code (two effects of one flush), and a commit would hand them this one's.
+      if (this.origins.some((o) => touchedHas(o.fibers, fiber))) return;
+      fibers = new Set([fiber]);
     }
     if (this.origins.length >= MAX_UPDATE_NOTES || runningTimer()) return;
     // No claim: the store or query that is about to report this update should keep the right to name it.
-    const fibers = this.freshUpdates(false);
+    fibers ??= this.freshUpdates(false);
     if (!fibers.size) return;
     const origin = updateOrigin();
     if (origin) this.origins.push({ ...origin, fibers, event: currentEventType() });
