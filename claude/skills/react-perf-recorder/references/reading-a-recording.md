@@ -133,16 +133,3 @@ for only after an effect's fetch and a commit is started earlier (a preload, the
 rendering); a lazy hero loads eagerly; a render that holds the paint is made cheaper or moved after it. `before`
 lists the earlier candidates, a skeleton or a heading that was the largest first. A dev server is slower than
 production: compare two recordings from the load, before and after, rather than the number with field data.
-
-## Largest contentful paint
-
-`section: lcp` (Chromium) comes with a recording from the page load — `record_page` with `fromLoad: true`, or
-**↺ Page load** in the panel. It names the element of the largest paint and the component that rendered it, splits
-the time into web-vitals' four phases (TTFB, load delay, load, render delay) and lists `findings`, the largest part
-first: the commit that mounted the element, with that commit's causes — follow them like any commit's — and whether
-the image's request left only with that commit; `loading="lazy"` on the image; the long frames and commits that ran
-between the image arriving and its paint; a web font the text waited for. The fix follows the finding: an image asked
-for only after an effect's fetch and a commit is started earlier (a preload, the data fetched sooner, server
-rendering); a lazy hero loads eagerly; a render that holds the paint is made cheaper or moved after it. `before`
-lists the earlier candidates, a skeleton or a heading that was the largest first. A dev server is slower than
-production: compare two recordings from the load, before and after, rather than the number with field data.
