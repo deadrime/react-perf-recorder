@@ -167,10 +167,13 @@ describe('Recorder', () => {
     // A design system's <Text>: the string is the root's, the element is the wrapper's.
     const Countdown = () => <Text>{useStore(store, (s) => s.text)}</Text>;
     const Labelled = () => <Text>left: {useStore(store, (s) => s.text)}</Text>;
+    // The mapped strings are an array inside the children array.
+    const Listed = () => <Text>items: {[useStore(store, (s) => s.text), 'z']}</Text>;
     mount(
       <>
         <Countdown />
         <Labelled />
+        <Listed />
       </>
     );
     const { recorder } = makeRecorder();
@@ -179,7 +182,7 @@ describe('Recorder', () => {
     flush(() => store.setState({ text: 'c' }));
     const rec = recorder.stop();
 
-    for (const name of ['Countdown', 'Labelled']) {
+    for (const name of ['Countdown', 'Labelled', 'Listed']) {
       const root = rec.roots.find((r) => r.name === name)!;
       expect({ name, hits: root.hits, ownDomUnchanged: root.ownDomUnchanged }).toEqual({ name, hits: 2, ownDomUnchanged: undefined });
     }

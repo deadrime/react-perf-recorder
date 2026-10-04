@@ -25,9 +25,12 @@ const isText = (v: unknown) => typeof v === 'string' || typeof v === 'number';
 function textChildChanged(a: unknown, b: unknown): boolean {
   if (isText(a) || isText(b)) return !Object.is(a, b);
   if (!Array.isArray(a) || !Array.isArray(b)) return false;
-  if (a.length !== b.length) return a.some(isText) || b.some(isText);
-  return a.some((x, i) => (isText(x) || isText(b[i])) && !Object.is(x, b[i]));
+  if (a.length !== b.length) return a.some(hasText) || b.some(hasText);
+  // `{items.map((i) => i.label)}` among other children is an array inside the array.
+  return a.some((x, i) => textChildChanged(x, b[i]));
 }
+
+const hasText = (v: unknown): boolean => isText(v) || (Array.isArray(v) && v.some(hasText));
 
 /**
  * Whether a component that rendered got a new value in its props: a function or an element made anew each render
