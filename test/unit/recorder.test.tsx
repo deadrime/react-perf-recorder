@@ -9,6 +9,8 @@ import {
   useState,
   createContext,
   useEffect,
+  useLayoutEffect,
+  Component,
   Suspense,
   type ReactNode,
 } from 'react';
@@ -963,6 +965,58 @@ describe('Recorder', () => {
       keys: { v: { changed: 1, sameContent: 0, unknown: 0 } },
     });
     expect(rec.roots[0].causes[0][0]).toBe('store:v/set');
+  });
+
+  it('tells an update from a layout effect from one from a passive effect, each with its own commit', () => {
+    let open!: () => void;
+    const Tip = () => {
+      const [shown, setShown] = useState(false);
+      const [width, setWidth] = useState(0);
+      const [seen, setSeen] = useState(0);
+      open = () => setShown(true);
+      useLayoutEffect(() => {
+        if (shown) setWidth(120);
+      }, [shown]);
+      useEffect(() => {
+        if (shown) setSeen(1);
+      }, [shown]);
+      return <p>{width + seen}</p>;
+    };
+    mount(<Tip />);
+    const { recorder } = makeRecorder();
+    recorder.start();
+    flush(() => open());
+    const rec = recorder.stop();
+    const keys = rec.causes.map((c) => c.key);
+    const layout = rec.causes.find((c) => c.key.startsWith('core:layout effect @'));
+    expect(layout).toBeDefined();
+    expect(keys.some((k) => k.startsWith('core:effect @'))).toBe(true);
+    // React 18 commits the passive effect's update on its own; it used to lose its origin to the layout one.
+    expect(keys).not.toContain('core:none');
+    const layoutCommit = rec.commits.list.find((c) => c.causeIds?.includes(layout!.i));
+    expect(layoutCommit?.lane).toBe('Sync');
+  });
+
+  it("names a class's componentDidUpdate as a layout effect", () => {
+    let open!: () => void;
+    class Menu extends Component<object, { open: boolean; height: number }> {
+      state = { open: false, height: 0 };
+      componentDidMount() {
+        open = () => this.setState({ open: true });
+      }
+      componentDidUpdate() {
+        if (this.state.open && !this.state.height) this.setState({ height: 80 });
+      }
+      render() {
+        return <p>{this.state.height}</p>;
+      }
+    }
+    mount(<Menu />);
+    const { recorder } = makeRecorder();
+    recorder.start();
+    flush(() => open());
+    const keys = recorder.stop().causes.map((c) => c.key);
+    expect(keys.some((k) => /^core:layout effect componentDidUpdate @/.test(k))).toBe(true);
   });
 
   it('leaves effects-only components out of the render count after mount', () => {
