@@ -17,6 +17,7 @@ import {
 import { createStore, useStore } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
 import { flushSync } from 'react-dom';
+import { createRoot } from 'react-dom/client';
 import { findRoots, fiberFromNode } from '../../src/core/fiber';
 import { PluginHost } from '../../src/core/plugins';
 import { scopeFromFiber } from '../../src/core/scope';
@@ -995,6 +996,32 @@ describe('Recorder', () => {
     expect(keys).not.toContain('core:none');
     const layoutCommit = rec.commits.list.find((c) => c.causeIds?.includes(layout!.i));
     expect(layoutCommit?.lane).toBe('Sync');
+  });
+
+  it("keeps each root's update origin for that root's commit", () => {
+    document.body.innerHTML = '';
+    const bumps: Array<() => void> = [];
+    const Counter = () => {
+      const [n, setN] = useState(0);
+      useEffect(() => {
+        bumps.push(() => setN((v) => v + 1));
+      }, []);
+      return <p>{n}</p>;
+    };
+    const roots = [0, 1].map(() => {
+      const el = document.createElement('div');
+      document.body.appendChild(el);
+      const root = createRoot(el);
+      act(() => root.render(<Counter />));
+      return root;
+    });
+    const { recorder } = makeRecorder();
+    recorder.start();
+    flush(() => bumps.forEach((bump) => bump()));
+    const rec = recorder.stop();
+    roots.forEach((root) => act(() => root.unmount()));
+    expect(rec.causes.map((c) => c.key)).not.toContain('core:none');
+    for (const c of rec.commits.list) expect(c.causeIds?.length).toBeGreaterThan(0);
   });
 
   it("names a class's componentDidUpdate as a layout effect", () => {

@@ -236,7 +236,9 @@ const MAX_TIMES = 2000;
 /** With sampled reasons: parent reasons worked out per component per commit. */
 const SAMPLED_PARENTS = 50;
 /** Stacks are read only while a commit window is unexplained; a burst of updates does not pay for all of them. */
-const MAX_UPDATE_NOTES = 10;
+const MAX_UPDATE_NOTES = 30;
+/** `window`: the commit count when it was noted. */
+type Origin = UpdateOrigin & { fibers: Set<Fiber>; event: string | undefined; lanes: number; root: FiberRoot | null; window: number };
 const MAX_CAUSE_KEYS = 300;
 /** Distinct links of render chains; past it, chains are not kept, counts and reasons still are. */
 const MAX_CHAIN_NODES = 50_000;
@@ -335,10 +337,12 @@ export class Recorder {
   /** Whether anything but a resync scheduled work this window. */
   private othersUpdated = false;
   /**
-   * Where updates of this commit window came from, used only for the components no other event explains. `lanes`:
-   * the update's lanes where React named them; 0 goes with the next commit.
+   * Where updates of this commit window came from, used only for the components no other event explains. `lanes`
+   * and `root`: where React named them; an origin without goes with the next commit.
    */
-  private origins: Array<UpdateOrigin & { fibers: Set<Fiber>; event: string | undefined; lanes: number }> = [];
+  private origins: Origin[] = [];
+  /** The root each updated fiber's update was scheduled on: lanes are a root's own. */
+  private updaterRoot = new WeakMap<Fiber, FiberRoot>();
   private frameCount = 0;
   private counting = false;
   private readonly totals = {
@@ -467,7 +471,7 @@ export class Recorder {
       this.roots,
       this.options.source ?? 'panel',
       (info) => this.onCommit(info),
-      (fiber, lane) => this.noteUpdate(fiber, lane),
+      (fiber, lane, root) => this.noteUpdate(fiber, lane, root),
       withUpdaters
     );
     // After the hook, which can throw: nothing stops listeners and observers of a start that failed.
@@ -584,7 +588,7 @@ export class Recorder {
 
   // ---- commits -------------------------------------------------------------------------------------------------
 
-  private onCommit({ fiber, lanes }: CommitInfo) {
+  private onCommit({ root, fiber, lanes }: CommitInfo) {
     const started = performance.now();
     const t = Math.round(started - this.t0);
     const seq = this.commitSeq;
@@ -599,19 +603,23 @@ export class Recorder {
     const updated = this.updaters ? new Set<Fiber>() : null;
     if (this.updaters)
       for (const [f, pending] of this.updaters) {
+        const own = this.updaterRoot.get(f);
+        if (own && own !== root) continue;
         if (pending & lanes) updated!.add(f);
         const left = pending & ~lanes;
         if (left) this.updaters.set(f, left);
         else this.updaters.delete(f);
       }
-    // An origin waits for the commit that renders its lanes: a layout effect's update commits before the passive
-    // effect's of the same component. One whose lanes nothing waits on any more (React dropped the update) goes.
-    const origins = this.origins.filter((o) => !o.lanes || o.lanes & lanes);
-    const pending = this.roots.reduce((all, root) => all | (root.pendingLanes ?? 0), 0);
-    this.origins = this.origins.filter((o) => o.lanes && !(o.lanes & lanes) && o.lanes & pending);
+    // An origin waits for its root's commit of its lanes: a layout effect's update commits before the passive
+    // effect's of the same component. One whose lanes its root no longer has pending (a dropped update) goes.
+    const ours = (o: Origin) => !o.root || o.root === root;
+    const origins = this.origins.filter((o) => ours(o) && (!lanes || !o.lanes || o.lanes & lanes));
+    const pending = root.pendingLanes ?? 0;
+    this.origins = this.origins.filter((o) => !origins.includes(o) && (!ours(o) || o.lanes & pending));
     // Work React scheduled itself on finding a store changed: the event or timer around it did not ask for it.
     const resyncOnly = this.resyncs.size > 0 && !this.othersUpdated;
-    if (this.resyncs.size) origins.push({ text: 'store resync', kind: 'effect', fibers: this.resyncs, event: undefined, lanes: 0 });
+    if (this.resyncs.size)
+      origins.push({ text: 'store resync', kind: 'effect', fibers: this.resyncs, event: undefined, lanes: 0, root: null, window: 0 });
     this.resyncs = new Set();
     this.othersUpdated = false;
     const timer = resyncOnly ? undefined : runningTimer();
@@ -1044,7 +1052,7 @@ export class Recorder {
     lane: string | undefined,
     event: string | undefined,
     source: string | undefined,
-    origins: Array<UpdateOrigin & { fibers: Set<Fiber>; event: string | undefined; lanes: number }>,
+    origins: Origin[],
     resyncOnly = false,
     updated: Set<Fiber> | null = null
   ) {
@@ -1115,6 +1123,7 @@ export class Recorder {
       for (const key of own.length ? own : keys) agg.causes.set(key, (agg.causes.get(key) ?? 0) + 1);
       if (lane && agg.lastCommit === this.totals.commits) agg.lanes.set(lane, (agg.lanes.get(lane) ?? 0) + 1);
     }
+    if (unexplained) keys.add(unexplained);
     // A root whose cost is what it mounts (a tooltip per card, a remounting list) ranks by that too.
     const weight = ([agg, n]: [RootAgg, number]) => n + (c.mounts.get(agg) ?? 0);
     const ranked = [...c.cascade].sort((a, b) => weight(b) - weight(a));
@@ -1200,7 +1209,7 @@ export class Recorder {
    * An update was just scheduled and nothing else explains it: no user event, no timer callback, no store or query
    * event yet. The stack still holds the code that asked for it, so the cause names that code.
    */
-  private noteUpdate(fiber?: Fiber, lane = 0) {
+  private noteUpdate(fiber?: Fiber, lane = 0, root?: FiberRoot) {
     const resync = fiber !== undefined && this.storeChecks?.noteUpdate(fiber) === 'resync';
     if (resync) {
       // React's own re-check, not whatever event is on the stack: no event gets to claim it.
@@ -1219,18 +1228,33 @@ export class Recorder {
     if (fiber && this.updaters) {
       this.updaters.set(fiber, (this.updaters.get(fiber) ?? 0) | lane);
       this.updatedAt.set(fiber, nextOrder());
+      if (root) this.updaterRoot.set(fiber, root);
       if (resync) return;
       // React names the fiber, so the origin is this update's alone: the ones before it in the same lanes came from
       // other code (two effects of one flush), and a commit would hand them this one's.
       if (this.origins.some((o) => (!o.lanes || o.lanes & lane) && touchedHas(o.fibers, fiber))) return;
       fibers = new Set([fiber]);
     }
-    if (this.origins.length >= MAX_UPDATE_NOTES || runningTimer()) return;
+    if (runningTimer()) return;
+    const window = this.totals.commits;
+    if (this.origins.length >= MAX_UPDATE_NOTES) {
+      // Room goes to this window's updates: an origin still waiting from an earlier one (a suspended transition) goes.
+      const stale = this.origins.findIndex((o) => o.window < window);
+      if (stale < 0) return;
+      this.origins.splice(stale, 1);
+    }
     // No claim: the store or query that is about to report this update should keep the right to name it.
     fibers ??= this.freshUpdates(false);
     if (!fibers.size) return;
     const origin = updateOrigin();
-    if (origin) this.origins.push({ ...origin, fibers, event: currentEventType(), lanes: this.updaters ? lane : 0 });
+    if (!origin) return;
+    const event = currentEventType();
+    const lanes = this.updaters ? lane : 0;
+    const at = root ?? null;
+    // Many components updated by one line (rows in one effect) share an origin rather than a slot each.
+    const same = this.origins.find((o) => o.text === origin.text && o.event === event && o.lanes === lanes && o.root === at);
+    if (same) for (const f of fibers) same.fibers.add(f);
+    else this.origins.push({ ...origin, fibers, event, lanes, root: at, window });
   }
 
   /**
