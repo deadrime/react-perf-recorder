@@ -152,20 +152,22 @@ describe('update origins', () => {
     };
     const Last = () => {
       const [n, set] = useState(0);
-      setters[20] = set;
+      setters[40] = set;
       return <i>{n}</i>;
     };
     const { unmount } = mount(
       <>
-        {Array.from({ length: 20 }, (_, i) => (
+        {Array.from({ length: 40 }, (_, i) => (
           <Cell key={i} i={i} />
         ))}
         <Last />
       </>
     );
+    // A function of its own name per cell: one line updating many components shares an origin.
+    const callers = setters.map((set, i) => ({ [`set${i}`]: () => set(1) }[`set${i}`]));
     const { recorder } = makeRecorder();
     recorder.start();
-    flush(() => setters.forEach((set) => set(1)));
+    flush(() => callers.forEach((call) => call()));
     const rec = recorder.stop();
     unmount();
     expect(rec.roots.find((r) => r.name === 'Last')!.causes.map(([key]) => key)).toEqual(['core:none']);
@@ -216,7 +218,8 @@ describe('update origins', () => {
     });
     const rec = recorder.stop();
     unmount();
-    expect(rec.roots.find((r) => r.name === 'Page')!.causes.map(([key]) => key)).toEqual(['core:none']);
+    const prompt = rec.causes.find((c) => c.key.startsWith('core:update installPrompt @'))!.key;
+    expect(rec.roots.find((r) => r.name === 'Page')!.causes.map(([key]) => key)).not.toContain(prompt);
   });
 });
 

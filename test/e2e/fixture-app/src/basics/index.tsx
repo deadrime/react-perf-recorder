@@ -19,6 +19,7 @@ import { MemoDeps } from './MemoDeps';
 import { Props } from './Props';
 import { ReadWhenNeeded } from './ReadWhenNeeded';
 import { Refs } from './Refs';
+import { Responses } from './Responses';
 import { StateDown } from './StateDown';
 
 export interface BasicsCase {
@@ -98,6 +99,11 @@ export const BASICS: Record<string, BasicsCase> = {
     title: 'a child tells its parent in an effect',
     what: 'A child that keeps a value and hands it up from an effect costs its parent a second commit, and shows the old value in between.',
     element: Notify,
+  },
+  responses: {
+    title: 'a setState for every response',
+    what: 'Items put into state one by one as their requests come back: a commit and a render of the whole list each time, where Promise.all makes it one.',
+    element: Responses,
   },
   init: {
     title: 'useState: an expensive initial value, a reset from an effect',

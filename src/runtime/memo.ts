@@ -94,9 +94,14 @@ export function createMemoInstrumentation(): MemoInstrumentation {
     const proto = typeof value === 'object' ? Object.getPrototypeOf(value) : undefined;
     if (proto !== Object.prototype && proto !== Array.prototype && proto !== null) return idOf(value as object);
     const record = value as Record<string, unknown>;
-    const fields = Object.keys(record).sort();
-    if (fields.length > 16) return idOf(record);
-    return `{${fields.map((k) => `${k}:${fieldKey(record[k])}`).join(',')}}`;
+    try {
+      const fields = Object.keys(record).sort();
+      if (fields.length > 16) return idOf(record);
+      return `{${fields.map((k) => `${k}:${fieldKey(record[k])}`).join(',')}}`;
+    } catch {
+      // A getter that throws, a revoked draft: this runs in the selector's finally and must not replace its result.
+      return idOf(record);
+    }
   };
   const argsKey = (args: unknown[]) => {
     let key = '';
