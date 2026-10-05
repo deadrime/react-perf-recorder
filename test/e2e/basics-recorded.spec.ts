@@ -196,6 +196,21 @@ test('a setState per response: a commit for each, the rows rendered again; Promi
   expect(fixed.components.find((c) => c.name === 'PersonRow')?.renders ?? 0).toBe(0);
 });
 
+test('a scroll position in state: state #0 for every scroll event from onScroll; an observed marker, two commits', async ({ page }) => {
+  const rec = await record(page, '/basics/scroll', async () => {
+    await page.getByTestId('scroll').click();
+    await expect(page.getByTestId('article-marker').locator('header')).toHaveAttribute('data-raised', 'true');
+    await expect(page.getByTestId('article-marker').locator('header')).toHaveAttribute('data-raised', 'false');
+    await page.waitForTimeout(200);
+  });
+  const events = rec.roots.find((r) => r.name === 'ArticleByPosition')!.hits;
+  expect(events).toBeGreaterThan(20);
+  expect(said(rec, 'ArticleByPosition')).toEqual([expect.stringMatching(/^state #0 · State @ src\/basics\/Scroll\.tsx:\d+ const \[top, setTop\]/)]);
+  expect(rec.causes.find((c) => c.key === 'core:update onScroll @ src/basics/Scroll.tsx')?.commits).toBe(events);
+  expect(component(rec, 'Note')!.renders).toBe(12 * (events + 2));
+  expect(rec.roots.find((r) => r.name === 'ArticleByMarker')!.hits).toBe(2);
+});
+
 test('an initial value passed as a call: the same renders, a much longer time', async ({ page }) => {
   const rec = await record(page, '/basics/init', async () => {
     for (let i = 0; i < 3; i++) await page.getByTestId('render').click();

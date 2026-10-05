@@ -20,6 +20,7 @@ import { Props } from './Props';
 import { ReadWhenNeeded } from './ReadWhenNeeded';
 import { Refs } from './Refs';
 import { Responses } from './Responses';
+import { Scroll } from './Scroll';
 import { StateDown } from './StateDown';
 
 export interface BasicsCase {
@@ -104,6 +105,11 @@ export const BASICS: Record<string, BasicsCase> = {
     title: 'a setState for every response',
     what: 'Items put into state one by one as their requests come back: a commit and a render of the whole list each time, where Promise.all makes it one.',
     element: Responses,
+  },
+  scroll: {
+    title: 'scroll position kept in state',
+    what: 'A header that reads scrollY renders the page on every scroll event; an IntersectionObserver on a marker tells it twice, once each way.',
+    element: Scroll,
   },
   init: {
     title: 'useState: an expensive initial value, a reset from an effect',

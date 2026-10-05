@@ -921,3 +921,33 @@ input {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* A box that scrolls on its own, with a header that stays on top and a marker over its first notes. */
+.article {
+  position: relative;
+  max-height: 220px;
+  overflow: auto;
+}
+
+.article header {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 4px;
+  background: var(--bg);
+}
+
+.article header.raised {
+  box-shadow: 0 6px 8px -6px rgba(0, 0, 0, 0.6);
+}
+
+.article .marker {
+  position: absolute;
+  top: 0;
+  width: 1px;
+  height: 120px;
+  pointer-events: none;
+}
