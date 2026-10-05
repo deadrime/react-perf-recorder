@@ -358,6 +358,21 @@ test('a form left to the DOM does not render while you type', async ({ page }) =
   expect(await countsOf(page, 'broken')).toEqual(before.map((n) => n + 2));
 });
 
+test('a scroll position in state renders the article on every scroll event; an observed marker, once each way', async ({ page }) => {
+  await page.goto('/basics/scroll');
+  const before = { broken: await countsOf(page, 'broken'), fixed: await countsOf(page, 'fixed') };
+  await page.getByTestId('scroll').click();
+  await expect(page.getByTestId('article-marker').locator('header')).toHaveAttribute('data-raised', 'true');
+  await expect(page.getByTestId('article-marker').locator('header')).toHaveAttribute('data-raised', 'false');
+  await page.waitForTimeout(200);
+  const after = { broken: await countsOf(page, 'broken'), fixed: await countsOf(page, 'fixed') };
+  // The header's counter is the article's, the rest are its notes: all of them render with each event on the left.
+  const grew = (side: 'broken' | 'fixed') => after[side].map((n, i) => n - before[side][i]);
+  expect(new Set(grew('broken')).size).toBe(1);
+  expect(grew('broken')[0]).toBeGreaterThan(20);
+  expect(grew('fixed')).toEqual(before.fixed.map(() => 2));
+});
+
 test('every case can show the code behind it, with the line that matters marked', async ({ page }) => {
   for (const id of [
     'memo',
@@ -379,6 +394,7 @@ test('every case can show the code behind it, with the line that matters marked'
     'dialog',
     'notify',
     'responses',
+    'scroll',
     'init',
   ]) {
     await page.goto(`/basics/${id}`);

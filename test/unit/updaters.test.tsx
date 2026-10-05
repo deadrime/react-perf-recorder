@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { act, useState } from 'react';
 import { createStore, useStore } from 'zustand';
 import { hookCommits } from '../../src/core/commit-hook';
 import { findRoots, nameOf, type Fiber, type FiberRoot } from '../../src/core/fiber';
@@ -105,4 +105,34 @@ describe('updaters', () => {
       expect(causesOf('ViewB')).toEqual(['store:b/set']);
     });
   }
+
+  it('aims a store event at the updates made with it, not at one still waiting from an earlier task', async () => {
+    const clock = createStore(() => ({ shown: 0, ticks: 0 }));
+    let scroll!: () => void;
+    const Clock = () => <p>{useStore(clock, (s) => s.shown)}</p>;
+    const Article = () => {
+      const [top, setTop] = useState(0);
+      scroll = () => setTop((v) => v + 1);
+      return <p>{top}</p>;
+    };
+    mount(
+      <>
+        <Clock />
+        <Article />
+      </>
+    );
+    const { recorder, host } = makeRecorder({}, [[{ name: 'store' }, undefined]]);
+    recorder.start();
+    await act(async () => {
+      // React 19 renders a scroll's update in a task of its own; a store's tick can land in between.
+      scroll();
+      await Promise.resolve();
+      clock.setState({ ticks: 1 });
+      host.emit('store', { type: 'tick', aim: true });
+    });
+    const rec = recorder.stop();
+    const causes = rec.roots.find((r) => r.name === 'Article')!.causes.map(([key]) => key);
+    expect(causes).toEqual([expect.stringMatching(/^core:update scroll @ /)]);
+  });
 });
+
