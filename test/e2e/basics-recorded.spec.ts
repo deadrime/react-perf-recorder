@@ -211,6 +211,27 @@ test('a scroll position in state: state #0 for every scroll event from onScroll;
   expect(rec.roots.find((r) => r.name === 'ArticleByMarker')!.hits).toBe(2);
 });
 
+test('a progress kept in state: a commit per frame from requestAnimationFrame; moved through a ref, two', async ({ page }) => {
+  const run = (side: string) =>
+    record(page, '/advanced/animation', async () => {
+      await page.getByTestId(`upload-${side}`).click();
+      await expect(page.getByTestId(`status-${side}`)).toHaveText('uploaded');
+    });
+  const broken = await run('state');
+  const frames = broken.roots.find((r) => r.name === 'UploadByState')!.hits;
+  expect(frames).toBeGreaterThan(30);
+  expect(said(broken, 'UploadByState')).toEqual([
+    expect.stringMatching(/^state #0 · State @ src\/advanced\/Animation\.tsx:\d+ const \[progress, setProgress\]/),
+  ]);
+  // The first frame was asked for by the click's handler, the rest by the frame before.
+  expect(broken.causes.find((c) => c.key === 'core:timer requestAnimationFrame step @ src/advanced/Animation.tsx')?.commits).toBe(frames - 1);
+  expect(component(broken, 'File')!.renders).toBe(6 * frames);
+
+  const fixed = await run('ref');
+  expect(fixed.totals.commits).toBe(2);
+  expect(fixed.roots.map((r) => [r.name, r.hits])).toEqual([['UploadByRef', 2]]);
+});
+
 test('an initial value passed as a call: the same renders, a much longer time', async ({ page }) => {
   const rec = await record(page, '/basics/init', async () => {
     for (let i = 0; i < 3; i++) await page.getByTestId('render').click();
