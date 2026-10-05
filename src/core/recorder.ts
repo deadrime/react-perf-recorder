@@ -330,6 +330,8 @@ export class Recorder {
   private updaters: Map<Fiber, number> | null = null;
   /** When each of them last scheduled one, in `nextOrder`: a timer names only the updates made inside it. */
   private updatedAt = new WeakMap<Fiber, number>();
+  /** `nextOrder` of the first update since the last microtask checkpoint; null when none was made since. */
+  private runStart: number | null = null;
   /** Which store hook scheduled each update; null when React's updater sets do not say which fiber an update is for. */
   private storeChecks: StoreChecks | null = null;
   /** Fibers React scheduled itself this window, having found a store changed with no notification. */
@@ -486,9 +488,9 @@ export class Recorder {
       lcp?.start(this.roots.every((root) => !root.current.child));
     }
     this.updaters = this.hook.updaters ? new Map() : null;
-    // A store or query notifies its subscribers before the recorder hears about it, so the fibers React just
-    // marked are the ones this event updated.
-    this.deps.plugins.targets = () => this.freshUpdates();
+    // A store notifies its subscribers before the recorder hears about it, so the fibers React marked in this
+    // synchronous run are the ones it updated; an update still waiting from an earlier task is not.
+    this.deps.plugins.targets = () => (!this.updaters ? this.freshUpdates() : this.runStart === null ? new Set() : this.updatesSince(this.runStart));
     setTimerSink({
       after: (text, ours, library, startedAt) => {
         const plugins = this.deps.plugins;
@@ -1066,9 +1068,10 @@ export class Recorder {
     const targets = new Map<string, Set<Fiber>>();
     // A fiber noted before the render may have got its other half only in it: the commit meets that one.
     const bothHalves = (fibers: Iterable<Fiber>) => [...fibers].flatMap((f) => (f.alternate ? [f, f.alternate] : [f]));
-    // When something in this task did mark work, a write that marked none is not what the commit is about. When
-    // nothing could say — a query cache, a navigation — the events stand as they are.
-    const someoneAimed = causes.some((cause) => cause.fibers?.size);
+    // When something did mark work (an event, or the line of an update; React's resync is no one's), a write that
+    // marked none is not what the commit is about. When nothing could say — a query cache, a navigation — the
+    // events stand as they are.
+    const someoneAimed = causes.some((cause) => cause.fibers?.size) || origins.some((o) => o.text !== 'store resync' && o.fibers.size);
     for (const cause of causes) {
       if (someoneAimed && cause.aimed && !cause.fibers) {
         this.totals.causesDropped++;
@@ -1227,7 +1230,12 @@ export class Recorder {
     let fibers: Set<Fiber> | null = null;
     if (fiber && this.updaters) {
       this.updaters.set(fiber, (this.updaters.get(fiber) ?? 0) | lane);
-      this.updatedAt.set(fiber, nextOrder());
+      const order = nextOrder();
+      this.updatedAt.set(fiber, order);
+      if (this.runStart === null) {
+        this.runStart = order;
+        queueMicrotask(() => (this.runStart = null));
+      }
       if (root) this.updaterRoot.set(fiber, root);
       if (resync) return;
       // React names the fiber, so the origin is this update's alone: the ones before it in the same lanes came from
