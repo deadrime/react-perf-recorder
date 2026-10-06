@@ -1,5 +1,5 @@
-import type { Engine, Owner, Saved } from '../core/engine';
-import { currentOf, isHydrating, type Fiber, type FiberRoot } from '../core/fiber';
+import { elementLabel, type Engine, type Owner, type Saved } from '../core/engine';
+import { currentOf, fiberFromNode, isHydrating, type Fiber, type FiberRoot } from '../core/fiber';
 import { reactVersion } from '../core/react-compat';
 import { scopeNames, type ScopeHandle } from '../core/scope';
 import type { Highlighter, ShiftPin } from '../overlay/highlight';
@@ -37,7 +37,12 @@ export class Panel {
   private container: HTMLDivElement;
   private state: PanelState;
   private scope: ScopeHandle | null = null;
-  private before: { scope: ScopeHandle | null; last: PanelState['lastScope'] } = { scope: null, last: null };
+  /**
+   * A DOM element picked in the tree: ⧉ and the outline are about it, while the area recorded is `scope`, its
+   * component. Kept as the node: the `return` of a fiber in a subtree no commit touched leads to a stale root.
+   */
+  private element: Element | null = null;
+  private before: { scope: ScopeHandle | null; last: PanelState['lastScope']; element: Element | null } = { scope: null, last: null, element: null };
   private liveTimer: ReturnType<typeof setInterval> | null = null;
   private picker: Picker;
   private busy = false;
@@ -66,8 +71,8 @@ export class Panel {
     this.handlers = this.buildHandlers();
     this.picker = new Picker(this.shadow, this.host, engine, () => ({ library: this.state.showLibrary, providers: this.state.showProviders }), {
       showTree: (rows, active, actions) => this.showTree(rows, active, actions),
-      preview: (owner) => this.setScope(owner ? this.engine.scopeFromFiber(owner.fiber) : null),
-      done: (choice) => this.onPicked(choice),
+      preview: (owner, element) => this.setScope(owner ? this.engine.scopeFromFiber(owner.fiber) : null, undefined, element?.fiber.stateNode ?? null),
+      done: (choice, element) => this.onPicked(choice, element),
     });
     engine.onChange((state, saved) => {
       // Stopped by the length limit rather than by Stop: the report still belongs in the panel.
@@ -218,7 +223,7 @@ export class Panel {
   }
 
   private copyScope() {
-    const target = this.scopeTarget();
+    const target = this.elementTarget() ?? this.scopeTarget();
     if (target) this.copyArea(target, 'scope');
   }
 
@@ -264,8 +269,10 @@ export class Panel {
   /** Hovering the area's name outlines it on the page, unless the picker is already drawing something. */
   private outlineScope(on: boolean) {
     if (!on) return this.picker.hideOutline();
-    const target = this.scopeTarget();
-    if (target && !this.picker.active) this.picker.outline(target, this.scope!.name);
+    if (this.picker.active) return;
+    const element = this.elementTarget();
+    const target = element ?? this.scopeTarget();
+    if (target) this.picker.outline(target, element ? `${this.scope!.name} › ${elementLabel(element.stateNode)}` : this.scope!.name);
   }
 
   private setHighlight(on: boolean) {
@@ -304,7 +311,7 @@ export class Panel {
       wide: Boolean(this.state.wide),
       copied: this.copied,
       shortcuts: this.options.shortcuts,
-      scope: this.scope ? { name: this.scope.name, lost: live?.scopeState === 'lost' } : null,
+      scope: this.scope ? this.scopeView(recording, live?.scopeState === 'lost') : null,
       note: this.state.label,
       highlight: this.state.highlight,
       fast: Boolean(this.state.fast),
@@ -318,6 +325,13 @@ export class Panel {
       replaying: this.replaying,
       on: this.handlers,
     };
+  }
+
+  /** While recording the pill names the component recorded; before that, the element picked in it. */
+  private scopeView(recording: boolean, lost: boolean): PanelViewProps['scope'] {
+    const element = recording ? null : this.elementTarget();
+    if (!element) return { name: this.scope!.name, lost };
+    return { name: elementLabel(element.stateNode), lost, component: this.scope!.name };
   }
 
   private toggleWatch(name: string) {
@@ -554,10 +568,10 @@ export class Panel {
     this.say(pickHint(top ? 'an element or a row' : 'an element', 'to try it as the area.'), 'muted');
   }
 
-  /** Reopens the tree on the current area; without one, picks from scratch. */
+  /** Reopens the tree on the current area, or on the element picked in it; without one, picks from scratch. */
   private editScope() {
     if (this.engine.recording) return;
-    const target = this.scopeTarget();
+    const target = this.elementTarget() ?? this.scopeTarget();
     if (!target) return this.togglePicker();
     this.picker.cancel();
     this.setCollapsed(false);
@@ -568,17 +582,14 @@ export class Panel {
 
   /** The area as it was before the tree opened: Esc puts it back, whatever was tried in between. */
   private rememberScope() {
-    this.before = { scope: this.scope, last: this.state.lastScope };
+    this.before = { scope: this.scope, last: this.state.lastScope, element: this.element };
   }
 
   /** The committed fiber of the area; after a remount the area is found again by its component path. */
   private scopeTarget(): Fiber | null {
     if (!this.scope) return null;
     const target = currentOf(this.scope.chain[this.scope.chain.length - 1]);
-    // React cuts `return` of deleted fibers, so only a mounted one leads up to the committed root.
-    let top = target;
-    while (top.return) top = top.return;
-    if ((top.stateNode as FiberRoot | null)?.current === top) return target;
+    if (isMounted(target)) return target;
     try {
       this.scope = this.engine.scopeFromNames(scopeNames(this.scope));
       return this.scope.chain[this.scope.chain.length - 1];
@@ -586,6 +597,14 @@ export class Panel {
       this.say(`${this.scope.name} is not on the page now.`, 'notice');
       return null;
     }
+  }
+
+  /** The fiber of the picked element while it is on the page; once it is gone, the area is its component alone. */
+  private elementTarget(): Fiber | null {
+    const fiber = this.element?.isConnected ? fiberFromNode(this.element) : null;
+    if (fiber?.stateNode === this.element) return currentOf(fiber);
+    this.element = null;
+    return null;
   }
 
   /** What was just copied, by the key of the button that copied it: that button shows a tick for a moment. */
@@ -614,16 +633,18 @@ export class Panel {
     this.sync();
   }
 
-  private onPicked(owner: Owner | 'whole-app' | null) {
+  private onPicked(owner: Owner | 'whole-app' | null, element: Owner | null) {
     this.tree = null;
     this.say('');
     if (owner === 'whole-app') this.setScope(null);
-    else if (owner) this.setScope(this.engine.scopeFromFiber(owner.fiber));
-    else this.setScope(this.before.scope, this.before.last);
+    else if (owner) this.setScope(this.engine.scopeFromFiber(owner.fiber), undefined, element?.fiber.stateNode ?? null);
+    else this.setScope(this.before.scope, this.before.last, this.before.element);
   }
 
-  private setScope(scope: ScopeHandle | null, last = scope ? { names: scopeNames(scope), label: scope.name } : null) {
+  /** `element`: a DOM element picked inside `scope`; a reload keeps the area and forgets the element. */
+  private setScope(scope: ScopeHandle | null, last = scope ? { names: scopeNames(scope), label: scope.name } : null, element: Element | null = null) {
     this.scope = scope;
+    this.element = scope ? element : null;
     this.state.lastScope = last;
     this.highlighter?.reset();
     this.persist();
@@ -735,6 +756,13 @@ export class Panel {
   private persist() {
     saveState(this.state);
   }
+}
+
+/** React cuts `return` of deleted fibers, so only a mounted one leads up to the committed root. */
+function isMounted(fiber: Fiber): boolean {
+  let top = fiber;
+  while (top.return) top = top.return;
+  return (top.stateNode as FiberRoot | null)?.current === top;
 }
 
 /** How far a box now is from one recorded in a shift: in the page, or in the window for a fixed one; size weighs in. */

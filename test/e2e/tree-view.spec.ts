@@ -28,15 +28,22 @@ const watchChurn = (page: Page) =>
     (window as unknown as { __churn: typeof counts }).__churn = counts;
   }, SHADOW);
 
+/** Pick picks the element under the cursor; ← steps out to the component it sits in. */
+const pickMessageRow = async (page: Page) => {
+  await page.locator('[data-rpr="pick"]').click();
+  await page.locator('[data-testid="message-m1"] .text').click();
+  await expect(page.locator('[data-rpr="scope"]')).toHaveText('<span.text>');
+  await page.keyboard.press('ArrowLeft');
+  await expect(page.locator('[data-rpr="scope"]')).toHaveText('MessageRow');
+};
+
 const churn = (page: Page) => page.evaluate(() => (window as unknown as { __churn: Record<string, number> }).__churn);
 const scrollOf = (page: Page) => page.locator('[data-rpr="tree"]').evaluate((ul) => Math.round(ul.scrollLeft));
 
 test('moving the area patches the tree instead of drawing it again', async ({ page }) => {
   await page.goto('/app?rpr=panel&tick=150');
   await expect(page.getByTestId('unread')).toBeVisible();
-  await page.locator('[data-rpr="pick"]').click();
-  await page.getByTestId('message-m1').click();
-  await expect(page.locator('[data-rpr="scope"]')).toHaveText('MessageRow');
+  await pickMessageRow(page);
 
   const rows = await rowsOf(page);
   expect(rows.filter((r) => r.name === 'MessageRow')).toHaveLength(3);
@@ -100,18 +107,21 @@ test('hovering shows the box the click would leave', async ({ page }) => {
       return { tag: el.querySelector('.tag')!.textContent, w: Math.round(r.width) };
     });
   const hovered = await box(page);
+  const tab = await page.getByTestId('tab-people').boundingBox();
+  // The element under the cursor, named with the component it sits in.
+  expect(hovered.tag).toMatch(/^\w+ › <button[^>]*>$/);
+  expect(hovered.w).toBe(Math.round(tab!.width));
   await page.getByTestId('tab-people').click();
-  // The same component, the same box: the outline under the cursor is the choice, not the element it sits on.
-  await expect(page.locator('[data-rpr="scope"]')).toHaveText(hovered.tag!);
+  // The same element, the same box: the outline under the cursor is the choice.
+  await expect(page.locator('[data-rpr="scope"]')).toHaveText(hovered.tag!.split(' › ')[1]);
+  await expect(page.locator('[data-react-perf-recorder] .box .tag')).toHaveText(hovered.tag!);
   expect((await box(page)).w).toBe(hovered.w);
 });
 
 test('hovering a row outlines its component on the page while the area stays on the one picked', async ({ page }) => {
   await page.goto('/app?rpr=panel&tick=150');
   await expect(page.getByTestId('unread')).toBeVisible();
-  await page.locator('[data-rpr="pick"]').click();
-  await page.getByTestId('message-m1').click();
-  await expect(page.locator('[data-rpr="scope"]')).toHaveText('MessageRow');
+  await pickMessageRow(page);
   const tag = page.locator(`${SHADOW} .box .tag`);
   // The pointer moves over the row and keeps moving there: the outline stays on the hovered row's component.
   const row = page.locator('[data-rpr="tree"] li[data-name="MessageList"]');
@@ -147,17 +157,15 @@ test('with no area, Pick opens the tree of the whole app without choosing anythi
   await expect(page.locator('[data-rpr="tree"]')).toHaveCount(0);
 
   // A click on the page still picks from the page.
-  await page.locator('[data-rpr="pick"]').click();
-  await page.getByTestId('message-m1').click();
-  await expect(page.locator('[data-rpr="scope"]')).toHaveText('MessageRow');
+  await pickMessageRow(page);
 });
 
 test('× with the tree open moves it to the whole app, and the tree can go back to a component', async ({ page }) => {
   await page.goto('/app?rpr=panel&tick=150');
   await expect(page.getByTestId('unread')).toBeVisible();
   await page.locator('[data-rpr="pick"]').click();
-  await page.getByTestId('message-m1').click();
-  await expect(page.locator('[data-rpr="scope"]')).toHaveText('MessageRow');
+  await page.locator('[data-testid="message-m1"] .text').click();
+  await expect(page.locator('[data-rpr="scope"]')).toHaveText('<span.text>');
 
   await page.locator('[data-rpr="clear-scope"]').click();
   // The area is gone, and the tree says so: its Whole app row is the active one, not the old area.
@@ -201,14 +209,14 @@ test('a default-exported memo is called by its file, not Memo', async ({ page })
   await expect(page.getByTestId('unread')).toBeVisible();
   await page.locator('[data-rpr="pick"]').click();
   await page.getByTestId('workspace').click();
-  await expect(page.locator('[data-rpr="scope"]')).toHaveText('Workspace');
+  await expect(page.locator('[data-rpr="tree"] li[data-name="Workspace"]')).toHaveCount(1);
+  await expect(page.locator('[data-rpr="tree"] li[data-name="Memo"]')).toHaveCount(0);
 });
 
 test('× clears the area even while the picker waits for a click, with no tree open yet', async ({ page }) => {
   await page.goto('/app?rpr=panel&tick=150');
   await expect(page.getByTestId('unread')).toBeVisible();
-  await page.locator('[data-rpr="pick"]').click();
-  await page.getByTestId('message-m1').click();
+  await pickMessageRow(page);
   await page.keyboard.press('Enter');
   await expect(page.locator('[data-rpr="scope"]')).toHaveText('MessageRow');
   // The shortcut starts picking anew from the page: no tree until something is clicked.
@@ -222,6 +230,8 @@ test('Pick with the tree open keeps the area and waits for a click; with a compo
   await page.goto('/advanced/deferred?rpr=panel');
   await page.locator('[data-rpr="pick"]').click();
   await page.locator('[data-case="broken"] input').click();
+  await expect(page.locator('[data-rpr="scope"]')).toHaveText('<input>');
+  await page.keyboard.press('ArrowLeft');
   await expect(page.locator('[data-rpr="scope"]')).toHaveText('Search');
   const picker = () =>
     page.evaluate(() => {

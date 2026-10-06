@@ -25,10 +25,13 @@ export interface TreeActions {
 export interface PickerCallbacks {
   /** Renders the component tree inside the panel; `active` is -1 while the whole app is the one chosen. */
   showTree(rows: TreeRow[], active: number, actions: TreeActions): void;
-  /** The active component is the area right away; moving in the tree moves the area with it. `null`: the whole app. */
-  preview(owner: Owner | null): void;
+  /**
+   * The active component is the area right away; moving in the tree moves the area with it. `null`: the whole app.
+   * On an element's row the area is the component the element sits in, and `element` is the row's.
+   */
+  preview(owner: Owner | null, element: Owner | null): void;
   /** `null`: cancelled, the area goes back to what it was. */
-  done(choice: Owner | 'whole-app' | null): void;
+  done(choice: Owner | 'whole-app' | null, element: Owner | null): void;
 }
 
 interface Node {
@@ -43,10 +46,16 @@ interface Node {
 const BLOCKED = ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click', 'dblclick', 'contextmenu'];
 const KEYS = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Enter'];
 const sameFiber = (a: Fiber, b: Fiber) => a === b || a.alternate === b;
+/** An element's row is a child of the component it sits in, and stands for that component as the area. */
+const areaOf = (node: Node) => (node.owner.element && node.parent ? node.parent.owner : node.owner);
+const elementOf = (node: Node) => (node.owner.element ? node.owner : null);
+/** On the page an element is named with the component it sits in: the row above it is not there to say it. */
+const labelOf = (node: Node) => (node.owner.element && node.parent ? `${node.parent.owner.name} › ${node.owner.name}` : node.owner.name);
 
 /**
- * Picks the area to record: hover outlines a component, a click takes it and opens the tree around it.
- * A row or an arrow tries the area on, Enter or a double click confirms, Esc puts the old area back.
+ * Picks the area to record: hover outlines the element under the cursor, a click takes it and opens the tree around
+ * it, the element a row under its component. A row or an arrow tries the area on, Enter or a double click confirms,
+ * Esc puts the old area back.
  */
 export class Picker {
   active = false;
@@ -112,6 +121,10 @@ export class Picker {
     if (this.shown && !this.box.hidden) this.outline(this.shown.fiber, this.shown.label);
   }
 
+  private outlineNode(node: Node) {
+    this.outline(node.owner.fiber, labelOf(node));
+  }
+
   /**
    * Opens the tree on a component, to move from it instead of picking anew. `quiet` does not take it as the area:
    * the whole app stays the area until a row, a key or a click says otherwise.
@@ -129,7 +142,7 @@ export class Picker {
   /** Closes the tree on what it shows, as Enter would; a tree opened on the whole app without a choice changes nothing. */
   keep() {
     if (this.browsing) this.finish('whole-app');
-    else this.finish(this.current && !this.quietOpen ? this.current.owner : null);
+    else this.finish(this.current && !this.quietOpen ? this.current : null);
   }
 
   /**
@@ -143,12 +156,12 @@ export class Picker {
     this.browsing = true;
     this.box.hidden = true;
     this.shown = null;
-    this.callbacks.preview(null);
+    this.callbacks.preview(null, null);
     this.render();
     return true;
   }
 
-  /** A filter was switched: rebuild the path around the active component. */
+  /** A filter was switched: rebuild the path around the active row. */
   refresh() {
     if (this.frozen && this.current) this.build(this.engine.ownersOfFiber(this.current.owner.fiber), this.current.owner.fiber);
   }
@@ -162,14 +175,14 @@ export class Picker {
   }
 
   hideOutline() {
-    if (this.active && this.current && !this.browsing) this.outline(this.current.owner.fiber, this.current.owner.name);
+    if (this.active && this.current && !this.browsing) this.outlineNode(this.current);
     else {
       this.box.hidden = true;
       this.shown = null;
     }
   }
 
-  private finish(owner: Owner | 'whole-app' | null) {
+  private finish(choice: Node | 'whole-app' | null) {
     if (!this.active) return;
     this.active = false;
     for (const [type, listener] of this.listeners) window.removeEventListener(type, listener, { capture: true });
@@ -178,7 +191,8 @@ export class Picker {
     this.shown = null;
     this.root = this.current = this.previewed = null;
     this.quietOpen = this.browsing = this.hovered = false;
-    this.callbacks.done(owner);
+    if (choice === 'whole-app' || !choice) this.callbacks.done(choice, null);
+    else this.callbacks.done(areaOf(choice), elementOf(choice));
   }
 
   private isOwn(event: Event) {
@@ -189,21 +203,31 @@ export class Picker {
     return document.elementsFromPoint(x, y).find((el) => el !== this.host && !this.host.contains(el) && el !== document.documentElement) ?? null;
   }
 
+  /** What a click on `el` takes, nearest first: the element, then the components above it. None outside every component the tree shows. */
+  private pickAt(el: Element): Owner[] | null {
+    const host = this.engine.hostAt(el);
+    const owners = host ? this.engine.ownersOfFiber(host) : [];
+    const shown = this.filters();
+    return owners.some((o) => !o.element && !this.engine.hidden(o, shown)) ? owners : null;
+  }
+
   private onMove(event: PointerEvent) {
     // Over the panel, the box goes back to the area the tree is on: the preview is of the page only.
     if (this.isOwn(event)) {
       if (this.hovered) return;
-      if (this.frozen && !this.browsing && this.current && this.shown?.fiber !== this.current.owner.fiber)
-        this.outline(this.current.owner.fiber, this.current.owner.name);
+      if (this.frozen && !this.browsing && this.current && this.shown?.fiber !== this.current.owner.fiber) this.outlineNode(this.current);
       return;
     }
     // A picked component holds the box: only the tree's rows move it, the page under the pointer does not.
     if (this.frozen && !this.browsing) return;
     const el = this.elementAt(event.clientX, event.clientY);
     if (!el) return;
-    const owner = this.engine.owners(el).find((o) => !this.engine.hidden(o, this.filters()));
-    // The box a click would leave, not the element under the cursor: hovering is the preview of the choice.
-    if (owner) return this.outline(owner.fiber, owner.name);
+    // The box a click would leave: hovering is the preview of the choice.
+    const owners = this.pickAt(el);
+    if (owners) {
+      const area = owners.find((o) => !o.element && !this.engine.hidden(o, this.filters()))!;
+      return this.outline(owners[0].fiber, `${area.name} › ${owners[0].name}`);
+    }
     this.shown = null;
     this.drawBox([el.getBoundingClientRect()], el.tagName.toLowerCase());
   }
@@ -214,11 +238,11 @@ export class Picker {
     event.stopImmediatePropagation();
     if (event.type !== 'click') return;
     const el = this.elementAt(event.clientX, event.clientY);
-    const owners = el ? this.engine.owners(el) : [];
-    if (!owners.length) return;
+    const owners = el ? this.pickAt(el) : null;
+    if (!owners) return;
     // A click on the page is a choice, whatever tree was open before it.
     this.quietOpen = false;
-    this.build(owners, null);
+    this.build(owners, owners[0].fiber);
   }
 
   private onKey(event: KeyboardEvent) {
@@ -240,7 +264,7 @@ export class Picker {
       this.previewed = null;
       return this.render();
     }
-    if (event.key === 'Enter') return this.finish(node.owner);
+    if (event.key === 'Enter') return this.finish(node);
     if (event.key === 'ArrowUp' && at === 0) return this.release();
     if (event.key === 'ArrowDown') this.current = rows[Math.min(rows.length - 1, at + 1)].node;
     else if (event.key === 'ArrowUp') this.current = rows[Math.max(0, at - 1)].node;
@@ -256,6 +280,12 @@ export class Picker {
   private build(owners: Owner[], focus: Fiber | null) {
     const shown = this.filters();
     const path = owners.filter((o) => !this.engine.hidden(o, shown) || (focus && sameFiber(o.fiber, focus))).reverse();
+    // An element needs a component row above it, even one the filters hide: that component is what gets recorded.
+    if (path[0]?.element) {
+      const nearest = owners.find((o) => !o.element);
+      if (!nearest) return;
+      path.unshift(nearest);
+    }
     if (!path.length) return;
     let parent: Node | null = null;
     this.root = null;
@@ -271,22 +301,30 @@ export class Picker {
     const target = focus ? nodes.find((n) => sameFiber(n.owner.fiber, focus)) : [...nodes].reverse().find((n) => !this.engine.hidden(n.owner, shown));
     this.current = target ?? nodes[nodes.length - 1];
     this.frozen = true;
-    // The neighbourhood of the picked component, not just the path to it: its siblings and what is inside it.
-    if (this.current.parent) this.expand(this.current.parent);
-    this.expand(this.current);
+    // The neighbourhood of the picked component, not just the path to it: its siblings and what is inside it. For an
+    // element, its component's, where ← lands.
+    const component = this.current.owner.element && this.current.parent ? this.current.parent : this.current;
+    if (component.parent) this.expand(component.parent);
+    this.expand(component);
     this.render();
   }
 
-  /** Lists every component below the node; the path step already there keeps its place and its open children. */
+  /**
+   * Lists every component below the node; the path step already there keeps its place and its open children. A picked
+   * element leads the list, as the component's own markup; an element's row has nothing below it, since what is
+   * inside the element is listed under the component.
+   */
   private fill(node: Node) {
     if (node.full) return;
+    node.full = true;
+    if (node.owner.element) return;
     const kept = node.children;
-    node.children = this.engine
+    const components = this.engine
       .childOwners(node.owner.fiber, this.filters())
       .map((owner) => kept.find((k) => sameFiber(k.owner.fiber, owner.fiber)) ?? { owner, parent: node, children: [], full: false, open: false });
+    node.children = [...kept.filter((k) => k.owner.element), ...components];
     // The next step of the path can sit under a wrapper that the walk passed: keep it listed.
     for (const k of kept) if (!node.children.includes(k)) node.children.push(k);
-    node.full = true;
   }
 
   private expand(node: Node) {
@@ -315,7 +353,7 @@ export class Picker {
         this.browsing = true;
       } else {
         this.browsing = false;
-        this.callbacks.preview(this.current.owner);
+        this.callbacks.preview(areaOf(this.current), elementOf(this.current));
       }
     }
     const active = this.browsing
@@ -332,7 +370,7 @@ export class Picker {
       })),
       active,
       {
-        select: (i) => this.finish(rows[i]?.node.owner ?? null),
+        select: (i) => this.finish(rows[i]?.node ?? null),
         focus: (i) => {
           const node = rows[i]?.node;
           if (!node) return;
@@ -345,7 +383,7 @@ export class Picker {
         hover: (i) => {
           if (!rows[i]) return;
           this.hovered = true;
-          this.outline(rows[i].node.owner.fiber, rows[i].node.owner.name);
+          this.outlineNode(rows[i].node);
         },
         toggle: (i) => {
           const node = rows[i]?.node;
@@ -364,7 +402,7 @@ export class Picker {
         focusWholeApp: () => void this.release(),
       }
     );
-    if (this.current && !this.browsing) this.outline(this.current.owner.fiber, this.current.owner.name);
+    if (this.current && !this.browsing) this.outlineNode(this.current);
   }
 
   private drawBox(rects: DOMRect[], label: string) {

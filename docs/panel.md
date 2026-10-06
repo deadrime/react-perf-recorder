@@ -6,13 +6,24 @@ The panel is one row. **● Rec** records; **↺ Page load** reloads the page an
 area and the followed components survive the reload; `?rpr=rec` does the same from a link). **■ Stop** ends it.
 
 Next to them is the area. **⌖ Pick** chooses the part of the page to record — with no area it opens the tree of the
-whole app; a click on the page takes the component under the cursor and opens the tree around it. In the tree `↑`/`↓`
-move, `→` goes inside, `←` goes up, `Enter` confirms the area, `Esc` puts back the one before; **✕ Cancel** and
-**✓ Confirm** under the area do the same. On a phone the panel is a sheet on the bottom edge, and a tapped row is only
-tried on, outlined on the page, until Confirm. Once an area is picked,
-its name opens the tree again, `⧉` copies it as text for an assistant (component, file and line, path, DOM, the
-`scope` for scripts), and `×` goes back to the whole app. `◎` in the tree follows a component by name through the
-recording. While recording the area cannot change, and Pick is hidden.
+whole app; a click on the page takes the element under the cursor — the innermost one React rendered, an icon's whole
+`<svg>` — and opens the tree around it. Hovering outlines what a click would take, named with the component it sits
+in: `Attract › <button.btn.btn-primary>`. In the tree an element is a row of its own, `<button.btn.btn-primary>` in a
+colour of its own, under that component and first among what is inside it; `←` or `↑` steps out to the component. In
+the tree `↑`/`↓` move, `→` goes inside, `←` goes up, `Enter` confirms the area, `Esc` puts back the one before;
+**✕ Cancel** and **✓ Confirm** under the area do the same. On a phone the panel is a sheet on the bottom edge, and a
+tapped row is only tried on, outlined on the page, until Confirm. Once an area is picked, its name opens the tree
+again, `⧉` copies it as text for an assistant, and `×` goes back to the whole app. For a component the text is its
+file and line, path, DOM and the `scope` for scripts; for an element — the thing to send when one button needs a
+fix — its tag, classes and text, the component that wrote it with the file and line of its JSX, the path down to it, a
+selector that finds it alone on the page, and the `scope` of its component. `◎` in the tree follows a component by
+name through the recording. While recording the area cannot change, and Pick is hidden.
+
+**An element is recorded as its component.** A DOM element has no renders of its own: it changes when the component
+that renders it does. So an element picked as the area is
+what `⧉` and the outline point at, while a recording and the outlines of renders take the component its row sits
+under — the area's name switches to that component for as long as it records, and the report is the component's.
+A reload keeps the component and forgets the element.
 
 In the header:
 

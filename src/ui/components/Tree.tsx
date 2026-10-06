@@ -50,6 +50,7 @@ function Row({ row, active, watching, onSelect, onConfirm, onHover, onToggle, on
     <li
       data-active={String(active)}
       data-wrapper={String(owner.wrapper || owner.provider || owner.library)}
+      data-element={owner.element ? 'true' : undefined}
       data-name={owner.name}
       style={{ paddingLeft: indentOf(row.depth + 1) }}
       onClick={onSelect}
@@ -64,23 +65,34 @@ function Row({ row, active, watching, onSelect, onConfirm, onHover, onToggle, on
       <span class="src" title={owner.source}>
         {owner.source.slice(owner.source.lastIndexOf('/') + 1)}
       </span>
-      <span
-        class="watch-toggle"
-        data-rpr="watch-toggle"
-        data-on={String(watching)}
-        title="Follow this component through the recording"
-        role="button"
-        aria-label={`Follow ${owner.name} through the recording`}
-        aria-pressed={watching}
-        onClick={(e) => stop(e, onWatch)}
-      >
-        {watching ? '◉' : '◎'}
-      </span>
+      {/* A recording follows components by name; an element keeps the square so ⧉ stays in its column. */}
+      {owner.element ? (
+        <span class="watch-spacer" />
+      ) : (
+        <span
+          class="watch-toggle"
+          data-rpr="watch-toggle"
+          data-on={String(watching)}
+          title="Follow this component through the recording"
+          role="button"
+          aria-label={`Follow ${owner.name} through the recording`}
+          aria-pressed={watching}
+          onClick={(e) => stop(e, onWatch)}
+        >
+          {watching ? '◉' : '◎'}
+        </span>
+      )}
       <span
         class="copy"
         data-rpr="copy-row"
         data-copied={copied ? 'true' : undefined}
-        title={copied ? 'Copied' : 'Copy for an AI assistant'}
+        title={
+          copied
+            ? 'Copied'
+            : owner.element
+            ? 'Copy this element for an AI assistant: the line its JSX is on, path, selector'
+            : 'Copy for an AI assistant'
+        }
         role="button"
         aria-label={copied ? `${owner.name} copied` : `Copy ${owner.name} for an AI assistant`}
         onClick={(e) => stop(e, onCopy)}

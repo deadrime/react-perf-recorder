@@ -56,6 +56,8 @@ export const STYLES = `
   --flash-hot: #ff453a;
   --density: #3d3d48;
   --pick: #0a84ff;
+  /* A DOM element's row in the tree, apart from the components around it. */
+  --element: #5db0d7;
 
   /* What woke a commit, on the timeline: a bar takes its colour from the cause the report names. */
   --cause-input: #37d67a;
@@ -235,6 +237,7 @@ button.icon { padding: 3px 7px; }
 .area-pill > button + button { border-left: 1px solid var(--edge); }
 .area-pill[data-scoped="true"] { border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
 .area-pill .scope { max-width: 130px; color: var(--text-strong); }
+.area-pill .scope-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .area-pill[data-lost="true"] .scope { color: var(--lost); }
 .area-pill button:disabled { cursor: default; opacity: .7; }
 
@@ -471,9 +474,11 @@ button.reason-head { width: 100%; padding: 0; border: 0; background: none; font:
 .picker li .toggle { width: 12px; flex: none; color: var(--muted-soft); text-align: center; }
 .picker li .toggle:hover { color: var(--text-strong); }
 .picker li .name { flex: none; white-space: nowrap; }
+.picker li[data-element="true"] .name { color: var(--element); }
 .picker li .src { flex: none; color: var(--muted); margin-left: auto; padding-left: 8px; white-space: nowrap; }
 /* The row's own buttons show on hover and on the active row; each one a fixed square, so ✓ takes the place of ⧉. */
 .picker li .copy, .picker li .watch-toggle { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; margin-left: 4px; padding: 0; border-radius: 4px; font-size: 13px; line-height: 1; color: var(--muted); visibility: hidden; }
+.picker li .watch-spacer { flex: none; width: 18px; margin-left: 4px; }
 .picker li .watch-toggle[data-on="true"] { visibility: visible; color: var(--number); }
 .picker li:hover .copy, .picker li[data-active="true"] .copy,
 .picker li:hover .watch-toggle, .picker li[data-active="true"] .watch-toggle { visibility: visible; }
@@ -501,6 +506,7 @@ button[data-copied="true"] { color: var(--good); }
   .picker li { min-height: 34px; }
   .picker li .toggle { width: 24px; align-self: stretch; display: inline-flex; align-items: center; justify-content: center; }
   .picker li .copy, .picker li .watch-toggle { visibility: visible; width: 28px; height: 28px; }
+  .picker li .watch-spacer { width: 28px; }
   .tl-controls button, .way-more button { min-height: 28px; }
   /* A finger is wider than 14px: the overview grows to be hit. */
   .tl-overview { height: 28px; }
