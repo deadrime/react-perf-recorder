@@ -217,6 +217,22 @@ describe('perfRecorder vite plugin', () => {
     expect(meta).toMatchObject({ status: 'done', events: 1 });
   });
 
+  it('maps a position of a module the page still runs after something it imports changed', async () => {
+    const header = (await server.transformRequest('/src/components/Header.tsx'))!;
+    const lines = header.code.split('\n');
+    const line = lines.findIndex((l) => l.includes('useChatStore(selectUnread)')) + 1;
+    const position = { url: `${base}/src/components/Header.tsx`, line, column: lines[line - 1].indexOf('useChatStore') + 1 };
+    const mapped = async () => ((await (await post('map', { positions: [position] })).json()) as { sites: Record<string, string> }).sites;
+    const site = Object.values(await mapped())[0];
+    expect(site).toMatch(/^src\/components\/Header\.tsx:\d+$/);
+    // What an HMR update of a module it imports does to it: the result is put aside, not thrown away.
+    const mod = (await server.moduleGraph.getModuleByUrl('/src/components/Header.tsx'))!;
+    const imported = [...mod.importedModules].find((m) => m.url.endsWith('/Workspace.tsx'))!;
+    server.moduleGraph.invalidateModule(imported, new Set(), Date.now(), true);
+    expect(mod.transformResult).toBeNull();
+    expect(Object.values(await mapped())[0]).toBe(site);
+  });
+
   it('a stop that sends its last events before finishing is not an interrupted session', async () => {
     const opened = await (await post('sessions', { source: 'panel' })).json();
     // What a normal stop does: the queue, with the end event, goes out as events; finish comes after.
