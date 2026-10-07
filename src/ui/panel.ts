@@ -39,10 +39,15 @@ export class Panel {
   private scope: ScopeHandle | null = null;
   /**
    * A DOM element picked in the tree: ⧉ and the outline are about it, while the area recorded is `scope`, its
-   * component. Kept as the node: the `return` of a fiber in a subtree no commit touched leads to a stale root.
+   * component. Kept as the node: the `return` of a fiber in a subtree no commit touched leads to a stale root. Weakly:
+   * a node unmounted while recording would otherwise hold its whole subtree and show up as retained in the report.
    */
-  private element: Element | null = null;
-  private before: { scope: ScopeHandle | null; last: PanelState['lastScope']; element: Element | null } = { scope: null, last: null, element: null };
+  private element: WeakRef<Element> | null = null;
+  private before: { scope: ScopeHandle | null; last: PanelState['lastScope']; element: WeakRef<Element> | null } = {
+    scope: null,
+    last: null,
+    element: null,
+  };
   private liveTimer: ReturnType<typeof setInterval> | null = null;
   private picker: Picker;
   private busy = false;
@@ -608,8 +613,9 @@ export class Panel {
 
   /** The fiber of the picked element while it is on the page; once it is gone, the area is its component alone. */
   private elementTarget(): Fiber | null {
-    const fiber = this.element?.isConnected ? fiberFromNode(this.element) : null;
-    if (fiber?.stateNode === this.element) return currentOf(fiber);
+    const element = this.element?.deref();
+    const fiber = element?.isConnected ? fiberFromNode(element) : null;
+    if (fiber && fiber.stateNode === element) return currentOf(fiber);
     this.element = null;
     return null;
   }
@@ -645,13 +651,13 @@ export class Panel {
     this.say('');
     if (owner === 'whole-app') this.setScope(null);
     else if (owner) this.setScope(this.engine.scopeFromFiber(owner.fiber), undefined, element?.fiber.stateNode ?? null);
-    else this.setScope(this.before.scope, this.before.last, this.before.element);
+    else this.setScope(this.before.scope, this.before.last, this.before.element?.deref() ?? null);
   }
 
   /** `element`: a DOM element picked inside `scope`; a reload keeps the area and forgets the element. */
   private setScope(scope: ScopeHandle | null, last = scope ? { names: scopeNames(scope), label: scope.name } : null, element: Element | null = null) {
     this.scope = scope;
-    this.element = scope ? element : null;
+    this.element = scope && element ? new WeakRef(element) : null;
     this.state.lastScope = last;
     this.highlighter?.reset();
     this.persist();

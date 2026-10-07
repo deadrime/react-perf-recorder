@@ -234,6 +234,33 @@ test('with elements ticked a click takes the element, a row under its component;
   await expect(page.locator('[data-rpr="scope"]')).toHaveText('MessageRow');
 });
 
+test('an element picked and then unmounted while recording is not kept in memory by the panel', async ({ page }) => {
+  await page.goto('/advanced/leak?rpr=panel');
+  await page.getByTestId('run').waitFor();
+  // The tidy popover's "closed": Popover stays, the <p> gives way to TidyPopover once the run opens it.
+  const closed = page.locator('p.muted', { hasText: /^closed$/ }).nth(1);
+  await pickElements(page);
+  await closed.click();
+  await expect(page.locator('[data-rpr="scope"]')).toHaveText('<p.muted>');
+  await page.keyboard.press('Enter');
+  await page.evaluate(() => {
+    const p = [...document.querySelectorAll('p.muted')].filter((el) => el.textContent === 'closed')[1];
+    (window as unknown as { __picked: WeakRef<Element> }).__picked = new WeakRef(p);
+  });
+
+  await page.locator('[data-rpr="record"]').click();
+  await page.getByTestId('run').click();
+  await page.waitForFunction(() => (document.querySelector('[data-testid=bar-fixed]') as HTMLElement | null)?.style.width === '100%');
+  const picked = () => page.evaluate(() => (window as unknown as { __picked: WeakRef<Element> }).__picked.deref()?.isConnected ?? 'collected');
+  // The run ends with the popover closed again, in a <p> of its own: the one picked is gone from the page.
+  expect(await picked()).not.toBe(true);
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send('HeapProfiler.collectGarbage');
+  // Still recording: nothing has asked the panel about its element since it was unmounted.
+  expect(await picked()).toBe('collected');
+  await page.locator('[data-rpr="stop"]').click();
+});
+
 test('copies an element picked on the page with the line its JSX is on', async ({ page, baseURL }) => {
   await open(page);
   await pickElements(page);
