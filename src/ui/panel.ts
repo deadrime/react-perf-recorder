@@ -69,11 +69,18 @@ export class Panel {
     this.shadow.append(style, this.container);
     this.state = loadState(defaults(options.corner, options.highlight));
     this.handlers = this.buildHandlers();
-    this.picker = new Picker(this.shadow, this.host, engine, () => ({ library: this.state.showLibrary, providers: this.state.showProviders }), {
-      showTree: (rows, active, actions) => this.showTree(rows, active, actions),
-      preview: (owner, element) => this.setScope(owner ? this.engine.scopeFromFiber(owner.fiber) : null, undefined, element?.fiber.stateNode ?? null),
-      done: (choice, element) => this.onPicked(choice, element),
-    });
+    this.picker = new Picker(
+      this.shadow,
+      this.host,
+      engine,
+      () => ({ library: this.state.showLibrary, providers: this.state.showProviders, elements: Boolean(this.state.showElements) }),
+      {
+        showTree: (rows, active, actions) => this.showTree(rows, active, actions),
+        preview: (owner, element) =>
+          this.setScope(owner ? this.engine.scopeFromFiber(owner.fiber) : null, undefined, element?.fiber.stateNode ?? null),
+        done: (choice, element) => this.onPicked(choice, element),
+      }
+    );
     engine.onChange((state, saved) => {
       // Stopped by the length limit rather than by Stop: the report still belongs in the panel.
       if (state === 'saved' && saved && !this.busy) this.showResult(saved);
@@ -659,10 +666,12 @@ export class Panel {
       actions,
       showLibrary: this.state.showLibrary,
       showProviders: this.state.showProviders,
+      showElements: Boolean(this.state.showElements),
       watched: this.state.watch,
       onShow: (what, on) => {
         if (what === 'library') this.state.showLibrary = on;
-        else this.state.showProviders = on;
+        else if (what === 'providers') this.state.showProviders = on;
+        else this.state.showElements = on;
         this.persist();
         this.picker.refresh();
       },

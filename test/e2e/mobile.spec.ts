@@ -22,10 +22,7 @@ test('on a phone the area is picked and kept by taps, and the page above the she
   expect(Math.round(box.y + box.height)).toBe(view.height);
   expect(box.height).toBeLessThan(view.height * 0.6);
 
-  // A tap takes the element under the finger; the row above it is the component it sits in.
   await page.getByTestId('unread').tap();
-  await expect(page.locator('[data-rpr="scope"]')).toHaveAttribute('data-element', 'true');
-  await page.locator('[data-rpr="tree"] li[data-name="Unread"]').tap();
   await expect(page.locator('[data-rpr="scope"]')).toHaveText('Unread');
   // The area and Cancel · Confirm share one row: recording and the area's own buttons step aside while picking.
   await expect(page.locator('[data-rpr="record"]')).toBeHidden();

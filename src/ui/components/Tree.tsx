@@ -9,9 +9,10 @@ export interface TreeProps {
   active: number;
   showLibrary: boolean;
   showProviders: boolean;
+  showElements: boolean;
   watched: readonly string[];
   actions: TreeActions;
-  onShow(what: 'library' | 'providers', on: boolean): void;
+  onShow(what: 'library' | 'providers' | 'elements', on: boolean): void;
   onWatch(name: string): void;
   onCopy(owner: Owner): void;
   /** The copy button that just worked, by `rowCopyKey`. */
@@ -132,6 +133,15 @@ export function Tree(p: TreeProps): JSX.Element {
             onChange={(e) => p.onShow('providers', (e.target as HTMLInputElement).checked)}
           />
           providers
+        </label>
+        <label class="toggle" title="A click on the page takes the element under the cursor, to copy it with the line of its JSX">
+          <input
+            type="checkbox"
+            data-rpr="show-elements"
+            checked={p.showElements}
+            onChange={(e) => p.onShow('elements', (e.target as HTMLInputElement).checked)}
+          />
+          elements
         </label>
       </div>
       <ul data-rpr="tree" ref={list} onMouseLeave={() => p.actions.leave()}>

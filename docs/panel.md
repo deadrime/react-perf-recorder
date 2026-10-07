@@ -6,9 +6,11 @@ The panel is one row. **● Rec** records; **↺ Page load** reloads the page an
 area and the followed components survive the reload; `?rpr=rec` does the same from a link). **■ Stop** ends it.
 
 Next to them is the area. **⌖ Pick** chooses the part of the page to record — with no area it opens the tree of the
-whole app; a click on the page takes the element under the cursor — the innermost one React rendered, an icon's whole
-`<svg>` — and opens the tree around it. Hovering outlines what a click would take, named with the component it sits
-in: `Attract › <button.btn.btn-primary>`. In the tree an element is a row of its own, `<button.btn.btn-primary>` in a
+whole app; a click on the page takes the component under the cursor and opens the tree around it. With **elements**
+ticked above the tree (next to **packages** and **providers**; the choice is remembered) a click takes the element
+under the cursor instead — the innermost one React rendered, an icon's whole `<svg>`. Hovering outlines what a click
+would take, an element named with the component it sits in: `Attract › <button.btn.btn-primary>`. In the tree an
+element is a row of its own, `<button.btn.btn-primary>` in a
 colour of its own, under that component and first among what is inside it; `←` or `↑` steps out to the component. In
 the tree `↑`/`↓` move, `→` goes inside, `←` goes up, `Enter` confirms the area, `Esc` puts back the one before;
 **✕ Cancel** and **✓ Confirm** under the area do the same. On a phone the panel is a sheet on the bottom edge, and a

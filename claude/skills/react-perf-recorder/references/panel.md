@@ -4,8 +4,9 @@ What to tell a person who records it themselves.
 
 - **Alt+Shift+R** records and stops, **Alt+Shift+S** picks an area. **↺ Page load** reloads and records from the
   first render.
-- **⌖ Pick** — click an element, or a row of the tree it opens, and it becomes the area, with the component tree
-  open around it: the element is a row of its own, `<button.btn>`, under the component it sits in. `↑`/`↓` move,
+- **⌖ Pick** — click an element, or a row of the tree it opens, and its component becomes the area, with the
+  component tree open around it. With **elements** ticked above the tree, a click takes the element itself: a row of
+  its own, `<button.btn>`, under the component it sits in. `↑`/`↓` move,
   `→` goes in, `←` goes up (from an element, to its component), `Enter` keeps it, `Esc` puts the old one back. The
   page does not react to clicks while the picker is open. `×` goes back to the whole app.
 - **⧉** copies the area as text for a chat: component, file and line, path, DOM, and the `scope` for a script — what

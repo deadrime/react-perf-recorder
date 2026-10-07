@@ -34,6 +34,9 @@ export interface PickerCallbacks {
   done(choice: Owner | 'whole-app' | null, element: Owner | null): void;
 }
 
+/** The tree's filters, and `elements`: a click takes the DOM element under the cursor, not its component. */
+export type PickFilters = Shown & { elements: boolean };
+
 interface Node {
   owner: Owner;
   parent: Node | null;
@@ -53,9 +56,9 @@ const elementOf = (node: Node) => (node.owner.element ? node.owner : null);
 const labelOf = (node: Node) => (node.owner.element && node.parent ? `${node.parent.owner.name} › ${node.owner.name}` : node.owner.name);
 
 /**
- * Picks the area to record: hover outlines the element under the cursor, a click takes it and opens the tree around
- * it, the element a row under its component. A row or an arrow tries the area on, Enter or a double click confirms,
- * Esc puts the old area back.
+ * Picks the area to record: hover outlines the component under the cursor, a click takes it and opens the tree
+ * around it; with `elements` on, the element under the cursor instead, a row under its component. A row or an arrow
+ * tries the area on, Enter or a double click confirms, Esc puts the old area back.
  */
 export class Picker {
   active = false;
@@ -79,7 +82,7 @@ export class Picker {
     private shadow: ShadowRoot,
     private host: Element,
     private engine: Engine,
-    private filters: () => Shown,
+    private filters: () => PickFilters,
     private callbacks: PickerCallbacks
   ) {
     this.box = document.createElement('div');
@@ -163,7 +166,10 @@ export class Picker {
 
   /** A filter was switched: rebuild the path around the active row. */
   refresh() {
-    if (this.frozen && this.current) this.build(this.engine.ownersOfFiber(this.current.owner.fiber), this.current.owner.fiber);
+    if (!this.frozen || !this.current) return;
+    // On the whole app the rebuilt tree stays on it: its top row is not to become the area by a checkbox.
+    if (this.browsing) this.quietOpen = true;
+    this.build(this.engine.ownersOfFiber(this.current.owner.fiber), this.current.owner.fiber);
   }
 
   outline(fiber: Fiber, label: string) {
@@ -203,11 +209,14 @@ export class Picker {
     return document.elementsFromPoint(x, y).find((el) => el !== this.host && !this.host.contains(el) && el !== document.documentElement) ?? null;
   }
 
-  /** What a click on `el` takes, nearest first: the element, then the components above it. None outside every component the tree shows. */
+  /**
+   * What a click on `el` takes, nearest first: the element when `elements` is on, then the components above it. None
+   * outside every component the tree shows.
+   */
   private pickAt(el: Element): Owner[] | null {
-    const host = this.engine.hostAt(el);
-    const owners = host ? this.engine.ownersOfFiber(host) : [];
     const shown = this.filters();
+    const host = shown.elements ? this.engine.hostAt(el) : null;
+    const owners = host ? this.engine.ownersOfFiber(host) : this.engine.owners(el);
     return owners.some((o) => !o.element && !this.engine.hidden(o, shown)) ? owners : null;
   }
 
@@ -226,7 +235,7 @@ export class Picker {
     const owners = this.pickAt(el);
     if (owners) {
       const area = owners.find((o) => !o.element && !this.engine.hidden(o, this.filters()))!;
-      return this.outline(owners[0].fiber, `${area.name} › ${owners[0].name}`);
+      return owners[0].element ? this.outline(owners[0].fiber, `${area.name} › ${owners[0].name}`) : this.outline(area.fiber, area.name);
     }
     this.shown = null;
     this.drawBox([el.getBoundingClientRect()], el.tagName.toLowerCase());
@@ -242,7 +251,7 @@ export class Picker {
     if (!owners) return;
     // A click on the page is a choice, whatever tree was open before it.
     this.quietOpen = false;
-    this.build(owners, owners[0].fiber);
+    this.build(owners, owners[0].element ? owners[0].fiber : null);
   }
 
   private onKey(event: KeyboardEvent) {
@@ -279,6 +288,8 @@ export class Picker {
   /** `owners` nearest first; the tree shows them from the app root down, the focus (or the nearest component) active. */
   private build(owners: Owner[], focus: Fiber | null) {
     const shown = this.filters();
+    // With `elements` off, an element held from before gives way to the component it sits in.
+    if (!shown.elements) owners = owners.filter((o) => !o.element);
     const path = owners.filter((o) => !this.engine.hidden(o, shown) || (focus && sameFiber(o.fiber, focus))).reverse();
     // An element needs a component row above it, even one the filters hide: that component is what gets recorded.
     if (path[0]?.element) {

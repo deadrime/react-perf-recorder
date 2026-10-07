@@ -106,14 +106,14 @@ describe('the picker on an element', () => {
   let picker: Picker;
   afterEach(() => picker?.cancel());
 
-  const start = (engine: Engine, under: Element) => {
+  const start = (engine: Engine, under: Element, filters = { elements: true }) => {
     const host = document.createElement('div');
     document.documentElement.appendChild(host);
     const shadow = host.attachShadow({ mode: 'open' });
     const calls: Array<[string, string | null, string | null]> = [];
     const view: { rows: TreeRow[]; active: number } = { rows: [], active: -1 };
     const name = (o: Owner | 'whole-app' | null) => (o && typeof o === 'object' ? o.name : o);
-    picker = new Picker(shadow, host, engine, () => ({ library: false, providers: false }), {
+    picker = new Picker(shadow, host, engine, () => ({ library: false, providers: false, ...filters }), {
       showTree: (rows, active) => Object.assign(view, { rows, active }),
       preview: (owner, element) => calls.push(['preview', name(owner), name(element)]),
       done: (choice, element) => calls.push(['done', name(choice), name(element)]),
@@ -149,6 +149,30 @@ describe('the picker on an element', () => {
     expect(active()).toBe('<button.btn.btn-primary>');
     key('Enter');
     expect(calls.at(-1)).toEqual(['done', 'Card', '<button.btn.btn-primary>']);
+  });
+
+  it('takes the component under the cursor while elements are off, and drops an element held from before', () => {
+    const { engine, button } = setup();
+    for (const el of [button, document.querySelector('.card')!]) el.getBoundingClientRect = () => new DOMRect(10, 10, 120, 30);
+    const filters = { elements: false };
+    const { calls, view, tag, active } = start(engine, button, filters);
+
+    button.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, composed: true, clientX: 20, clientY: 20 }));
+    expect(tag()).toBe('Card');
+    button.dispatchEvent(new MouseEvent('click', { bubbles: true, composed: true, clientX: 20, clientY: 20 }));
+    expect(view.rows.map((r) => r.owner.name)).toEqual(['App', 'Attract', 'Card']);
+    expect(active()).toBe('Card');
+    expect(calls.at(-1)).toEqual(['preview', 'Card', null]);
+
+    // Ticked on an element's row and unticked again: the tree steps out to its component.
+    filters.elements = true;
+    picker.startAt(engine.hostAt(button) as Fiber);
+    expect(active()).toBe('<button.btn.btn-primary>');
+    filters.elements = false;
+    picker.refresh();
+    expect(active()).toBe('Card');
+    expect(view.rows.some((r) => r.owner.element)).toBe(false);
+    expect(calls.at(-1)).toEqual(['preview', 'Card', null]);
   });
 
   it('reopens on the element it was closed on', () => {
