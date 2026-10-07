@@ -67,7 +67,12 @@ export function Controls({ p }: { p: PanelViewProps }): JSX.Element {
           class="scope"
           data-rpr="scope"
           data-lost={String(Boolean(p.scope?.lost))}
-          title="The area: click to move it through the tree, hover to outline it"
+          title={
+            p.scope?.component
+              ? `${p.scope.name} in ${p.scope.component}: ⧉ copies the element, a recording takes ${p.scope.component} — an element renders only with its component. Click to move it through the tree.`
+              : 'The area: click to move it through the tree, hover to outline it'
+          }
+          data-element={p.scope?.component ? 'true' : undefined}
           // No area means the whole app: that needs no button of its own, and × is how to get back to it.
           hidden={!scoped}
           disabled={p.recording}
@@ -75,7 +80,8 @@ export function Controls({ p }: { p: PanelViewProps }): JSX.Element {
           onMouseEnter={() => p.on.outlineScope(true)}
           onMouseLeave={() => p.on.outlineScope(false)}
         >
-          {scopeText(p)}
+          {/* A flex item of its own: the button's text alone would be cut on both sides, without the ellipsis. */}
+          <span class="scope-text">{scopeText(p)}</span>
         </button>
         <button
           type="button"
@@ -85,6 +91,8 @@ export function Controls({ p }: { p: PanelViewProps }): JSX.Element {
           title={
             p.copied === 'scope'
               ? 'Copied — paste it into the chat with the assistant'
+              : p.scope?.component
+              ? 'Copy the element as text for an AI assistant: tag, the line its JSX is on, path, selector'
               : 'Copy the area as text for an AI assistant: component, file, path, DOM'
           }
           aria-label={p.copied === 'scope' ? 'Area copied' : 'Copy the area for an AI assistant'}

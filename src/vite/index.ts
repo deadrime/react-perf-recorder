@@ -92,7 +92,11 @@ const traceMaps = new WeakMap<object, TraceMap>();
 async function mapSite(server: ViteDevServer, root: string, url: string, line: number, column: number, hooks?: string[]) {
   const parsed = new URL(url, 'http://localhost');
   const mod = await server.moduleGraph.getModuleByUrl(parsed.pathname + parsed.search);
-  const map = mod?.transformResult?.map as ConstructorParameters<typeof TraceMap>[0] | null | undefined;
+  // A change to a module it imports soft-invalidates it: the page still runs the code it was served, whose result
+  // Vite keeps aside until the module is asked for again.
+  const kept = mod?.invalidationState;
+  const result = mod?.transformResult ?? (kept && typeof kept === 'object' ? kept : null);
+  const map = result?.map as ConstructorParameters<typeof TraceMap>[0] | null | undefined;
   if (!mod?.file || !map) return null;
   let traced = traceMaps.get(map as object);
   if (!traced) traceMaps.set(map as object, (traced = new TraceMap(map)));

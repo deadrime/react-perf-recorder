@@ -175,6 +175,134 @@ test('copies the area for an assistant', async ({ page, baseURL }) => {
   expect(copied).toContain('react-perf-recorder scope: {"names":');
 });
 
+/** Pick with no area opens the whole app's tree, where `elements` is ticked: a click then takes the element itself. */
+const pickElements = async (page: Page) => {
+  await page.locator('[data-rpr="pick"]').click();
+  await page.locator('[data-rpr="show-elements"]').check();
+  // A checkbox only filters: the tree stays on the whole app, with no area taken.
+  await expect(page.locator('[data-rpr="whole-app"]')).toHaveAttribute('data-active', 'true');
+  await expect(page.locator('[data-rpr="scope"]')).toBeHidden();
+};
+
+test('with elements ticked a click takes the element, a row under its component; unticked, the component', async ({ page }) => {
+  await open(page);
+  await pickElements(page);
+  const text = page.locator('[data-testid="message-m1"] .text');
+  await text.hover();
+  await expect(page.locator('[data-react-perf-recorder] .box .tag')).toHaveText('MessageRow › <span.text>');
+  await text.click();
+  await expect(page.locator('[data-rpr="scope"]')).toHaveText('<span.text>');
+  await expect(page.locator('[data-rpr="scope"]')).toHaveAttribute('data-element', 'true');
+  const active = page.locator('[data-rpr="tree"] li[data-active="true"]');
+  await expect(active).toHaveAttribute('data-name', '<span.text>');
+  await expect(active).toHaveAttribute('data-element', 'true');
+  await expect(active.locator('.src')).toHaveText(/^Messages\.tsx:\d+$/);
+  // An element is not followed: its row has no ◎.
+  await expect(active.locator('[data-rpr="watch-toggle"]')).toHaveCount(0);
+  // ← steps out to the component it sits in, ↓ comes back to the element.
+  await page.keyboard.press('ArrowLeft');
+  await expect(page.locator('[data-rpr="scope"]')).toHaveText('MessageRow');
+  await page.keyboard.press('ArrowDown');
+  await expect(page.locator('[data-rpr="scope"]')).toHaveText('<span.text>');
+
+  // Unticked on the element's row: the tree steps out to the component, and the next click takes a component.
+  await page.locator('[data-rpr="show-elements"]').uncheck();
+  await expect(page.locator('[data-rpr="scope"]')).toHaveText('MessageRow');
+  await expect(page.locator('[data-rpr="tree"] li[data-element="true"]')).toHaveCount(0);
+  await page.keyboard.press('Enter');
+  await page.locator('[data-rpr="scope"]').click();
+  await expect(page.locator('[data-rpr="show-elements"]')).not.toBeChecked();
+  await page.keyboard.press('Escape');
+  await page.locator('[data-rpr="pick"]').click();
+  await text.click();
+  await expect(page.locator('[data-rpr="scope"]')).toHaveText('MessageRow');
+  await page.keyboard.press('Enter');
+
+  // Ticked again and an element kept: a recording takes its component, and a reload forgets the element.
+  await page.locator('[data-rpr="scope"]').click();
+  await page.locator('[data-rpr="show-elements"]').check();
+  await page.keyboard.press('Escape');
+  await page.locator('[data-rpr="pick"]').click();
+  await text.click();
+  await page.keyboard.press('Enter');
+  await expect(page.locator('[data-rpr="scope"]')).toHaveText('<span.text>');
+  await page.locator('[data-rpr="record"]').click();
+  await expect(page.locator('[data-rpr="scope"]')).toHaveText('MessageRow');
+  await page.locator('[data-rpr="stop"]').click();
+  await page.reload();
+  await expect(page.getByTestId('unread')).toBeVisible();
+  await expect(page.locator('[data-rpr="scope"]')).toHaveText('MessageRow');
+});
+
+test('an element picked and then unmounted while recording is not kept in memory by the panel', async ({ page }) => {
+  await page.goto('/advanced/leak?rpr=panel');
+  await page.getByTestId('run').waitFor();
+  // The tidy popover's "closed": Popover stays, the <p> gives way to TidyPopover once the run opens it.
+  const closed = page.locator('p.muted', { hasText: /^closed$/ }).nth(1);
+  await pickElements(page);
+  await closed.click();
+  await expect(page.locator('[data-rpr="scope"]')).toHaveText('<p.muted>');
+  await page.keyboard.press('Enter');
+  await page.evaluate(() => {
+    const p = [...document.querySelectorAll('p.muted')].filter((el) => el.textContent === 'closed')[1];
+    (window as unknown as { __picked: WeakRef<Element> }).__picked = new WeakRef(p);
+  });
+
+  await page.locator('[data-rpr="record"]').click();
+  await page.getByTestId('run').click();
+  await page.waitForFunction(() => (document.querySelector('[data-testid=bar-fixed]') as HTMLElement | null)?.style.width === '100%');
+  const picked = () => page.evaluate(() => (window as unknown as { __picked: WeakRef<Element> }).__picked.deref()?.isConnected ?? 'collected');
+  // The run ends with the popover closed again, in a <p> of its own: the one picked is gone from the page.
+  expect(await picked()).not.toBe(true);
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send('HeapProfiler.collectGarbage');
+  // Still recording: nothing has asked the panel about its element since it was unmounted.
+  expect(await picked()).toBe('collected');
+  await page.locator('[data-rpr="stop"]').click();
+});
+
+test('copies an element picked on the page with the line its JSX is on', async ({ page, baseURL }) => {
+  await open(page);
+  await pickElements(page);
+  // A plain tag inside a component: hovering outlines it, named with the component it sits in.
+  const button = page.getByTestId('delete-m1');
+  await button.hover();
+  await expect(page.locator('[data-react-perf-recorder] .box .tag')).toHaveText('MessageRow › <button.delete>');
+  await button.click();
+  await expect(page.locator('[data-rpr="tree"] li[data-active="true"]')).toHaveAttribute('data-name', '<button.delete>');
+  // The row's ⧉ copies the element, as the area's own does once the tree is closed.
+  await page.locator('[data-rpr="tree"] li[data-active="true"] [data-rpr="copy-row"]').click();
+  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toMatch(/^React element on .*\nElement: <button /);
+  await page.keyboard.press('Enter');
+  await expect(page.locator('[data-rpr="scope"]')).toHaveText('<button.delete>');
+  await page.locator('[data-rpr="copy-scope"]').click();
+  await expect(page.locator('[data-rpr="copy-scope"]')).toHaveText('✓');
+  const copied = await page.evaluate(() => navigator.clipboard.readText());
+
+  const line =
+    fs
+      .readFileSync(path.resolve('test/e2e/fixture-app/src/components/Messages.tsx'), 'utf8')
+      .split('\n')
+      .findIndex((l) => l.includes('<button')) + 1;
+  expect(copied).toContain(`React element on ${baseURL}/app?tick=150\n`);
+  expect(copied).toContain('Element: <button data-testid="delete-m1" class="delete"> "×"');
+  expect(copied).toContain(`Written in: MessageRow — src/components/Messages.tsx:${line}\n`);
+  expect(copied).toMatch(/Path: .*› MessageList › MessageRow › <button\.delete>\n/);
+  // A selector that finds this one button again, not every row's.
+  const selector = /Selector: (.+)\n/.exec(copied)![1];
+  expect(await page.evaluate((s) => [...document.querySelectorAll(s)].map((el) => el.getAttribute('data-testid')), selector)).toEqual(['delete-m1']);
+  // The scope for scripts is the component's: that is what a recording of the element takes.
+  expect(copied).toMatch(/react-perf-recorder scope: \{"names":\[.*"MessageRow"\]\}$/);
+
+  // ← brings the tree back to the component, and the area's ⧉ copies the component again.
+  await page.locator('[data-rpr="scope"]').click();
+  await page.keyboard.press('ArrowLeft');
+  await page.keyboard.press('Enter');
+  await expect(page.locator('[data-rpr="scope"]')).toHaveText('MessageRow');
+  await page.locator('[data-rpr="copy-scope"]').click();
+  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toContain('Component: MessageRow — src/components/Messages.tsx:');
+});
+
 test('outlines renders inside the area while nothing is recorded, and marks recordings made with it', async ({ page }) => {
   await open(page);
   await page.locator('input[data-rpr="highlight"]').check();

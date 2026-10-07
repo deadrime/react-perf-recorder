@@ -9,9 +9,10 @@ export interface TreeProps {
   active: number;
   showLibrary: boolean;
   showProviders: boolean;
+  showElements: boolean;
   watched: readonly string[];
   actions: TreeActions;
-  onShow(what: 'library' | 'providers', on: boolean): void;
+  onShow(what: 'library' | 'providers' | 'elements', on: boolean): void;
   onWatch(name: string): void;
   onCopy(owner: Owner): void;
   /** The copy button that just worked, by `rowCopyKey`. */
@@ -50,6 +51,7 @@ function Row({ row, active, watching, onSelect, onConfirm, onHover, onToggle, on
     <li
       data-active={String(active)}
       data-wrapper={String(owner.wrapper || owner.provider || owner.library)}
+      data-element={owner.element ? 'true' : undefined}
       data-name={owner.name}
       style={{ paddingLeft: indentOf(row.depth + 1) }}
       onClick={onSelect}
@@ -64,23 +66,34 @@ function Row({ row, active, watching, onSelect, onConfirm, onHover, onToggle, on
       <span class="src" title={owner.source}>
         {owner.source.slice(owner.source.lastIndexOf('/') + 1)}
       </span>
-      <span
-        class="watch-toggle"
-        data-rpr="watch-toggle"
-        data-on={String(watching)}
-        title="Follow this component through the recording"
-        role="button"
-        aria-label={`Follow ${owner.name} through the recording`}
-        aria-pressed={watching}
-        onClick={(e) => stop(e, onWatch)}
-      >
-        {watching ? '◉' : '◎'}
-      </span>
+      {/* A recording follows components by name; an element keeps the square so ⧉ stays in its column. */}
+      {owner.element ? (
+        <span class="watch-spacer" />
+      ) : (
+        <span
+          class="watch-toggle"
+          data-rpr="watch-toggle"
+          data-on={String(watching)}
+          title="Follow this component through the recording"
+          role="button"
+          aria-label={`Follow ${owner.name} through the recording`}
+          aria-pressed={watching}
+          onClick={(e) => stop(e, onWatch)}
+        >
+          {watching ? '◉' : '◎'}
+        </span>
+      )}
       <span
         class="copy"
         data-rpr="copy-row"
         data-copied={copied ? 'true' : undefined}
-        title={copied ? 'Copied' : 'Copy for an AI assistant'}
+        title={
+          copied
+            ? 'Copied'
+            : owner.element
+            ? 'Copy this element for an AI assistant: the line its JSX is on, path, selector'
+            : 'Copy for an AI assistant'
+        }
         role="button"
         aria-label={copied ? `${owner.name} copied` : `Copy ${owner.name} for an AI assistant`}
         onClick={(e) => stop(e, onCopy)}
@@ -120,6 +133,15 @@ export function Tree(p: TreeProps): JSX.Element {
             onChange={(e) => p.onShow('providers', (e.target as HTMLInputElement).checked)}
           />
           providers
+        </label>
+        <label class="toggle" title="A click on the page takes the element under the cursor, to copy it with the line of its JSX">
+          <input
+            type="checkbox"
+            data-rpr="show-elements"
+            checked={p.showElements}
+            onChange={(e) => p.onShow('elements', (e.target as HTMLInputElement).checked)}
+          />
+          elements
         </label>
       </div>
       <ul data-rpr="tree" ref={list} onMouseLeave={() => p.actions.leave()}>
