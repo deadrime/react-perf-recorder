@@ -149,6 +149,8 @@ interface PageLike {
 }
 
 const ENGINE = 'window.__REACT_PERF_RECORDER__';
+/** Two frames after the last commit, its paint is behind; a hidden page has no frames, so not longer than 300 ms. */
+const PAINTED = 'new Promise((done) => { requestAnimationFrame(() => requestAnimationFrame(done)); setTimeout(done, 300); })';
 /** Beside a recording made by record_page: the `setup` it ran, which a replay of it runs again. */
 export const SETUP_FILE = 'record-page.json';
 
@@ -531,6 +533,8 @@ export async function recordPage(options: RecordPageOptions, sessionsDir: string
     } else {
       // The engine is in the page before the app: an app still loading has no React root yet to record.
       await page.waitForFunction(`${ENGINE}.engine.componentNames(1).length > 0`, undefined, { timeout: Math.min(timeout, 15_000) }).catch(() => {});
+      // A commit is not a paint: started in between, the recording takes the load's LCP without the commit behind it.
+      await page.evaluate(PAINTED).catch(() => {});
       await startProfile();
       try {
         await page.evaluate(`${ENGINE}.engine.start(${JSON.stringify(start)})`);
