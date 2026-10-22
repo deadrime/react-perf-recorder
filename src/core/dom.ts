@@ -19,9 +19,22 @@ export function ownerOf(node: Node): Fiber | null {
 
 const isElement = (v: unknown) => typeof v === 'object' && v !== null && '$$typeof' in v;
 
+const isText = (v: unknown) => typeof v === 'string' || typeof v === 'number';
+
+/** Whether the text in `children` changed: `<Text>{countdown}</Text>` hands the string down, the element is new anyway. */
+function textChildChanged(a: unknown, b: unknown): boolean {
+  if (isText(a) || isText(b)) return !Object.is(a, b);
+  if (!Array.isArray(a) || !Array.isArray(b)) return false;
+  if (a.length !== b.length) return a.some(hasText) || b.some(hasText);
+  // `{items.map((i) => i.label)}` among other children is an array inside the array.
+  return a.some((x, i) => textChildChanged(x, b[i]));
+}
+
+const hasText = (v: unknown): boolean => isText(v) || (Array.isArray(v) && v.some(hasText));
+
 /**
- * Whether a component that rendered got a new value in its props: a function, `children` or an element made anew
- * each render is not one. Its two halves hold the props before and after.
+ * Whether a component that rendered got a new value in its props: a function or an element made anew each render
+ * is not one, nor `children` beyond the text in it. Its two halves hold the props before and after.
  */
 function gotNewValue(f: Fiber): boolean {
   const next = f.memoizedProps as Record<string, unknown> | null;
@@ -29,7 +42,11 @@ function gotNewValue(f: Fiber): boolean {
   if (!next || !prev || next === prev) return false;
   for (const key of new Set([...Object.keys(prev), ...Object.keys(next)])) {
     const [a, b] = [prev[key], next[key]];
-    if (key === 'children' || Object.is(a, b) || typeof a === 'function' || typeof b === 'function') continue;
+    if (key === 'children') {
+      if (textChildChanged(a, b)) return true;
+      continue;
+    }
+    if (Object.is(a, b) || typeof a === 'function' || typeof b === 'function') continue;
     if (!isElement(a) && !isElement(b)) return true;
   }
   return false;

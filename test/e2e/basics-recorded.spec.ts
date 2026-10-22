@@ -173,6 +173,29 @@ test('a child that tells its parent in an effect: a second commit, core:effect, 
   expect(fixed.causes.map((c) => c.key)).not.toContain(effect);
 });
 
+test('a setState per response: a commit for each, the rows rendered again; Promise.all, one', async ({ page }) => {
+  const load = 'core:update load @ src/basics/Responses.tsx';
+  const run = (side: string) =>
+    record(page, '/basics/responses', async () => {
+      await page.getByTestId(`load-${side}`).click();
+      await expect(page.getByTestId(`people-${side}`)).toHaveText('8 of 8 loaded');
+      await page.waitForTimeout(200);
+    });
+  const rows = (rec: RecordingV2) => rec.components.find((c) => c.name === 'PersonRow')!.renders;
+
+  const broken = await run('each');
+  expect(broken.totals.commits).toBe(9);
+  expect(broken.causes.find((c) => c.key === load)?.commits).toBe(8);
+  expect(broken.roots.map((r) => [r.name, r.hits])).toEqual([['TeamOneByOne', 9]]);
+  // Every row already there renders again with each new one: 0 + 1 + … + 7.
+  expect(rows(broken)).toBe(28);
+
+  const fixed = await run('all');
+  expect(fixed.totals.commits).toBe(2);
+  expect(fixed.causes.find((c) => c.key === load)?.commits).toBe(1);
+  expect(fixed.components.find((c) => c.name === 'PersonRow')?.renders ?? 0).toBe(0);
+});
+
 test('an initial value passed as a call: the same renders, a much longer time', async ({ page }) => {
   const rec = await record(page, '/basics/init', async () => {
     for (let i = 0; i < 3; i++) await page.getByTestId('render').click();

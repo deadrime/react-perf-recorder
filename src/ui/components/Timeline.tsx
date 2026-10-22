@@ -17,7 +17,7 @@ import { mountText, phasesText, secs } from '../../shared/lcp';
 const CAUSE_COLOURS: Array<[RegExp, string]> = [
   [/^core:input/, 'var(--cause-input)'],
   [/^core:timer/, 'var(--cause-timer)'],
-  [/^core:(effect|update)/, 'var(--cause-effect)'],
+  [/^core:(layout effect|effect|update)/, 'var(--cause-effect)'],
   [/^core:navigation/, 'var(--cause-navigation)'],
   [/^zustand:/, 'var(--cause-store)'],
   [/^react-query:/, 'var(--cause-query)'],

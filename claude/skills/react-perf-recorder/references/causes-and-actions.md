@@ -14,6 +14,7 @@ What scheduled each commit, aimed at the components it actually updated:
 | `core:timer setInterval <fn> @ src/…` | a timer, with the place it was started                                           |
 | `core:navigation push`                | a navigation                                                                     |
 | `core:effect @ src/hooks/useX.ts`     | a setState from an effect                                                        |
+| `core:layout effect @ src/…`          | a setState from a layout effect or componentDidUpdate: rendered before the paint |
 | `core:update <fn> @ src/…`            | a plain call in the app's code; `(<package>)` when it came from inside a library |
 | `core:store resync`                   | React found a store changed with no notification and rendered its readers again  |
 | `core:none`                           | React scheduled the work itself — rare, and worth a second look                  |

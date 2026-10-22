@@ -1,0 +1,15 @@
+{
+  "name": "react-perf-recorder",
+  "description": "Plugins from the react-perf-recorder project",
+  "owner": {
+    "name": "Eugene",
+    "url": "https://github.com/deadrime"
+  },
+  "plugins": [
+    {
+      "name": "react-perf-recorder",
+      "source": "./claude",
+      "description": "Record why a React app re-renders and prove a fix with numbers: a skill, an agent and the MCP server of react-perf-recorder."
+    }
+  ]
+}

@@ -7,6 +7,7 @@ import {
   currentOf,
   eachFiber,
   isComposite,
+  isHost,
   isLibraryFiber,
   fiberFromNode,
   findRoots,
@@ -55,7 +56,16 @@ export interface Owner {
   provider: boolean;
   /** A component of a package, not of the app: no site of its own, or a file under node_modules. */
   library: boolean;
+  /** A DOM element, not a component: `name` is its tag and classes, `source` the line its JSX is written on. */
+  element?: boolean;
   fiber: Fiber;
+}
+
+/** `<button.btn.primary>`, `<div#root>`: how a row, the area and the outline name an element. */
+export function elementLabel(el: Element): string {
+  if (el.id) return `<${el.localName}#${el.id}>`;
+  const classes = [...el.classList].slice(0, 2).map((c) => `.${c}`);
+  return `<${el.localName}${classes.join('')}>`;
 }
 
 export interface Saved extends RecordingV2 {
@@ -385,21 +395,50 @@ export class Engine {
   /** Composite ancestors of an element, nearest first. */
   owners(el: Element): Owner[] {
     const host = fiberFromNode(el);
-    return host ? this.ownersOfFiber(host) : [];
+    return host ? this.ownersOfFiber(host).filter((o) => !o.element) : [];
   }
 
-  /** The fiber itself when it is a component, then its composite ancestors, nearest first. */
+  /**
+   * The element React rendered that a click on `el` means: `el` itself, or the nearest one above it that React
+   * made. An icon is taken whole — its `<svg>`, not a `<path>` inside it.
+   */
+  hostAt(el: Element): Fiber | null {
+    let target = el;
+    for (let svg = el.closest('svg'); svg; svg = svg.parentElement?.closest('svg') ?? null) target = svg;
+    const fiber = fiberFromNode(target);
+    return fiber && isHost(fiber) && fiber.stateNode instanceof Element ? currentOf(fiber) : null;
+  }
+
+  /** The fiber itself when it is a component or an element, then its composite ancestors, nearest first. */
   ownersOfFiber(fiber: Fiber): Owner[] {
-    return compositeChain(currentOf(fiber))
+    const current = currentOf(fiber);
+    const components = compositeChain(current)
       .reverse()
       .map((f) => this.ownerOf(f));
+    return isHost(current) && current.stateNode instanceof Element ? [this.ownerOf(current), ...components] : components;
   }
 
   ownerOf(fiber: Fiber): Owner {
+    const root = this.config.projectRoot;
+    // Read where it is shown: on React 19 the line comes from the dev server a moment after a row first asks for it.
+    if (isHost(fiber) && fiber.stateNode instanceof Element)
+      return {
+        name: elementLabel(fiber.stateNode),
+        get source() {
+          return sourceOf(fiber, root);
+        },
+        wrapper: false,
+        provider: false,
+        library: false,
+        element: true,
+        fiber,
+      };
     const name = nameOf(fiber) ?? 'Anonymous';
     return {
       name,
-      source: sourceOf(fiber, this.config.projectRoot),
+      get source() {
+        return sourceOf(fiber, root);
+      },
       wrapper: this.wrapperRe.test(name),
       provider: isProvider(name) || wrapsProvider(fiber),
       library: isLibraryFiber(fiber),

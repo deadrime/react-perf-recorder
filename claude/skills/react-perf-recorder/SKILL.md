@@ -23,7 +23,6 @@ numbers belong in the answer.
    takes long rather than comes often, work outside React — the time is the question, not the count: record with
    `cpu` and read section `cpu` (`references/reading-a-recording.md`). When the page jumps rather than lags — content
    pushed down, a sheet that moves the layout — read section `shifts`. When the page is slow to show its main content
-   on load, record from the load and read section `lcp`. When the page is slow to show its main content
    on load, record from the load and read section `lcp`.
 3. **Check before you conclude.** A reason line summarizes the recording; it is not a proof. Open the code at its
    `file:line` and find the mechanism there: the `setState`, the selector, the prop built in render. A claim about

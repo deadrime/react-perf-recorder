@@ -37,6 +37,16 @@ describe('memo instrumentation', () => {
     expect(wrapped.stats.find((s) => s.kind === 'memoizeWithArgs')!.nestedCalls).toBeGreaterThan(0);
   });
 
+  it('counts filters written anew on each call by their content, as proxy-memoize compares them', () => {
+    const memo = createMemoInstrumentation();
+    const mw = memo.instrument(memoizeWithArgs, 'memoizeWithArgs', 0);
+    const select = mw((state: State, filter: { id: string }) => ({ ...state.items[filter.id] }), { size: 4 });
+    memo.name(select, 'selectFiltered', 'src/a.ts');
+    memo.start();
+    for (let i = 0; i < 20; i++) select(makeState(i), { id: i % 2 ? 'a' : 'b' });
+    expect(memo.stop().find((s) => s.name === 'selectFiltered')).toMatchObject({ calls: 20, distinctArgs: 2, evicting: false });
+  });
+
   it('flags a one-slot cache evicted by alternating arguments', () => {
     const memo = createMemoInstrumentation();
     const mw = memo.instrument(memoizeWithArgs, 'memoizeWithArgs', 0);

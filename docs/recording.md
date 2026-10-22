@@ -25,7 +25,8 @@
 - **Causes** — what scheduled each commit, aimed at the components it updated: store actions with the keys they
   changed, query events (one per query and commit: `fetch → success ["presence"]`), timers
   (`timer setInterval useCountdown @ src/hooks/useCountdown.ts`), socket and worker messages, navigations, input.
-  What none of them explains is read off the stack when React is told: `core:effect @ src/hooks/useSync.ts`.
+  What none of them explains is read off the stack when React is told: `core:effect @ src/hooks/useSync.ts`, or
+  `core:layout effect @ src/Tooltip.tsx` for a layout effect, which React renders again before the browser paints.
 - **User actions** — clicks, typing (length only; secrets never), keys, scroll; each with the element, its component
   and file, and the commits it led to. The recording is cut into action → consequences segments: renders per typed
   character, reaction vs background, input latency.

@@ -33,3 +33,4 @@ test/next/next-env.d.ts
 # written by `next dev` on its first run
 test/next/AGENTS.md
 test/next/CLAUDE.md
+.DS_Store

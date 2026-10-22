@@ -23,6 +23,8 @@ export interface PanelState {
   fast?: boolean;
   showLibrary: boolean;
   showProviders: boolean;
+  /** A click in the picker takes the DOM element under the cursor, not the component around it. */
+  showElements?: boolean;
   label: string;
   /** Components followed by name through a recording: renders and which root pulled each one. */
   watch: string[];

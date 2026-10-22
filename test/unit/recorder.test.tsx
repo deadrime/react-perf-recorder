@@ -1,7 +1,23 @@
-import { act, useMemo, useCallback, useRef, memo, useContext, useState, createContext, useEffect, Suspense, type ReactNode } from 'react';
+import {
+  act,
+  createElement,
+  useMemo,
+  useCallback,
+  useRef,
+  memo,
+  useContext,
+  useState,
+  createContext,
+  useEffect,
+  useLayoutEffect,
+  Component,
+  Suspense,
+  type ReactNode,
+} from 'react';
 import { createStore, useStore } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
 import { flushSync } from 'react-dom';
+import { createRoot } from 'react-dom/client';
 import { findRoots, fiberFromNode } from '../../src/core/fiber';
 import { PluginHost } from '../../src/core/plugins';
 import { scopeFromFiber } from '../../src/core/scope';
@@ -143,6 +159,72 @@ describe('Recorder', () => {
 
     const hints = rec.roots.find((r) => r.name === 'Hints')!;
     expect({ hits: hints.hits, ownDomUnchanged: hints.ownDomUnchanged }).toEqual({ hits: 2, ownDomUnchanged: undefined });
+  });
+
+  it('credits a root with the text it passed a child as children', () => {
+    const store = createStore(() => ({ text: 'a' }));
+    const Text = ({ children }: { children: ReactNode }) => <p>{children}</p>;
+    // A design system's <Text>: the string is the root's, the element is the wrapper's.
+    const Countdown = () => <Text>{useStore(store, (s) => s.text)}</Text>;
+    const Labelled = () => <Text>left: {useStore(store, (s) => s.text)}</Text>;
+    // The mapped strings are an array inside the children array.
+    const Listed = () => <Text>items: {[useStore(store, (s) => s.text), 'z']}</Text>;
+    mount(
+      <>
+        <Countdown />
+        <Labelled />
+        <Listed />
+      </>
+    );
+    const { recorder } = makeRecorder();
+    recorder.start();
+    flush(() => store.setState({ text: 'b' }));
+    flush(() => store.setState({ text: 'c' }));
+    const rec = recorder.stop();
+
+    for (const name of ['Countdown', 'Labelled', 'Listed']) {
+      const root = rec.roots.find((r) => r.name === name)!;
+      expect({ name, hits: root.hits, ownDomUnchanged: root.ownDomUnchanged }).toEqual({ name, hits: 2, ownDomUnchanged: undefined });
+    }
+  });
+
+  it('keeps two unnamed cells one render helper creates as two roots', () => {
+    const store = createStore(() => ({ price: 1, profit: 1 }));
+    // A table's columns: each cell is an arrow of its own, all created at the one line of `flexRender`.
+    const columns = [{ cell: () => <span>{useStore(store, (s) => s.price)}</span> }, { cell: () => <span>{useStore(store, (s) => s.profit)}</span> }];
+    const flexRender = (cell: () => ReactNode) => createElement(cell);
+    const Row = () => (
+      <div>
+        {columns.map((column, i) => (
+          <i key={i}>{flexRender(column.cell)}</i>
+        ))}
+      </div>
+    );
+    mount(<Row />);
+    const { recorder } = makeRecorder();
+    recorder.start();
+    flush(() => store.setState({ price: 2 }));
+    flush(() => store.setState({ profit: 2 }));
+    flush(() => store.setState({ profit: 3 }));
+    const rec = recorder.stop();
+
+    const cells = rec.roots.filter((r) => r.name !== 'Row');
+    expect(cells.map((r) => r.hits).sort()).toEqual([1, 2]);
+  });
+
+  it('keys a root the same way in the next recording, after the page loaded again', () => {
+    // A reload makes every component anew: what pairs a root before and after a fix must not count them.
+    const load = () => {
+      const store = createStore(() => ({ v: 0 }));
+      const Cell = () => <span>{useStore(store, (s) => s.v)}</span>;
+      const Row = () => <div>{createElement(Cell)}</div>;
+      mount(<Row />);
+      const { recorder } = makeRecorder();
+      recorder.start();
+      flush(() => store.setState({ v: 1 }));
+      return recorder.stop().roots.find((r) => r.name === 'Cell')!.key;
+    };
+    expect(load()).toBe(load());
   });
 
   it('credits a root with the elements its own render made, under a wrapper or a provider too', () => {
@@ -887,6 +969,84 @@ describe('Recorder', () => {
       keys: { v: { changed: 1, sameContent: 0, unknown: 0 } },
     });
     expect(rec.roots[0].causes[0][0]).toBe('store:v/set');
+  });
+
+  it('tells an update from a layout effect from one from a passive effect, each with its own commit', () => {
+    let open!: () => void;
+    const Tip = () => {
+      const [shown, setShown] = useState(false);
+      const [width, setWidth] = useState(0);
+      const [seen, setSeen] = useState(0);
+      open = () => setShown(true);
+      useLayoutEffect(() => {
+        if (shown) setWidth(120);
+      }, [shown]);
+      useEffect(() => {
+        if (shown) setSeen(1);
+      }, [shown]);
+      return <p>{width + seen}</p>;
+    };
+    mount(<Tip />);
+    const { recorder } = makeRecorder();
+    recorder.start();
+    flush(() => open());
+    const rec = recorder.stop();
+    const keys = rec.causes.map((c) => c.key);
+    const layout = rec.causes.find((c) => c.key.startsWith('core:layout effect @'));
+    expect(layout).toBeDefined();
+    expect(keys.some((k) => k.startsWith('core:effect @'))).toBe(true);
+    // React 18 commits the passive effect's update on its own; it used to lose its origin to the layout one.
+    expect(keys).not.toContain('core:none');
+    const layoutCommit = rec.commits.list.find((c) => c.causeIds?.includes(layout!.i));
+    expect(layoutCommit?.lane).toBe('Sync');
+  });
+
+  it("keeps each root's update origin for that root's commit", () => {
+    document.body.innerHTML = '';
+    const bumps: Array<() => void> = [];
+    const Counter = () => {
+      const [n, setN] = useState(0);
+      useEffect(() => {
+        bumps.push(() => setN((v) => v + 1));
+      }, []);
+      return <p>{n}</p>;
+    };
+    const roots = [0, 1].map(() => {
+      const el = document.createElement('div');
+      document.body.appendChild(el);
+      const root = createRoot(el);
+      act(() => root.render(<Counter />));
+      return root;
+    });
+    const { recorder } = makeRecorder();
+    recorder.start();
+    flush(() => bumps.forEach((bump) => bump()));
+    const rec = recorder.stop();
+    roots.forEach((root) => act(() => root.unmount()));
+    expect(rec.causes.map((c) => c.key)).not.toContain('core:none');
+    for (const c of rec.commits.list) expect(c.causeIds?.length).toBeGreaterThan(0);
+  });
+
+  it("names a class's componentDidUpdate as a layout effect", () => {
+    let open!: () => void;
+    class Menu extends Component<object, { open: boolean; height: number }> {
+      state = { open: false, height: 0 };
+      componentDidMount() {
+        open = () => this.setState({ open: true });
+      }
+      componentDidUpdate() {
+        if (this.state.open && !this.state.height) this.setState({ height: 80 });
+      }
+      render() {
+        return <p>{this.state.height}</p>;
+      }
+    }
+    mount(<Menu />);
+    const { recorder } = makeRecorder();
+    recorder.start();
+    flush(() => open());
+    const keys = recorder.stop().causes.map((c) => c.key);
+    expect(keys.some((k) => /^core:layout effect componentDidUpdate @/.test(k))).toBe(true);
   });
 
   it('leaves effects-only components out of the render count after mount', () => {

@@ -104,7 +104,8 @@ test('the panel shows the largest paint: a tile, its phases, a mark on the timel
   await page.locator('[data-rpr="lcp-commit"]').click();
   await expect(page.locator('[data-rpr="lcp-detail"]')).toHaveCount(0);
   await expect(row).toHaveAttribute('aria-pressed', 'false');
-  expect(await pinned()).toBeNull();
+  // The outline goes in an effect after the row is redrawn: wait for it, as for the row.
+  await expect.poll(pinned).toBeNull();
 
   // The mark on the timeline picks it again.
   await page.locator('[data-rpr="tl-lcp"]').click();

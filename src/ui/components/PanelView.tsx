@@ -79,7 +79,8 @@ export interface PanelViewProps {
   /** The key of the copy button that just worked: it shows a tick for a moment. */
   copied: string | null;
   shortcuts: { record: string; pick: string };
-  scope: { name: string; lost: boolean } | null;
+  /** `component`: the area is an element, `name`, and a recording takes this component, the one it sits in. */
+  scope: { name: string; lost: boolean; component?: string } | null;
   note: string;
   highlight: boolean;
   fast: boolean;

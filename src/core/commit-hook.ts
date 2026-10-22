@@ -49,7 +49,7 @@ export function hookCommits(
    * Called the moment React marks new work on a root, while the code that scheduled it is still on the stack. With
    * `withUpdaters`, once per update and with the fiber that scheduled it and its lane.
    */
-  onUpdate?: (fiber?: Fiber, lane?: number) => void,
+  onUpdate?: (fiber?: Fiber, lane?: number, root?: FiberRoot) => void,
   /** React fills its updater sets: a DevTools hook was there when react-dom loaded. */
   withUpdaters = false
 ): CommitHook {
@@ -102,7 +102,7 @@ export function hookCommits(
           pendingLanes = value;
           if (!added || passthrough || !onUpdate || updaters) return;
           try {
-            onUpdate();
+            onUpdate(undefined, undefined, root);
           } catch (error) {
             report(error);
           }
@@ -120,7 +120,7 @@ export function hookCommits(
         const result = add.call(this, fiber);
         if (!passthrough)
           try {
-            onUpdate!(fiber, 1 << index);
+            onUpdate!(fiber, 1 << index, root);
           } catch (error) {
             report(error);
           }

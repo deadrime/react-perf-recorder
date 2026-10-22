@@ -378,6 +378,7 @@ test('every case can show the code behind it, with the line that matters marked'
     'deps',
     'dialog',
     'notify',
+    'responses',
     'init',
   ]) {
     await page.goto(`/basics/${id}`);

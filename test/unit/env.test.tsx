@@ -79,6 +79,148 @@ describe('timer causes', () => {
     ]);
     expect(rec.roots[0].causes[0][0]).toMatch(/^core:timer setInterval/);
   });
+
+  it('leaves a timer the update that was waiting for its render before it ran', async () => {
+    let bump!: () => void;
+    const Panel = () => {
+      const [n, setN] = useState(0);
+      bump = () => setN((x) => x + 1);
+      return <b>{n}</b>;
+    };
+    const { unmount } = mount(<Panel />);
+    const { recorder } = makeRecorder();
+    recorder.start();
+    // An effect's setState still waiting, then a frame callback that only scrolls: the update is not the frame's.
+    await act(async () => {
+      bump();
+      await new Promise((resolve) => window.requestAnimationFrame(resolve));
+    });
+    const rec = recorder.stop();
+    unmount();
+    expect(rec.roots[0].hits).toBe(1);
+    expect(rec.causes.map((c) => c.key).filter((k) => k.startsWith('core:timer'))).toEqual([]);
+  });
+});
+
+describe('update origins', () => {
+  it('names each update of one lane by its own code, not by the first', () => {
+    let setPush!: (n: number) => void;
+    let setMedia!: (n: number) => void;
+    const Push = () => {
+      const [n, set] = useState(0);
+      setPush = set;
+      return <b>{n}</b>;
+    };
+    const Media = () => {
+      const [n, set] = useState(0);
+      setMedia = set;
+      return <i>{n}</i>;
+    };
+    // Two effects of one flush: web push asks first, the media query after it, in the same lane.
+    function subscribePush() {
+      setPush(1);
+    }
+    function matchMedia() {
+      setMedia(1);
+    }
+    const { unmount } = mount(
+      <>
+        <Push />
+        <Media />
+      </>
+    );
+    const { recorder } = makeRecorder();
+    recorder.start();
+    flush(() => {
+      subscribePush();
+      matchMedia();
+    });
+    const rec = recorder.stop();
+    unmount();
+    const causesOf = (name: string) => rec.roots.find((r) => r.name === name)!.causes.map(([key]) => key);
+    expect(causesOf('Push')).toEqual([expect.stringMatching(/^core:update subscribePush @/)]);
+    expect(causesOf('Media')).toEqual([expect.stringMatching(/^core:update matchMedia @/)]);
+  });
+
+  it("leaves an update no origin was taken for without the others' causes", () => {
+    // More updates in one flush than the recorder notes origins for: the last ones are told by nothing.
+    const setters: Array<(n: number) => void> = [];
+    const Cell = ({ i }: { i: number }) => {
+      const [n, set] = useState(0);
+      setters[i] = set;
+      return <b>{n}</b>;
+    };
+    const Last = () => {
+      const [n, set] = useState(0);
+      setters[40] = set;
+      return <i>{n}</i>;
+    };
+    const { unmount } = mount(
+      <>
+        {Array.from({ length: 40 }, (_, i) => (
+          <Cell key={i} i={i} />
+        ))}
+        <Last />
+      </>
+    );
+    // A function of its own name per cell: one line updating many components shares an origin.
+    const callers = setters.map((set, i) => ({ [`set${i}`]: () => set(1) }[`set${i}`]));
+    const { recorder } = makeRecorder();
+    recorder.start();
+    flush(() => callers.forEach((call) => call()));
+    const rec = recorder.stop();
+    unmount();
+    expect(rec.roots.find((r) => r.name === 'Last')!.causes.map(([key]) => key)).toEqual(['core:none']);
+  });
+
+  it('does not hand a root the origin of a fiber that rendered under it', () => {
+    const setters: Array<(n: number) => void> = [];
+    let setPwa!: (n: number) => void;
+    let setMedia!: (n: number) => void;
+    const Filler = ({ i }: { i: number }) => {
+      const [n, set] = useState(0);
+      setters[i] = set;
+      return <b>{n}</b>;
+    };
+    const Pwa = () => {
+      const [n, set] = useState(0);
+      setPwa = set;
+      return <u>{n}</u>;
+    };
+    // The page updates itself too, after the recorder stopped noting origins; its child's origin is not its own.
+    const Page = () => {
+      const [n, set] = useState(0);
+      setMedia = set;
+      return (
+        <section>
+          {n}
+          <Pwa />
+        </section>
+      );
+    };
+    const { unmount } = mount(
+      <>
+        {Array.from({ length: 12 }, (_, i) => (
+          <Filler key={i} i={i} />
+        ))}
+        <Page />
+      </>
+    );
+    const { recorder } = makeRecorder();
+    recorder.start();
+    function installPrompt() {
+      setPwa(1);
+    }
+    flush(() => {
+      installPrompt();
+      setters.forEach((set) => set(1));
+      setMedia(1);
+    });
+    const rec = recorder.stop();
+    unmount();
+    const prompt = rec.causes.find((c) => c.key.startsWith('core:update installPrompt @'))!.key;
+    expect(rec.roots.find((r) => r.name === 'Page')!.causes.map(([key]) => key)).not.toContain(prompt);
+  });
 });
 
 describe('timers of the recorder itself', () => {
