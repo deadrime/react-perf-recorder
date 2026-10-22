@@ -29,7 +29,7 @@ const open = async (page: Page, id: string) => {
 
 test('the front page lists the harder cases apart from the textbook ones', async ({ page }) => {
   await page.goto('/');
-  await expect(page.locator('[data-testid="advanced"] [data-advanced]')).toHaveCount(13);
+  await expect(page.locator('[data-testid="advanced"] [data-advanced]')).toHaveCount(14);
   await page.locator('[data-advanced="chain"]').click();
   await expect(page.getByTestId('strip')).toContainText('a chain of effects');
 });
@@ -59,6 +59,23 @@ test('a width kept in state renders on every frame of a resize; the number that 
   expect((fixed1 - fixed0) * 3).toBeLessThan(broken1 - broken0);
   const lit = await outlines(page);
   expect(lit.broken).toBeGreaterThan(lit.fixed * 2);
+});
+
+test('a progress kept in state renders its card on every frame; moved through a ref, at the click and at the end', async ({ page }) => {
+  await open(page, 'animation');
+  const before = { broken: await countsOf(page, 'broken'), fixed: await countsOf(page, 'fixed') };
+  await page.getByTestId('upload-state').click();
+  await page.getByTestId('upload-ref').click();
+  await expect(page.getByTestId('status-state')).toHaveText('uploaded');
+  await expect(page.getByTestId('status-ref')).toHaveText('uploaded');
+  const after = { broken: await countsOf(page, 'broken'), fixed: await countsOf(page, 'fixed') };
+  const grew = (side: 'broken' | 'fixed') => after[side].map((n, i) => n - before[side][i]);
+  // A second of frames on the left, the card and every file each time.
+  expect(new Set(grew('broken')).size).toBe(1);
+  expect(grew('broken')[0]).toBeGreaterThan(30);
+  expect(grew('fixed')).toEqual(before.fixed.map(() => 2));
+  const lit = await outlines(page);
+  expect(lit.broken).toBeGreaterThan(lit.fixed * 5);
 });
 
 test('a deferred list ends where the synchronous one does', async ({ page }) => {

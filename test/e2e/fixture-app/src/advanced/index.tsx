@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import { BugStrip } from '../Demo';
+import { Animation } from './Animation';
 import { EffectChain } from './EffectChain';
 import { EmptyDefault } from './EmptyDefault';
 import { Fallback } from './Fallback';
@@ -32,6 +33,11 @@ export const ADVANCED: Record<string, AdvancedCase> = {
     title: 'a measured width kept in state',
     what: 'It renders on every frame of a resize, while the number of tags that fit, the one thing shown, changes a few times.',
     element: Measure,
+  },
+  animation: {
+    title: 'setState on every animation frame',
+    what: 'A progress bar moved through state from requestAnimationFrame renders its card sixty times a second; moved through a ref, twice.',
+    element: Animation,
   },
   deferred: {
     title: 'a slow list filtered as you type',
