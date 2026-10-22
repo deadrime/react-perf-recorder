@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { expect, test } from '@playwright/test';
+import { expect, test, type Browser } from '@playwright/test';
 import { recordPage } from '../../src/mcp/record';
 import { section } from '../../src/mcp/server';
 import type { RecordingV2 } from '../../src/shared/schema';
@@ -15,10 +15,40 @@ const moduleOf = (name: string, body: string) => {
   return file;
 };
 
-const record = async (baseURL: string | undefined, which: string, testId: string, throttle?: number) => {
-  const script = moduleOf(which, `await page.getByTestId('${testId}').click(); await page.waitForTimeout(1500);`);
-  const result = await recordPage({ url: `${baseURL}/test/shifts?case=${which}`, script, ...(throttle ? { throttle } : {}) }, SESSIONS_DIR);
+const record = async (
+  baseURL: string | undefined,
+  which: string,
+  testId: string,
+  throttle?: number,
+  query = '',
+  settled = 'await page.waitForTimeout(1500);'
+) => {
+  const script = moduleOf(which, `await page.getByTestId('${testId}').click(); ${settled}`);
+  const result = await recordPage({ url: `${baseURL}/test/shifts?case=${which}${query}`, script, ...(throttle ? { throttle } : {}) }, SESSIONS_DIR);
   return saved(result.id!);
+};
+
+/** The sheet fully open, and a moment for its last shifts to reach the observer: under ×6 that takes past any fixed wait. */
+const SHEET_OPEN = `await page.waitForFunction(() => document.querySelector('.sheet')?.style.height === '320px', undefined, { timeout: 15000 }); await page.waitForTimeout(300);`;
+
+/**
+ * The sheet's `work` that renders in about `ms` here, unthrottled: machines differ by several times, and the test is
+ * whether the sheet opens inside the 500 ms after the click. The body is the fixture's `slowSum`.
+ */
+const workFor = async (browser: Browser, ms: number) => {
+  const page = await browser.newPage();
+  const taken = await page.evaluate(() => {
+    const slowSum = (n: number) =>
+      Array.from({ length: n }, (_, i) => (i * 7919) % 1000)
+        .sort((a, b) => a - b)
+        .reduce((sum, v) => sum + v, 0);
+    slowSum(200_000);
+    const t = performance.now();
+    slowSum(200_000);
+    return performance.now() - t;
+  });
+  await page.close();
+  return Math.round((200_000 * ms) / Math.max(1, taken));
 };
 
 test('content that arrives late is blamed on the component the commit mounted above the list', async ({ baseURL }) => {
@@ -45,8 +75,10 @@ test('an image with no size set is named as one', async ({ baseURL }) => {
   expect(read.items[0]).toMatch(/ProductPhoto .*img\.photo with no size set/);
 });
 
-test('a sheet opening by its height is a near miss on a fast machine and counted when the CPU is slow', async ({ baseURL }) => {
-  const fast = await record(baseURL, 'sheet', 'open');
+test('a sheet opening by its height is a near miss on a fast machine and counted when the CPU is slow', async ({ baseURL, browser }) => {
+  // Recorded and beside other workers, render runs several times the measure: 30 ms keeps the 200 ms opening inside
+  // the 500 ms of input, 150 ms ×6 puts it well past them.
+  const fast = await record(baseURL, 'sheet', 'open', undefined, `&work=${await workFor(browser, 30)}`, SHEET_OPEN);
   const shifts = fast.shifts!;
   expect(shifts.list.length).toBeGreaterThan(3);
   expect(shifts.list.every((s) => s.hadRecentInput)).toBe(true);
@@ -59,7 +91,7 @@ test('a sheet opening by its height is a near miss on a fast machine and counted
   expect(shifts.cls.nearMiss).toBeGreaterThan(0);
   expect(section(fast, 'shifts', 10, 0)).toMatchObject({ hint: expect.stringContaining('throttle') });
 
-  const slow = await record(baseURL, 'sheet', 'open', 6);
+  const slow = await record(baseURL, 'sheet', 'open', 6, `&work=${await workFor(browser, 150)}`, SHEET_OPEN);
   expect(slow.shifts!.cls.value).toBeGreaterThan(0);
   expect(slow.shifts!.list.some((s) => !s.hadRecentInput && 'animation' in s.cause)).toBe(true);
 });
@@ -109,7 +141,8 @@ test('the panel shows the shift: CLS in the numbers, a row, a mark on the timeli
   await page.locator('[data-rpr="shift-commit"]').click();
   await expect(page.locator('[data-rpr="shift-detail"]')).toHaveCount(0);
   await expect(row).toHaveAttribute('aria-pressed', 'false');
-  expect(await pin()).toBeNull();
+  // The outlines go in an effect after the row is redrawn: wait for them, as for the row.
+  await expect.poll(pin).toBeNull();
 
   // A mark on the timeline picks the same row.
   await page.locator('[data-rpr="tl-shift"]').first().click();
